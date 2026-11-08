@@ -55,7 +55,8 @@ export type BotInput = Omit<Bot, "id" | "createdAt">;
 
 export type Usage = { input: number; output: number };
 
-export type UserEntry = { id: string; kind: "user"; text: string; at: number };
+/** via: sent by the user's main bot on the user's behalf (its bot id). */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string };
 
 export type BotEntry = {
   id: string;
@@ -95,6 +96,8 @@ export type Pending = {
   awaitingLead?: boolean;
   /** How many similar requests came before this one (nudges the bot to save a skill). */
   learn?: number;
+  /** This bot gets the last word: it gives the user the final answer and the conversation ends. */
+  wrapUpFor?: string;
 };
 
 export type Chat = {

@@ -155,7 +155,6 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
             })}
           </div>
         )}
-        {e.handoffBlocked && <div className="note">{t("chat.handoffLimit")}</div>}
       </div>
     </div>
   );
@@ -315,6 +314,23 @@ export default function ChatView({ id }: { id: string }) {
       ctrlRef.current?.abort();
     };
   }, [id, stream]);
+
+  // Pick up work that starts elsewhere: the main bot giving this group a task,
+  // a group's report arriving in the main bot's chat, or a Telegram message.
+  const updatedAt = chat?.updatedAt;
+  useEffect(() => {
+    if (running || missing) return;
+    const timer = setInterval(() => {
+      if (document.hidden) return;
+      api<ChatWithState>(`/api/chats/${id}`)
+        .then((c) => {
+          if (c.running) void stream();
+          else if (c.updatedAt !== updatedAt) setChat(c);
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [id, running, missing, updatedAt, stream]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -565,7 +581,8 @@ export default function ChatView({ id }: { id: string }) {
 
             {chat.entries.map((e, i) =>
               e.kind === "user" ? (
-                <div key={e.id} className="msg user">
+                <div key={e.id} className={`msg user${e.via ? " via" : ""}`}>
+                  {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
                   <div className="bubble user-bubble">
                     <Rich text={e.text} bots={members} />
                   </div>
