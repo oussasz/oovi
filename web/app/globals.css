@@ -1024,6 +1024,52 @@ p {
   fill: var(--bg);
 }
 
+/* ---------- Plain facts list, single about card, simple closing CTA ---------- */
+.agent-role {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-left: 4px;
+}
+.details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 48px;
+  margin: 56px 0 0;
+}
+.detail {
+  padding: 18px 0;
+  border-top: 1px solid var(--border);
+}
+.detail dt {
+  font-weight: 800;
+  margin-bottom: 4px;
+}
+.detail dd {
+  margin: 0;
+  color: var(--muted);
+}
+.about-single {
+  grid-template-columns: minmax(0, 760px);
+  justify-content: center;
+}
+.final-simple {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 18px;
+  padding: 40px 0 110px;
+}
+.final-simple .h2 {
+  margin: 0;
+}
+@media (max-width: 760px) {
+  .details {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ---------- Footer ---------- */
 .footer {
   background: var(--bg);

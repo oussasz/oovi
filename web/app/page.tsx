@@ -2,19 +2,9 @@ import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Slime } from "@/components/Slime";
-import { CurvyArrow, LoopLine, MotionTicks, Sparkle, SwooshArrow, Underline } from "@/components/Doodles";
+import { Underline } from "@/components/Doodles";
 import { DownloadButton } from "@/components/download/DownloadButton";
-import {
-  BookIcon,
-  BotIcon,
-  BrainIcon,
-  CheckIcon,
-  FolderIcon,
-  HomeIcon,
-  KeyIcon,
-  LaptopIcon,
-  LockIcon,
-} from "@/components/icons";
+import { BookIcon, BotIcon, CheckIcon, FolderIcon, HomeIcon } from "@/components/icons";
 
 export default function Home() {
   return (
@@ -22,7 +12,7 @@ export default function Home() {
       <SiteNav />
       <main>
         <Hero />
-        <Agents />
+        <Team />
         <Showcase />
         <HowItWorks />
         <About />
@@ -37,9 +27,6 @@ function Hero() {
   return (
     <section className="hero container">
       <div className="hero-copy">
-        <span className="tag">
-          <span className="tag-dot" style={{ background: "#FDDA80" }} /> Meet your new AI team
-        </span>
         <h1 className="hero-title">
           You have a team.<br className="br-lg" /> They just happen<br className="br-lg" /> to be{" "}
           <span className="hl">
@@ -49,21 +36,20 @@ function Hero() {
           .
         </h1>
         <p className="lead">
-          Meet oovi. Your own team of AI agents, working together to turn your ideas into reality.
+          oovi is a desktop app where a few AI bots work on your request together. A leader plans, the others research,
+          write and check, and you approve anything that touches the outside world.
         </p>
         <div className="cta-row">
           <DownloadButton os="mac" size="lg">Download for Mac</DownloadButton>
           <DownloadButton os="windows" variant="light" size="lg">Download for Windows</DownloadButton>
         </div>
-        <p className="fine">Free during the pilot · Bring your own AI key</p>
+        <p className="fine">Free during the pilot. Uses your own AI provider key.</p>
       </div>
 
       <div className="hero-art" aria-hidden>
         <svg className="orbit orbit-back" viewBox="0 0 600 300">
-          <ellipse cx="300" cy="150" rx="285" ry="88" transform="rotate(-14 300 150)" fill="none" stroke="#171717" strokeWidth="2.2" />
+          <ellipse cx="300" cy="150" rx="285" ry="88" transform="rotate(-14 300 150)" fill="none" stroke="currentColor" strokeWidth="2.2" />
         </svg>
-        <MotionTicks className="hero-ticks" size={86} />
-        <Sparkle className="hero-sparkle" size={44} />
         <Slime color="blue" shape="egg" face="dash" faceAt={[110, 92]} faceTilt={-8} className="hs hs-blue" delay={0.4} />
         <Slime color="yellow" shape="round" face="smile" faceAt={[92, 100]} faceTilt={6} className="hs hs-yellow" delay={1.2} />
         <Slime color="coral" shape="lump" face="happy" faceAt={[104, 108]} faceTilt={-4} className="hs hs-coral" delay={0} />
@@ -72,78 +58,72 @@ function Hero() {
             d="M15 150 A285 88 0 0 0 585 150"
             transform="rotate(-14 300 150)"
             fill="none"
-            stroke="#171717"
+            stroke="currentColor"
             strokeWidth="2.2"
             strokeDasharray="0 330 1000"
           />
         </svg>
-        <div className="hero-note">
-          <span>Think</span>
-          <span>Create</span>
-          <span>Execute</span>
-          <CurvyArrow className="hero-note-arrow" size={64} />
-        </div>
         <div className="ground-shadow" />
       </div>
     </section>
   );
 }
 
-const AGENTS = [
+const TEAM = [
   {
-    name: "Think",
+    name: "Scout",
+    role: "Researcher",
     color: "blue" as const,
     dot: "#A9BCF7",
-    text: "Research, plan, and find the best path.",
+    text: "Searches the web, opens the pages that matter and brings back sources.",
     face: "focus" as const,
     extra: "ticks" as const,
     shape: "wide" as const,
   },
   {
-    name: "Create",
+    name: "Quill",
+    role: "Writer",
     color: "yellow" as const,
     dot: "#FDDA80",
-    text: "Turn ideas into beautiful plans, drafts and designs.",
+    text: "Turns notes into drafts, emails and posts, in the tone you ask for.",
     face: "wink" as const,
     extra: "loops" as const,
     shape: "round" as const,
   },
   {
-    name: "Execute",
+    name: "Nova",
+    role: "Critic",
     color: "coral" as const,
     dot: "#FF9F86",
-    text: "Handle the details and get things done.",
+    text: "Reads the result, catches mistakes and says what to fix.",
     face: "cool" as const,
     extra: "curl" as const,
     shape: "lump" as const,
   },
 ];
 
-function Agents() {
+function Team() {
   return (
     <section id="product" className="agents container">
       <div className="agents-copy">
-        <LoopLine className="agents-loop" />
-        <span className="tag tag-tilt">
-          <Sparkle size={14} color="#A9BCF7" /> Three agents. Infinite possibilities.
-        </span>
-        <h2 className="h2 tilt">
-          Three minds.
+        <h2 className="h2">
+          A leader and
           <br />
-          One mission.
+          three specialists.
         </h2>
         <p className="agents-sub">
-          Think, create, execute, together. <SwooshArrow className="agents-swoosh" size={64} />
+          Oovi, your leader, decides who does what and gives you one final answer. Rename the team, change their jobs,
+          or add your own bots.
         </p>
       </div>
       <div className="agent-cards">
-        {AGENTS.map((a, i) => (
+        {TEAM.map((a, i) => (
           <article key={a.name} className={`agent-card agent-card-${i}`}>
             <Slime color={a.color} shape={a.shape} face={a.face} extra={a.extra} className="agent-slime" delay={i * 0.7} />
             <div className="agent-card-body">
               <h3>
                 <span className="dot" style={{ background: a.dot }} />
-                {a.name}
+                {a.name} <span className="agent-role">{a.role}</span>
               </h3>
               <p>{a.text}</p>
             </div>
@@ -169,39 +149,38 @@ function Showcase() {
               <img src="/mark.png" alt="" width={46} height={46} className="window-mark" />
               <ul>
                 <li className="on"><HomeIcon /> Home</li>
-                <li><FolderIcon /> Projects</li>
-                <li><BotIcon /> Agents</li>
+                <li><FolderIcon /> Groups</li>
+                <li><BotIcon /> Bots</li>
                 <li><BookIcon /> Library</li>
               </ul>
-              <p className="window-hand">Let&apos;s build!</p>
             </aside>
             <div className="window-main">
               <div className="prompt">
-                <span>Build a startup from scratch.</span>
+                <span>Compare three note-taking apps and draft a short review.</span>
                 <span className="prompt-go">→</span>
               </div>
               <ul className="tasks">
                 <li>
                   <Slime color="blue" shape="egg" face="dash" className="task-slime" />
                   <div>
-                    <b>Think</b>
-                    <small>Researching the market…</small>
+                    <b>Scout</b>
+                    <small>Read 6 sources</small>
                   </div>
                   <span className="task-status done"><CheckIcon size={16} /></span>
                 </li>
                 <li>
                   <Slime color="yellow" shape="round" face="dash" className="task-slime" delay={0.6} />
                   <div>
-                    <b>Create</b>
-                    <small>Building the brand identity…</small>
+                    <b>Quill</b>
+                    <small>Writing the draft</small>
                   </div>
                   <span className="task-status spin" />
                 </li>
                 <li>
                   <Slime color="coral" shape="lump" face="dash" className="task-slime" delay={1.1} />
                   <div>
-                    <b>Execute</b>
-                    <small>Preparing your launch plan…</small>
+                    <b>Nova</b>
+                    <small>Waiting for the draft</small>
                   </div>
                   <span className="task-status wait">•••</span>
                 </li>
@@ -211,55 +190,44 @@ function Showcase() {
         </div>
 
         <div className="float-card fc-brand">
-          <b>Brand Strategy</b>
+          <b>Sources</b>
           <svg viewBox="0 0 120 70" className="fc-img">
             <rect width="120" height="70" rx="8" fill="#E7ECFD" />
-            <rect x="72" y="8" width="38" height="30" rx="4" fill="#FDDA80" opacity=".8" />
-            <path d="M0 58 L28 30 L52 50 L74 26 L120 62 L120 70 L0 70Z" fill="#A9BCF7" />
-            <path d="M0 64 L36 44 L64 60 L96 46 L120 66 L120 70 L0 70Z" fill="#8FA5EC" />
+            <rect x="10" y="12" width="70" height="7" rx="3.5" fill="#A9BCF7" />
+            <rect x="10" y="28" width="92" height="7" rx="3.5" fill="#A9BCF7" opacity=".7" />
+            <rect x="10" y="44" width="56" height="7" rx="3.5" fill="#A9BCF7" opacity=".5" />
           </svg>
-          <i className="fc-line" />
-          <i className="fc-line short" />
         </div>
         <div className="float-card fc-launch">
-          <b>Launch Plan</b>
+          <b>Draft</b>
           <div className="fc-launch-body">
             <div className="fc-lines">
               <i className="fc-line" />
               <i className="fc-line" />
               <i className="fc-line short" />
             </div>
-            <svg viewBox="0 0 48 40" className="fc-bars">
-              <rect x="2" y="24" width="8" height="16" rx="2" fill="#FFC3B3" />
-              <rect x="14" y="16" width="8" height="24" rx="2" fill="#FF9F86" />
-              <rect x="26" y="8" width="8" height="32" rx="2" fill="#F4866B" />
-              <rect x="38" y="2" width="8" height="38" rx="2" fill="#E9705A" />
-            </svg>
           </div>
         </div>
         <div className="float-card fc-web">
-          <b>Website Design</b>
-          <svg viewBox="0 0 120 70" className="fc-img">
-            <rect width="120" height="70" rx="8" fill="#EEE9F8" />
-            <circle cx="92" cy="20" r="8" fill="#171717" />
-            <path d="M8 66 L46 26 L70 50 L84 38 L116 66Z" fill="#171717" />
-            <path d="M8 66 L46 26 L56 36 L30 66Z" fill="#CDBFEA" />
-          </svg>
+          <b>Review notes</b>
+          <div className="fc-lines">
+            <i className="fc-line" />
+            <i className="fc-line short" />
+          </div>
         </div>
-        <MotionTicks className="sc-ticks-a" size={40} />
-        <MotionTicks className="sc-ticks-b" size={36} />
       </div>
 
       <div className="showcase-copy">
-        <span className="tag">One request. A whole team.</span>
         <h2 className="h2">
-          From idea
+          See every step
           <br />
-          to impact.
+          as it happens.
         </h2>
-        <p className="lead small">Just tell oovi what you need, and watch your team get to work.</p>
-        <DownloadButton size="md" showIcon={false}>Try it now</DownloadButton>
-        <CurvyArrow className="showcase-arrow" size={84} flip />
+        <p className="lead small">
+          Each bot shows what it&apos;s doing: the search it ran, the page it opened, the draft it wrote. Open any bot&apos;s
+          screen and zoom in.
+        </p>
+        <DownloadButton size="md" showIcon={false}>Download oovi</DownloadButton>
       </div>
     </section>
   );
@@ -269,29 +237,39 @@ function HowItWorks() {
   const steps = [
     {
       n: "1",
-      title: "The leader plans",
-      text: "Describe what you want in plain words. Your team leader breaks it into clear steps and decides who does what.",
+      title: "You ask once",
+      text: "Write what you need in plain words. The leader splits it into tasks and picks who does each one.",
       color: "blue" as const,
     },
     {
       n: "2",
-      title: "Teammates do the work",
-      text: "Each slime takes its part: researching, writing, designing, browsing and building, side by side.",
+      title: "The team works",
+      text: "Scout researches, Quill writes, Nova checks. They hand work to each other without you managing it.",
       color: "yellow" as const,
     },
     {
       n: "3",
       title: "You approve",
-      text: "You stay in charge. Review results, ask for changes, and approve anything important before it happens.",
+      text: "Before a bot clicks, types or posts anything on a website, it shows you the exact action and waits for your yes.",
       color: "coral" as const,
     },
+  ];
+  const details = [
+    {
+      title: "Your own AI key",
+      text: "Claude, GPT, Gemini, Grok, OpenRouter, or a model running on your computer. You pay the provider directly; oovi adds nothing on top.",
+    },
+    { title: "Memory", text: "Bots keep short notes about you and your work, so you explain things once." },
+    {
+      title: "Skills",
+      text: "When you ask for the same kind of task again, a bot can save the steps as a skill and reuse them next time.",
+    },
+    { title: "On your computer", text: "Chats, memory and keys stay on your device. Keys are encrypted." },
   ];
   return (
     <section id="how" className="how container">
       <div className="section-head">
-        <span className="tag">How it works</span>
-        <h2 className="h2">Your ideas, handled by a team.</h2>
-        <p className="lead small">No prompts to babysit. Just say what you need and oovi takes it from there.</p>
+        <h2 className="h2">How a request is handled</h2>
       </div>
       <ol className="how-steps">
         {steps.map((s, i) => (
@@ -305,61 +283,32 @@ function HowItWorks() {
           </li>
         ))}
       </ol>
-      <div className="features">
-        <div className="feature">
-          <span className="feature-icon" style={{ background: "#FDDA80" }}><KeyIcon /></span>
-          <div>
-            <h3>Bring your own key</h3>
-            <p>Connect the AI provider you already use with your own API key. You pay the provider directly, with no markup from us.</p>
+      <dl className="details">
+        {details.map((d) => (
+          <div key={d.title} className="detail">
+            <dt>{d.title}</dt>
+            <dd>{d.text}</dd>
           </div>
-        </div>
-        <div className="feature">
-          <span className="feature-icon" style={{ background: "#CDBFEA" }}><BrainIcon /></span>
-          <div>
-            <h3>Skills &amp; memory</h3>
-            <p>Teach your team new skills and let them remember what matters, so every project starts smarter than the last.</p>
-          </div>
-        </div>
-        <div className="feature">
-          <span className="feature-icon" style={{ background: "#BBD8C4" }}><LaptopIcon /></span>
-          <div>
-            <h3>Runs on your computer</h3>
-            <p>oovi is a desktop app for Mac and Windows. Your team lives on your machine, not in someone else’s cloud.</p>
-          </div>
-        </div>
-      </div>
+        ))}
+      </dl>
     </section>
   );
 }
 
 function About() {
   return (
-    <section id="about" className="about container">
+    <section id="about" className="about about-single container">
       <div className="about-card">
-        <span className="tag">About oovi</span>
-        <h2 className="h3">A friendlier way to work with AI.</h2>
+        <h2 className="h3">Why we built oovi</h2>
         <p>
-          We built oovi because one chatbot in a box is not a team. oovi gives you a small crew of AI agents with
-          their own roles, that plan together, share notes and check in with you. It’s playful on the outside and
-          serious about getting your work done.
+          One chat window is fine for a quick answer. Real work needs someone to plan, someone to dig, someone to write
+          and someone to check. oovi gives each of those jobs to a bot and lets them work together, while you keep the
+          final say.
         </p>
         <p>
-          oovi is in its pilot phase: it’s free to use while we learn and improve. Paid plans with extras may come
-          later.
+          oovi is in a free pilot while we improve it. Your oovi account only holds your email, name and photo; your
+          chats never leave your computer. <Link href="/privacy" className="text-link">Privacy Policy</Link>
         </p>
-      </div>
-      <div className="about-card data-card">
-        <span className="feature-icon" style={{ background: "#fff" }}><LockIcon /></span>
-        <h2 className="h3">Your data stays on your device.</h2>
-        <p>
-          Your bots, chats, memories, skills and API keys are stored locally on your computer, and your keys are
-          encrypted. We never see your conversations.
-        </p>
-        <p>
-          Your oovi account is only for signing in: it holds your email, name and profile photo. Optional crash
-          reports help us fix bugs and never include your chats.
-        </p>
-        <Link href="/privacy" className="text-link">Read our Privacy Policy →</Link>
       </div>
     </section>
   );
@@ -367,32 +316,10 @@ function About() {
 
 function FinalCta() {
   return (
-    <section className="final">
-      <div className="container final-inner">
-        <div className="final-copy">
-          <span className="tag">
-            <span className="tag-dot" style={{ background: "#A9BCF7" }} /> Your ideas deserve a team.
-          </span>
-          <h2 className="h2">
-            Stop working alone.
-            <br />
-            Meet your <span className="hl-text">oovi</span> team.
-          </h2>
-          <p className="lead small">A smarter, kinder, more creative way to get things done.</p>
-          <DownloadButton size="lg" showIcon={false}>Download for Mac + Windows</DownloadButton>
-        </div>
-        <div className="final-art" aria-hidden>
-          <Sparkle className="final-sparkle" size={46} />
-          <LoopLine className="final-loop" size={150} />
-          <MotionTicks className="final-ticks" size={70} />
-          <Slime color="yellow" shape="round" face="dash" className="fs fs-yellow" delay={0.9} />
-          <Slime color="blue" shape="egg" face="dash" faceAt={[96, 96]} faceTilt={6} className="fs fs-blue" delay={0.2} />
-          <Slime color="coral" shape="lump" face="dash" faceAt={[110, 96]} faceTilt={-10} className="fs fs-coral" delay={1.5} />
-        </div>
-      </div>
-      <svg className="final-hill" viewBox="0 0 1440 160" preserveAspectRatio="none" aria-hidden>
-        <path d="M0 160 L0 120 C320 30 760 10 1100 60 C1250 82 1360 100 1440 92 L1440 160 Z" />
-      </svg>
+    <section className="final-simple container">
+      <h2 className="h2">Set up your team in a few minutes.</h2>
+      <p className="lead small">Free during the pilot. Mac and Windows.</p>
+      <DownloadButton size="lg" showIcon={false}>Download for Mac + Windows</DownloadButton>
     </section>
   );
 }
