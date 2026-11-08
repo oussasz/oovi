@@ -18,6 +18,8 @@ trap 'rm -rf "$WORK"' EXIT
 
 echo "Downloading $TAG installers from $PRIVATE_REPO…"
 gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "*.dmg" --pattern "*.exe" --dir "$WORK"
+# Update files for the in-app updater (present from 0.7.0 on).
+gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "latest*.yml" --pattern "*.blockmap" --dir "$WORK" 2>/dev/null || true
 ls -lh "$WORK"
 
 NOTES="oovi $TAG for Mac and Windows. Download from https://oovi.vercel.app/download.

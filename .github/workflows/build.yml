@@ -56,6 +56,8 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/latest*.yml
+            dist/*.blockmap
           if-no-files-found: error
       - name: Attach installers to the release
         if: github.event_name == 'release' || inputs.tag != ''
@@ -65,6 +67,8 @@ jobs:
           TAG: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
           shopt -s nullglob
-          files=(dist/*.dmg dist/*.exe)   # each machine uploads only what it built
+          # Each machine uploads only what it built. latest.yml + .blockmap let the
+          # Windows app update itself (they hold the installer's checksum).
+          files=(dist/*.dmg dist/*.exe dist/latest*.yml dist/*.exe.blockmap)
           echo "Uploading ${files[*]} to $TAG"
           gh release upload "$TAG" "${files[@]}" --clobber

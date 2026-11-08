@@ -7,6 +7,7 @@ import { resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import { UpdateCard } from "./Updates";
 
 type Draft = { apiKey: string; model: string; baseUrl: string };
 type ModelInfo = { id: string; name?: string; free?: boolean; tools?: boolean; context?: number };
@@ -677,6 +678,7 @@ export default function SettingsForm() {
   const aboutSection = (
     <>
       <p className="lead">{t("settings.about.lead", { version: account?.appVersion ?? "" })}</p>
+      <UpdateCard />
       <div className="card">
         <label className="check">
           <input type="checkbox" checked={s.crashReports !== false} onChange={(e) => setS({ ...s, crashReports: e.target.checked })} />

@@ -93,13 +93,18 @@ function createWindow(url) {
   void win.loadURL(url);
 }
 
-// "Choose a project folder" for a chat. Only the app's own page may ask.
-ipcMain.handle("oovi:pick-folder", async (event, current) => {
+/** Only the app's own page may use the desktop bridge. */
+function isTrusted(event) {
   try {
-    if (!appUrl || new URL(event.senderFrame?.url ?? "").origin !== new URL(appUrl).origin) return null;
+    return !!appUrl && new URL(event.senderFrame?.url ?? "").origin === new URL(appUrl).origin;
   } catch {
-    return null;
+    return false;
   }
+}
+
+// "Choose a project folder" for a chat.
+ipcMain.handle("oovi:pick-folder", async (event, current) => {
+  if (!isTrusted(event)) return null;
   const opts = { title: "Choose a project folder", buttonLabel: "Use this folder", properties: ["openDirectory", "createDirectory"], ...(typeof current === "string" ? { defaultPath: current } : {}) };
   const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
   return r.canceled ? null : (r.filePaths[0] ?? null);
@@ -116,6 +121,7 @@ app.whenReady().then(async () => {
   try {
     appUrl = DEV_URL || (await startServer());
     createWindow(appUrl);
+    require("./updater.cjs").setupUpdates(isTrusted);
   } catch (e) {
     dialog.showErrorBox("oovi couldn't start", String((e && e.stack) || e));
     app.quit();

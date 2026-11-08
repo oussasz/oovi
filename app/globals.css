@@ -267,8 +267,8 @@ a.tag { text-decoration: none; }
 .face-stack > span { position: absolute; }
 
 /* ---------- app shell ---------- */
-.app { display: grid; grid-template-columns: 284px minmax(0, 1fr); height: 100dvh; }
-.main { min-width: 0; height: 100dvh; overflow-y: auto; }
+.app { display: grid; grid-template-columns: 284px minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px)); }
+.main { min-width: 0; height: calc(100dvh - var(--bar-h, 0px)); overflow-y: auto; }
 .mobile-bar, .scrim { display: none; }
 
 .sidebar { display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--border); min-height: 0; }
@@ -331,7 +331,7 @@ a.tag { text-decoration: none; }
 .how b { color: var(--text); }
 
 /* ---------- chat ---------- */
-.chatview { display: grid; grid-template-columns: minmax(0, 1fr); height: 100dvh; }
+.chatview { display: grid; grid-template-columns: minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px)); }
 .chatview.with-live { grid-template-columns: minmax(0, 1fr) 380px; }
 .chat-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .chat-head { display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); }
@@ -396,6 +396,13 @@ a.tag { text-decoration: none; }
 .approval-detail { margin: 6px 0 4px; }
 .approval-detail summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 .approval-detail pre { margin: 6px 0 0; max-height: 260px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); font: 12.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Update bar (top of the app) */
+.update-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; padding: 8px 16px; background: var(--soft); border-bottom: 1px solid var(--border); font-size: 13.5px; font-weight: 600; }
+.update-text { flex: 1 1 260px; min-width: 0; }
+.update-progress { flex: 0 1 160px; height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.update-progress i { display: block; height: 100%; background: var(--primary); transition: width 0.3s; }
+.update-actions { display: flex; align-items: center; gap: 6px; }
 
 /* Project folder (chat header) */
 .pf { position: relative; }
@@ -516,8 +523,8 @@ a.tag { text-decoration: none; }
   .app { grid-template-columns: 1fr; }
   .mobile-bar { display: flex; align-items: center; gap: 8px; height: 54px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--side); position: sticky; top: 0; z-index: 30; }
   .brand-sm img { display: block; height: 26px; width: auto; }
-  .main { height: calc(100dvh - 54px); }
-  .chatview { height: calc(100dvh - 54px); }
+  .main { height: calc(100dvh - 54px - var(--bar-h, 0px)); }
+  .chatview { height: calc(100dvh - 54px - var(--bar-h, 0px)); }
   .sidebar { position: fixed; z-index: 50; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.2s; box-shadow: var(--shadow); }
   .sidebar.open { transform: none; }
   .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.3); }

@@ -3,16 +3,11 @@
 // The chat's project folder: the one folder on this computer its bots may work in.
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
+import "@/lib/desktop";
 import type { ChatWithState, Workspace } from "@/lib/types";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
-declare global {
-  interface Window {
-    /** Provided by the desktop app (electron/preload.cjs). */
-    oovi?: { pickFolder: (current?: string) => Promise<string | null> };
-  }
-}
 
 const folderName = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
 

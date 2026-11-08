@@ -5,4 +5,19 @@ const { contextBridge, ipcRenderer } = require("electron");
 contextBridge.exposeInMainWorld("oovi", {
   /** Native "choose folder" dialog. Resolves to the folder's path, or null if cancelled. */
   pickFolder: (current) => ipcRenderer.invoke("oovi:pick-folder", typeof current === "string" ? current : undefined),
+
+  /** App updates (see electron/updater.cjs). */
+  updates: {
+    get: () => ipcRenderer.invoke("oovi:update-get"),
+    check: () => ipcRenderer.invoke("oovi:update-check"),
+    /** Windows: download and install (restarts oovi). Mac: open the download page. */
+    start: () => ipcRenderer.invoke("oovi:update-start"),
+    setAuto: (on) => ipcRenderer.invoke("oovi:update-auto", on === true),
+    /** Calls back with the new state on every change. Returns an unsubscribe function. */
+    onChange: (cb) => {
+      const fn = (_e, state) => cb(state);
+      ipcRenderer.on("oovi:update", fn);
+      return () => ipcRenderer.removeListener("oovi:update", fn);
+    },
+  },
 });

@@ -3,6 +3,7 @@ import { Noto_Sans_Arabic, Nunito } from "next/font/google";
 import AccountGate from "@/components/AccountGate";
 import { I18nProvider } from "@/components/I18n";
 import Sidebar from "@/components/Sidebar";
+import { UpdateBanner } from "@/components/Updates";
 import "./globals.css";
 
 const nunito = Nunito({ subsets: ["latin"], display: "swap", variable: "--font-nunito" });
@@ -28,6 +29,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" dir="ltr" className={`${nunito.variable} ${arabic.variable}`} suppressHydrationWarning>
       <body>
         <I18nProvider>
+          <UpdateBanner />
           <AccountGate>
             <div className="app">
               <Sidebar />
