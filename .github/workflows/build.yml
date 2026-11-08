@@ -1,14 +1,21 @@
 # Builds the oovi desktop installers on GitHub's machines:
-#   macOS  -> oovi-<version>-arm64.dmg (Apple silicon) and oovi-<version>.dmg (Intel)
-#   Windows -> oovi Setup <version>.exe
-# Run it from the Actions tab ("Run workflow") or by pushing a tag like v0.4.0.
-# Download the results from the run's "Artifacts" section.
+#   macOS   -> oovi-<version>-arm64.dmg (Apple silicon) and oovi-<version>.dmg (Intel)
+#   Windows -> oovi-Setup-<version>.exe
+#
+# Two ways to use it:
+#   1. Publish a GitHub Release (Releases -> Draft a new release -> tag like v0.5.0).
+#      The installers are built and attached to that release automatically.
+#   2. Actions tab -> "Build desktop apps" -> Run workflow: installers appear under
+#      the run's "Artifacts" (handy for testing without a release).
 name: Build desktop apps
 
 on:
   workflow_dispatch:
-  push:
-    tags: ["v*"]
+  release:
+    types: [published]
+
+permissions:
+  contents: write # needed to attach installers to the release
 
 jobs:
   build:
@@ -34,6 +41,10 @@ jobs:
         env:
           # No Apple/Windows signing certificate yet: build unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Give the Windows installer a URL-friendly name
+        if: runner.os == 'Windows'
+        shell: bash
+        run: for f in dist/*Setup*.exe; do mv "$f" "${f// /-}"; done
       - uses: actions/upload-artifact@v4
         with:
           name: oovi-${{ runner.os }}
@@ -41,3 +52,9 @@ jobs:
             dist/*.dmg
             dist/*.exe
           if-no-files-found: error
+      - name: Attach installers to the release
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.dmg dist/*.exe --clobber

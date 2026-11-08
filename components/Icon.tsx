@@ -1,6 +1,11 @@
 // Small stroke icons, same hand-drawn weight as the faces.
 const PATHS = {
   plus: "M12 5v14M5 12h14",
+  cpu: "M7 7h10v10H7zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4",
+  spark: "M12 3l2.2 5.3L20 9l-4.5 3.8L17 19l-5-3-5 3 1.5-6.2L4 9l5.8-.7z",
+  user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1-4 4.5-6 8-6s7 2 8 6",
+  shield: "M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z",
+  chevron: "M9 6l6 6-6 6",
   home: "M4 11l8-7 8 7v9h-5v-6H9v6H4z",
   library: "M5 4h4v16H5zM10 4h4v16h-4zM15.5 5.5l3.5-1 3 15-3.5 1z",
   send: "M5 12h13M13 6l6 6-6 6",
