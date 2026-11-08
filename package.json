@@ -14,7 +14,8 @@
     "dist": "next build && electron-builder",
     "web": "next dev -H 127.0.0.1 -p 3100",
     "typecheck": "tsc --noEmit",
-    "sandbox": "docker compose up -d"
+    "sandbox": "docker compose up -d",
+    "publish:downloads": "bash scripts/publish-downloads.sh"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
