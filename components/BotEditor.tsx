@@ -9,32 +9,23 @@ import { PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
 import type { Bot, BotInput } from "@/lib/types";
 import Face from "./Face";
+import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
-const PRESETS: { role: string; tools: BotInput["tools"]; instructions: string }[] = [
-  {
-    role: "Personal assistant",
-    tools: { web: true, browser: true },
-    instructions:
-      "You are the user's personal assistant and team leader. Understand what they really want, keep track of their preferences, answer directly when you can, delegate bigger jobs to the right teammates and combine their work into one clear answer. Always end with a clear result or next step.",
-  },
-  { role: "Researcher", tools: { web: true, browser: true }, instructions: "Find accurate, current information on the web. Check more than one source and list the URLs you used. Keep notes short and factual." },
-  { role: "Writer", tools: { web: false, browser: false }, instructions: "Turn notes and ideas into clear, friendly writing. Match the tone the user asks for. Use short paragraphs." },
-  { role: "Critic", tools: { web: true, browser: false }, instructions: "Review work from the user or teammates. Point out errors, gaps and risks, then suggest concrete fixes. Be direct but kind." },
-  { role: "Social manager", tools: { web: true, browser: true, accounts: true }, instructions: "Draft posts and replies in the user's voice. Show the exact text and get the user's OK before posting anything. Keep replies short, friendly and on-topic." },
-  { role: "Planner", tools: { web: true, browser: false }, instructions: "Break goals into clear steps with dates, owners and risks. Keep plans realistic and short." },
-  { role: "Shopper", tools: { web: true, browser: true }, instructions: "Compare products and prices across shops. Reply with a short table and links. Never buy anything." },
-  { role: "Coder", tools: { web: false, browser: false }, instructions: "Write clean, working code with short explanations. Ask before making big assumptions." },
+// Role name: bot.preset.<id>; instructions: bot.preset.<id>.text (in the UI language).
+const PRESETS: { id: "assistant" | "researcher" | "writer" | "critic" | "social" | "planner" | "shopper" | "coder"; tools: BotInput["tools"] }[] = [
+  { id: "assistant", tools: { web: true, browser: true } },
+  { id: "researcher", tools: { web: true, browser: true } },
+  { id: "writer", tools: { web: false, browser: false } },
+  { id: "critic", tools: { web: true, browser: false } },
+  { id: "social", tools: { web: true, browser: true, accounts: true } },
+  { id: "planner", tools: { web: true, browser: false } },
+  { id: "shopper", tools: { web: true, browser: true } },
+  { id: "coder", tools: { web: false, browser: false } },
 ];
 
-const MOODS: { mood: Mood; label: string }[] = [
-  { mood: "idle", label: "Idle" },
-  { mood: "thinking", label: "Thinking" },
-  { mood: "working", label: "Working" },
-  { mood: "asking", label: "Asking" },
-  { mood: "happy", label: "Done" },
-  { mood: "sad", label: "Stuck" },
-];
+// Labels: bot.mood.<mood>.
+const MOODS = ["online", "thinking", "reading", "computer", "working", "asking", "happy", "sad", "sleeping"] as const satisfies readonly Mood[];
 
 export default function BotEditor({ id }: { id: string }) {
   const router = useRouter();
@@ -46,6 +37,24 @@ export default function BotEditor({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>([]);
+  const [modelList, setModelList] = useState<Partial<Record<ProviderId, { id: string; free?: boolean; tools?: boolean }[]>>>({});
+  const [modelState, setModelState] = useState<Partial<Record<ProviderId, "loading" | "error" | "ok">>>({});
+  const [customModel, setCustomModel] = useState(false);
+  const { t, rich } = useI18n();
+  const pickedProvider = d?.provider;
+
+  // Load the chosen provider's real model list for the dropdown.
+  useEffect(() => {
+    if (!pickedProvider || modelState[pickedProvider]) return;
+    setModelState((s) => ({ ...s, [pickedProvider]: "loading" }));
+    fetch(`/api/models?provider=${pickedProvider}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
+      .then((j: { models: { id: string; free?: boolean; tools?: boolean }[] }) => {
+        setModelList((m) => ({ ...m, [pickedProvider]: j.models }));
+        setModelState((s) => ({ ...s, [pickedProvider]: "ok" }));
+      })
+      .catch(() => setModelState((s) => ({ ...s, [pickedProvider]: "error" })));
+  }, [pickedProvider, modelState]);
 
   useEffect(() => {
     (async () => {
@@ -63,7 +72,7 @@ export default function BotEditor({ id }: { id: string }) {
     })();
   }, [id, isNew]);
 
-  if (!d) return <div className="page center muted">{error ?? "Loading…"}</div>;
+  if (!d) return <div className="page center muted">{error ?? t("common.loading")}</div>;
 
   const set = (p: Partial<BotInput>) => {
     setD({ ...d, ...p });
@@ -88,7 +97,7 @@ export default function BotEditor({ id }: { id: string }) {
   }
 
   async function remove() {
-    if (!d || !confirm(`Delete ${d.name}? Their 1:1 chat is deleted and they leave every group.`)) return;
+    if (!d || !confirm(t("bot.confirmDelete", { name: d.name }))) return;
     try {
       await api(`/api/bots/${id}`, { method: "DELETE" });
       refreshSidebar();
@@ -118,148 +127,168 @@ export default function BotEditor({ id }: { id: string }) {
     </div>
   );
 
-  const def = settings ? `Default (${PROVIDERS[settings.active].label} · ${settings.providers[settings.active]?.model || PROVIDERS[settings.active].model})` : "Default";
+  const def = settings ? t("bot.default", { provider: PROVIDERS[settings.active].label, model: settings.providers[settings.active]?.model || PROVIDERS[settings.active].model }) : t("bot.defaultPlain");
   const provider = d.provider;
 
   return (
     <div className="page editor">
       <aside className="editor-preview">
         <div className="preview-card">
-          <Face face={d.face} mood={mood} size={176} interactive title={`${d.name || "New bot"}: press to squish`} />
-          <div className="preview-name">{d.name || "New bot"}</div>
-          <div className="preview-role" style={{ background: FACE_COLORS[d.face.color] }}>{d.role || "No role yet"}</div>
-          <p className="hint">Press the slime to squish it.</p>
-          <div className="mood-row" role="group" aria-label="Preview expression">
+          <Face face={d.face} mood={mood} size={176} interactive title={t("bot.squishTitle", { name: d.name || t("common.newBot") })} />
+          <div className="preview-name">{d.name || t("common.newBot")}</div>
+          <div className="preview-role" style={{ background: FACE_COLORS[d.face.color] }}>{d.role || t("bot.noRole")}</div>
+          <p className="hint">{t("bot.squishHint")}</p>
+          <div className="mood-row" role="group" aria-label={t("bot.previewMood")}>
             {MOODS.map((m) => (
-              <button key={m.mood} type="button" className={`chip${mood === m.mood ? " on" : ""}`} onClick={() => setMood(m.mood)}>
-                {m.label}
+              <button key={m} type="button" className={`chip${mood === m ? " on" : ""}`} onClick={() => setMood(m)}>
+                {t(`bot.mood.${m}`)}
               </button>
             ))}
           </div>
           <button type="button" className="btn" onClick={() => setFace(randomFace())}>
-            <Icon name="shuffle" size={16} /> Shuffle look
+            <Icon name="shuffle" size={16} /> {t("bot.shuffleLook")}
           </button>
         </div>
       </aside>
 
       <div className="editor-form">
-        <h1>{isNew ? "New bot" : `Edit ${d.name}`}</h1>
+        <h1>{isNew ? t("common.newBot") : t("bot.editTitle", { name: d.name })}</h1>
 
         {isNew && (
           <div className="presets">
-            <div className="opt-label">Start from a role</div>
+            <div className="opt-label">{t("bot.startFrom")}</div>
             <div className="chip-row">
-              {PRESETS.map((p) => (
-                <button key={p.role} type="button" className={`chip${d.role === p.role ? " on" : ""}`} onClick={() => set({ role: p.role, instructions: p.instructions, tools: { accounts: false, ...p.tools } })}>
-                  {p.role}
-                </button>
-              ))}
+              {PRESETS.map((p) => {
+                const role = t(`bot.preset.${p.id}`);
+                return (
+                  <button key={p.id} type="button" className={`chip${d.role === role ? " on" : ""}`} onClick={() => set({ role, instructions: t(`bot.preset.${p.id}.text`), tools: { accounts: false, ...p.tools } })}>
+                    {role}
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
 
         <section className="card">
-          <h2>About</h2>
+          <h2>{t("bot.about")}</h2>
           <div className="grid2">
             <label className="field">
-              Name
-              <input value={d.name} maxLength={24} placeholder="e.g. Scout" onChange={(e) => set({ name: e.target.value.replace(/\s+/g, "") })} />
-              <span className="hint">One word. In groups, people type @{d.name || "Name"} to call this bot.</span>
+              {t("common.name")}
+              <input value={d.name} maxLength={24} placeholder={t("bot.namePh")} onChange={(e) => set({ name: e.target.value.replace(/\s+/g, "") })} />
+              <span className="hint">{t("bot.nameHint", { name: d.name || t("bot.nameFallback") })}</span>
             </label>
             <label className="field">
-              Role
-              <input value={d.role} maxLength={40} placeholder="e.g. Researcher" onChange={(e) => set({ role: e.target.value })} />
-              <span className="hint">Shown to teammates so they know when to ask.</span>
+              {t("bot.role")}
+              <input value={d.role} maxLength={40} placeholder={t("bot.rolePh")} onChange={(e) => set({ role: e.target.value })} />
+              <span className="hint">{t("bot.roleHint")}</span>
             </label>
           </div>
           <label className="field">
-            Instructions
-            <textarea rows={5} value={d.instructions} placeholder="What should this bot focus on? How should it talk? What should it never do?" onChange={(e) => set({ instructions: e.target.value })} />
+            {t("bot.instructions")}
+            <textarea rows={5} value={d.instructions} placeholder={t("bot.instructionsPh")} onChange={(e) => set({ instructions: e.target.value })} />
           </label>
         </section>
 
         <section className="card">
-          <h2>Look</h2>
+          <h2>{t("bot.look")}</h2>
           <div className="opt-group">
-            <div className="opt-label">Color</div>
+            <div className="opt-label">{t("bot.color")}</div>
             <div className="swatches">
               {FACE_COLORS.map((c, i) => (
-                <button key={c} type="button" className={`swatch${d.face.color === i ? " on" : ""}`} style={{ background: c }} onClick={() => setFace({ color: i })} aria-label={`Color ${i + 1}`} aria-pressed={d.face.color === i} />
+                <button key={c} type="button" className={`swatch${d.face.color === i ? " on" : ""}`} style={{ background: c }} onClick={() => setFace({ color: i })} aria-label={t("bot.colorN", { n: i + 1 })} aria-pressed={d.face.color === i} />
               ))}
             </div>
           </div>
-          {options("Body", SHAPES, "shape")}
-          {options("Hair", HAIR, "hair")}
-          {options("Eyes", EYES, "eyes")}
-          {options("Cheeks", CHEEKS, "cheeks")}
-          {options("Mouth", MOUTHS, "mouth")}
-          {options("Nose", NOSES, "nose")}
-          {options("On the head", TOPS, "top")}
-          {options("On the face", WEAR, "wear")}
+          {options(t("bot.part.body"), SHAPES, "shape")}
+          {options(t("bot.part.hair"), HAIR, "hair")}
+          {options(t("bot.part.eyes"), EYES, "eyes")}
+          {options(t("bot.part.cheeks"), CHEEKS, "cheeks")}
+          {options(t("bot.part.mouth"), MOUTHS, "mouth")}
+          {options(t("bot.part.nose"), NOSES, "nose")}
+          {options(t("bot.part.top"), TOPS, "top")}
+          {options(t("bot.part.wear"), WEAR, "wear")}
         </section>
 
         <section className="card">
-          <h2>Brain</h2>
-          <p className="muted">Mix models in one group, for example Grok for research and Claude for writing. If this model fails or hits a limit, the backup models from Settings take over automatically.</p>
+          <h2>{t("bot.brain")}</h2>
+          <p className="muted">{t("bot.brainSub")}</p>
           <div className="grid2">
             <label className="field">
-              Model provider
-              <select value={provider ?? ""} onChange={(e) => set({ provider: (e.target.value || undefined) as ProviderId | undefined, model: undefined })}>
+              {t("bot.provider")}
+              <select value={provider ?? ""} onChange={(e) => { setCustomModel(false); set({ provider: (e.target.value || undefined) as ProviderId | undefined, model: undefined }); }}>
                 <option value="">{def}</option>
                 {PROVIDER_IDS.map((p) => (
                   <option key={p} value={p}>
                     {PROVIDERS[p].label}
-                    {PROVIDERS[p].needsKey && !settings?.providers[p]?.hasKey ? " (no key yet)" : ""}
+                    {PROVIDERS[p].needsKey && !settings?.providers[p]?.hasKey ? t("bot.noKeyYet") : ""}
                   </option>
                 ))}
               </select>
             </label>
             <label className="field">
-              Model
-              <input
-                value={d.model ?? ""}
-                disabled={!provider}
-                placeholder={provider ? settings?.providers[provider]?.model || PROVIDERS[provider].model || "model name" : "Uses the default"}
-                onChange={(e) => set({ model: e.target.value || undefined })}
-              />
+              {t("common.model")}
+              {!provider ? (
+                <input value="" disabled placeholder={t("bot.usesDefault")} />
+              ) : modelList[provider]?.length && !customModel ? (
+                <select
+                  value={d.model ?? ""}
+                  onChange={(e) => (e.target.value === "__custom" ? setCustomModel(true) : set({ model: e.target.value || undefined }))}
+                >
+                  <option value="">{t("bot.providerDefault", { model: settings?.providers[provider]?.model || PROVIDERS[provider].model || t("bot.none") })}</option>
+                  {d.model && !modelList[provider]?.some((m) => m.id === d.model) && <option value={d.model}>{d.model}</option>}
+                  {modelList[provider]?.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.id}
+                      {m.free ? `  · ${t("common.free")}` : ""}
+                      {m.tools === false ? `  · ${t("common.noTools")}` : ""}
+                    </option>
+                  ))}
+                  <option value="__custom">{t("bot.otherModel")}</option>
+                </select>
+              ) : (
+                <input
+                  value={d.model ?? ""}
+                  placeholder={settings?.providers[provider]?.model || PROVIDERS[provider].model || t("common.modelName")}
+                  onChange={(e) => set({ model: e.target.value || undefined })}
+                />
+              )}
+              {provider && modelState[provider] === "loading" && <span className="hint">{t("bot.loadingModels")}</span>}
+              {provider && modelState[provider] === "error" && <span className="hint">{t("bot.cantList")}</span>}
             </label>
           </div>
         </section>
 
         <section className="card">
-          <h2>Abilities</h2>
+          <h2>{t("bot.abilities")}</h2>
           <label className="toggle">
             <input type="checkbox" checked={d.tools.web} onChange={(e) => set({ tools: { ...d.tools, web: e.target.checked } })} />
             <span className="toggle-ui" />
             <span>
-              <b>Web search</b>
-              <span className="hint">Look things up with your search provider.</span>
+              <b>{t("bot.web")}</b>
+              <span className="hint">{t("bot.webHint")}</span>
             </span>
           </label>
           <label className="toggle">
             <input type="checkbox" checked={d.tools.browser} onChange={(e) => set({ tools: { ...d.tools, browser: e.target.checked, accounts: e.target.checked && !!d.tools.accounts } })} />
             <span className="toggle-ui" />
             <span>
-              <b>Browser</b>
-              <span className="hint">Open pages, read them, click, type and download files. Clicks and typing ask you first.</span>
+              <b>{t("bot.browser")}</b>
+              <span className="hint">{t("bot.browserHint")}</span>
             </span>
           </label>
           <label className={`toggle${d.tools.browser ? "" : " disabled"}`}>
             <input type="checkbox" disabled={!d.tools.browser} checked={!!d.tools.accounts} onChange={(e) => set({ tools: { ...d.tools, accounts: e.target.checked } })} />
             <span className="toggle-ui" />
             <span>
-              <b>Use my signed-in accounts</b>
-              <span className="hint">
-                Post, reply to comments and download as you, on sites you signed in to under <Link href="/settings">Settings → Your accounts</Link>. This bot asks before <b>every</b> click and keystroke, and never sees your passwords.
-              </span>
+              <b>{t("bot.accounts")}</b>
+              <span className="hint">{rich("bot.accountsHint", { link: <Link href="/settings">{t("bot.accountsLink")}</Link>, every: <b>{t("bot.every")}</b> })}</span>
             </span>
           </label>
 
-          <div className="opt-label" style={{ marginTop: 14 }}>Tools from MCP servers</div>
+          <div className="opt-label" style={{ marginTop: 14 }}>{t("bot.mcp")}</div>
           {servers.length === 0 ? (
-            <p className="note">
-              No MCP servers yet. Add some (files, GitHub, Notion…) in <Link href="/library">Skills &amp; tools</Link>.
-            </p>
+            <p className="note">{rich("bot.noMcp", { link: <Link href="/library">{t("common.skillsTools")}</Link> })}</p>
           ) : (
             <div className="chip-row">
               {servers.map((srv) => {
@@ -270,7 +299,7 @@ export default function BotEditor({ id }: { id: string }) {
                     type="button"
                     className={`chip big${on ? " on" : ""}`}
                     disabled={!srv.enabled}
-                    title={srv.enabled ? undefined : "This server is turned off in Skills & tools"}
+                    title={srv.enabled ? undefined : t("bot.serverOff")}
                     onClick={() => set({ tools: { ...d.tools, mcp: on ? (d.tools.mcp ?? []).filter((x) => x !== srv.id) : [...(d.tools.mcp ?? []), srv.id] } })}
                     aria-pressed={on}
                   >
@@ -280,24 +309,24 @@ export default function BotEditor({ id }: { id: string }) {
               })}
             </div>
           )}
-          <p className="note">Every bot can also use and save skills from your library.</p>
+          <p className="note">{t("bot.skillsNote")}</p>
         </section>
 
         <div className="savebar">
           <button className="btn primary" onClick={save} disabled={saving || !d.name}>
-            {isNew ? "Create bot" : "Save"}
+            {isNew ? t("bot.create") : t("common.save")}
           </button>
           {!isNew && (
             <Link className="btn" href={`/c/dm-${id}`}>
-              Chat with {d.name}
+              {t("bot.chatWith", { name: d.name })}
             </Link>
           )}
-          {saved && <span className="msg-ok">Saved.</span>}
+          {saved && <span className="msg-ok">{t("common.saved")}</span>}
           {error && <span className="msg-err">{error}</span>}
           <span className="spacer" />
           {!isNew && (
             <button className="btn danger" onClick={remove}>
-              <Icon name="trash" size={16} /> Delete
+              <Icon name="trash" size={16} /> {t("common.delete")}
             </button>
           )}
         </div>

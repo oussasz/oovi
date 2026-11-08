@@ -1,5 +1,6 @@
 // Slime avatars: a face is a handful of small numbers, so bots are easy to
 // store, randomise and edit. Drawing lives in components/Face.tsx.
+// Option lists are append-only: saved bots store indices, so never reorder.
 
 /** Soft pastel slimes (the first three come from the logo). */
 export const FACE_COLORS = [
@@ -14,11 +15,13 @@ export const FACE_COLORS = [
   "#CDBFEA", // lilac
 ] as const;
 
-export const SHAPES = ["round", "drop", "mochi", "bean"] as const;
-export const HAIR = ["none", "curls", "spikes", "fringe", "waves", "tuft", "cloud", "bun"] as const;
-export const EYES = ["dots", "dashes", "wide", "sleepy"] as const;
+/** Body outlines: soft, slightly lopsided pebbles like the logo. */
+export const SHAPES = ["round", "drop", "mochi", "bean", "pebble"] as const;
+export const HAIR = ["none", "curls", "spikes", "fringe", "waves", "tuft", "cloud", "bun", "loop"] as const;
+/** "dashes" is the logo look and the default. */
+export const EYES = ["dots", "dashes", "wide", "sleepy", "ticks"] as const;
 export const NOSES = ["none", "hook", "line"] as const;
-export const MOUTHS = ["smile", "grin", "calm", "smirk"] as const;
+export const MOUTHS = ["smile", "grin", "calm", "smirk", "none", "hook"] as const;
 export const CHEEKS = ["none", "blush", "freckles", "hearts"] as const;
 /** Things on top of the head. */
 export const TOPS = ["none", "hat", "beret", "headphones", "crown", "bow", "flower", "cap", "catears", "halo", "horns", "sprout"] as const;
@@ -27,22 +30,30 @@ export const WEAR = ["none", "glasses", "shades", "monocle", "mustache", "patch"
 
 export type Face = { color: number; shape: number; hair: number; eyes: number; nose: number; mouth: number; cheeks: number; top: number; wear: number };
 
-/** Faces react to what the bot is doing. */
-export type Mood = "idle" | "thinking" | "working" | "asking" | "happy" | "sad";
+/**
+ * What the bot is doing, shown on its face.
+ * idle/online: calm (online adds a green dot) · thinking: planning/reasoning ·
+ * reading: web search, reading pages/files · computer: browsing, clicking, typing on the web ·
+ * working: any other tool work · asking: waiting for the user · happy: done · sad: error/stuck ·
+ * sleeping: paused/offline.
+ */
+export type Mood = "idle" | "online" | "thinking" | "reading" | "computer" | "working" | "asking" | "happy" | "sad" | "sleeping";
+export const MOODS: readonly Mood[] = ["idle", "online", "thinking", "reading", "computer", "working", "asking", "happy", "sad", "sleeping"];
 
 const pick = (n: number) => Math.floor(Math.random() * n);
+const DASHES = 1;
 
 export function randomFace(): Face {
   return {
     color: pick(FACE_COLORS.length),
     shape: pick(SHAPES.length),
-    hair: pick(HAIR.length),
-    eyes: pick(EYES.length),
-    nose: pick(NOSES.length),
+    hair: Math.random() < 0.35 ? 0 : pick(HAIR.length),
+    eyes: Math.random() < 0.55 ? DASHES : pick(EYES.length),
+    nose: Math.random() < 0.7 ? 0 : pick(NOSES.length),
     mouth: pick(MOUTHS.length),
     cheeks: Math.random() < 0.55 ? 1 : pick(CHEEKS.length),
-    top: Math.random() < 0.5 ? 0 : 1 + pick(TOPS.length - 1),
-    wear: Math.random() < 0.6 ? 0 : 1 + pick(WEAR.length - 1),
+    top: Math.random() < 0.6 ? 0 : 1 + pick(TOPS.length - 1),
+    wear: Math.random() < 0.7 ? 0 : 1 + pick(WEAR.length - 1),
   };
 }
 
@@ -71,7 +82,7 @@ export function normalizeFace(f: unknown): Face {
     color: clamp(o.color, FACE_COLORS.length),
     shape: clamp(o.shape, SHAPES.length),
     hair: clamp(o.hair, HAIR.length),
-    eyes: clamp(o.eyes, EYES.length),
+    eyes: has("eyes") ? clamp(o.eyes, EYES.length) : DASHES,
     nose: clamp(o.nose, NOSES.length),
     mouth: clamp(o.mouth, MOUTHS.length),
     cheeks: has("cheeks") ? clamp(o.cheeks, CHEEKS.length) : 1,

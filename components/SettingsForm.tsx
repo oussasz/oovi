@@ -3,20 +3,41 @@
 import { useCallback, useEffect, useState } from "react";
 import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
 import type { ModelRef, PublicSettings, SettingsPatch } from "@/lib/settings";
+import { resizeImage } from "@/lib/client";
+import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
+import { announceLanguage, useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
 
 type Draft = { apiKey: string; model: string; baseUrl: string };
 type ModelInfo = { id: string; name?: string; free?: boolean; tools?: boolean; context?: number };
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "models" | "free" | "accounts" | "search" | "browser" | "safety";
+type Tab = "profile" | "models" | "free" | "accounts" | "search" | "browser" | "safety" | "language" | "data" | "about";
+type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
-const TABS: { id: Tab; label: string; hint: string; icon: IconName }[] = [
-  { id: "models", label: "AI models", hint: "Providers and API keys", icon: "cpu" },
-  { id: "free", label: "Free & backup models", hint: "Never get stuck", icon: "spark" },
-  { id: "accounts", label: "Your accounts", hint: "Post, reply, download", icon: "user" },
-  { id: "search", label: "Web search", hint: "How bots search", icon: "globe" },
-  { id: "browser", label: "Browser", hint: "Sandbox and network", icon: "cursor" },
-  { id: "safety", label: "Safety", hint: "Approvals and limits", icon: "shield" },
+/** "Français (French)": the language's own name, plus its name in the UI language when different. */
+function languageLabel(id: Locale, uiTag: string): string {
+  const native = NATIVE_NAMES[id];
+  let local = "";
+  try {
+    local = new Intl.DisplayNames(uiTag, { type: "language" }).of(id) ?? "";
+  } catch {
+    /* Intl.DisplayNames unavailable */
+  }
+  return local && local.toLowerCase() !== native.toLowerCase() ? `${native} (${local})` : native;
+}
+
+// Labels and hints come from the dictionary: settings.tab.<id> and settings.tab.<id>.hint.
+const TABS: { id: Tab; icon: IconName }[] = [
+  { id: "profile", icon: "user" },
+  { id: "models", icon: "cpu" },
+  { id: "free", icon: "spark" },
+  { id: "accounts", icon: "globe" },
+  { id: "search", icon: "zoomIn" },
+  { id: "browser", icon: "cursor" },
+  { id: "safety", icon: "shield" },
+  { id: "language", icon: "lang" },
+  { id: "data", icon: "box" },
+  { id: "about", icon: "info" },
 ];
 
 const sameRef = (a: ModelRef, b: ModelRef) => a.provider === b.provider && a.model === b.model;
@@ -32,8 +53,56 @@ export default function SettingsForm() {
   const [fb, setFb] = useState<ModelRef>({ provider: "openrouter", model: "" });
   const [acc, setAcc] = useState<Accounts | null>(null);
   const [accBusy, setAccBusy] = useState(false);
-  const [tab, setTab] = useState<Tab>("models");
+  const [tab, setTab] = useState<Tab>("profile");
   const [open, setOpen] = useState<Set<ProviderId>>(new Set());
+  const [account, setAccount] = useState<Account | null>(null);
+  const [profile, setProfile] = useState<{ name: string; image: string | null }>({ name: "", image: null });
+  const { t, rich, tag } = useI18n();
+
+  useEffect(() => {
+    fetch("/api/account")
+      .then((r) => r.json())
+      .then((a: Account) => {
+        setAccount(a);
+        setProfile({ name: a.user?.name ?? "", image: a.user?.image ?? null });
+      })
+      .catch(() => {});
+  }, []);
+
+  async function saveProfile() {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const r = await fetch("/api/account", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(profile) });
+      const j = (await r.json()) as Account & { error?: string };
+      if (!r.ok) throw new Error(j.error);
+      setAccount(j);
+      setMsg({ ok: true, text: t("settings.msg.profileSaved") });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message || t("settings.msg.cantSave") });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function signOutAccount() {
+    if (!confirm(t("settings.confirm.signOutAccount"))) return;
+    await fetch("/api/account", { method: "DELETE" });
+    location.href = "/";
+  }
+
+  async function importBackup(file: File) {
+    setMsg(null);
+    try {
+      const r = await fetch("/api/backup", { method: "POST", headers: { "content-type": "application/json" }, body: await file.text() });
+      const j = (await r.json()) as { bots?: number; chats?: number; skills?: number; error?: string };
+      if (!r.ok) throw new Error(j.error);
+      setMsg({ ok: true, text: t("settings.msg.restored", { bots: j.bots ?? 0, chats: j.chats ?? 0, skills: j.skills ?? 0 }) });
+      setTimeout(() => location.reload(), 1200);
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message || t("settings.msg.cantRestore") });
+    }
+  }
 
   function apply(next: PublicSettings) {
     setS(next);
@@ -94,7 +163,7 @@ export default function SettingsForm() {
     setSaving(true);
     if (!quiet) setMsg(null);
     try {
-      await post({
+      const next = await post({
         active: s.active,
         providers: Object.fromEntries(PROVIDER_IDS.map((id) => [id, { apiKey: drafts[id].apiKey || undefined, model: drafts[id].model, baseUrl: drafts[id].baseUrl }])),
         fallbacks: s.fallbacks,
@@ -103,9 +172,12 @@ export default function SettingsForm() {
         approvals: s.approvals,
         maxSteps: s.maxSteps,
         maxTurns: s.maxTurns,
+        language: s.language,
+        crashReports: s.crashReports,
       });
       setSearchKeys({ brave: "", tavily: "" });
-      if (!quiet) setMsg({ ok: true, text: "Saved." });
+      announceLanguage(next.language ?? "auto"); // switch the UI language right away
+      if (!quiet) setMsg({ ok: true, text: t("common.saved") });
       return true;
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
@@ -117,15 +189,15 @@ export default function SettingsForm() {
 
   async function test() {
     if (!(await save())) return;
-    setMsg({ ok: true, text: "Testing…" });
+    setMsg({ ok: true, text: t("common.testing") });
     const r = (await fetch("/api/settings/test", { method: "POST" }).then((x) => x.json())) as { ok: boolean; provider: string; reply?: string; ms?: number; error?: string; model?: string };
-    setMsg(r.ok ? { ok: true, text: `${r.model ?? r.provider} answered “${r.reply}” in ${r.ms} ms.` } : { ok: false, text: r.error ?? "Failed." });
+    setMsg(r.ok ? { ok: true, text: t("settings.msg.answered", { model: r.model ?? r.provider, reply: r.reply ?? "", ms: r.ms ?? 0 }) } : { ok: false, text: r.error ?? t("settings.msg.failed") });
   }
 
   async function removeKey(id: ProviderId) {
     try {
       await post({ providers: { [id]: { clearKey: true } } });
-      setMsg({ ok: true, text: `Removed the ${PROVIDERS[id].label} key.` });
+      setMsg({ ok: true, text: t("settings.msg.keyRemoved", { provider: PROVIDERS[id].label }) });
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     }
@@ -134,7 +206,7 @@ export default function SettingsForm() {
   async function fetchModels(id: ProviderId): Promise<ModelInfo[]> {
     const r = await fetch(`/api/models?provider=${id}`);
     const j = (await r.json()) as { models?: ModelInfo[]; error?: string };
-    if (!r.ok || !j.models) throw new Error(j.error ?? "Couldn't load models.");
+    if (!r.ok || !j.models) throw new Error(j.error ?? t("settings.msg.cantLoadModels"));
     setModels((m) => ({ ...m, [id]: j.models }));
     return j.models;
   }
@@ -145,7 +217,7 @@ export default function SettingsForm() {
     try {
       const list = await fetchModels(id);
       const free = list.filter((m) => m.free).length;
-      setMsg({ ok: true, text: `${providerName(id)}: ${list.length} models${free ? `, ${free} free` : ""}. Pick one from the Model box.` });
+      setMsg({ ok: true, text: free ? t("settings.msg.modelsLoadedFree", { provider: providerName(id), count: list.length, free }) : t("settings.msg.modelsLoaded", { provider: providerName(id), count: list.length }) });
     } catch (e) {
       setMsg({ ok: false, text: `${providerName(id)}: ${(e as Error).message}` });
     } finally {
@@ -159,7 +231,7 @@ export default function SettingsForm() {
     const gem = !!s.providers.gemini?.hasKey;
     const or = !!s.providers.openrouter?.hasKey;
     if (!gem && !or) {
-      setMsg({ ok: false, text: "First paste a free Gemini and/or OpenRouter key under AI models, then try again." });
+      setMsg({ ok: false, text: t("settings.msg.needFreeKey") });
       return;
     }
     setLoading("free");
@@ -182,15 +254,14 @@ export default function SettingsForm() {
           problems.push(`OpenRouter: ${(e as Error).message}`);
         }
       }
-      if (!picks.length) throw new Error(problems.join(" ") || "No free models found right now.");
+      if (!picks.length) throw new Error(problems.join(" ") || t("settings.msg.noFreeModels"));
       const activeReady = !PROVIDERS[s.active].needsKey || !!s.providers[s.active]?.hasKey;
       const main = activeReady ? undefined : picks.shift();
       const fallbacks = [...picks, ...s.fallbacks].filter((r, i, all) => all.findIndex((x) => sameRef(x, r)) === i).slice(0, 12);
       await post({ ...(main ? { active: main.provider, providers: { [main.provider]: { model: main.model } } } : {}), fallbacks });
-      setMsg({
-        ok: true,
-        text: `Done: ${main ? `main model ${providerName(main.provider)} · ${main.model}, ` : ""}${picks.length} free backup model${picks.length === 1 ? "" : "s"}.${problems.length ? ` (${problems.join(" ")})` : ""}`,
-      });
+      const backups = t("settings.msg.freeBackups", { count: picks.length });
+      const done = main ? t("settings.msg.freeDoneMain", { main: `${providerName(main.provider)} · ${main.model}`, backups }) : t("settings.msg.freeDone", { backups });
+      setMsg({ ok: true, text: `${done}${problems.length ? ` (${problems.join(" ")})` : ""}` });
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     } finally {
@@ -213,20 +284,20 @@ export default function SettingsForm() {
   }
 
   async function signOut() {
-    if (!confirm("Sign out of every site in oovi's browser? Bots will lose access to your accounts until you sign in again.")) return;
+    if (!confirm(t("settings.confirm.signOutSites"))) return;
     setAccBusy(true);
     try {
       setAcc((await fetch("/api/accounts", { method: "DELETE" }).then((r) => r.json())) as Accounts);
-      setMsg({ ok: true, text: "Signed out of everything." });
+      setMsg({ ok: true, text: t("settings.msg.signedOutAll") });
     } finally {
       setAccBusy(false);
     }
   }
 
-  if (!s || !drafts) return <main className="settings">{msg ? <p className="msg-err">{msg.text}</p> : "Loading…"}</main>;
+  if (!s || !drafts) return <main className="settings">{msg ? <p className="msg-err">{msg.text}</p> : t("common.loading")}</main>;
 
   const setDraft = (id: ProviderId, patch: Partial<Draft>) => setDrafts({ ...drafts, [id]: { ...drafts[id], ...patch } });
-  const primary: ModelRef = { provider: s.active, model: drafts[s.active].model || PROVIDERS[s.active].model || "(no model)" };
+  const primary: ModelRef = { provider: s.active, model: drafts[s.active].model || PROVIDERS[s.active].model || t("settings.noModel") };
   const setFallbacks = (fallbacks: ModelRef[]) => setS({ ...s, fallbacks });
   const move = (i: number, d: number) => {
     const next = [...s.fallbacks];
@@ -246,7 +317,7 @@ export default function SettingsForm() {
 
   const modelsSection = (
     <>
-      <p className="lead">Pick your main provider and paste API keys. You pay the provider per use (or nothing, with free models), never a subscription. Keys are encrypted and stay on this computer.</p>
+      <p className="lead">{t("settings.models.lead")}</p>
       {PROVIDER_IDS.map((id) => {
         const meta = PROVIDERS[id];
         const pub = s.providers[id];
@@ -257,14 +328,14 @@ export default function SettingsForm() {
           <div key={id} className={`card collapsible${s.active === id ? " active" : ""}${isOpen ? " open" : ""}`}>
             <div className="card-head">
               <label onClick={(e) => e.stopPropagation()}>
-                <input type="radio" name="active" checked={s.active === id} onChange={() => setS({ ...s, active: id })} aria-label={`Use ${meta.label} as the main provider`} />
+                <input type="radio" name="active" checked={s.active === id} onChange={() => setS({ ...s, active: id })} aria-label={t("settings.models.useAsMain", { provider: meta.label })} />
               </label>
               <button type="button" className="card-toggle" onClick={() => toggleCard(id)} aria-expanded={isOpen}>
                 <span className="card-title">{meta.label}</span>
                 <span className="card-sub">{d.model || meta.model}</span>
                 <span className="spacer" />
-                {meta.free && <span className="badge ok">free tier</span>}
-                {meta.needsKey ? pub?.hasKey ? <span className="badge ok">Key saved {pub.keyHint}</span> : <span className="badge">No key</span> : <span className="badge">No key needed</span>}
+                {meta.free && <span className="badge ok">{t("settings.models.freeTier")}</span>}
+                {meta.needsKey ? pub?.hasKey ? <span className="badge ok">{t("settings.models.keySaved", { hint: pub.keyHint ?? "" })}</span> : <span className="badge">{t("settings.models.noKey")}</span> : <span className="badge">{t("settings.models.noKeyNeeded")}</span>}
                 <Icon name="chevron" size={16} className="chev" />
               </button>
             </div>
@@ -273,31 +344,36 @@ export default function SettingsForm() {
                 {meta.note && <p className="note">{meta.note}</p>}
                 <div className="grid">
                   <label className="field full">
-                    API key {meta.keyUrl && <a href={meta.keyUrl} target="_blank" rel="noreferrer noopener">(get one)</a>}
-                    <input type="password" autoComplete="off" value={d.apiKey} placeholder={pub?.hasKey ? "Saved. Type a new key to replace it." : meta.needsKey ? "Paste your key" : "Optional"} onChange={(e) => setDraft(id, { apiKey: e.target.value })} />
+                    {t("common.apiKey")} {meta.keyUrl && <a href={meta.keyUrl} target="_blank" rel="noreferrer noopener">{t("common.getOne")}</a>}
+                    <input type="password" autoComplete="off" value={d.apiKey} placeholder={pub?.hasKey ? t("settings.models.keyPlaceholderSaved") : meta.needsKey ? t("common.pasteKey") : t("settings.models.optional")} onChange={(e) => setDraft(id, { apiKey: e.target.value })} />
                   </label>
                   <label className="field">
-                    Model {list && <span className="hint">({list.length} available{list.some((m) => m.free) ? `, ${list.filter((m) => m.free).length} free` : ""})</span>}
-                    <input list={`models-${id}`} value={d.model} placeholder={meta.model || "model name"} onChange={(e) => setDraft(id, { model: e.target.value })} />
+                    {t("common.model")}{" "}
+                    {list && (
+                      <span className="hint">
+                        {list.some((m) => m.free) ? t("settings.models.availableFree", { count: list.length, free: list.filter((m) => m.free).length }) : t("settings.models.available", { count: list.length })}
+                      </span>
+                    )}
+                    <input list={`models-${id}`} value={d.model} placeholder={meta.model || t("common.modelName")} onChange={(e) => setDraft(id, { model: e.target.value })} />
                   </label>
                   <label className="field">
-                    Base URL
+                    {t("settings.models.baseUrl")}
                     <input value={d.baseUrl} placeholder={meta.baseUrl || "https://…/v1"} onChange={(e) => setDraft(id, { baseUrl: e.target.value })} />
                   </label>
                 </div>
                 <datalist id={`models-${id}`}>
                   {list?.map((m) => (
                     <option key={m.id} value={m.id}>
-                      {[m.free ? "free" : "", m.tools === false ? "no tools" : "", m.name ?? ""].filter(Boolean).join(" · ")}
+                      {[m.free ? t("common.free") : "", m.tools === false ? t("common.noTools") : "", m.name ?? ""].filter(Boolean).join(" · ")}
                     </option>
                   ))}
                 </datalist>
                 <div className="row-btns">
                   <button className="btn sm" onClick={() => void loadModels(id)} disabled={loading !== null || (meta.needsKey && id !== "openrouter" && !pub?.hasKey && !d.apiKey)}>
-                    {loading === id ? "Loading…" : "Load models"}
+                    {loading === id ? t("common.loading") : t("settings.models.load")}
                   </button>
                   {pub?.hasKey && (
-                    <button className="btn sm" onClick={() => void removeKey(id)}>Remove key</button>
+                    <button className="btn sm" onClick={() => void removeKey(id)}>{t("settings.models.removeKey")}</button>
                   )}
                 </div>
               </div>
@@ -310,30 +386,36 @@ export default function SettingsForm() {
 
   const freeSection = (
     <>
-      <p className="lead">Bots never get stuck: if a model is rate-limited, down, or can&apos;t use tools, oovi switches to the next one in this list and tries the first one again later.</p>
+      <p className="lead">{t("settings.free.lead")}</p>
       <div className="card">
-        <h3 className="card-h">Set up free models</h3>
+        <h3 className="card-h">{t("settings.free.setup")}</h3>
         <div className="free-steps">
           <div>
-            <b>1. Free Gemini key</b>
-            <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener">Google AI Studio</a>, then paste it under <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "gemini"])); }}>AI models → Gemini</button>.
+            <b>{t("settings.free.step1")}</b>
+            {rich("settings.free.pasteUnder", {
+              link: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener">Google AI Studio</a>,
+              target: <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "gemini"])); }}>{t("settings.free.toGemini")}</button>,
+            })}
           </div>
           <div>
-            <b>2. Free OpenRouter key</b>
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">openrouter.ai/keys</a>, then paste it under <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "openrouter"])); }}>AI models → OpenRouter</button>.
+            <b>{t("settings.free.step2")}</b>
+            {rich("settings.free.pasteUnder", {
+              link: <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">openrouter.ai/keys</a>,
+              target: <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "openrouter"])); }}>{t("settings.free.toOpenRouter")}</button>,
+            })}
           </div>
           <div>
-            <b>3. One click</b>
-            oovi finds the free models that support tools and lines them up.
+            <b>{t("settings.free.step3")}</b>
+            {t("settings.free.step3Text")}
           </div>
         </div>
         <button className="btn primary" onClick={() => void setupFree()} disabled={loading !== null || saving}>
-          {loading === "free" ? "Finding free models…" : "Set up free models"}
+          {loading === "free" ? t("settings.free.finding") : t("settings.free.setup")}
         </button>
       </div>
 
       <div className="card">
-        <h3 className="card-h">Model order</h3>
+        <h3 className="card-h">{t("settings.free.order")}</h3>
         <div className="fb-list">
           {[primary, ...s.fallbacks].map((r, i) => (
             <div key={`${r.provider}:${r.model}:${i}`} className="fb-row">
@@ -342,12 +424,12 @@ export default function SettingsForm() {
               <code>{r.model}</code>
               <span className="spacer" />
               {i === 0 ? (
-                <span className="badge">main</span>
+                <span className="badge">{t("settings.free.main")}</span>
               ) : (
                 <>
-                  <button className="icon-btn sm" onClick={() => move(i - 1, -1)} disabled={i === 1} aria-label="Move up" title="Move up">↑</button>
-                  <button className="icon-btn sm" onClick={() => move(i - 1, 1)} disabled={i === s.fallbacks.length} aria-label="Move down" title="Move down">↓</button>
-                  <button className="icon-btn sm" onClick={() => setFallbacks(s.fallbacks.filter((_, j) => j !== i - 1))} aria-label="Remove" title="Remove">
+                  <button className="icon-btn sm" onClick={() => move(i - 1, -1)} disabled={i === 1} aria-label={t("settings.free.moveUp")} title={t("settings.free.moveUp")}>↑</button>
+                  <button className="icon-btn sm" onClick={() => move(i - 1, 1)} disabled={i === s.fallbacks.length} aria-label={t("settings.free.moveDown")} title={t("settings.free.moveDown")}>↓</button>
+                  <button className="icon-btn sm" onClick={() => setFallbacks(s.fallbacks.filter((_, j) => j !== i - 1))} aria-label={t("common.remove")} title={t("common.remove")}>
                     <Icon name="close" size={14} />
                   </button>
                 </>
@@ -357,7 +439,7 @@ export default function SettingsForm() {
         </div>
         <div className="fb-add">
           <label className="field">
-            Add backup
+            {t("settings.free.addBackup")}
             <select value={fb.provider} onChange={(e) => setFb({ provider: e.target.value as ProviderId, model: "" })}>
               {PROVIDER_IDS.map((p) => (
                 <option key={p} value={p}>{providerName(p)}</option>
@@ -365,10 +447,10 @@ export default function SettingsForm() {
             </select>
           </label>
           <label className="field">
-            Model
-            <input list={`fb-models-${fb.provider}`} value={fb.model} placeholder={PROVIDERS[fb.provider].model || "model name"} onChange={(e) => setFb({ ...fb, model: e.target.value })} />
+            {t("common.model")}
+            <input list={`fb-models-${fb.provider}`} value={fb.model} placeholder={PROVIDERS[fb.provider].model || t("common.modelName")} onChange={(e) => setFb({ ...fb, model: e.target.value })} />
             <datalist id={`fb-models-${fb.provider}`}>
-              {models[fb.provider]?.map((m) => <option key={m.id} value={m.id}>{m.free ? "free" : ""}</option>)}
+              {models[fb.provider]?.map((m) => <option key={m.id} value={m.id}>{m.free ? t("common.free") : ""}</option>)}
             </datalist>
           </label>
           <button
@@ -380,25 +462,25 @@ export default function SettingsForm() {
               setFb({ ...fb, model: "" });
             }}
           >
-            <Icon name="plus" size={16} /> Add
+            <Icon name="plus" size={16} /> {t("common.add")}
           </button>
         </div>
-        <p className="note">The main model is the provider picked under AI models. Each bot can also have its own model; these backups then follow it.</p>
+        <p className="note">{t("settings.free.note")}</p>
       </div>
     </>
   );
 
   const accountsSection = (
     <>
-      <p className="lead">Sign in once, yourself, in oovi&apos;s own browser window. Bots with <b>Use my signed-in accounts</b> turned on can then publish posts, reply to comments and download files for you.</p>
+      <p className="lead">{rich("settings.acc.lead", { option: <b>{t("bot.accounts")}</b> })}</p>
       <div className="card">
         <div className="row-btns">
           <button className="btn primary" onClick={() => void openSignIn()} disabled={accBusy || !!acc?.signInOpen}>
-            {acc?.signInOpen ? "Sign-in window is open. Close it when you're done" : "Open sign-in browser"}
+            {acc?.signInOpen ? t("settings.acc.windowOpen") : t("settings.acc.open")}
           </button>
           {!!acc?.sites.length && (
             <button className="btn danger" onClick={() => void signOut()} disabled={accBusy}>
-              Sign out of everything
+              {t("settings.acc.signOutAll")}
             </button>
           )}
         </div>
@@ -409,16 +491,16 @@ export default function SettingsForm() {
             ))}
           </div>
         ) : (
-          <p className="note">No sites yet.</p>
+          <p className="note">{t("settings.acc.none")}</p>
         )}
       </div>
       <div className="card">
-        <h3 className="card-h">How it stays safe</h3>
+        <h3 className="card-h">{t("settings.acc.safeTitle")}</h3>
         <ul className="plain-list">
-          <li>Bots never see your passwords; they only reuse the signed-in session.</li>
-          <li>Bots using your accounts ask before every click and keystroke.</li>
-          <li>Downloaded files go to your Downloads/oovi folder and are never opened automatically.</li>
-          <li>Some sites (Google, for example) may refuse sign-in from an automated browser.</li>
+          <li>{t("settings.acc.safe1")}</li>
+          <li>{t("settings.acc.safe2")}</li>
+          <li>{t("settings.acc.safe3")}</li>
+          <li>{t("settings.acc.safe4")}</li>
         </ul>
       </div>
     </>
@@ -426,75 +508,76 @@ export default function SettingsForm() {
 
   const searchSection = (
     <>
-      <p className="lead">How bots search the web. Search engines block automated browsers, so oovi uses a search API.</p>
+      <p className="lead">{t("settings.search.lead")}</p>
       <div className="card">
         <div className="grid">
           <label className="field">
-            Search provider
+            {t("settings.search.provider")}
             <select value={s.search.provider} onChange={(e) => setS({ ...s, search: { ...s.search, provider: e.target.value as PublicSettings["search"]["provider"] } })}>
-              <option value="none">None (bots only open URLs)</option>
-              <option value="searxng">SearXNG (free, self-hosted)</option>
-              <option value="brave">Brave Search API (your key)</option>
-              <option value="tavily">Tavily (your key)</option>
+              <option value="auto">{t("settings.search.auto")}</option>
+              <option value="none">{t("settings.search.none")}</option>
+              <option value="searxng">{t("settings.search.searxng")}</option>
+              <option value="brave">{t("settings.search.brave")}</option>
+              <option value="tavily">{t("settings.search.tavily")}</option>
             </select>
           </label>
           {s.search.provider === "searxng" && (
             <label className="field">
-              SearXNG address
+              {t("settings.search.searxngUrl")}
               <input value={s.search.searxngUrl} onChange={(e) => setS({ ...s, search: { ...s.search, searxngUrl: e.target.value } })} />
             </label>
           )}
           {s.search.provider === "brave" && (
             <label className="field">
-              Brave API key <a href="https://brave.com/search/api/" target="_blank" rel="noreferrer noopener">(get one)</a>
-              <input type="password" autoComplete="off" value={searchKeys.brave} placeholder={s.search.hasBraveKey ? "Saved. Type to replace." : "Paste your key"} onChange={(e) => setSearchKeys({ ...searchKeys, brave: e.target.value })} />
+              {t("settings.search.braveKey")} <a href="https://brave.com/search/api/" target="_blank" rel="noreferrer noopener">{t("common.getOne")}</a>
+              <input type="password" autoComplete="off" value={searchKeys.brave} placeholder={s.search.hasBraveKey ? t("settings.search.savedReplace") : t("common.pasteKey")} onChange={(e) => setSearchKeys({ ...searchKeys, brave: e.target.value })} />
             </label>
           )}
           {s.search.provider === "tavily" && (
             <label className="field">
-              Tavily API key <a href="https://app.tavily.com" target="_blank" rel="noreferrer noopener">(get one)</a>
-              <input type="password" autoComplete="off" value={searchKeys.tavily} placeholder={s.search.hasTavilyKey ? "Saved. Type to replace." : "Paste your key"} onChange={(e) => setSearchKeys({ ...searchKeys, tavily: e.target.value })} />
+              {t("settings.search.tavilyKey")} <a href="https://app.tavily.com" target="_blank" rel="noreferrer noopener">{t("common.getOne")}</a>
+              <input type="password" autoComplete="off" value={searchKeys.tavily} placeholder={s.search.hasTavilyKey ? t("settings.search.savedReplace") : t("common.pasteKey")} onChange={(e) => setSearchKeys({ ...searchKeys, tavily: e.target.value })} />
             </label>
           )}
         </div>
-        {s.search.provider === "searxng" && <p className="note">Start it with <code>docker compose up -d</code> in the project folder.</p>}
+        {s.search.provider === "searxng" && <p className="note">{rich("settings.search.searxngNote", { cmd: <code>docker compose up -d</code> })}</p>}
       </div>
     </>
   );
 
   const browserSection = (
     <>
-      <p className="lead">Where the bots&apos; browser runs. It always starts with a fresh, empty profile unless a bot uses your signed-in accounts.</p>
+      <p className="lead">{t("settings.browser.lead")}</p>
       <div className="card">
         <div className="grid">
           <label className="field">
-            Mode
+            {t("settings.browser.mode")}
             <select value={s.browser.mode} onChange={(e) => setS({ ...s, browser: { ...s.browser, mode: e.target.value as "local" | "docker" } })}>
-              <option value="local">Local: headless Chrome/Edge on this computer</option>
-              <option value="docker">Docker: browser runs in a container (safer)</option>
+              <option value="local">{t("settings.browser.local")}</option>
+              <option value="docker">{t("settings.browser.docker")}</option>
             </select>
           </label>
           {s.browser.mode === "local" ? (
             <label className="field">
-              Browser
+              {t("settings.browser.browser")}
               <select value={s.browser.channel} onChange={(e) => setS({ ...s, browser: { ...s.browser, channel: e.target.value as "auto" | "msedge" | "chrome" | "chromium" } })}>
-                <option value="auto">Auto: Chrome, then Edge, then Chromium</option>
-                <option value="msedge">Microsoft Edge (installed)</option>
-                <option value="chrome">Google Chrome (installed)</option>
-                <option value="chromium">Chromium (npx playwright install chromium)</option>
+                <option value="auto">{t("settings.browser.auto")}</option>
+                <option value="msedge">{t("settings.browser.msedge")}</option>
+                <option value="chrome">{t("settings.browser.chrome")}</option>
+                <option value="chromium">{t("settings.browser.chromium")}</option>
               </select>
             </label>
           ) : (
             <label className="field">
-              Sandbox address
+              {t("settings.browser.sandbox")}
               <input value={s.browser.wsEndpoint} onChange={(e) => setS({ ...s, browser: { ...s.browser, wsEndpoint: e.target.value } })} />
             </label>
           )}
         </div>
-        {s.browser.mode === "docker" && <p className="note">Start the sandbox with <code>docker compose up -d</code>. Bots using your accounts always use the local browser.</p>}
+        {s.browser.mode === "docker" && <p className="note">{rich("settings.browser.dockerNote", { cmd: <code>docker compose up -d</code> })}</p>}
         <label className="check">
           <input type="checkbox" checked={s.browser.allowPrivateNetwork} onChange={(e) => setS({ ...s, browser: { ...s.browser, allowPrivateNetwork: e.target.checked } })} />
-          <span>Allow local network (localhost, 192.168.x.x…). Off by default so a web page can&apos;t make a bot reach your router or local services.</span>
+          <span>{t("settings.browser.privateNet")}</span>
         </label>
       </div>
     </>
@@ -502,53 +585,151 @@ export default function SettingsForm() {
 
   const safetySection = (
     <>
-      <p className="lead">When bots must ask you first, and how far they can go on their own.</p>
+      <p className="lead">{t("settings.safety.lead")}</p>
       <div className="card">
         <label className="check">
           <input type="checkbox" checked={s.approvals.clicksAndTyping} onChange={(e) => setS({ ...s, approvals: { clicksAndTyping: e.target.checked } })} />
-          <span>Ask me before a bot types into a page, downloads, or clicks buttons (plain links don&apos;t ask). Bots using your accounts always ask; saving a skill and MCP actions always ask too.</span>
+          <span>{t("settings.safety.ask")}</span>
         </label>
         <div className="grid">
           <label className="field">
-            Max steps per bot reply
+            {t("settings.safety.maxSteps")}
             <input type="number" min={1} max={100} value={s.maxSteps} onChange={(e) => setS({ ...s, maxSteps: Number(e.target.value) })} />
-            <span className="hint">One step = one model call. Stops runaway loops.</span>
+            <span className="hint">{t("settings.safety.maxStepsHint")}</span>
           </label>
           <label className="field">
-            Hand-offs per message (groups)
+            {t("settings.safety.handoffs")}
             <input type="number" min={0} max={30} value={s.maxTurns} onChange={(e) => setS({ ...s, maxTurns: Number(e.target.value) })} />
-            <span className="hint">How many times bots may pass work to each other after one message.</span>
+            <span className="hint">{t("settings.safety.handoffsHint")}</span>
           </label>
         </div>
       </div>
     </>
   );
 
-  const sections: Record<Tab, React.ReactNode> = { models: modelsSection, free: freeSection, accounts: accountsSection, search: searchSection, browser: browserSection, safety: safetySection };
+  const profileSection = (
+    <>
+      <p className="lead">{t("settings.profile.lead")}</p>
+      <div className="card">
+        <div className="avatar-pick">
+          {profile.image ? <img src={profile.image} alt={t("common.yourPhoto")} className="avatar-img big" /> : <span className="avatar-initial">{(profile.name || "?").slice(0, 1).toUpperCase()}</span>}
+          <div className="row-btns">
+            <label className="btn sm">
+              {t("settings.profile.changePhoto")}
+              <input type="file" accept="image/*" hidden onChange={async (e) => { const f = e.target.files?.[0]; if (f) setProfile({ ...profile, image: await resizeImage(f).catch(() => profile.image) }); }} />
+            </label>
+            {profile.image && <button className="btn sm" onClick={() => setProfile({ ...profile, image: null })}>{t("settings.profile.removePhoto")}</button>}
+          </div>
+        </div>
+        <label className="field">
+          {t("common.yourName")}
+          <input value={profile.name} maxLength={60} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+        </label>
+        <p className="note">{t("settings.profile.signedInAs", { email: account?.user?.email ?? "…" })}</p>
+        <div className="row-btns">
+          <button className="btn primary" onClick={() => void saveProfile()} disabled={saving || !profile.name.trim()}>{t("settings.profile.save")}</button>
+          <button className="btn danger" onClick={() => void signOutAccount()}>{t("settings.profile.signOut")}</button>
+        </div>
+      </div>
+    </>
+  );
+
+  const languageSection = (
+    <>
+      <p className="lead">{t("settings.lang.lead")}</p>
+      <div className="card">
+        <label className="field">
+          {t("settings.lang.label")}
+          <select value={s.language ?? "auto"} onChange={(e) => setS({ ...s, language: e.target.value })}>
+            <option value="auto">{t("settings.lang.auto")}</option>
+            {LOCALES.map((id) => (
+              <option key={id} value={id} lang={id}>{languageLabel(id, tag)}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </>
+  );
+
+  const dataSection = (
+    <>
+      <p className="lead">{t("settings.data.lead")}</p>
+      <div className="card">
+        <h3 className="card-h">{t("settings.data.backup")}</h3>
+        <p className="note">{t("settings.data.backupNote")}</p>
+        <div className="row-btns">
+          <a className="btn primary" href="/api/backup" download>
+            {t("settings.data.download")}
+          </a>
+          <label className="btn">
+            {t("settings.data.restore")}
+            <input type="file" accept="application/json,.json" hidden onChange={(e) => { const f = e.target.files?.[0]; if (f) void importBackup(f); e.target.value = ""; }} />
+          </label>
+        </div>
+      </div>
+      <div className="card disabled-card" aria-disabled="true">
+        <h3 className="card-h">{t("settings.data.sync")} <span className="badge">{t("settings.data.syncBadge")}</span></h3>
+        <p className="note">{t("settings.data.syncNote")}</p>
+      </div>
+    </>
+  );
+
+  const aboutSection = (
+    <>
+      <p className="lead">{t("settings.about.lead", { version: account?.appVersion ?? "" })}</p>
+      <div className="card">
+        <label className="check">
+          <input type="checkbox" checked={s.crashReports !== false} onChange={(e) => setS({ ...s, crashReports: e.target.checked })} />
+          <span>{t("settings.about.crash")}</span>
+        </label>
+      </div>
+      <div className="card">
+        <div className="row-btns">
+          <a className="btn" href={`${account?.cloudUrl ?? ""}/terms`} target="_blank" rel="noreferrer noopener">{t("common.terms")}</a>
+          <a className="btn" href={`${account?.cloudUrl ?? ""}/privacy`} target="_blank" rel="noreferrer noopener">{t("common.privacy")}</a>
+        </div>
+      </div>
+    </>
+  );
+
+  const sections: Record<Tab, React.ReactNode> = {
+    profile: profileSection,
+    models: modelsSection,
+    free: freeSection,
+    accounts: accountsSection,
+    search: searchSection,
+    browser: browserSection,
+    safety: safetySection,
+    language: languageSection,
+    data: dataSection,
+    about: aboutSection,
+  };
 
   return (
     <main className="settings wide">
-      <h1>Settings</h1>
+      <h1>{t("common.settings")}</h1>
       <div className="settings-layout">
-        <nav className="settings-nav" aria-label="Settings sections">
-          {TABS.map((t) => (
-            <button key={t.id} className={tab === t.id ? "on" : ""} onClick={() => pickTab(t.id)} aria-current={tab === t.id ? "page" : undefined}>
-              <Icon name={t.icon} size={18} />
+        <nav className="settings-nav" aria-label={t("settings.sections")}>
+          {TABS.map((x) => (
+            <button key={x.id} className={tab === x.id ? "on" : ""} onClick={() => pickTab(x.id)} aria-current={tab === x.id ? "page" : undefined}>
+              <Icon name={x.icon} size={18} />
               <span>
-                <b>{t.label}</b>
-                <small>{t.hint}</small>
+                <b>{t(`settings.tab.${x.id}`)}</b>
+                <small>{t(`settings.tab.${x.id}.hint`)}</small>
               </span>
             </button>
           ))}
         </nav>
 
-        <section className="settings-body" aria-label={current.label}>
-          <h2>{current.label}</h2>
+        <section className="settings-body" aria-label={t(`settings.tab.${current.id}`)}>
+          <h2>{t(`settings.tab.${current.id}`)}</h2>
           {sections[tab]}
           <div className="savebar">
-            <button className="btn primary" onClick={() => void save()} disabled={saving}>Save</button>
+            {tab !== "profile" && tab !== "data" && (
+              <button className="btn primary" onClick={() => void save()} disabled={saving}>{t("common.save")}</button>
+            )}
             {(tab === "models" || tab === "free") && (
-              <button className="btn" onClick={() => void test()} disabled={saving}>Save &amp; test connection</button>
+              <button className="btn" onClick={() => void test()} disabled={saving}>{t("settings.saveTest")}</button>
             )}
             {msg && <span className={msg.ok ? "msg-ok" : "msg-err"}>{msg.text}</span>}
           </div>

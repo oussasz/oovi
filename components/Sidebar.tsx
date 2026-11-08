@@ -6,13 +6,16 @@ import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
+import { useT } from "./I18n";
 import Icon from "./Icon";
+import { openSettings } from "./SettingsModal";
 
 export default function Sidebar() {
   const pathname = usePathname();
   const [bots, setBots] = useState<Bot[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [open, setOpen] = useState(false);
+  const t = useT();
 
   const load = useCallback(async () => {
     try {
@@ -48,7 +51,7 @@ export default function Sidebar() {
   return (
     <>
       <header className="mobile-bar">
-        <button className="icon-btn" onClick={() => setOpen(!open)} aria-label="Menu" aria-expanded={open}>
+        <button className="icon-btn" onClick={() => setOpen(!open)} aria-label={t("side.menu")} aria-expanded={open}>
           <Icon name={open ? "close" : "menu"} />
         </button>
       </header>
@@ -56,32 +59,32 @@ export default function Sidebar() {
 
       <aside className={`sidebar${open ? " open" : ""}`}>
         <Link href="/" className={`side-settings side-home${pathname === "/" ? " active" : ""}`}>
-          <Icon name="home" /> Home
+          <Icon name="home" /> {t("side.home")}
         </Link>
 
         <div className="side-actions">
-          <Link className="btn primary sm" href="/groups/new"><Icon name="plus" size={16} /> Group</Link>
-          <Link className="btn sm" href="/bots/new"><Icon name="plus" size={16} /> Bot</Link>
+          <Link className="btn primary sm" href="/groups/new"><Icon name="plus" size={16} /> {t("side.group")}</Link>
+          <Link className="btn sm" href="/bots/new"><Icon name="plus" size={16} /> {t("side.bot")}</Link>
         </div>
 
-        <nav className="side-scroll" aria-label="Chats">
-          <div className="side-label">Groups</div>
-          {groups.length === 0 && <p className="side-empty">No groups yet. Put a few bots together and they&apos;ll work as a team.</p>}
+        <nav className="side-scroll" aria-label={t("side.chats")}>
+          <div className="side-label">{t("common.groups")}</div>
+          {groups.length === 0 && <p className="side-empty">{t("side.noGroups")}</p>}
           {groups.map((c) => (
             <Link key={c.id} href={`/c/${c.id}`} className={`side-item${pathname === `/c/${c.id}` ? " active" : ""}`}>
               <FaceStack faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={38} moods={c.running ? ["thinking", "working", "thinking"] : undefined} />
               <span className="side-text">
                 <span className="side-name">
                   {c.name}
-                  {c.running && <span className="live-dot" title="Working" />}
-                  {c.waiting && <span className="ask-pill">needs OK</span>}
+                  {c.running && <span className="live-dot" title={t("side.working")} />}
+                  {c.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
                 </span>
-                <span className="side-preview">{c.preview || `${c.memberIds.length} bot${c.memberIds.length === 1 ? "" : "s"}`}</span>
+                <span className="side-preview">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
               </span>
             </Link>
           ))}
 
-          <div className="side-label">Bots</div>
+          <div className="side-label">{t("common.bots")}</div>
           {bots.map((b) => {
             const c = dm(b.id);
             return (
@@ -90,10 +93,10 @@ export default function Sidebar() {
                 <span className="side-text">
                   <span className="side-name">
                     {b.name}
-                    {c?.running && <span className="live-dot" title="Working" />}
-                    {c?.waiting && <span className="ask-pill">needs OK</span>}
+                    {c?.running && <span className="live-dot" title={t("side.working")} />}
+                    {c?.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
                   </span>
-                  <span className="side-preview">{c?.preview || b.role || "Bot"}</span>
+                  <span className="side-preview">{c?.preview || b.role || t("common.bot")}</span>
                 </span>
               </Link>
             );
@@ -101,11 +104,11 @@ export default function Sidebar() {
         </nav>
 
         <Link href="/library" className={`side-settings side-lib${pathname === "/library" ? " active" : ""}`}>
-          <Icon name="library" /> Skills &amp; tools
+          <Icon name="library" /> {t("common.skillsTools")}
         </Link>
-        <Link href="/settings" className={`side-settings${pathname === "/settings" ? " active" : ""}`}>
-          <Icon name="gear" /> Settings
-        </Link>
+        <button type="button" className="side-settings" onClick={openSettings}>
+          <Icon name="gear" /> {t("common.settings")}
+        </button>
       </aside>
     </>
   );

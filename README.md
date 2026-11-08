@@ -142,4 +142,4 @@ a link that triggers an action doesn't ask for approval.
 
 ## License
 
-MIT
+Proprietary. Copyright (c) 2026 [COMPANY LEGAL NAME]. All rights reserved. See `LICENSE`.

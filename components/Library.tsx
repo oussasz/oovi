@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
+import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
 type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number; updatedAt: number };
@@ -36,16 +37,15 @@ const emptyDraft: Draft = { name: "", transport: "stdio", command: "npx", args: 
 
 const isMac = () => typeof navigator !== "undefined" && /Mac/i.test(navigator.userAgent);
 
-const PRESETS: { label: string; hint: string; draft: () => Partial<Draft> }[] = [
+// Label: lib.preset.<id>; hint: lib.preset.<id>.hint.
+const PRESETS: { id: "files" | "memory" | "github"; draft: () => Partial<Draft> }[] = [
   {
-    label: "Files on your computer",
-    hint: "Read and write files in one folder. Edit the folder path at the end.",
+    id: "files",
     draft: () => ({ name: "Files", transport: "stdio", command: "npx", args: `-y @modelcontextprotocol/server-filesystem ${isMac() ? "/Users/YOU/Documents" : "C:\\Users\\YOU\\Documents"}` }),
   },
-  { label: "Memory", hint: "A knowledge graph your bots can store facts in.", draft: () => ({ name: "Memory", transport: "stdio", command: "npx", args: "-y @modelcontextprotocol/server-memory" }) },
+  { id: "memory", draft: () => ({ name: "Memory", transport: "stdio", command: "npx", args: "-y @modelcontextprotocol/server-memory" }) },
   {
-    label: "GitHub",
-    hint: "Issues, pull requests and code. Needs a GitHub token.",
+    id: "github",
     draft: () => ({ name: "GitHub", transport: "http", url: "https://api.githubcopilot.com/mcp/", fields: [{ name: "Authorization", description: "Bearer YOUR_GITHUB_TOKEN", required: true, secret: true }] }),
   },
 ];
@@ -62,6 +62,19 @@ export default function Library() {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<RegItem[] | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [mem, setMem] = useState<{ user: string; memory: string; limits: { user: number; memory: number } } | null>(null);
+  const { t, rich } = useI18n();
+
+  useEffect(() => {
+    api<{ user: string; memory: string; limits: { user: number; memory: number } }>("/api/memory").then(setMem).catch(() => {});
+  }, []);
+
+  const saveMemory = (target: "user" | "memory") =>
+    mem &&
+    run(`mem-${target}`, async () => {
+      setMem(await api("/api/memory", { method: "PUT", body: JSON.stringify({ target, text: mem[target] }) }));
+      return t("lib.memorySaved");
+    });
 
   const load = useCallback(async () => {
     try {
@@ -99,14 +112,14 @@ export default function Library() {
       if (editing.slug) await api(`/api/skills/${editing.slug}`, { method: "PUT", body });
       else await api("/api/skills", { method: "POST", body });
       setEditing(null);
-      return "Skill saved.";
+      return t("lib.skillSaved");
     });
 
   const importSkill = () =>
     run("import", async () => {
       const s = await api<Skill>("/api/skills", { method: "POST", body: JSON.stringify({ url: importUrl }) });
       setImportUrl("");
-      return `Installed the skill "${s.name}".`;
+      return t("lib.installedSkill", { name: s.name });
     });
 
   // ---------- MCP ----------
@@ -114,7 +127,7 @@ export default function Library() {
     run("search", async () => {
       const r = await api<{ items: RegItem[] }>(`/api/mcp/registry?q=${encodeURIComponent(q)}`);
       setResults(r.items);
-      return r.items.length ? "" : "Nothing found. Try another word.";
+      return r.items.length ? "" : t("lib.nothingFound");
     });
 
   function fromRegistry(item: RegItem) {
@@ -136,43 +149,64 @@ export default function Library() {
         if (m?.[1]) kv[m[1]] = (m[2] ?? "").trim();
       }
       const missing = draft.fields.filter((f) => f.required && !kv[f.name]).map((f) => f.name);
-      if (missing.length) throw new Error(`Fill in: ${missing.join(", ")}`);
+      if (missing.length) throw new Error(t("lib.fillIn", { fields: missing.join(", ") }));
       const body =
         draft.transport === "stdio"
           ? { name: draft.name, transport: "stdio", command: draft.command, args: parseArgs(draft.args), env: kv }
           : { name: draft.name, transport: "http", url: draft.url, headers: kv };
       const { id } = await api<{ id: string }>("/api/mcp", { method: "POST", body: JSON.stringify(body) });
       setDraft(null);
-      const t = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${id}`, { method: "POST" });
-      if (!t.ok) throw new Error(`Added, but it didn't start: ${t.error}`);
-      return `Connected: ${t.tools?.length ?? 0} tools. Turn it on for a bot in the bot editor.`;
+      const r = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${id}`, { method: "POST" });
+      if (!r.ok) throw new Error(t("lib.notStarted", { error: r.error ?? "" }));
+      return t("lib.connected", { count: r.tools?.length ?? 0 });
     });
 
   return (
     <main className="settings library">
-      <h1>Library</h1>
-      <p className="lead">Skills teach your bots how to do things; MCP servers give them new tools. Both work with every model.</p>
+      <h1>{t("lib.title")}</h1>
+      <p className="lead">{t("lib.lead")}</p>
 
-      <h2>Skills</h2>
+      <h2>{t("lib.memory")}</h2>
       <div className="card">
-        <p className="muted">
-          A skill is a step-by-step procedure your bots load when it fits the request. Bots also <b>learn</b>: when you ask for the same kind of task again and again, they offer to save it as a skill (you approve), so next time is faster. Uses the standard <code>SKILL.md</code> format, so you can install skills others share.
-        </p>
+        <p className="muted">{rich("lib.memoryIntro", { about: <b>{t("lib.memoryAbout")}</b>, notes: <b>{t("lib.memoryNotes")}</b>, sep: <code>§</code> })}</p>
+        {mem ? (
+          <div className="grid">
+            {(["user", "memory"] as const).map((k) => (
+              <label key={k} className="field">
+                {k === "user" ? t("lib.userLabel") : t("lib.memLabel")}
+                <textarea rows={8} className="mono" value={mem[k]} onChange={(e) => setMem({ ...mem, [k]: e.target.value })} placeholder={k === "user" ? t("lib.userPh") : t("lib.memPh")} />
+                <span className={`hint${mem[k].length > mem.limits[k] ? " msg-err" : ""}`}>
+                  {t("lib.chars", { n: mem[k].length, max: mem.limits[k] })}
+                </span>
+                <button className="btn sm" style={{ alignSelf: "flex-start" }} onClick={() => void saveMemory(k)} disabled={busy !== null || mem[k].length > mem.limits[k]}>
+                  {t("common.save")}
+                </button>
+              </label>
+            ))}
+          </div>
+        ) : (
+          <p className="note">{t("common.loading")}</p>
+        )}
+      </div>
+
+      <h2>{t("lib.skills")}</h2>
+      <div className="card">
+        <p className="muted">{rich("lib.skillsIntro", { learn: <b>{t("lib.learn")}</b>, format: <code>SKILL.md</code> })}</p>
         <div className="row-btns">
           <button className="btn primary" onClick={() => setEditing({ name: "", description: "", body: "" })}>
-            <Icon name="plus" size={16} /> New skill
+            <Icon name="plus" size={16} /> {t("lib.newSkill")}
           </button>
           <a className="btn" href="https://github.com/anthropics/skills" target="_blank" rel="noreferrer noopener">
-            Browse shared skills
+            {t("lib.browseSkills")}
           </a>
         </div>
         <div className="fb-add" style={{ gridTemplateColumns: "1fr auto" }}>
           <label className="field">
-            Install from a link (a SKILL.md file or a GitHub folder)
+            {t("lib.installFrom")}
             <input value={importUrl} placeholder="https://github.com/owner/repo/tree/main/skills/my-skill" onChange={(e) => setImportUrl(e.target.value)} />
           </label>
           <button className="btn" onClick={() => void importSkill()} disabled={!importUrl.trim() || busy !== null}>
-            {busy === "import" ? "Installing…" : "Install"}
+            {busy === "import" ? t("lib.installing") : t("lib.install")}
           </button>
         </div>
 
@@ -180,44 +214,44 @@ export default function Library() {
           <div className="skill-editor">
             <div className="grid">
               <label className="field">
-                Name
-                <input value={editing.name} maxLength={80} placeholder="e.g. Weekly LinkedIn post" onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+                {t("common.name")}
+                <input value={editing.name} maxLength={80} placeholder={t("lib.skillNamePh")} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
               </label>
               <label className="field">
-                When to use it
-                <input value={editing.description} maxLength={500} placeholder="e.g. When I ask for my weekly LinkedIn update" onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
+                {t("lib.whenToUse")}
+                <input value={editing.description} maxLength={500} placeholder={t("lib.whenPh")} onChange={(e) => setEditing({ ...editing, description: e.target.value })} />
               </label>
             </div>
             <label className="field">
-              Instructions (Markdown)
-              <textarea rows={10} className="mono" value={editing.body} placeholder={"1. Ask which project to feature\n2. Draft 3 short options\n3. …"} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
+              {t("lib.instructionsMd")}
+              <textarea rows={10} className="mono" value={editing.body} placeholder={t("lib.bodyPh")} onChange={(e) => setEditing({ ...editing, body: e.target.value })} />
             </label>
             <div className="row-btns">
               <button className="btn primary" onClick={() => void saveSkill()} disabled={busy !== null || !editing.name.trim() || !editing.description.trim() || !editing.body.trim()}>
-                Save skill
+                {t("lib.saveSkill")}
               </button>
-              <button className="btn" onClick={() => setEditing(null)}>Cancel</button>
+              <button className="btn" onClick={() => setEditing(null)}>{t("common.cancel")}</button>
             </div>
           </div>
         )}
 
         <div className="lib-list">
-          {skills.length === 0 && <p className="note">No skills yet.</p>}
+          {skills.length === 0 && <p className="note">{t("lib.noSkills")}</p>}
           {skills.map((s) => (
             <div key={s.slug} className="lib-item">
               <div className="lib-main">
                 <b>{s.name}</b>
                 <span>{s.description}</span>
                 <span className="tags">
-                  <span className="tag">used {s.uses}×</span>
-                  {s.source === "learned" && <span className="tag ok">learned by a bot</span>}
-                  {s.source && s.source !== "learned" && s.source !== "you" && <span className="tag">installed</span>}
+                  <span className="tag">{t("lib.used", { n: s.uses })}</span>
+                  {s.source === "learned" && <span className="tag ok">{t("lib.learned")}</span>}
+                  {s.source && s.source !== "learned" && s.source !== "you" && <span className="tag">{t("lib.installed")}</span>}
                 </span>
               </div>
-              <button className="icon-btn sm" onClick={() => setEditing({ slug: s.slug, name: s.name, description: s.description, body: s.body })} aria-label={`Edit ${s.name}`} title="Edit">
+              <button className="icon-btn sm" onClick={() => setEditing({ slug: s.slug, name: s.name, description: s.description, body: s.body })} aria-label={t("lib.editX", { name: s.name })} title={t("common.edit")}>
                 <Icon name="edit" size={16} />
               </button>
-              <button className="icon-btn sm" onClick={() => confirm(`Delete the skill "${s.name}"?`) && void run(`del-${s.slug}`, async () => void (await api(`/api/skills/${s.slug}`, { method: "DELETE" })))} aria-label={`Delete ${s.name}`} title="Delete">
+              <button className="icon-btn sm" onClick={() => confirm(t("lib.confirmDeleteSkill", { name: s.name })) && void run(`del-${s.slug}`, async () => void (await api(`/api/skills/${s.slug}`, { method: "DELETE" })))} aria-label={t("lib.deleteX", { name: s.name })} title={t("common.delete")}>
                 <Icon name="trash" size={16} />
               </button>
             </div>
@@ -225,30 +259,28 @@ export default function Library() {
         </div>
       </div>
 
-      <h2>MCP servers (tools)</h2>
+      <h2>{t("lib.mcp")}</h2>
       <div className="card">
-        <p className="muted">
-          Connect MCP servers to give bots new tools: your files, GitHub, databases, Notion, Slack and more. Turn them on per bot in the bot editor. Bots ask before every MCP action unless you mark a server as trusted.
-        </p>
-        <div className="opt-label">Quick add</div>
+        <p className="muted">{t("lib.mcpIntro")}</p>
+        <div className="opt-label">{t("lib.quickAdd")}</div>
         <div className="chip-row">
           {PRESETS.map((p) => (
-            <button key={p.label} className="chip big" title={p.hint} onClick={() => setDraft({ ...emptyDraft, ...p.draft() })}>
-              <Icon name="plus" size={14} /> {p.label}
+            <button key={p.id} className="chip big" title={t(`lib.preset.${p.id}.hint`)} onClick={() => setDraft({ ...emptyDraft, ...p.draft() })}>
+              <Icon name="plus" size={14} /> {t(`lib.preset.${p.id}`)}
             </button>
           ))}
           <button className="chip big" onClick={() => setDraft({ ...emptyDraft })}>
-            <Icon name="plus" size={14} /> Custom server
+            <Icon name="plus" size={14} /> {t("lib.custom")}
           </button>
         </div>
 
         <div className="fb-add" style={{ gridTemplateColumns: "1fr auto", marginTop: 12 }}>
           <label className="field">
-            Search the official MCP registry
-            <input value={q} placeholder="e.g. notion, postgres, slack, calendar" onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} />
+            {t("lib.searchRegistry")}
+            <input value={q} placeholder={t("lib.searchPh")} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Enter" && void search()} />
           </label>
           <button className="btn" onClick={() => void search()} disabled={busy !== null}>
-            {busy === "search" ? "Searching…" : "Search"}
+            {busy === "search" ? t("lib.searching") : t("lib.search")}
           </button>
         </div>
         {results && results.length > 0 && (
@@ -259,15 +291,15 @@ export default function Library() {
                   <b>{r.title || r.name}</b>
                   <span>{r.description}</span>
                   <span className="tags">
-                    <span className="tag">{r.install.transport === "http" ? "remote" : r.install.command}</span>
+                    <span className="tag">{r.install.transport === "http" ? t("lib.remote") : r.install.command}</span>
                     {r.repo && (
                       <a className="tag" href={r.repo} target="_blank" rel="noreferrer noopener">
-                        source
+                        {t("lib.source")}
                       </a>
                     )}
                   </span>
                 </div>
-                <button className="btn sm" onClick={() => fromRegistry(r)}>Add</button>
+                <button className="btn sm" onClick={() => fromRegistry(r)}>{t("common.add")}</button>
               </div>
             ))}
           </div>
@@ -277,30 +309,30 @@ export default function Library() {
           <div className="skill-editor">
             <div className="grid">
               <label className="field">
-                Name
+                {t("common.name")}
                 <input value={draft.name} maxLength={40} onChange={(e) => setDraft({ ...draft, name: e.target.value })} />
               </label>
               <label className="field">
-                Kind
+                {t("lib.kind")}
                 <select value={draft.transport} onChange={(e) => setDraft({ ...draft, transport: e.target.value as Draft["transport"] })}>
-                  <option value="stdio">Runs on this computer (command)</option>
-                  <option value="http">Remote (URL)</option>
+                  <option value="stdio">{t("lib.kindStdio")}</option>
+                  <option value="http">{t("lib.kindHttp")}</option>
                 </select>
               </label>
               {draft.transport === "stdio" ? (
                 <>
                   <label className="field">
-                    Command
+                    {t("lib.command")}
                     <input value={draft.command} placeholder="npx" onChange={(e) => setDraft({ ...draft, command: e.target.value })} />
                   </label>
                   <label className="field">
-                    Arguments
+                    {t("lib.args")}
                     <input value={draft.args} placeholder="-y @scope/server-name" onChange={(e) => setDraft({ ...draft, args: e.target.value })} />
                   </label>
                 </>
               ) : (
                 <label className="field full">
-                  URL
+                  {t("lib.url")}
                   <input value={draft.url} placeholder="https://…/mcp" onChange={(e) => setDraft({ ...draft, url: e.target.value })} />
                 </label>
               )}
@@ -312,44 +344,44 @@ export default function Library() {
                 </label>
               ))}
               <label className="field full">
-                {draft.transport === "stdio" ? "Other environment variables (KEY=value, one per line)" : "Other headers (Name: value, one per line)"}
+                {draft.transport === "stdio" ? t("lib.extraEnv") : t("lib.extraHeaders")}
                 <textarea rows={2} className="mono" value={draft.extra} onChange={(e) => setDraft({ ...draft, extra: e.target.value })} />
               </label>
             </div>
-            <p className="note">Secrets are encrypted on this computer. Servers started with npx need Node.js installed (nodejs.org); uvx needs Python&apos;s uv.</p>
+            <p className="note">{t("lib.secretsNote")}</p>
             <div className="row-btns">
               <button className="btn primary" onClick={() => void addServer()} disabled={busy !== null || !draft.name.trim() || (draft.transport === "stdio" ? !draft.command.trim() : !draft.url.trim())}>
-                {busy === "add" ? "Connecting…" : "Add & connect"}
+                {busy === "add" ? t("lib.connecting") : t("lib.addConnect")}
               </button>
-              <button className="btn" onClick={() => setDraft(null)}>Cancel</button>
+              <button className="btn" onClick={() => setDraft(null)}>{t("common.cancel")}</button>
             </div>
           </div>
         )}
 
         <div className="lib-list">
-          {servers.length === 0 && <p className="note">No servers yet.</p>}
+          {servers.length === 0 && <p className="note">{t("lib.noServers")}</p>}
           {servers.map((s) => (
             <div key={s.id} className="lib-item">
-              <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} title={s.status} />
+              <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} title={t(`lib.status.${s.status}`)} />
               <div className="lib-main">
                 <b>{s.name}</b>
                 <span className="mono-sm">{s.transport === "stdio" ? `${s.command} ${(s.args ?? []).join(" ")}` : s.url}</span>
                 {s.error && <span className="msg-err" style={{ fontSize: 12.5 }}>{s.error}</span>}
-                {s.tools.length > 0 && <span className="note">{s.tools.length} tools: {s.tools.slice(0, 8).map((t) => t.name).join(", ")}{s.tools.length > 8 ? "…" : ""}</span>}
+                {s.tools.length > 0 && <span className="note">{t("lib.toolsList", { count: s.tools.length, names: `${s.tools.slice(0, 8).map((x) => x.name).join(", ")}${s.tools.length > 8 ? "…" : ""}` })}</span>}
                 <span className="tags">
                   <label className="mini-check">
-                    <input type="checkbox" checked={s.enabled} onChange={(e) => void run(`en-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ enabled: e.target.checked }) })))} /> on
+                    <input type="checkbox" checked={s.enabled} onChange={(e) => void run(`en-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ enabled: e.target.checked }) })))} /> {t("lib.on")}
                   </label>
-                  <label className="mini-check" title="Trusted servers run without asking you first">
+                  <label className="mini-check" title={t("lib.trustedTitle")}>
                     <input
                       type="checkbox"
                       checked={s.trusted}
                       onChange={(e) =>
-                        (!e.target.checked || confirm(`Let bots use ${s.name} without asking you each time?`)) &&
+                        (!e.target.checked || confirm(t("lib.confirmTrust", { name: s.name }))) &&
                         void run(`tr-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ trusted: e.target.checked }) })))
                       }
                     />{" "}
-                    trusted
+                    {t("lib.trusted")}
                   </label>
                 </span>
               </div>
@@ -358,15 +390,15 @@ export default function Library() {
                 disabled={busy !== null}
                 onClick={() =>
                   void run(`test-${s.id}`, async () => {
-                    const t = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${s.id}`, { method: "POST" });
-                    if (!t.ok) throw new Error(t.error);
-                    return `${s.name}: ${t.tools?.length ?? 0} tools.`;
+                    const r = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${s.id}`, { method: "POST" });
+                    if (!r.ok) throw new Error(r.error);
+                    return t("lib.testResult", { name: s.name, count: r.tools?.length ?? 0 });
                   })
                 }
               >
-                {busy === `test-${s.id}` ? "Testing…" : "Test"}
+                {busy === `test-${s.id}` ? t("common.testing") : t("common.test")}
               </button>
-              <button className="icon-btn sm" onClick={() => confirm(`Remove ${s.name}?`) && void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })))} aria-label={`Remove ${s.name}`} title="Remove">
+              <button className="icon-btn sm" onClick={() => confirm(t("lib.confirmRemove", { name: s.name })) && void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })))} aria-label={t("lib.removeX", { name: s.name })} title={t("common.remove")}>
                 <Icon name="trash" size={16} />
               </button>
             </div>

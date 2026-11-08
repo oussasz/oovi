@@ -98,6 +98,8 @@ export type Chat = {
   updatedAt: number;
   entries: Entry[];
   pending?: Pending;
+  /** Older entries (up to and including upTo) condensed to save tokens. */
+  summary?: { upTo: string; text: string };
 };
 
 export type ChatWithState = Chat & { running: boolean };

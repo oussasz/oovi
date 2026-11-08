@@ -1,5 +1,6 @@
-import SettingsForm from "@/components/SettingsForm";
+import { redirect } from "next/navigation";
 
+// Settings is a floating window now; old links open it over the home page.
 export default function SettingsPage() {
-  return <SettingsForm />;
+  redirect("/?settings=1");
 }

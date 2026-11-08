@@ -4,6 +4,7 @@ import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
 import type { ToolSpec } from "./llm";
 import { callMcpTool, mcpServerOf } from "./mcp";
+import { applyMemory } from "./memory";
 import { webSearch } from "./search";
 import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
 import type { Settings } from "./settings";
@@ -44,8 +45,23 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
 ];
 
-/** Skill tools, available to every bot. */
+/** Skill + memory tools, available to every bot. */
 export const SKILL_SPECS: ToolSpec[] = [
+  {
+    name: "memory",
+    description:
+      "Long-term memory shared by all bots. target 'user' = facts about the user (name, role, preferences, people, projects); target 'memory' = notes and lessons learned. Save durable, reusable facts only (not one-off details, not secrets). action: add (content), replace (old_text = words from the entry, content = new text), remove (old_text).",
+    parameters: {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["add", "replace", "remove"] },
+        target: { type: "string", enum: ["user", "memory"] },
+        content: { type: "string" },
+        old_text: { type: "string" },
+      },
+      required: ["action", "target"],
+    },
+  },
   {
     name: "use_skill",
     description: "Load a saved skill (a step-by-step procedure) by name, then follow it.",
@@ -206,6 +222,10 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
 export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false): Promise<ToolResult> {
   const input = call.input;
   try {
+    if (call.name === "memory") {
+      const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);
+      return { id: call.id, name: call.name, content: msg, isError: /^(Not saved|No entry|Nothing|target must|action must|old_text is|content is)/.test(msg) };
+    }
     if (call.name === "use_skill") {
       const skill = getSkill(String(input.name ?? ""));
       if (!skill) return fail(call, `No skill called "${String(input.name ?? "")}". Saved skills: ${listSkills().map((s) => s.name).join(", ") || "none yet"}.`);
@@ -225,7 +245,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     if (call.name === "web_search") {
       const q = String(input.query ?? "").trim();
       if (!q) return fail(call, "query is required");
-      const hits = await webSearch(settings.search, q);
+      const hits = await webSearch(settings, q);
       if (!hits.length) return fail(call, `No results for "${q}". Try different words.`);
       const body = hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet.slice(0, 300)}`).join("\n");
       return { id: call.id, name: call.name, content: `Search results for "${q}" (untrusted web content):\n${body}` };

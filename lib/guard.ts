@@ -3,6 +3,8 @@
 // - Host check blocks DNS-rebinding (evil.com resolving to 127.0.0.1).
 // - Origin check blocks other websites POSTing to localhost (CSRF).
 
+import { currentSession } from "./account";
+
 const LOCAL = ["localhost", "127.0.0.1", "::1"];
 
 function allowedHosts(): string[] {
@@ -12,7 +14,18 @@ function allowedHosts(): string[] {
 
 const hostnameOf = (host: string) => host.toLowerCase().replace(/:\d+$/, "").replace(/^\[|\]$/g, "");
 
-export function guard(req: Request): Response | null {
+/**
+ * opts.account (default true): the route also needs a signed-in oovi account.
+ * Account routes themselves pass { account: false }.
+ */
+export function guard(req: Request, opts: { account?: boolean } = {}): Response | null {
+  const denied = localOnly(req);
+  if (denied) return denied;
+  if (opts.account !== false && !currentSession()) return Response.json({ error: "Sign in to oovi first." }, { status: 401 });
+  return null;
+}
+
+function localOnly(req: Request): Response | null {
   const host = req.headers.get("host") ?? "";
   if (!allowedHosts().includes(hostnameOf(host))) return new Response("Forbidden host", { status: 403 });
   const origin = req.headers.get("origin");

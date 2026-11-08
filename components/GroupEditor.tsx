@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { api, refreshSidebar } from "@/lib/client";
 import type { Bot, Chat } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
+import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
 export default function GroupEditor({ id }: { id: string }) {
@@ -18,6 +19,7 @@ export default function GroupEditor({ id }: { id: string }) {
   const [orchestrate, setOrchestrate] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { t } = useI18n();
 
   useEffect(() => {
     (async () => {
@@ -36,7 +38,7 @@ export default function GroupEditor({ id }: { id: string }) {
     })();
   }, [id, isNew]);
 
-  if (!bots) return <div className="page center muted">{error ?? "Loading…"}</div>;
+  if (!bots) return <div className="page center muted">{error ?? t("common.loading")}</div>;
 
   const members = memberIds.map((m) => bots.find((b) => b.id === m)).filter((b): b is Bot => !!b);
   const lead = members.find((m) => m.id === leadId) ?? members[0];
@@ -58,7 +60,7 @@ export default function GroupEditor({ id }: { id: string }) {
   }
 
   async function remove() {
-    if (!confirm(`Delete the group "${name}" and its conversation? The bots stay.`)) return;
+    if (!confirm(t("group.confirmDelete", { name }))) return;
     try {
       await api(`/api/chats/${id}`, { method: "DELETE" });
       refreshSidebar();
@@ -73,14 +75,14 @@ export default function GroupEditor({ id }: { id: string }) {
       <div className="group-hero">
         <FaceStack faces={members.map((m) => m.face)} size={92} />
         <div className="group-hero-text">
-          <span className="opt-label">{isNew ? "New group" : "Edit group"}</span>
-          <input className="title-input" value={name} maxLength={48} placeholder="Name your group" onChange={(e) => setName(e.target.value)} aria-label="Group name" autoFocus={isNew} />
+          <span className="opt-label">{isNew ? t("common.newGroup") : t("group.edit")}</span>
+          <input className="title-input" value={name} maxLength={48} placeholder={t("group.namePh")} onChange={(e) => setName(e.target.value)} aria-label={t("group.nameAria")} autoFocus={isNew} />
         </div>
       </div>
 
       <section className="card">
-        <h2>Members</h2>
-        <p className="muted">Everyone in the group sees the whole conversation and can @mention the others to hand off work.</p>
+        <h2>{t("group.members")}</h2>
+        <p className="muted">{t("group.membersSub")}</p>
         <div className="member-grid">
           {bots.map((b) => {
             const on = memberIds.includes(b.id);
@@ -88,7 +90,7 @@ export default function GroupEditor({ id }: { id: string }) {
               <button key={b.id} type="button" className={`member${on ? " on" : ""}`} onClick={() => toggle(b.id)} aria-pressed={on}>
                 <Face face={b.face} size={56} mood={on ? "happy" : "idle"} />
                 <b>{b.name}</b>
-                <span>{b.role || "Bot"}</span>
+                <span>{b.role || t("common.bot")}</span>
                 {on && (
                   <span className="tick">
                     <Icon name="check" size={13} />
@@ -101,16 +103,16 @@ export default function GroupEditor({ id }: { id: string }) {
             <span className="add-circle">
               <Icon name="plus" />
             </span>
-            <b>New bot</b>
-            <span>Design one</span>
+            <b>{t("common.newBot")}</b>
+            <span>{t("group.designOne")}</span>
           </Link>
         </div>
       </section>
 
       {members.length > 1 && (
         <section className="card">
-          <h2>Team leader</h2>
-          <p className="muted">The leader answers every message that doesn&apos;t @mention someone else.</p>
+          <h2>{t("group.leader")}</h2>
+          <p className="muted">{t("group.leaderSub")}</p>
           <div className="chip-row">
             {members.map((b) => (
               <button key={b.id} type="button" className={`chip big${lead?.id === b.id ? " on" : ""}`} onClick={() => setLeadId(b.id)} aria-pressed={lead?.id === b.id}>
@@ -122,10 +124,8 @@ export default function GroupEditor({ id }: { id: string }) {
             <input type="checkbox" checked={orchestrate} onChange={(e) => setOrchestrate(e.target.checked)} />
             <span className="toggle-ui" />
             <span>
-              <b>Leader mode</b>
-              <span className="hint">
-                {lead?.name ?? "The leader"} plans the work, delegates to teammates, checks their results and writes one final answer. Turn off for a free-form chat where anyone can hand off to anyone.
-              </span>
+              <b>{t("group.leaderMode")}</b>
+              <span className="hint">{t("group.leaderModeHint", { name: lead?.name ?? t("group.theLeader") })}</span>
             </span>
           </label>
         </section>
@@ -133,18 +133,18 @@ export default function GroupEditor({ id }: { id: string }) {
 
       <div className="savebar">
         <button className="btn primary" onClick={save} disabled={saving || !name.trim() || !members.length}>
-          {isNew ? "Create group" : "Save"}
+          {isNew ? t("group.create") : t("common.save")}
         </button>
         {!isNew && (
           <Link className="btn" href={`/c/${id}`}>
-            Back to chat
+            {t("group.back")}
           </Link>
         )}
         {error && <span className="msg-err">{error}</span>}
         <span className="spacer" />
         {!isNew && (
           <button className="btn danger" onClick={remove}>
-            <Icon name="trash" size={16} /> Delete group
+            <Icon name="trash" size={16} /> {t("group.delete")}
           </button>
         )}
       </div>

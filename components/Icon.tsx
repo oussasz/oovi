@@ -6,6 +6,12 @@ const PATHS = {
   user: "M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4 21c1-4 4.5-6 8-6s7 2 8 6",
   shield: "M12 3l8 3v6c0 4.5-3.4 8-8 9-4.6-1-8-4.5-8-9V6z",
   chevron: "M9 6l6 6-6 6",
+  lang: "M4 5h9M8.5 3v2M6 5c0 4 3 7 6 8M11 5c-1 4-4 7-7 8M13 21l4-9 4 9M14.5 18h5",
+  box: "M4 8l8-4 8 4v8l-8 4-8-4zM4 8l8 4 8-4M12 12v8",
+  info: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v6M12 7.5v.5",
+  zoomIn: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4M11 8v6M8 11h6",
+  zoomOut: "M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4M8 11h6",
+  expand: "M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5",
   home: "M4 11l8-7 8 7v9h-5v-6H9v6H4z",
   library: "M5 4h4v16H5zM10 4h4v16h-4zM15.5 5.5l3.5-1 3 15-3.5 1z",
   send: "M5 12h13M13 6l6 6-6 6",
@@ -29,7 +35,7 @@ export type IconName = keyof typeof PATHS;
 
 export default function Icon({ name, size = 18, className }: { name: IconName; size?: number; className?: string }) {
   return (
-    <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <svg className={className} data-icon={name} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
       <path d={PATHS[name]} />
     </svg>
   );

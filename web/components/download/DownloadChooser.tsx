@@ -1,0 +1,163 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { AppleIcon, ArrowRight, WindowsIcon } from "../icons";
+
+export type Os = "mac" | "windows";
+type MacArch = "arm64" | "intel";
+
+type NavigatorUAData = {
+  platform?: string;
+  getHighEntropyValues?: (hints: string[]) => Promise<{ architecture?: string }>;
+};
+
+export function detectOs(): Os | null {
+  if (typeof navigator === "undefined") return null;
+  const uaData = (navigator as Navigator & { userAgentData?: NavigatorUAData }).userAgentData;
+  const platform = (uaData?.platform || navigator.platform || "").toLowerCase();
+  const ua = navigator.userAgent.toLowerCase();
+  if (platform.includes("mac") || ua.includes("mac os")) return "mac";
+  if (platform.includes("win") || ua.includes("windows")) return "windows";
+  return null;
+}
+
+async function detectMacArch(): Promise<MacArch | null> {
+  const uaData = (navigator as Navigator & { userAgentData?: NavigatorUAData }).userAgentData;
+  try {
+    const v = await uaData?.getHighEntropyValues?.(["architecture"]);
+    if (v?.architecture === "arm") return "arm64";
+    if (v?.architecture === "x86") return "intel";
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os | null; compact?: boolean }) {
+  const [os, setOs] = useState<Os>(initialOs ?? "mac");
+  const [arch, setArch] = useState<MacArch>("arm64");
+  const [archDetected, setArchDetected] = useState(false);
+  const [started, setStarted] = useState(false);
+
+  useEffect(() => {
+    if (!initialOs) {
+      const d = detectOs();
+      if (d) setOs(d);
+    }
+    if (detectOs() !== "mac") return;
+    detectMacArch().then((a) => {
+      if (a) {
+        setArch(a);
+        setArchDetected(true);
+      }
+    });
+  }, [initialOs]);
+
+  const target = os === "windows" ? "windows" : arch === "arm64" ? "mac-arm64" : "mac-intel";
+
+  return (
+    <div className={`chooser ${compact ? "chooser-compact" : ""}`}>
+      <div className="seg" role="tablist" aria-label="Choose your computer">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={os === "mac"}
+          className={os === "mac" ? "on" : ""}
+          onClick={() => {
+            setOs("mac");
+            setStarted(false);
+          }}
+        >
+          <AppleIcon size={16} /> Mac
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={os === "windows"}
+          className={os === "windows" ? "on" : ""}
+          onClick={() => {
+            setOs("windows");
+            setStarted(false);
+          }}
+        >
+          <WindowsIcon size={14} /> Windows
+        </button>
+      </div>
+
+      {os === "mac" && (
+        <fieldset className="arch">
+          <legend>Which Mac do you have?</legend>
+          <label className={arch === "arm64" ? "on" : ""}>
+            <input type="radio" name="arch" checked={arch === "arm64"} onChange={() => setArch("arm64")} />
+            <span>
+              <b>Apple silicon</b>
+              <small>M1, M2, M3, M4 and newer</small>
+            </span>
+          </label>
+          <label className={arch === "intel" ? "on" : ""}>
+            <input type="radio" name="arch" checked={arch === "intel"} onChange={() => setArch("intel")} />
+            <span>
+              <b>Intel</b>
+              <small>Older Macs (before late 2020)</small>
+            </span>
+          </label>
+          {!archDetected && (
+            <p className="hint">Not sure? Apple menu → About This Mac → look for “Chip: Apple M…”.</p>
+          )}
+        </fieldset>
+      )}
+
+      <div className="notice">
+        <p className="notice-title">
+          <span className="notice-dot" /> Heads up: oovi isn’t code-signed yet
+        </p>
+        {os === "mac" ? (
+          <>
+            <p>
+              The first time you open it, macOS will say{" "}
+              <q>“oovi” can’t be opened because Apple cannot check it for malicious software.</q> That’s expected
+              during the pilot. Here’s how to open it:
+            </p>
+            <ol className="steps">
+              <li>Open the downloaded <b>.dmg</b> and drag <b>oovi</b> into <b>Applications</b>.</li>
+              <li>Open <b>Finder → Applications</b>.</li>
+              <li><b>Right-click</b> (or Control-click) <b>oovi</b> and choose <b>Open</b>.</li>
+              <li>Click <b>Open</b> again in the dialog. You only need to do this once.</li>
+            </ol>
+            <p className="alt">
+              Still blocked? Go to <b>System Settings → Privacy &amp; Security</b>, scroll down and click{" "}
+              <b>Open Anyway</b>.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              When you run the installer, Windows may show <q>Windows protected your PC</q> (Microsoft Defender
+              SmartScreen). That’s expected during the pilot. Here’s how to continue:
+            </p>
+            <ol className="steps">
+              <li>Run <b>oovi-Setup.exe</b> from your Downloads.</li>
+              <li>On the blue “Windows protected your PC” screen, click <b>More info</b>.</li>
+              <li>Click <b>Run anyway</b> and follow the installer.</li>
+            </ol>
+          </>
+        )}
+      </div>
+
+      <a
+        className="btn btn-dark btn-lg chooser-cta"
+        href={`/download/${target}`}
+        onClick={() => setStarted(true)}
+      >
+        {os === "mac" ? <AppleIcon /> : <WindowsIcon />}
+        Download for {os === "mac" ? (arch === "arm64" ? "Mac (Apple silicon)" : "Mac (Intel)") : "Windows"}
+        <ArrowRight />
+      </a>
+      <p className="fine" aria-live="polite">
+        {started
+          ? "Your download should start in a moment. Then follow the steps above."
+          : "Free during the pilot · Bring your own AI key"}
+      </p>
+    </div>
+  );
+}

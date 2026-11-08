@@ -8,11 +8,14 @@ import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
 import type { Bot, BotEntry, ChatEvent, ChatWithState, ToolCall, ToolResult } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
+import type { TKey, Vars } from "@/lib/i18n";
+import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
 import Rich from "./Rich";
 
 type Shot = { img: string; url: string; botId: string; label: string };
 type Row = { call: ToolCall; result?: ToolResult };
+type TFn = (key: TKey, vars?: Vars) => string;
 
 const host = (u: unknown) => {
   try {
@@ -22,15 +25,15 @@ const host = (u: unknown) => {
   }
 };
 
-function callLabel(c: ToolCall): string {
+function callLabel(c: ToolCall, t: TFn): string {
   const i = c.input;
   switch (c.name) {
-    case "web_search": return `Searched “${String(i.query ?? "")}”`;
-    case "open_url": return `Opened ${host(i.url)}`;
-    case "read_page": return "Read more of the page";
-    case "click": return `Clicked element ${String(i.element)}`;
-    case "type": return `Typed “${String(i.text ?? "")}”${i.submit ? " + Enter" : ""}`;
-    case "go_back": return "Went back";
+    case "web_search": return t("chat.call.search", { query: String(i.query ?? "") });
+    case "open_url": return t("chat.call.open", { host: host(i.url) });
+    case "read_page": return t("chat.call.read");
+    case "click": return t("chat.call.click", { element: String(i.element) });
+    case "type": return t(i.submit ? "chat.call.typeEnter" : "chat.call.type", { text: String(i.text ?? "") });
+    case "go_back": return t("chat.call.back");
     default: return c.name;
   }
 }
@@ -57,14 +60,15 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
   const [open, setOpen] = useState<Set<string>>(new Set());
   const collapsed = !running && rows.length > 3 && !showAll;
   const tokens = e.usage.input + e.usage.output;
-  const name = bot?.name ?? "Deleted bot";
+  const { t, tag } = useI18n();
+  const name = bot?.name ?? t("chat.deletedBot");
 
   const toggle = (r: Row) => {
     const next = new Set(open);
     if (next.has(r.call.id)) next.delete(r.call.id);
     else next.add(r.call.id);
     setOpen(next);
-    if (r.result?.image) onShot({ img: r.result.image, url: urlOf(r.result), botId: e.botId, label: callLabel(r.call) });
+    if (r.result?.image) onShot({ img: r.result.image, url: urlOf(r.result), botId: e.botId, label: callLabel(r.call, t) });
   };
 
   return (
@@ -73,13 +77,13 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
       <div className="msg-main">
         <div className="msg-meta">
           <b>{name}</b>
-          {isLeader && <span className="lead-badge">leader</span>}
+          {isLeader && <span className="lead-badge">{t("chat.leader")}</span>}
           {bot?.role && <span className="role" style={{ background: FACE_COLORS[bot.face.color] }}>{bot.role}</span>}
-          <span>{timeLabel(e.at)}</span>
-          {tokens > 0 && <span title={`${e.usage.input} in · ${e.usage.output} out`}>· {fmtTokens(tokens)} tokens</span>}
+          <span>{timeLabel(e.at, tag)}</span>
+          {tokens > 0 && <span title={t("chat.tokensTitle", { input: e.usage.input, output: e.usage.output })}>{t("chat.tokens", { n: fmtTokens(tokens, tag) })}</span>}
           {e.model && (
-            <span className={`model-badge${e.fallback ? " fb" : ""}`} title={e.fallback ? "The bot's own model failed or was busy, so a backup model answered." : "Model that answered"}>
-              {e.fallback ? "backup: " : ""}
+            <span className={`model-badge${e.fallback ? " fb" : ""}`} title={e.fallback ? t("chat.fallbackTitle") : t("chat.modelTitle")}>
+              {e.fallback ? t("chat.backup") : ""}
               {e.model}
             </span>
           )}
@@ -91,9 +95,9 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
               <button className="step-row summary" onClick={() => setShowAll(true)}>
                 <span className="dot ok" />
                 <span className="step-label">
-                  {rows.length} steps · {[...new Set(rows.map((r) => r.call.name))].map((n) => n.replace("_", " ")).join(", ")}
+                  {t("chat.steps", { count: rows.length, names: [...new Set(rows.map((r) => r.call.name))].map((n) => n.replace("_", " ")).join(", ") })}
                 </span>
-                <span className="step-more">Show</span>
+                <span className="step-more">{t("chat.show")}</span>
               </button>
             ) : (
               rows.map((r) => {
@@ -103,7 +107,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
                     <button className="step-row" onClick={() => toggle(r)} aria-expanded={open.has(r.call.id)}>
                       <span className={`dot ${state}`} />
                       <Icon name={callIcon(r.call)} size={14} className="step-icon" />
-                      <span className="step-label">{callLabel(r.call)}</span>
+                      <span className="step-label">{callLabel(r.call, t)}</span>
                       {r.result?.image && <Icon name="panel" size={14} className="step-icon" />}
                     </button>
                     {open.has(r.call.id) && r.result && <pre className="step-out">{r.result.content}</pre>}
@@ -124,16 +128,16 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
             <i />
             <i />
             <i />
-            <span>{status ?? "Thinking…"}</span>
+            <span>{status ?? t("chat.thinking")}</span>
           </div>
         )}
-        {e.status === "waiting" && <div className="note">Waiting for your OK…</div>}
-        {e.status === "stopped" && !e.text && <div className="note">Stopped.</div>}
-        {e.status === "done" && !e.text && <div className="note">(no reply)</div>}
+        {e.status === "waiting" && <div className="note">{t("chat.waiting")}</div>}
+        {e.status === "stopped" && !e.text && <div className="note">{t("chat.stopped")}</div>}
+        {e.status === "done" && !e.text && <div className="note">{t("chat.noReply")}</div>}
         {e.error && <div className="notice error small">{e.error}</div>}
         {e.handoff && e.handoff.length > 0 && (
           <div className="handoff">
-            <Icon name="arrow" size={14} /> Passed to
+            <Icon name="arrow" size={14} /> {t("chat.passedTo")}
             {e.handoff.map((id) => {
               const b = bots.find((x) => x.id === id);
               return b ? (
@@ -144,13 +148,74 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
             })}
           </div>
         )}
-        {e.handoffBlocked && <div className="note">Hand-off limit reached for this message. @mention a bot to keep going.</div>}
+        {e.handoffBlocked && <div className="note">{t("chat.handoffLimit")}</div>}
       </div>
     </div>
   );
 }
 
 // ---------- the chat ----------
+
+/** Full-screen view of a bot's browser: zoom with the buttons, mouse wheel or +/-, drag to pan. Updates live. */
+function ScreenZoom({ src, title, url, onClose }: { src: string; title: string; url: string; onClose: () => void }) {
+  const [scale, setScale] = useState(1);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const drag = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const { t, num } = useI18n();
+  const zoom = (d: number) => setScale((s) => Math.min(5, Math.max(1, Math.round((s + d) * 4) / 4)));
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+      if (e.key === "+" || e.key === "=") zoom(0.5);
+      if (e.key === "-") zoom(-0.5);
+      if (e.key === "0") {
+        setScale(1);
+        setPos({ x: 0, y: 0 });
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  useEffect(() => {
+    if (scale === 1) setPos({ x: 0, y: 0 });
+  }, [scale]);
+
+  return (
+    <div className="zoom-backdrop" onMouseDown={(e) => e.target === e.currentTarget && onClose()} role="dialog" aria-modal="true" aria-label={t("chat.botScreen")}>
+      <div className="zoom-bar">
+        <span className="zoom-title">{title}</span>
+        {url && <span className="zoom-url">{url}</span>}
+        <span className="spacer" />
+        <button className="icon-btn" onClick={() => zoom(-0.5)} disabled={scale <= 1} aria-label={t("chat.zoomOut")} title={t("chat.zoomOutTitle")}>
+          <Icon name="zoomOut" />
+        </button>
+        <span className="zoom-level">{num(scale, { style: "percent", maximumFractionDigits: 0 })}</span>
+        <button className="icon-btn" onClick={() => zoom(0.5)} disabled={scale >= 5} aria-label={t("chat.zoomIn")} title={t("chat.zoomInTitle")}>
+          <Icon name="zoomIn" />
+        </button>
+        <button className="icon-btn" onClick={onClose} aria-label={t("common.close")} title={t("common.closeEsc")}>
+          <Icon name="close" />
+        </button>
+      </div>
+      <div
+        className={`zoom-stage${scale > 1 ? " can-pan" : ""}`}
+        onWheel={(e) => zoom(e.deltaY < 0 ? 0.25 : -0.25)}
+        onPointerDown={(e) => {
+          if (scale === 1) return;
+          (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+          drag.current = { x: e.clientX, y: e.clientY, px: pos.x, py: pos.y };
+        }}
+        onPointerMove={(e) => drag.current && setPos({ x: drag.current.px + e.clientX - drag.current.x, y: drag.current.py + e.clientY - drag.current.y })}
+        onPointerUp={() => (drag.current = null)}
+        onDoubleClick={() => (scale === 1 ? setScale(2) : setScale(1))}
+      >
+        <img src={src} alt={title} draggable={false} style={{ transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})` }} />
+      </div>
+    </div>
+  );
+}
 
 export default function ChatView({ id }: { id: string }) {
   const [chat, setChat] = useState<ChatWithState | null>(null);
@@ -163,12 +228,14 @@ export default function ChatView({ id }: { id: string }) {
   const [input, setInput] = useState("");
   const [picked, setPicked] = useState<Shot | null>(null);
   const [showLive, setShowLive] = useState(true);
+  const [zoomOpen, setZoomOpen] = useState(false);
   const [mentionQ, setMentionQ] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const ctrlRef = useRef<AbortController | null>(null);
+  const { t, rich, list } = useI18n();
 
   const reload = useCallback(async () => {
     setChat(await api<ChatWithState>(`/api/chats/${id}`));
@@ -264,11 +331,11 @@ export default function ChatView({ id }: { id: string }) {
       const rows = rowsOf(e);
       for (let j = rows.length - 1; j >= 0; j--) {
         const r = rows[j];
-        if (r?.result?.image) return { img: r.result.image, url: urlOf(r.result), botId: e.botId, label: callLabel(r.call) };
+        if (r?.result?.image) return { img: r.result.image, url: urlOf(r.result), botId: e.botId, label: callLabel(r.call, t) };
       }
     }
     return null;
-  }, [chat]);
+  }, [chat, t]);
 
   const activity = useMemo(() => {
     const out: { botId: string; row: Row }[] = [];
@@ -279,13 +346,13 @@ export default function ChatView({ id }: { id: string }) {
   if (missing) {
     return (
       <div className="page center">
-        <h1>Chat not found</h1>
-        <p className="muted">It may have been deleted.</p>
-        <Link className="btn" href="/">Back home</Link>
+        <h1>{t("chat.notFound")}</h1>
+        <p className="muted">{t("chat.notFoundSub")}</p>
+        <Link className="btn" href="/">{t("chat.backHome")}</Link>
       </div>
     );
   }
-  if (!chat || !settings) return <div className="page center muted">Loading…</div>;
+  if (!chat || !settings) return <div className="page center muted">{t("common.loading")}</div>;
 
   const isGroup = chat.kind === "group";
   const solo = isGroup ? undefined : members[0];
@@ -299,7 +366,7 @@ export default function ChatView({ id }: { id: string }) {
   const providerOf = (b: Bot): ProviderId => b.provider ?? settings.active;
   const modelLabel = (b: Bot) => {
     const p = providerOf(b);
-    return `${PROVIDERS[p].label.replace(/ \(.*\)$/, "")} · ${b.model || settings.providers[p]?.model || PROVIDERS[p].model || "model?"}`;
+    return `${PROVIDERS[p].label.replace(/ \(.*\)$/, "")} · ${b.model || settings.providers[p]?.model || PROVIDERS[p].model || t("chat.modelUnknown")}`;
   };
   const missingKeys = [...new Set(members.map(providerOf))].filter((p) => PROVIDERS[p].needsKey && !settings.providers[p]?.hasKey);
 
@@ -307,13 +374,13 @@ export default function ChatView({ id }: { id: string }) {
 
   const ideas: string[] = isGroup
     ? [
-        members[1] ? `@${members[0]?.name} find the 3 best free note-taking apps, then ask @${members[1].name} to write a short comparison.` : "Find the 3 best free note-taking apps and compare them.",
-        `Plan a 3-day trip to Istanbul on a budget.${members[2] ? ` @${members[2].name}, check the plan for problems.` : ""}`,
-        "@everyone introduce yourselves in one line each.",
+        members[1] ? t("chat.idea.findCompare", { a: members[0]?.name ?? "", b: members[1].name }) : t("chat.idea.find"),
+        members[2] ? t("chat.idea.tripCheck", { c: members[2].name }) : t("chat.idea.trip"),
+        t("chat.idea.intro"),
       ]
     : solo?.tools.web
-      ? ["What's the biggest tech news today? Give sources.", "Compare the 3 most popular password managers.", "What can you do?"]
-      : ["Help me write a friendly follow-up email.", "Give me 5 name ideas for a small coffee shop.", "What can you do?"];
+      ? [t("chat.idea.news"), t("chat.idea.passwords"), t("chat.idea.whatCanYouDo")]
+      : [t("chat.idea.email"), t("chat.idea.coffee"), t("chat.idea.whatCanYouDo")];
 
   function send(text: string) {
     const t = text.trim();
@@ -337,7 +404,7 @@ export default function ChatView({ id }: { id: string }) {
   }
 
   async function clear() {
-    if (!confirm("Clear this conversation? The bots and their settings stay.")) return;
+    if (!confirm(t("chat.confirmClear"))) return;
     try {
       setChat(await api<ChatWithState>(`/api/chats/${id}`, { method: "PUT", body: JSON.stringify({ clear: true }) }));
       setPicked(null);
@@ -421,21 +488,23 @@ export default function ChatView({ id }: { id: string }) {
             solo && <Face face={solo.face} mood={botMood(chat, solo.id)} size={46} />
           )}
           <div className="chat-title">
-            <h1>{isGroup ? chat.name : (solo?.name ?? "Bot")}</h1>
+            <h1>{isGroup ? chat.name : (solo?.name ?? t("common.bot"))}</h1>
             <p>
               {isGroup
-                ? `${members.map((m) => m.name).join(", ") || "No bots yet"}${lead ? (leaderMode ? ` · led by ${lead.name}` : ` · ${lead.name} answers first`) : ""}`
+                ? lead
+                  ? t(leaderMode ? "chat.subLedBy" : "chat.subFirst", { members: members.map((m) => m.name).join(", "), name: lead.name })
+                  : members.map((m) => m.name).join(", ") || t("chat.noBots")
                 : solo && [solo.role, modelLabel(solo)].filter(Boolean).join(" · ")}
             </p>
           </div>
           <div className="head-actions">
-            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : `/bots/${solo?.id ?? ""}`} title={isGroup ? "Edit group" : "Edit bot"} aria-label="Edit">
+            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : t("chat.editBot")} aria-label={t("common.edit")}>
               <Icon name="edit" />
             </Link>
-            <button className="icon-btn" onClick={clear} disabled={running || !chat.entries.length} title="Clear conversation" aria-label="Clear conversation">
+            <button className="icon-btn" onClick={clear} disabled={running || !chat.entries.length} title={t("chat.clear")} aria-label={t("chat.clear")}>
               <Icon name="broom" />
             </button>
-            <button className={`icon-btn${showLive ? " on" : ""}`} onClick={toggleLive} title="Live view" aria-label="Toggle live view" aria-pressed={showLive}>
+            <button className={`icon-btn${showLive ? " on" : ""}`} onClick={toggleLive} title={t("chat.live")} aria-label={t("chat.toggleLive")} aria-pressed={showLive}>
               <Icon name="panel" />
             </button>
           </div>
@@ -452,7 +521,11 @@ export default function ChatView({ id }: { id: string }) {
           <div className="thread-inner">
             {missingKeys.length > 0 && (
               <div className="notice">
-                Add your {missingKeys.map((p) => PROVIDERS[p].label).join(" and ")} API key in <Link href="/settings">Settings</Link> to wake {isGroup ? "the bots" : solo?.name} up.
+                {rich("chat.missingKeys", {
+                  providers: list(missingKeys.map((p) => PROVIDERS[p].label)),
+                  settings: <Link href="/settings">{t("common.settings")}</Link>,
+                  who: isGroup ? t("chat.theBots") : (solo?.name ?? ""),
+                })}
               </div>
             )}
 
@@ -463,13 +536,13 @@ export default function ChatView({ id }: { id: string }) {
                     <Face key={m.id} face={m.face} mood={i === 0 ? "happy" : "idle"} size={isGroup ? 72 : 112} interactive />
                   ))}
                 </div>
-                <h2>{isGroup ? `Say hi to ${chat.name}` : `Hi, I'm ${solo?.name}`}</h2>
+                <h2>{isGroup ? t("chat.sayHi", { name: chat.name }) : t("chat.hiIm", { name: solo?.name ?? "" })}</h2>
                 <p>
                   {isGroup
                     ? leaderMode
-                      ? `${lead?.name ?? "The leader"} leads this team: they plan, hand tasks to the others and give you one final answer. You can also @mention anyone directly.`
-                      : `${lead?.name ?? "The lead"} answers first. @mention anyone to choose who answers, and bots @mention each other to hand off work.`
-                    : solo?.instructions || "Ask me anything."}
+                      ? t("chat.leaderIntro", { name: lead?.name ?? t("chat.theLeader") })
+                      : t("chat.leadIntro", { name: lead?.name ?? t("chat.theLead") })
+                    : solo?.instructions || t("chat.askAnything")}
                 </p>
                 <div className="ideas">
                   {ideas.map((s) => (
@@ -497,7 +570,7 @@ export default function ChatView({ id }: { id: string }) {
               <div className="approval" role="alert">
                 {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
                 <div>
-                  <strong>{approvalBot?.name ?? "A bot"} wants to:</strong>
+                  <strong>{t("chat.wantsTo", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
                   <ul>
                     {approval.items.map((it) => (
                       <li key={it.call.id}>{it.summary}</li>
@@ -505,9 +578,9 @@ export default function ChatView({ id }: { id: string }) {
                   </ul>
                   <div className="row">
                     <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="check" size={16} /> Allow
+                      <Icon name="check" size={16} /> {t("chat.allow")}
                     </button>
-                    <button className="btn" onClick={() => decide(false)}>Deny</button>
+                    <button className="btn" onClick={() => decide(false)}>{t("chat.deny")}</button>
                   </div>
                 </div>
               </div>
@@ -518,7 +591,7 @@ export default function ChatView({ id }: { id: string }) {
 
         <div className="composer-wrap">
           {suggestions.length > 0 && (
-            <div className="mention-pop" role="listbox" aria-label="Mention a bot">
+            <div className="mention-pop" role="listbox" aria-label={t("chat.mentionABot")}>
               {suggestions.map((b, i) => (
                 <button
                   key={b.id}
@@ -538,7 +611,7 @@ export default function ChatView({ id }: { id: string }) {
           {isGroup && members.length > 0 && (
             <div className="mention-bar">
               {members.map((m) => (
-                <button key={m.id} className="chip" onClick={() => insertMention(m)} title={`Mention ${m.name}`}>
+                <button key={m.id} className="chip" onClick={() => insertMention(m)} title={t("chat.mention", { name: m.name })}>
                   <Face face={m.face} size={20} mood={botMood(chat, m.id)} /> {m.name}
                 </button>
               ))}
@@ -557,15 +630,15 @@ export default function ChatView({ id }: { id: string }) {
               value={input}
               onChange={(e) => onInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={isGroup ? `Message ${chat.name}. Type @ to pick a bot` : `Message ${solo?.name ?? "the bot"}`}
-              aria-label="Message"
+              placeholder={isGroup ? t("chat.placeholderGroup", { name: chat.name }) : t("chat.placeholderSolo", { name: solo?.name ?? t("chat.theBot") })}
+              aria-label={t("chat.message")}
             />
             {running ? (
-              <button type="button" className="send stop" onClick={stop} title="Stop the bots" aria-label="Stop">
+              <button type="button" className="send stop" onClick={stop} title={t("chat.stopTitle")} aria-label={t("chat.stop")}>
                 <Icon name="stop" />
               </button>
             ) : (
-              <button type="submit" className="send" disabled={!input.trim()} title="Send" aria-label="Send">
+              <button type="submit" className="send" disabled={!input.trim()} title={t("chat.send")} aria-label={t("chat.send")}>
                 <Icon name="send" />
               </button>
             )}
@@ -574,10 +647,10 @@ export default function ChatView({ id }: { id: string }) {
       </section>
 
       {showLive && (
-        <aside className="live" aria-label="Live view">
+        <aside className="live" aria-label={t("chat.live")}>
           <div className="live-head">
-            <span>Live view</span>
-            <button className="icon-btn sm" onClick={toggleLive} aria-label="Close live view">
+            <span>{t("chat.live")}</span>
+            <button className="icon-btn sm" onClick={toggleLive} aria-label={t("chat.closeLive")}>
               <Icon name="close" size={16} />
             </button>
           </div>
@@ -586,7 +659,7 @@ export default function ChatView({ id }: { id: string }) {
               <div className="live-who">
                 {shotBot && <Face face={shotBot.face} size={26} mood={running ? "working" : "idle"} />}
                 <div>
-                  <b>{shotBot?.name ?? "Bot"}</b>
+                  <b>{shotBot?.name ?? t("common.bot")}</b>
                   <span>{shot.label}</span>
                 </div>
               </div>
@@ -595,28 +668,34 @@ export default function ChatView({ id }: { id: string }) {
                   {shot.url}
                 </a>
               )}
-              <img src={shot.img} alt={`What ${shotBot?.name ?? "the bot"}'s browser shows`} />
+              <button className="live-zoom-btn" onClick={() => setZoomOpen(true)} title={t("chat.openFull")} aria-label={t("chat.openFullAria")}>
+                <img src={shot.img} alt={t("chat.shotAlt", { name: shotBot?.name ?? t("chat.theBot") })} />
+                <span className="live-zoom-hint">
+                  <Icon name="expand" size={14} /> {t("chat.zoom")}
+                </span>
+              </button>
+              {zoomOpen && <ScreenZoom src={shot.img} title={`${shotBot?.name ?? t("common.bot")} · ${shot.label}`} url={shot.url} onClose={() => setZoomOpen(false)} />}
             </div>
           ) : (
             <div className="live-empty">
               {(members.find((m) => m.tools.browser) ?? members[0]) && <Face face={(members.find((m) => m.tools.browser) ?? members[0])!.face} size={60} />}
-              <p>When a bot opens a web page, you&apos;ll see its screen here.</p>
+              <p>{t("chat.liveEmpty")}</p>
             </div>
           )}
           {activity.length > 0 && (
             <div className="live-activity">
-              <div className="live-sub">Recent activity</div>
+              <div className="live-sub">{t("chat.recent")}</div>
               {activity.map(({ botId, row }) => {
                 const b = bots.find((x) => x.id === botId);
                 return (
                   <button
                     key={row.call.id}
                     className="act"
-                    onClick={() => row.result?.image && setPicked({ img: row.result.image, url: urlOf(row.result), botId, label: callLabel(row.call) })}
+                    onClick={() => row.result?.image && setPicked({ img: row.result.image, url: urlOf(row.result), botId, label: callLabel(row.call, t) })}
                     disabled={!row.result?.image}
                   >
                     {b && <Face face={b.face} size={20} />}
-                    <span>{callLabel(row.call)}</span>
+                    <span>{callLabel(row.call, t)}</span>
                     <span className={`dot ${!row.result ? "run" : row.result.isError ? "err" : "ok"}`} />
                   </button>
                 );

@@ -154,6 +154,17 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     }
   }
 
+  // Prompt caching: mark the stable prefix (tools + system) and the conversation
+  // so far. In a bot's tool loop each step re-sends the same prefix, which is
+  // then billed at the cheap cached-input rate instead of full price.
+  const CACHE = { type: "ephemeral" } as const;
+  const lastMsg = msgs.at(-1);
+  const lastBlock = lastMsg?.content.at(-1);
+  if (lastBlock) lastBlock.cache_control = CACHE;
+  const tools = r.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }) as Record<string, unknown>);
+  const lastTool = tools.at(-1);
+  if (lastTool) lastTool.cache_control = CACHE;
+
   const j = (await post(
     r.label,
     `${r.baseUrl}/v1/messages`,
@@ -161,9 +172,9 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     {
       model: r.model,
       max_tokens: 8192,
-      system: r.system,
+      system: [{ type: "text", text: r.system, cache_control: CACHE }],
       messages: msgs,
-      ...(r.tools.length ? { tools: r.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters })) } : {}),
+      ...(tools.length ? { tools } : {}),
     },
     r.signal,
   )) as {

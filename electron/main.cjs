@@ -14,6 +14,25 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 }
 
+// Crash reporting for the desktop shell itself: log locally, and hand the error
+// to the app's own server, which sends it on only if the user allows it.
+function reportMainCrash(err) {
+  const e = err instanceof Error ? err : new Error(String(err));
+  try {
+    const fs = require("node:fs");
+    const dir = process.env.OOVI_DATA || path.join(app.getPath("userData"), "data");
+    fs.mkdirSync(dir, { recursive: true });
+    fs.appendFileSync(path.join(dir, "crash.log"), `${JSON.stringify({ at: new Date().toISOString(), source: "main", message: e.message, stack: e.stack })}\n`);
+  } catch {
+    /* ignore */
+  }
+  if (appUrl) {
+    void fetch(`${appUrl}/api/crash`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: e.message, stack: e.stack, source: "main" }) }).catch(() => {});
+  }
+}
+process.on("uncaughtException", reportMainCrash);
+process.on("unhandledRejection", reportMainCrash);
+
 let win = null;
 let server = null;
 
@@ -23,6 +42,7 @@ async function startServer() {
   process.env.OOVI_DATA ||= path.join(app.getPath("userData"), "data");
   // Files the bots download land in the user's normal Downloads folder.
   process.env.OOVI_DOWNLOADS ||= path.join(app.getPath("downloads"), "oovi");
+  process.env.OOVI_VERSION ||= app.getVersion();
   process.chdir(ROOT);
 
   const next = require("next");

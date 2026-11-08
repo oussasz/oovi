@@ -7,12 +7,14 @@ import { PROVIDERS } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
+import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
 export default function Home() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const { t, rich } = useI18n();
 
   useEffect(() => {
     Promise.all([api<Bot[]>("/api/bots"), api<ChatSummary[]>("/api/chats"), api<PublicSettings>("/api/settings")])
@@ -36,25 +38,25 @@ export default function Home() {
           <source srcSet="/mark-dark.png" media="(prefers-color-scheme: dark)" />
           <img src="/mark.png" alt="" width={96} height={96} />
         </picture>
-        <h1>Your crew is ready.</h1>
-        <p>Give bots a face and a job, put them in groups, and let them pass work to each other. Everything runs on your own API key, with no subscription.</p>
+        <h1>{t("home.title")}</h1>
+        <p>{t("home.sub")}</p>
         {needsKey && (
           <div className="notice">
-            First, add your {PROVIDERS[settings.active].label} API key in <Link href="/settings">Settings</Link>, or pick another provider there.
+            {rich("home.needsKey", { provider: PROVIDERS[settings.active].label, settings: <Link href="/settings">{t("common.settings")}</Link> })}
           </div>
         )}
         <div className="hero-actions">
           <Link className="btn primary" href={first ? `/c/${first.id}` : "/groups/new"}>
-            {first ? `Open ${first.name}` : "Create a group"} <Icon name="arrow" size={16} />
+            {first ? t("home.open", { name: first.name }) : t("home.createGroup")} <Icon name="arrow" size={16} />
           </Link>
           <Link className="btn" href="/bots/new">
-            <Icon name="plus" size={16} /> New bot
+            <Icon name="plus" size={16} /> {t("common.newBot")}
           </Link>
         </div>
       </section>
 
       <section>
-        <h2 className="section-title">Groups</h2>
+        <h2 className="section-title">{t("common.groups")}</h2>
         <div className="tiles">
           {groups.map((g) => (
             <Link key={g.id} href={`/c/${g.id}`} className="tile">
@@ -67,23 +69,23 @@ export default function Home() {
             <span className="add-circle">
               <Icon name="plus" />
             </span>
-            <b>New group</b>
-            <span>Put bots together</span>
+            <b>{t("common.newGroup")}</b>
+            <span>{t("home.newGroupSub")}</span>
           </Link>
         </div>
       </section>
 
       <section>
-        <h2 className="section-title">Bots</h2>
+        <h2 className="section-title">{t("common.bots")}</h2>
         <div className="tiles">
           {bots.map((b) => (
             <Link key={b.id} href={`/c/dm-${b.id}`} className="tile">
               <Face face={b.face} size={64} />
               <b>{b.name}</b>
-              <span>{b.role || "Bot"}</span>
+              <span>{b.role || t("common.bot")}</span>
               <span className="tags">
-                {b.tools.web && <span className="tag">web</span>}
-                {b.tools.browser && <span className="tag">browser</span>}
+                {b.tools.web && <span className="tag">{t("home.tagWeb")}</span>}
+                {b.tools.browser && <span className="tag">{t("home.tagBrowser")}</span>}
                 {b.provider && <span className="tag">{PROVIDERS[b.provider].label.replace(/ \(.*\)$/, "")}</span>}
               </span>
             </Link>
@@ -92,24 +94,18 @@ export default function Home() {
             <span className="add-circle">
               <Icon name="plus" />
             </span>
-            <b>New bot</b>
-            <span>Pick a face and a job</span>
+            <b>{t("common.newBot")}</b>
+            <span>{t("home.newBotSub")}</span>
           </Link>
         </div>
       </section>
 
       <section className="how">
-        <h2 className="section-title">How it works</h2>
+        <h2 className="section-title">{t("home.how")}</h2>
         <ol>
-          <li>
-            <b>@mention</b> a bot to choose who answers. Nobody mentioned? The group&apos;s lead picks it up.
-          </li>
-          <li>
-            Bots <b>@mention each other</b> to hand off work, and you watch it happen.
-          </li>
-          <li>
-            You stay in charge: bots <b>ask before</b> they click or type on a web page.
-          </li>
+          <li>{rich("home.how1", { mention: <b>{t("home.how1b")}</b> })}</li>
+          <li>{rich("home.how2", { b: <b>{t("home.how2b")}</b> })}</li>
+          <li>{rich("home.how3", { b: <b>{t("home.how3b")}</b> })}</li>
         </ol>
       </section>
     </div>

@@ -1,0 +1,32 @@
+"use client";
+
+import type { ReactNode } from "react";
+import { AppleIcon, ArrowRight, WindowsIcon } from "../icons";
+import { useDownload } from "./DownloadProvider";
+import type { Os } from "./DownloadChooser";
+
+type Props = {
+  os?: Os;
+  variant?: "dark" | "light";
+  size?: "sm" | "md" | "lg";
+  children?: ReactNode;
+  showIcon?: boolean;
+  className?: string;
+};
+
+export function DownloadButton({ os, variant = "dark", size = "md", children, showIcon = true, className }: Props) {
+  const { open } = useDownload();
+  const label = children ?? (os === "mac" ? "Download for Mac" : os === "windows" ? "Download for Windows" : "Download for Mac + Windows");
+  return (
+    <button
+      type="button"
+      className={`btn btn-${variant} btn-${size} ${className ?? ""}`}
+      onClick={() => open(os)}
+    >
+      {showIcon && os === "mac" && <AppleIcon />}
+      {showIcon && os === "windows" && <WindowsIcon />}
+      <span>{label}</span>
+      <ArrowRight />
+    </button>
+  );
+}

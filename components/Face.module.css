@@ -1,0 +1,105 @@
+/* Slime avatar motion. Transforms + opacity only; the body squashes and
+   stretches from its bottom edge (50,91 in the 100x100 viewBox). */
+
+.root { display: block; flex: none; overflow: visible; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
+.interactive { cursor: grab; }
+.interactive:active { cursor: grabbing; }
+
+.body { transform-box: view-box; transform-origin: 50px 91px; transition: transform 0.2s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.shadow { transform-box: view-box; transform-origin: 50px 92.5px; transition: transform 0.2s; }
+.feat { transition: transform 0.35s ease-out; }
+.eyes, .cheek, .ping, .twinkle, .qmark, .bubble, .tapL, .tapR, .z, .drip, .ticks { transform-box: fill-box; transform-origin: center; }
+.cheek { transition: transform 0.22s cubic-bezier(0.3, 1.6, 0.5, 1); }
+.flip { transform-box: view-box; transform-origin: 50px 80px; opacity: 0; }
+
+/* Calm: blink; big faces breathe like jelly. */
+.root[data-mood="idle"] .eyes,
+.root[data-mood="online"] .eyes,
+.root[data-mood="working"] .eyes,
+.root[data-mood="asking"] .eyes,
+.root[data-mood="computer"] .eyes { animation: blink 5.5s infinite; }
+.root[data-mood="sad"] .eyes { animation: blink 7s 1.2s infinite; }
+.root[data-big][data-mood="idle"] .body,
+.root[data-big][data-mood="online"] .body { animation: jelly 3.6s ease-in-out infinite; }
+
+/* online: soft pulse around the green dot. */
+.root[data-mood="online"] .ping { animation: ping 2.2s ease-out infinite; }
+
+/* thinking: gentle sway, thought dots light up in turn. */
+.root[data-mood="thinking"] .body { animation: sway 2.8s ease-in-out infinite; }
+.root[data-mood="thinking"] .bubble { animation: float 2.8s ease-in-out infinite; }
+.dot0, .dot1, .dot2 { animation: dots 1.2s ease-in-out infinite; }
+.dot1 { animation-delay: 0.2s; }
+.dot2 { animation-delay: 0.4s; }
+
+/* reading: eyes scan the lines, a page flips now and then. */
+.root[data-mood="reading"] .body { animation: bob 3.2s ease-in-out infinite; }
+.root[data-mood="reading"] .eyes { animation: scan 3.2s ease-in-out infinite; }
+.root[data-mood="reading"] .flip { animation: flip 3.2s ease-in-out infinite; }
+
+/* computer: tiny typing bounce, paws tap. */
+.root[data-mood="computer"] .body { animation: type 0.5s ease-in-out infinite; }
+.tapL { animation: tap 0.36s ease-in-out infinite; }
+.tapR { animation: tap 0.36s 0.18s ease-in-out infinite; }
+
+/* working: busy hop with squash, the logo's motion ticks flicker. */
+.root[data-mood="working"] .body { animation: hop 0.75s cubic-bezier(0.3, 0, 0.4, 1) infinite; }
+.root[data-mood="working"] .shadow { animation: hopShadow 0.75s cubic-bezier(0.3, 0, 0.4, 1) infinite; }
+.ticks { animation: flick 0.75s ease-in-out infinite; }
+
+/* asking: stretch up, question mark bobs. */
+.root[data-mood="asking"] .body { animation: stretch 1.6s ease-in-out infinite; }
+.qmark { animation: float 1.6s ease-in-out infinite; }
+
+/* happy: one boing, cheeks puff, sparkles twinkle. */
+.root[data-mood="happy"] .body { animation: boing 0.9s ease-out 1; }
+.root[data-mood="happy"] .cheek { transform: scale(1.3, 1.15); }
+.twinkle { animation: twinkle 1.8s ease-in-out infinite; }
+.late { animation-delay: -0.9s; }
+
+/* sad: droop and sigh, a sweat drop slides down. */
+.root[data-mood="sad"] .body { animation: droop 4s ease-in-out infinite; }
+.drip { animation: drip 3s ease-in infinite; }
+
+/* sleeping: slow breathing, z's drift up and fade. */
+.root[data-mood="sleeping"] .body { animation: breathe 4s ease-in-out infinite; }
+.root[data-mood="sleeping"] .shadow { animation: breatheShadow 4s ease-in-out infinite; }
+.z { animation: zfloat 3s ease-out infinite; }
+.z2 { animation-delay: -1s; }
+.z3 { animation-delay: -2s; }
+
+/* Press to squish, release to boing. */
+.root[data-poke="down"] .body { transform: scale(1.17, 0.82) !important; animation: none !important; }
+.root[data-poke="down"] .shadow { transform: scaleX(1.2); animation: none; }
+.root[data-poke="down"] .cheek { transform: scale(1.55, 1.25); }
+.root[data-poke="up"] .body { animation: boing 0.85s ease-out 1 !important; }
+.interactive[data-mood="idle"]:not([data-poke]):hover .body,
+.interactive[data-mood="online"]:not([data-poke]):hover .body { animation: wobble 0.9s ease-in-out 1; }
+
+@keyframes blink { 0%, 94%, 100% { transform: scaleY(1); } 96.5% { transform: scaleY(0.1); } }
+@keyframes jelly { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.03, 0.97); } }
+@keyframes ping { 0% { transform: scale(1); opacity: 0.55; } 75%, 100% { transform: scale(2.1); opacity: 0; } }
+@keyframes sway { 0%, 100% { transform: rotate(-3deg) scale(1.015, 0.985); } 50% { transform: rotate(3deg) scale(0.985, 1.015); } }
+@keyframes float { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2px); } }
+@keyframes dots { 0%, 100% { opacity: 0.25; } 40% { opacity: 1; } }
+@keyframes bob { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.015, 0.985); } }
+@keyframes scan { 0%, 10% { transform: translateX(-1.6px); } 45%, 55% { transform: translateX(1.6px); } 90%, 100% { transform: translateX(-1.6px); } }
+@keyframes flip { 0%, 50% { transform: scaleX(1); opacity: 0; } 54% { transform: scaleX(1); opacity: 1; } 78% { transform: scaleX(-1); opacity: 1; } 82%, 100% { transform: scaleX(-1); opacity: 0; } }
+@keyframes type { 0%, 100% { transform: translateY(0) scale(1, 1); } 50% { transform: translateY(-1.2px) scale(1.01, 0.99); } }
+@keyframes tap { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-2.6px); } }
+@keyframes hop { 0%, 100% { transform: translateY(0) scale(1.07, 0.93); } 35% { transform: translateY(-6px) scale(0.95, 1.06); } 60% { transform: translateY(-6.5px) scale(0.98, 1.02); } 85% { transform: translateY(0) scale(1.05, 0.95); } }
+@keyframes hopShadow { 0%, 100% { transform: scaleX(1.05); } 40%, 60% { transform: scaleX(0.78); opacity: 0.6; } }
+@keyframes flick { 0%, 100% { opacity: 0.2; transform: translate(1px, 1px); } 50% { opacity: 1; transform: translate(0, 0); } }
+@keyframes stretch { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(0.95, 1.07); } }
+@keyframes boing { 0% { transform: scale(1, 1); } 18% { transform: scale(1.16, 0.84); } 38% { transform: scale(0.9, 1.12); } 58% { transform: scale(1.06, 0.95); } 78% { transform: scale(0.98, 1.02); } 100% { transform: scale(1, 1); } }
+@keyframes twinkle { 0%, 100% { transform: scale(0.65) rotate(0deg); opacity: 0.55; } 50% { transform: scale(1.1) rotate(20deg); opacity: 1; } }
+@keyframes droop { 0%, 100% { transform: scale(1.05, 0.94); } 50% { transform: scale(1.07, 0.92); } }
+@keyframes drip { 0%, 15% { transform: translateY(0); opacity: 1; } 85% { transform: translateY(5px); opacity: 0; } 100% { transform: translateY(0); opacity: 0; } }
+@keyframes breathe { 0%, 100% { transform: scale(1, 1); } 50% { transform: scale(1.045, 0.955); } }
+@keyframes breatheShadow { 0%, 100% { transform: scaleX(1); } 50% { transform: scaleX(1.06); } }
+@keyframes zfloat { 0% { transform: translate(-6px, 10px) scale(0.5); opacity: 0; } 25% { opacity: 1; } 100% { transform: translate(5px, -6px) scale(1.1); opacity: 0; } }
+@keyframes wobble { 25% { transform: scale(1.05, 0.95) rotate(-2deg); } 50% { transform: scale(0.97, 1.03) rotate(2deg); } 75% { transform: scale(1.02, 0.98); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .root, .root * { animation: none !important; transition: none !important; }
+}

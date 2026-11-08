@@ -12,7 +12,9 @@
 // Skills are offered in the prompt, matching ones are loaded automatically,
 // and repeated requests nudge the bot to save a new skill.
 
+import { currentUser } from "./account";
 import { complete, type ToolSpec } from "./llm";
+import { memoryPrompt } from "./memory";
 import { mcpToolsFor } from "./mcp";
 import { findMentions } from "./mentions";
 import { loadSettings, type Settings } from "./settings";
@@ -53,6 +55,15 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.instructions) lines.push("", bot.instructions);
+  const me = currentUser();
+  if (me?.name) lines.push("", `The user's name is ${me.name}. Address them by name naturally (not in every message).`);
+  const mem = memoryPrompt();
+  lines.push(
+    "",
+    "Long-term memory (shared by all bots; manage it with the memory tool):",
+    mem || "(empty so far)",
+    "Save durable things worth remembering next time: the user's preferences, role, projects, people, and lessons learned. Keep entries short; never store secrets or one-off details. Don't announce memory updates unless asked.",
+  );
 
   const mates = members.filter((m) => m.id !== bot.id);
   if (chat.kind === "group" && mates.length) {
@@ -112,11 +123,49 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   return lines.join("\n");
 }
 
+const COMPACT_AT = 90_000; // characters of conversation before older turns get summarized
+const KEEP_RECENT = 8; // entries always kept word for word
+
+/**
+ * Token saver: when a chat gets long, condense everything except the most recent
+ * entries into a short summary (one cheap call), so each later model call sends
+ * far fewer tokens. The full history stays saved and visible in the app.
+ */
+async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal) {
+  const start = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
+  const live = chat.entries.slice(start);
+  const size = JSON.stringify(live).length;
+  if (size < COMPACT_AT || live.length <= KEEP_RECENT) return;
+  const old = live.slice(0, live.length - KEEP_RECENT);
+  const last = old.at(-1);
+  if (!last) return;
+  const bots = listBots();
+  const transcript = old
+    .map((e) => (e.kind === "user" ? `User: ${e.text}` : `${bots.find((b) => b.id === e.botId)?.name ?? "Bot"}: ${e.text || "(worked with tools)"}`))
+    .join("\n")
+    .slice(-60_000);
+  try {
+    const out = await complete(
+      settings,
+      "You condense chat history for an AI assistant team. Keep: the user's goals, decisions, facts, names, numbers, links, open tasks and anything promised. Drop chit-chat. Use short bullet points. Max 400 words.",
+      [{ role: "user", content: `${chat.summary ? `Previous summary:\n${chat.summary.text}\n\n` : ""}Conversation to add:\n${transcript}` }],
+      [],
+      signal,
+    );
+    if (out.text) chat.summary = { upTo: last.id, text: out.text.slice(0, 6000) };
+  } catch {
+    /* if summarizing fails, just send the full history */
+  }
+}
+
 /** The conversation as this bot sees it. */
 function viewFor(bot: Bot, chat: Chat, bots: Bot[]): Msg[] {
   const out: Msg[] = [];
   const group = chat.kind === "group";
-  for (const e of chat.entries) {
+  // Older turns may have been condensed into a summary to save tokens.
+  const cut = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
+  if (chat.summary && cut > 0) out.push({ role: "user", content: `[Summary of the earlier conversation]\n${chat.summary.text}` });
+  for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") out.push({ role: "user", content: group ? `[User]: ${e.text}` : e.text });
     else if (e.botId === bot.id) out.push(...e.steps);
     else if (e.text) out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"}]: ${e.text}` });
@@ -179,6 +228,7 @@ export function statusText(c: ToolCall): string {
     case "download_file": return "Downloading a file";
     case "use_skill": return `Loading skill “${String(i.name ?? "")}”`;
     case "save_skill": return "Saving a skill";
+    case "memory": return "Updating memory";
     default: return c.name;
   }
 }
@@ -282,6 +332,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
 
   if (typeof input.text === "string") {
     cancelApproval(chat);
+    await compactIfLong(chat, settings, signal);
     const user: UserEntry = { id: newId(), kind: "user", text: input.text, at: Date.now() };
     chat.entries.push(user);
     const mentioned = findMentions(input.text, members);

@@ -1,10 +1,10 @@
 {
   "name": "oovi",
   "productName": "oovi",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "private": true,
-  "license": "MIT",
-  "author": "oovi contributors",
+  "license": "UNLICENSED",
+  "author": "oovi",
   "description": "Your own crew of AI bots on your desktop. Bring your own API key, no subscription.",
   "main": "electron/main.cjs",
   "scripts": {

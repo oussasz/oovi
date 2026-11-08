@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { accountDir, baseDir } from "./account";
 import { PROVIDERS, type ProviderId } from "./providers-meta";
 
 export type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string };
@@ -10,7 +11,8 @@ export type BrowserConfig = {
   wsEndpoint: string;
   allowPrivateNetwork: boolean;
 };
-export type SearchProvider = "none" | "searxng" | "brave" | "tavily";
+/** auto = the AI provider's own built-in web search (Claude or Gemini), no extra setup. */
+export type SearchProvider = "auto" | "none" | "searxng" | "brave" | "tavily";
 export type SearchConfig = { provider: SearchProvider; searxngUrl: string; braveKey?: string; tavilyKey?: string };
 /** One model on one provider. */
 export type ModelRef = { provider: ProviderId; model: string };
@@ -25,6 +27,10 @@ export type Settings = {
   maxSteps: number;
   /** In groups: how many bot-to-bot hand-offs one user message may trigger. */
   maxTurns: number;
+  /** UI language: "auto" follows the system language. */
+  language: string;
+  /** Send anonymous crash reports (app version, OS, error) to oovi. */
+  crashReports: boolean;
 };
 
 export type PublicProvider = { baseUrl?: string; model?: string; hasKey: boolean; keyHint?: string };
@@ -40,13 +46,15 @@ export type SettingsPatch = {
   maxSteps?: number;
   maxTurns?: number;
   fallbacks?: ModelRef[];
+  language?: string;
+  crashReports?: boolean;
 };
 
 const DEFAULTS: Settings = {
   active: "anthropic",
   providers: {},
   fallbacks: [],
-  search: { provider: "none", searxngUrl: "http://127.0.0.1:8888" },
+  search: { provider: "auto", searxngUrl: "http://127.0.0.1:8888" },
   browser: {
     mode: "local",
     channel: "auto",
@@ -56,9 +64,12 @@ const DEFAULTS: Settings = {
   approvals: { clicksAndTyping: true },
   maxSteps: 25,
   maxTurns: 6,
+  language: "auto",
+  crashReports: true,
 };
 
-export const dataDir = () => process.env.OOVI_DATA || path.join(process.cwd(), "data");
+/** The signed-in account's data folder (falls back to a guest folder when signed out). */
+export const dataDir = () => accountDir() ?? path.join(baseDir(), "guest");
 const settingsFile = () => path.join(dataDir(), "settings.json");
 
 // ---- encryption at rest (AES-256-GCM) ----
@@ -167,7 +178,7 @@ export function updateSettings(patch: SettingsPatch): void {
 
   const q = patch.search;
   if (q) {
-    if (q.provider === "none" || q.provider === "searxng" || q.provider === "brave" || q.provider === "tavily") raw.search.provider = q.provider;
+    if (q.provider === "auto" || q.provider === "none" || q.provider === "searxng" || q.provider === "brave" || q.provider === "tavily") raw.search.provider = q.provider;
     if (typeof q.searxngUrl === "string" && /^https?:\/\/\S+$/.test(q.searxngUrl.trim())) raw.search.searxngUrl = q.searxngUrl.trim().replace(/\/+$/, "");
     if (q.clearBraveKey) delete raw.search.braveKey;
     else if (typeof q.braveKey === "string" && q.braveKey.trim()) raw.search.braveKey = encrypt(q.braveKey.trim());
@@ -185,6 +196,8 @@ export function updateSettings(patch: SettingsPatch): void {
   if (typeof patch.approvals?.clicksAndTyping === "boolean") raw.approvals.clicksAndTyping = patch.approvals.clicksAndTyping;
   if (typeof patch.maxSteps === "number" && Number.isFinite(patch.maxSteps)) raw.maxSteps = Math.min(100, Math.max(1, Math.round(patch.maxSteps)));
   if (typeof patch.maxTurns === "number" && Number.isFinite(patch.maxTurns)) raw.maxTurns = Math.min(30, Math.max(0, Math.round(patch.maxTurns)));
+  if (typeof patch.language === "string" && /^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(patch.language)) raw.language = patch.language;
+  if (typeof patch.crashReports === "boolean") raw.crashReports = patch.crashReports;
   if (Array.isArray(patch.fallbacks)) {
     raw.fallbacks = patch.fallbacks
       .filter((f) => f && typeof f.provider === "string" && f.provider in PROVIDERS && typeof f.model === "string" && f.model.trim())
