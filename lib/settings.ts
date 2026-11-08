@@ -4,7 +4,8 @@ import crypto from "node:crypto";
 import { accountDir, baseDir } from "./account";
 import { PROVIDERS, type ProviderId } from "./providers-meta";
 
-export type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string };
+/** model: this provider's default model. models: the models the user switched on (bots pick from these). */
+export type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; models?: string[] };
 export type BrowserConfig = {
   mode: "local" | "docker";
   channel: "auto" | "msedge" | "chrome" | "chromium";
@@ -31,15 +32,17 @@ export type Settings = {
   language: string;
   /** Send anonymous crash reports (app version, OS, error) to oovi. */
   crashReports: boolean;
+  /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
+  retired?: Record<string, string>;
 };
 
-export type PublicProvider = { baseUrl?: string; model?: string; hasKey: boolean; keyHint?: string };
+export type PublicProvider = { baseUrl?: string; model?: string; models?: string[]; hasKey: boolean; keyHint?: string };
 export type PublicSearch = { provider: SearchProvider; searxngUrl: string; hasBraveKey: boolean; hasTavilyKey: boolean };
 export type PublicSettings = Omit<Settings, "providers" | "search"> & { providers: Partial<Record<ProviderId, PublicProvider>>; search: PublicSearch };
 
 export type SettingsPatch = {
   active?: ProviderId;
-  providers?: Partial<Record<ProviderId, { apiKey?: string; clearKey?: boolean; baseUrl?: string; model?: string }>>;
+  providers?: Partial<Record<ProviderId, { apiKey?: string; clearKey?: boolean; baseUrl?: string; model?: string; models?: string[] }>>;
   search?: { provider?: SearchProvider; searxngUrl?: string; braveKey?: string; tavilyKey?: string; clearBraveKey?: boolean; clearTavilyKey?: boolean };
   browser?: Partial<BrowserConfig>;
   approvals?: Partial<Settings["approvals"]>;
@@ -121,6 +124,26 @@ function writeRaw(s: Settings) {
   fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2), { mode: 0o600 });
 }
 
+/** A provider stopped serving `dead`: remember the replacement and switch every setting over to it. */
+export function markRetired(provider: ProviderId, dead: string, replacement: string): void {
+  const raw = readRaw();
+  raw.retired = { ...raw.retired, [`${provider}:${dead}`]: replacement };
+  const cur = raw.providers[provider];
+  if (cur) {
+    if (cur.model === dead) cur.model = replacement;
+    if (cur.models) cur.models = [...new Set(cur.models.map((m) => (m === dead ? replacement : m)))];
+  }
+  raw.fallbacks = raw.fallbacks.map((f) => (f.provider === provider && f.model === dead ? { ...f, model: replacement } : f));
+  writeRaw(raw);
+}
+
+/** Follows the retired-model map (a -> b -> c). */
+export function currentModel(s: Settings, provider: ProviderId, model: string): string {
+  let m = model;
+  for (let i = 0; i < 5 && s.retired?.[`${provider}:${m}`]; i++) m = s.retired[`${provider}:${m}`]!;
+  return m;
+}
+
 /** Encrypt / decrypt other secrets (MCP tokens) with the same local key. */
 export const encryptSecret = (plain: string) => encrypt(plain);
 export const decryptSecret = (stored: string) => decrypt(stored);
@@ -156,7 +179,7 @@ export function publicSettings(): PublicSettings {
   const providers: PublicSettings["providers"] = {};
   for (const [id, p] of Object.entries(s.providers) as [ProviderId, ProviderConfig | undefined][]) {
     if (!p) continue;
-    providers[id] = { baseUrl: p.baseUrl, model: p.model, hasKey: !!p.apiKey, keyHint: p.apiKey ? `…${p.apiKey.slice(-4)}` : undefined };
+    providers[id] = { baseUrl: p.baseUrl, model: p.model, models: p.models, hasKey: !!p.apiKey, keyHint: p.apiKey ? `…${p.apiKey.slice(-4)}` : undefined };
   }
   const search: PublicSearch = { provider: s.search.provider, searxngUrl: s.search.searxngUrl, hasBraveKey: !!s.search.braveKey, hasTavilyKey: !!s.search.tavilyKey };
   return { ...s, providers, search };
@@ -173,6 +196,12 @@ export function updateSettings(patch: SettingsPatch): void {
     else if (typeof p.apiKey === "string" && p.apiKey.trim()) cur.apiKey = encrypt(p.apiKey.trim());
     if (typeof p.baseUrl === "string") cur.baseUrl = p.baseUrl.trim() || undefined;
     if (typeof p.model === "string") cur.model = p.model.trim() || undefined;
+    if (Array.isArray(p.models)) {
+      cur.models = [...new Set(p.models.filter((m): m is string => typeof m === "string" && !!m.trim()).map((m) => m.trim().slice(0, 160)))].slice(0, 40);
+    }
+    // The default model is always one of the switched-on models.
+    if (cur.model && !(cur.models ?? []).includes(cur.model)) cur.models = [cur.model, ...(cur.models ?? [])];
+    if (p.clearKey && PROVIDERS[id].needsKey) delete cur.models;
     raw.providers[id] = cur;
   }
 

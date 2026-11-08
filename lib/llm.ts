@@ -7,13 +7,16 @@
 // can't use tools, or times out, the next one answers instead, and the failing
 // one "cools down" for a while so later calls skip straight past it.
 
-import { PROVIDERS, providerName } from "./providers-meta";
-import type { ModelRef, Settings } from "./settings";
+import { costOf, readableError, replacementFor } from "./models";
+import { PROVIDERS, providerName, type ProviderId } from "./providers-meta";
+import { currentModel, markRetired, type ModelRef, type Settings } from "./settings";
+import { replaceBotModel } from "./store";
 import type { Msg, ToolCall } from "./types";
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
 type RawCompletion = { text: string; toolCalls: ToolCall[]; usage: { input: number; output: number } };
-export type Completion = RawCompletion & { model: string; fallback: boolean };
+/** cost: US dollars for this call, when the price is known. note: something the user should know (a model was replaced). */
+export type Completion = RawCompletion & { model: string; fallback: boolean; ref: ModelRef; cost?: number; note?: string };
 
 class ProviderError extends Error {
   constructor(
@@ -31,6 +34,9 @@ const keyOf = (r: ModelRef) => `${r.provider}:${r.model}`;
 
 export const modelLabel = (r: ModelRef) => `${providerName(r.provider)} · ${r.model}`;
 const randomId = () => `call_${Math.random().toString(36).slice(2, 12)}`;
+/** Longest reply we ask for. Without a cap some routers reserve credit for 64k+ tokens. */
+const MAX_OUTPUT = 8192;
+const MAX_CHAIN = 8;
 
 function sleep(ms: number, signal?: AbortSignal) {
   return new Promise<void>((resolve, reject) => {
@@ -46,73 +52,139 @@ function sleep(ms: number, signal?: AbortSignal) {
   });
 }
 
-/** The bot's own model first, then the backups, without duplicates. */
-export function modelChain(s: Settings): ModelRef[] {
-  const primary: ModelRef = { provider: s.active, model: s.providers[s.active]?.model || PROVIDERS[s.active].model };
+/** A provider the user can actually call: it has a key, or needs none and was set up. */
+export function connected(s: Settings, p: ProviderId): boolean {
+  const cfg = s.providers[p];
+  if (!cfg) return false;
+  return PROVIDERS[p].needsKey ? !!cfg.apiKey : !!(cfg.models?.length || cfg.model || cfg.baseUrl);
+}
+
+/** Every model the user switched on, across connected providers. */
+export function enabledModels(s: Settings): ModelRef[] {
   const out: ModelRef[] = [];
-  for (const r of [primary, ...(s.fallbacks ?? [])]) {
-    if (r.model && r.provider in PROVIDERS && !out.some((o) => keyOf(o) === keyOf(r))) out.push(r);
+  for (const p of Object.keys(PROVIDERS) as ProviderId[]) {
+    if (!connected(s, p)) continue;
+    const cfg = s.providers[p] ?? {};
+    // An explicit (even empty) list wins; older settings only had one model per provider.
+    const list = cfg.models ?? [cfg.model || PROVIDERS[p].model].filter(Boolean);
+    for (const m of list) out.push({ provider: p, model: currentModel(s, p, m) });
   }
   return out;
 }
 
+/**
+ * Who answers, in order: the bot's own model, the backups from Settings, then
+ * the user's other switched-on models, so a bot is never stuck while any
+ * connected model works.
+ */
+export function modelChain(s: Settings): ModelRef[] {
+  const primary: ModelRef = { provider: s.active, model: s.providers[s.active]?.model || PROVIDERS[s.active].model };
+  const out: ModelRef[] = [];
+  for (const r0 of [primary, ...(s.fallbacks ?? []), ...enabledModels(s)]) {
+    const r = { provider: r0.provider, model: currentModel(s, r0.provider, r0.model) };
+    if (r.model && r.provider in PROVIDERS && !out.some((o) => keyOf(o) === keyOf(r))) out.push(r);
+    if (out.length >= MAX_CHAIN) break;
+  }
+  return out;
+}
+
+const MODEL_GONE = /not found|does not exist|no longer (available|supported)|unknown model|invalid model|model .*(deprecated|retired|decommissioned)|is not supported/i;
+
+/** Plain-language reason for a failed call. */
+function explain(ref: ModelRef, status: number, raw: string): string {
+  const who = providerName(ref.provider);
+  if (status === 401 || status === 403) return `${who} didn't accept the API key. Check it in Settings > AI models.`;
+  if (status === 402) return `${who}: not enough credit on your account. ${raw}`;
+  if (status === 404 || MODEL_GONE.test(raw)) return `${ref.model} isn't available at ${who} anymore.`;
+  if (status === 429) return `${who} is rate-limiting your key right now. Wait a minute, or switch on another model.`;
+  if (status >= 500 || status === 0) return `${who} isn't answering right now. ${raw}`;
+  return `${who}: ${raw}`;
+}
+
 export async function complete(s: Settings, system: string, messages: Msg[], tools: ToolSpec[], signal?: AbortSignal): Promise<Completion> {
   const chain = modelChain(s);
-  if (!chain.length) throw new Error("Pick a model in Settings.");
+  if (!chain.length) throw new Error("Connect an AI model in Settings > AI models.");
   const now = Date.now();
   // Cooling-down models move to the end instead of being skipped, so something is always tried.
   const ready = chain.filter((r) => (cooldown.get(keyOf(r)) ?? 0) <= now);
   const cooling = chain.filter((r) => (cooldown.get(keyOf(r)) ?? 0) > now);
   const errors: string[] = [];
+  const queue = [...ready, ...cooling];
+  let note: string | undefined;
 
-  for (const ref of [...ready, ...cooling]) {
-    for (let attempt = 0; attempt < 2; attempt++) {
+  for (let qi = 0; qi < queue.length; qi++) {
+    const ref = queue[qi]!;
+    let maxOut = MAX_OUTPUT;
+    for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        const out = await callOnce(s, ref, system, messages, tools, signal);
+        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal);
         cooldown.delete(keyOf(ref));
-        return { ...out, model: modelLabel(ref), fallback: keyOf(ref) !== keyOf(chain[0]!) };
+        const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
+        return { ...out, model: modelLabel(ref), ref, cost, fallback: keyOf(ref) !== keyOf(chain[0]!), note };
       } catch (e) {
         if (signal?.aborted) throw e;
         const status = e instanceof ProviderError ? e.status : 0;
         const retryAfter = e instanceof ProviderError ? e.retryAfter : undefined;
-        const msg = (e as Error).message || String(e);
+        const raw = (e as Error).message || String(e);
         const busy = status === 429 || status === 503 || status === 529;
         // A short "try again in a few seconds" is worth waiting for once.
         if (busy && attempt === 0 && retryAfter && retryAfter <= 8) {
           await sleep(retryAfter * 1000, signal);
           continue;
         }
+        // Not enough credit for a long reply: ask for a shorter one.
+        const afford = Number((raw.match(/can only afford (\d+)/i) ?? [])[1]);
+        if (status === 402 && afford >= 1024 && afford < maxOut) {
+          maxOut = Math.floor(afford * 0.9);
+          continue;
+        }
+        // The provider retired this model: switch to its closest current model, for good.
+        if ((status === 404 || (status === 400 && MODEL_GONE.test(raw))) && attempt === 0) {
+          const repl = await replacementFor(ref.provider, ref.model, s).catch(() => null);
+          if (repl && repl !== ref.model) {
+            markRetired(ref.provider, ref.model, repl);
+            replaceBotModel(ref.provider, ref.model, repl);
+            note = `${ref.model} was retired by ${providerName(ref.provider)}; switched to ${repl}.`;
+            (s.retired ??= {})[keyOf(ref)] = repl;
+            const next = { provider: ref.provider, model: repl };
+            if (!queue.some((q) => keyOf(q) === keyOf(next))) queue.splice(qi + 1, 0, next);
+          }
+        }
         const coolSeconds = busy
           ? Math.max(60, retryAfter ?? 0)
-          : status === 404 || (status === 400 && /model|tool|function/i.test(msg))
+          : status === 404 || (status === 400 && /model|tool|function/i.test(raw))
             ? 3600
-            : status === 401 || status === 403
+            : status === 401 || status === 403 || status === 402
               ? 600
               : status >= 500
                 ? 30
                 : 0;
         if (coolSeconds) cooldown.set(keyOf(ref), Date.now() + coolSeconds * 1000);
-        errors.push(`${modelLabel(ref)}: ${(msg.split("\n")[0] ?? msg).slice(0, 240)}`);
+        errors.push(`${modelLabel(ref)}: ${explain(ref, status, raw)}`);
         break;
       }
     }
   }
-  throw new Error(errors.length > 1 ? `Every model in your chain failed:\n- ${errors.join("\n- ")}` : (errors[0] ?? "No model answered."));
+  throw new Error(
+    errors.length > 1
+      ? `None of your models could answer:\n- ${errors.join("\n- ")}\nAdd or fix a model in Settings > AI models.`
+      : `${errors[0] ?? "No model answered."}${chain.length === 1 ? " Tip: switch on a second model in Settings > AI models so oovi can fall back to it." : ""}`,
+  );
 }
 
-async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], signal?: AbortSignal): Promise<RawCompletion> {
+async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal?: AbortSignal): Promise<RawCompletion> {
   const meta = PROVIDERS[ref.provider];
   const cfg = s.providers[ref.provider] ?? {};
   const baseUrl = (cfg.baseUrl || meta.baseUrl).replace(/\/+$/, "");
-  if (!baseUrl) throw new Error(`Set a base URL for ${meta.label} in Settings.`);
-  if (meta.needsKey && !cfg.apiKey) throw new Error(`No API key for ${meta.label}. Add one in Settings.`);
+  if (!baseUrl) throw new Error(`Set a server address for ${meta.label} in Settings.`);
+  if (meta.needsKey && !cfg.apiKey) throw new ProviderError(`No API key for ${meta.label}. Add one in Settings.`, 401);
   const timeout = AbortSignal.timeout(120_000);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const req: Req = { label: meta.label, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, signal: sig };
+  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, signal: sig };
   return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible(req, ref.provider === "openrouter");
 }
 
-type Req = { label: string; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; signal?: AbortSignal };
+type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; signal?: AbortSignal };
 
 async function post(label: string, url: string, headers: Record<string, string>, body: unknown, signal?: AbortSignal): Promise<unknown> {
   let res: Response;
@@ -125,7 +197,7 @@ async function post(label: string, url: string, headers: Record<string, string>,
   }
   if (!res.ok) {
     const retry = Number(res.headers.get("retry-after"));
-    throw new ProviderError(`${label} returned ${res.status}: ${(await res.text()).slice(0, 400)}`, res.status, Number.isFinite(retry) && retry > 0 ? retry : undefined);
+    throw new ProviderError(readableError(await res.text()) || `HTTP ${res.status}`, res.status, Number.isFinite(retry) && retry > 0 ? retry : undefined);
   }
   return res.json();
 }
@@ -171,7 +243,7 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     { "x-api-key": r.key ?? "", "anthropic-version": "2023-06-01" },
     {
       model: r.model,
-      max_tokens: 8192,
+      max_tokens: r.maxOut,
       system: [{ type: "text", text: r.system, cache_control: CACHE }],
       messages: msgs,
       ...(tools.length ? { tools } : {}),
@@ -220,6 +292,8 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
     {
       model: r.model,
       messages: msgs,
+      // OpenAI's newer models only accept max_completion_tokens.
+      ...(r.provider === "openai" ? { max_completion_tokens: r.maxOut } : { max_tokens: r.maxOut }),
       ...(r.tools.length ? { tools: r.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {}),
     },
     r.signal,
@@ -230,7 +304,7 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
   };
 
   // Some routers (OpenRouter) report upstream failures inside a 200 response.
-  if (j.error) throw new ProviderError(`${r.label}: ${j.error.message ?? "upstream error"}`, j.error.code ?? 502);
+  if (j.error) throw new ProviderError(j.error.message ?? "upstream error", j.error.code ?? 502);
   if (!j.choices?.length) throw new ProviderError(`${r.label} returned no answer.`, 502);
 
   const msg = j.choices[0]?.message ?? {};

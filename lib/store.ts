@@ -146,6 +146,19 @@ export function updateBot(id: string, input: BotInput): Bot | null {
   return next;
 }
 
+/** Point bots that use a retired model at its replacement. */
+export function replaceBotModel(provider: ProviderId, dead: string, replacement: string): void {
+  const bots = listBots();
+  let changed = false;
+  for (const b of bots) {
+    if (b.provider === provider && b.model === dead) {
+      b.model = replacement;
+      changed = true;
+    }
+  }
+  if (changed) writeJson(botsFile(), { bots });
+}
+
 export function deleteBot(id: string): void {
   writeJson(botsFile(), { bots: listBots().filter((b) => b.id !== id) });
   for (const c of listChats()) {

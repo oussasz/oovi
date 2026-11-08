@@ -59,6 +59,13 @@ export function entryMood(e: BotEntry, isLast: boolean): Mood {
   return "online";
 }
 
+/** "$0.0042", "$1.20", or the word for free. */
+export function fmtCost(usd: number, freeLabel: string): string {
+  if (usd === 0) return freeLabel;
+  if (usd < 0.0001) return "<$0.0001";
+  return `$${usd < 0.01 ? usd.toFixed(4) : usd < 1 ? usd.toFixed(3) : usd.toFixed(2)}`;
+}
+
 /** Face for the tool a bot is using: a book for searching/reading, a laptop for the browser. */
 export function toolMood(tool: string): Mood {
   if (tool === "web_search" || tool === "read_page" || tool === "use_skill" || tool === "memory" || tool === "read_file" || tool === "list_files" || tool === "search_files") return "reading";

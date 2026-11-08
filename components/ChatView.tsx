@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { api, botMood, entryMood, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
+import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
 import { FACE_COLORS } from "@/lib/faces";
 import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
@@ -82,6 +82,11 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
           {bot?.role && <span className="role" style={{ background: FACE_COLORS[bot.face.color] }}>{bot.role}</span>}
           <span>{timeLabel(e.at, tag)}</span>
           {tokens > 0 && <span title={t("chat.tokensTitle", { input: e.usage.input, output: e.usage.output })}>{t("chat.tokens", { n: fmtTokens(tokens, tag) })}</span>}
+          {typeof e.cost === "number" && tokens > 0 && (
+            <span className="cost" title={t("chat.costTitle")}>
+              {fmtCost(e.cost, t("common.free"))}
+            </span>
+          )}
           {e.model && (
             <span className={`model-badge${e.fallback ? " fb" : ""}`} title={e.fallback ? t("chat.fallbackTitle") : t("chat.modelTitle")}>
               {e.fallback ? t("chat.backup") : ""}
@@ -90,6 +95,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
           )}
         </div>
 
+        {e.note && <div className="msg-note">{e.note}</div>}
         {rows.length > 0 && (
           <div className="steps">
             {collapsed ? (

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, refreshSidebar } from "@/lib/client";
 import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
-import { PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
+import { chainOf, enabledRefs, priceText, refKey, type ModelInfo } from "@/lib/model-list";
+import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
 import type { Bot, BotInput } from "@/lib/types";
 import Face from "./Face";
@@ -37,24 +38,19 @@ export default function BotEditor({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>([]);
-  const [modelList, setModelList] = useState<Partial<Record<ProviderId, { id: string; free?: boolean; tools?: boolean }[]>>>({});
-  const [modelState, setModelState] = useState<Partial<Record<ProviderId, "loading" | "error" | "ok">>>({});
-  const [customModel, setCustomModel] = useState(false);
+  const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
   const { t, rich } = useI18n();
-  const pickedProvider = d?.provider;
 
-  // Load the chosen provider's real model list for the dropdown.
+  // Prices for the models the user switched on.
   useEffect(() => {
-    if (!pickedProvider || modelState[pickedProvider]) return;
-    setModelState((s) => ({ ...s, [pickedProvider]: "loading" }));
-    fetch(`/api/models?provider=${pickedProvider}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error())))
-      .then((j: { models: { id: string; free?: boolean; tools?: boolean }[] }) => {
-        setModelList((m) => ({ ...m, [pickedProvider]: j.models }));
-        setModelState((s) => ({ ...s, [pickedProvider]: "ok" }));
-      })
-      .catch(() => setModelState((s) => ({ ...s, [pickedProvider]: "error" })));
-  }, [pickedProvider, modelState]);
+    if (!settings) return;
+    for (const p of new Set(enabledRefs(settings).map((r) => r.provider))) {
+      fetch(`/api/models?provider=${p}`)
+        .then((r) => (r.ok ? (r.json() as Promise<{ models: ModelInfo[] }>) : Promise.reject(new Error())))
+        .then((j) => setLists((m) => ({ ...m, [p]: j.models })))
+        .catch(() => {});
+    }
+  }, [settings]);
 
   useEffect(() => {
     (async () => {
@@ -127,8 +123,16 @@ export default function BotEditor({ id }: { id: string }) {
     </div>
   );
 
-  const def = settings ? t("bot.default", { provider: PROVIDERS[settings.active].label, model: settings.providers[settings.active]?.model || PROVIDERS[settings.active].model }) : t("bot.defaultPlain");
-  const provider = d.provider;
+  const main = settings ? chainOf(settings)[0] : undefined;
+  const def = main ? t("bot.defaultModel", { model: main.model, provider: providerName(main.provider) }) : t("bot.defaultPlain");
+  const mine = settings ? enabledRefs(settings) : [];
+  const picked = d.provider && d.model ? `${d.provider}:${d.model}` : "";
+  const pickedMissing = !!picked && !mine.some((r) => refKey(r) === picked);
+  const priceLabels = { free: t("models.free"), perM: t("models.perM") };
+  const optionText = (p: ProviderId, model: string) => {
+    const price = priceText(lists[p]?.find((m) => m.id === model), priceLabels);
+    return price ? `${model}  ·  ${price}` : model;
+  };
 
   return (
     <div className="page editor">
@@ -213,50 +217,51 @@ export default function BotEditor({ id }: { id: string }) {
         <section className="card">
           <h2>{t("bot.brain")}</h2>
           <p className="muted">{t("bot.brainSub")}</p>
-          <div className="grid2">
-            <label className="field">
-              {t("bot.provider")}
-              <select value={provider ?? ""} onChange={(e) => { setCustomModel(false); set({ provider: (e.target.value || undefined) as ProviderId | undefined, model: undefined }); }}>
-                <option value="">{def}</option>
-                {PROVIDER_IDS.map((p) => (
-                  <option key={p} value={p}>
-                    {PROVIDERS[p].label}
-                    {PROVIDERS[p].needsKey && !settings?.providers[p]?.hasKey ? t("bot.noKeyYet") : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              {t("common.model")}
-              {!provider ? (
-                <input value="" disabled placeholder={t("bot.usesDefault")} />
-              ) : modelList[provider]?.length && !customModel ? (
-                <select
-                  value={d.model ?? ""}
-                  onChange={(e) => (e.target.value === "__custom" ? setCustomModel(true) : set({ model: e.target.value || undefined }))}
-                >
-                  <option value="">{t("bot.providerDefault", { model: settings?.providers[provider]?.model || PROVIDERS[provider].model || t("bot.none") })}</option>
-                  {d.model && !modelList[provider]?.some((m) => m.id === d.model) && <option value={d.model}>{d.model}</option>}
-                  {modelList[provider]?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {m.id}
-                      {m.free ? `  · ${t("common.free")}` : ""}
-                      {m.tools === false ? `  · ${t("common.noTools")}` : ""}
-                    </option>
-                  ))}
-                  <option value="__custom">{t("bot.otherModel")}</option>
-                </select>
-              ) : (
-                <input
-                  value={d.model ?? ""}
-                  placeholder={settings?.providers[provider]?.model || PROVIDERS[provider].model || t("common.modelName")}
-                  onChange={(e) => set({ model: e.target.value || undefined })}
-                />
+          <label className="field">
+            {t("common.model")}
+            <select
+              value={picked}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (!v) return set({ provider: undefined, model: undefined });
+                const i = v.indexOf(":");
+                set({ provider: v.slice(0, i) as ProviderId, model: v.slice(i + 1) });
+              }}
+            >
+              <option value="">{def}</option>
+              {pickedMissing && d.provider && (
+                <option value={picked}>
+                  {t("bot.modelOff", { model: d.model ?? "", provider: providerName(d.provider) })}
+                </option>
               )}
-              {provider && modelState[provider] === "loading" && <span className="hint">{t("bot.loadingModels")}</span>}
-              {provider && modelState[provider] === "error" && <span className="hint">{t("bot.cantList")}</span>}
-            </label>
-          </div>
+              {PROVIDER_IDS.filter((p) => mine.some((r) => r.provider === p)).map((p) => (
+                <optgroup key={p} label={PROVIDERS[p].label}>
+                  {mine
+                    .filter((r) => r.provider === p)
+                    .map((r) => (
+                      <option key={refKey(r)} value={refKey(r)}>
+                        {optionText(p, r.model)}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+            <span className="hint">
+              {mine.length === 0 ? t("bot.noModelsYet") : t("bot.modelHint")}{" "}
+              <Link
+                href="/settings"
+                onClick={() => {
+                  try {
+                    localStorage.setItem("oovi.settings.tab", "models");
+                  } catch {
+                    /* storage unavailable */
+                  }
+                }}
+              >
+                {t("bot.manageModels")}
+              </Link>
+            </span>
+          </label>
         </section>
 
         <section className="card">

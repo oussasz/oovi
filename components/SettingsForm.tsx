@@ -1,18 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
-import type { ModelRef, PublicSettings, SettingsPatch } from "@/lib/settings";
+import type { PublicSettings, SettingsPatch } from "@/lib/settings";
 import { resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import ModelsSettings from "./ModelsSettings";
 import { UpdateCard } from "./Updates";
 
-type Draft = { apiKey: string; model: string; baseUrl: string };
-type ModelInfo = { id: string; name?: string; free?: boolean; tools?: boolean; context?: number };
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "profile" | "models" | "free" | "accounts" | "search" | "browser" | "safety" | "language" | "data" | "about";
+type Tab = "profile" | "models" | "accounts" | "search" | "browser" | "safety" | "language" | "data" | "about";
 type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
 /** "Français (French)": the language's own name, plus its name in the UI language when different. */
@@ -31,7 +29,6 @@ function languageLabel(id: Locale, uiTag: string): string {
 const TABS: { id: Tab; icon: IconName }[] = [
   { id: "profile", icon: "user" },
   { id: "models", icon: "cpu" },
-  { id: "free", icon: "spark" },
   { id: "accounts", icon: "globe" },
   { id: "search", icon: "zoomIn" },
   { id: "browser", icon: "cursor" },
@@ -41,21 +38,14 @@ const TABS: { id: Tab; icon: IconName }[] = [
   { id: "about", icon: "info" },
 ];
 
-const sameRef = (a: ModelRef, b: ModelRef) => a.provider === b.provider && a.model === b.model;
-
 export default function SettingsForm() {
   const [s, setS] = useState<PublicSettings | null>(null);
-  const [drafts, setDrafts] = useState<Record<ProviderId, Draft> | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchKeys, setSearchKeys] = useState({ brave: "", tavily: "" });
-  const [models, setModels] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
-  const [loading, setLoading] = useState<ProviderId | "free" | null>(null);
-  const [fb, setFb] = useState<ModelRef>({ provider: "openrouter", model: "" });
   const [acc, setAcc] = useState<Accounts | null>(null);
   const [accBusy, setAccBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("profile");
-  const [open, setOpen] = useState<Set<ProviderId>>(new Set());
   const [account, setAccount] = useState<Account | null>(null);
   const [profile, setProfile] = useState<{ name: string; image: string | null }>({ name: "", image: null });
   const { t, rich, tag } = useI18n();
@@ -105,10 +95,7 @@ export default function SettingsForm() {
     }
   }
 
-  function apply(next: PublicSettings) {
-    setS(next);
-    setDrafts(Object.fromEntries(PROVIDER_IDS.map((id) => [id, { apiKey: "", model: next.providers[id]?.model ?? "", baseUrl: next.providers[id]?.baseUrl ?? "" }])) as Record<ProviderId, Draft>);
-  }
+  const apply = useCallback((next: PublicSettings) => setS(next), []);
 
   const loadAcc = useCallback(async () => {
     try {
@@ -121,10 +108,7 @@ export default function SettingsForm() {
   useEffect(() => {
     fetch("/api/settings")
       .then((r) => r.json())
-      .then((next: PublicSettings) => {
-        apply(next);
-        setOpen(new Set([next.active]));
-      })
+      .then((next: PublicSettings) => apply(next))
       .catch((e) => setMsg({ ok: false, text: String(e) }));
     void loadAcc();
     try {
@@ -133,7 +117,7 @@ export default function SettingsForm() {
     } catch {
       /* storage unavailable */
     }
-  }, [loadAcc]);
+  }, [loadAcc, apply]);
 
   useEffect(() => {
     if (!acc?.signInOpen) return;
@@ -160,14 +144,11 @@ export default function SettingsForm() {
   }
 
   async function save(quiet = false): Promise<boolean> {
-    if (!s || !drafts) return false;
+    if (!s) return false;
     setSaving(true);
     if (!quiet) setMsg(null);
     try {
       const next = await post({
-        active: s.active,
-        providers: Object.fromEntries(PROVIDER_IDS.map((id) => [id, { apiKey: drafts[id].apiKey || undefined, model: drafts[id].model, baseUrl: drafts[id].baseUrl }])),
-        fallbacks: s.fallbacks,
         search: { provider: s.search.provider, searxngUrl: s.search.searxngUrl, braveKey: searchKeys.brave || undefined, tavilyKey: searchKeys.tavily || undefined },
         browser: s.browser,
         approvals: s.approvals,
@@ -185,88 +166,6 @@ export default function SettingsForm() {
       return false;
     } finally {
       setSaving(false);
-    }
-  }
-
-  async function test() {
-    if (!(await save())) return;
-    setMsg({ ok: true, text: t("common.testing") });
-    const r = (await fetch("/api/settings/test", { method: "POST" }).then((x) => x.json())) as { ok: boolean; provider: string; reply?: string; ms?: number; error?: string; model?: string };
-    setMsg(r.ok ? { ok: true, text: t("settings.msg.answered", { model: r.model ?? r.provider, reply: r.reply ?? "", ms: r.ms ?? 0 }) } : { ok: false, text: r.error ?? t("settings.msg.failed") });
-  }
-
-  async function removeKey(id: ProviderId) {
-    try {
-      await post({ providers: { [id]: { clearKey: true } } });
-      setMsg({ ok: true, text: t("settings.msg.keyRemoved", { provider: PROVIDERS[id].label }) });
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    }
-  }
-
-  async function fetchModels(id: ProviderId): Promise<ModelInfo[]> {
-    const r = await fetch(`/api/models?provider=${id}`);
-    const j = (await r.json()) as { models?: ModelInfo[]; error?: string };
-    if (!r.ok || !j.models) throw new Error(j.error ?? t("settings.msg.cantLoadModels"));
-    setModels((m) => ({ ...m, [id]: j.models }));
-    return j.models;
-  }
-
-  async function loadModels(id: ProviderId) {
-    if (!(await save(true))) return;
-    setLoading(id);
-    try {
-      const list = await fetchModels(id);
-      const free = list.filter((m) => m.free).length;
-      setMsg({ ok: true, text: free ? t("settings.msg.modelsLoadedFree", { provider: providerName(id), count: list.length, free }) : t("settings.msg.modelsLoaded", { provider: providerName(id), count: list.length }) });
-    } catch (e) {
-      setMsg({ ok: false, text: `${providerName(id)}: ${(e as Error).message}` });
-    } finally {
-      setLoading(null);
-    }
-  }
-
-  /** One click: pick free Gemini + OpenRouter models as the main model and backups. */
-  async function setupFree() {
-    if (!s || !(await save(true))) return;
-    const gem = !!s.providers.gemini?.hasKey;
-    const or = !!s.providers.openrouter?.hasKey;
-    if (!gem && !or) {
-      setMsg({ ok: false, text: t("settings.msg.needFreeKey") });
-      return;
-    }
-    setLoading("free");
-    try {
-      const picks: ModelRef[] = [];
-      const problems: string[] = [];
-      if (gem) {
-        try {
-          const list = (await fetchModels("gemini")).filter((m) => /flash/.test(m.id) && !/preview|exp|thinking|8b/.test(m.id)).sort((a, b) => b.id.localeCompare(a.id));
-          for (const m of list.slice(0, 2)) picks.push({ provider: "gemini", model: m.id });
-        } catch (e) {
-          problems.push(`Gemini: ${(e as Error).message}`);
-        }
-      }
-      if (or) {
-        try {
-          const list = (await fetchModels("openrouter")).filter((m) => m.free && m.tools).sort((a, b) => (b.context ?? 0) - (a.context ?? 0));
-          for (const m of list.slice(0, 4)) picks.push({ provider: "openrouter", model: m.id });
-        } catch (e) {
-          problems.push(`OpenRouter: ${(e as Error).message}`);
-        }
-      }
-      if (!picks.length) throw new Error(problems.join(" ") || t("settings.msg.noFreeModels"));
-      const activeReady = !PROVIDERS[s.active].needsKey || !!s.providers[s.active]?.hasKey;
-      const main = activeReady ? undefined : picks.shift();
-      const fallbacks = [...picks, ...s.fallbacks].filter((r, i, all) => all.findIndex((x) => sameRef(x, r)) === i).slice(0, 12);
-      await post({ ...(main ? { active: main.provider, providers: { [main.provider]: { model: main.model } } } : {}), fallbacks });
-      const backups = t("settings.msg.freeBackups", { count: picks.length });
-      const done = main ? t("settings.msg.freeDoneMain", { main: `${providerName(main.provider)} · ${main.model}`, backups }) : t("settings.msg.freeDone", { backups });
-      setMsg({ ok: true, text: `${done}${problems.length ? ` (${problems.join(" ")})` : ""}` });
-    } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
-    } finally {
-      setLoading(null);
     }
   }
 
@@ -295,181 +194,13 @@ export default function SettingsForm() {
     }
   }
 
-  if (!s || !drafts) return <main className="settings">{msg ? <p className="msg-err">{msg.text}</p> : t("common.loading")}</main>;
+  if (!s) return <main className="settings">{msg ? <p className="msg-err">{msg.text}</p> : t("common.loading")}</main>;
 
-  const setDraft = (id: ProviderId, patch: Partial<Draft>) => setDrafts({ ...drafts, [id]: { ...drafts[id], ...patch } });
-  const primary: ModelRef = { provider: s.active, model: drafts[s.active].model || PROVIDERS[s.active].model || t("settings.noModel") };
-  const setFallbacks = (fallbacks: ModelRef[]) => setS({ ...s, fallbacks });
-  const move = (i: number, d: number) => {
-    const next = [...s.fallbacks];
-    const [x] = next.splice(i, 1);
-    if (x) next.splice(Math.max(0, Math.min(next.length, i + d)), 0, x);
-    setFallbacks(next);
-  };
-  const toggleCard = (id: ProviderId) => {
-    const next = new Set(open);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    setOpen(next);
-  };
   const current = TABS.find((t) => t.id === tab) ?? TABS[0]!;
 
   // ---------- sections ----------
 
-  const modelsSection = (
-    <>
-      <p className="lead">{t("settings.models.lead")}</p>
-      {PROVIDER_IDS.map((id) => {
-        const meta = PROVIDERS[id];
-        const pub = s.providers[id];
-        const d = drafts[id];
-        const list = models[id];
-        const isOpen = open.has(id);
-        return (
-          <div key={id} className={`card collapsible${s.active === id ? " active" : ""}${isOpen ? " open" : ""}`}>
-            <div className="card-head">
-              <label onClick={(e) => e.stopPropagation()}>
-                <input type="radio" name="active" checked={s.active === id} onChange={() => setS({ ...s, active: id })} aria-label={t("settings.models.useAsMain", { provider: meta.label })} />
-              </label>
-              <button type="button" className="card-toggle" onClick={() => toggleCard(id)} aria-expanded={isOpen}>
-                <span className="card-title">{meta.label}</span>
-                <span className="card-sub">{d.model || meta.model}</span>
-                <span className="spacer" />
-                {meta.free && <span className="badge ok">{t("settings.models.freeTier")}</span>}
-                {meta.needsKey ? pub?.hasKey ? <span className="badge ok">{t("settings.models.keySaved", { hint: pub.keyHint ?? "" })}</span> : <span className="badge">{t("settings.models.noKey")}</span> : <span className="badge">{t("settings.models.noKeyNeeded")}</span>}
-                <Icon name="chevron" size={16} className="chev" />
-              </button>
-            </div>
-            {isOpen && (
-              <div className="card-body">
-                {meta.note && <p className="note">{meta.note}</p>}
-                <div className="grid">
-                  <label className="field full">
-                    {t("common.apiKey")} {meta.keyUrl && <a href={meta.keyUrl} target="_blank" rel="noreferrer noopener">{t("common.getOne")}</a>}
-                    <input type="password" autoComplete="off" value={d.apiKey} placeholder={pub?.hasKey ? t("settings.models.keyPlaceholderSaved") : meta.needsKey ? t("common.pasteKey") : t("settings.models.optional")} onChange={(e) => setDraft(id, { apiKey: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    {t("common.model")}{" "}
-                    {list && (
-                      <span className="hint">
-                        {list.some((m) => m.free) ? t("settings.models.availableFree", { count: list.length, free: list.filter((m) => m.free).length }) : t("settings.models.available", { count: list.length })}
-                      </span>
-                    )}
-                    <input list={`models-${id}`} value={d.model} placeholder={meta.model || t("common.modelName")} onChange={(e) => setDraft(id, { model: e.target.value })} />
-                  </label>
-                  <label className="field">
-                    {t("settings.models.baseUrl")}
-                    <input value={d.baseUrl} placeholder={meta.baseUrl || "https://…/v1"} onChange={(e) => setDraft(id, { baseUrl: e.target.value })} />
-                  </label>
-                </div>
-                <datalist id={`models-${id}`}>
-                  {list?.map((m) => (
-                    <option key={m.id} value={m.id}>
-                      {[m.free ? t("common.free") : "", m.tools === false ? t("common.noTools") : "", m.name ?? ""].filter(Boolean).join(" · ")}
-                    </option>
-                  ))}
-                </datalist>
-                <div className="row-btns">
-                  <button className="btn sm" onClick={() => void loadModels(id)} disabled={loading !== null || (meta.needsKey && id !== "openrouter" && !pub?.hasKey && !d.apiKey)}>
-                    {loading === id ? t("common.loading") : t("settings.models.load")}
-                  </button>
-                  {pub?.hasKey && (
-                    <button className="btn sm" onClick={() => void removeKey(id)}>{t("settings.models.removeKey")}</button>
-                  )}
-                </div>
-              </div>
-            )}
-          </div>
-        );
-      })}
-    </>
-  );
-
-  const freeSection = (
-    <>
-      <p className="lead">{t("settings.free.lead")}</p>
-      <div className="card">
-        <h3 className="card-h">{t("settings.free.setup")}</h3>
-        <div className="free-steps">
-          <div>
-            <b>{t("settings.free.step1")}</b>
-            {rich("settings.free.pasteUnder", {
-              link: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer noopener">Google AI Studio</a>,
-              target: <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "gemini"])); }}>{t("settings.free.toGemini")}</button>,
-            })}
-          </div>
-          <div>
-            <b>{t("settings.free.step2")}</b>
-            {rich("settings.free.pasteUnder", {
-              link: <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer noopener">openrouter.ai/keys</a>,
-              target: <button className="link-btn" onClick={() => { pickTab("models"); setOpen(new Set([...open, "openrouter"])); }}>{t("settings.free.toOpenRouter")}</button>,
-            })}
-          </div>
-          <div>
-            <b>{t("settings.free.step3")}</b>
-            {t("settings.free.step3Text")}
-          </div>
-        </div>
-        <button className="btn primary" onClick={() => void setupFree()} disabled={loading !== null || saving}>
-          {loading === "free" ? t("settings.free.finding") : t("settings.free.setup")}
-        </button>
-      </div>
-
-      <div className="card">
-        <h3 className="card-h">{t("settings.free.order")}</h3>
-        <div className="fb-list">
-          {[primary, ...s.fallbacks].map((r, i) => (
-            <div key={`${r.provider}:${r.model}:${i}`} className="fb-row">
-              <span className="fb-num">{i + 1}</span>
-              <b>{providerName(r.provider)}</b>
-              <code>{r.model}</code>
-              <span className="spacer" />
-              {i === 0 ? (
-                <span className="badge">{t("settings.free.main")}</span>
-              ) : (
-                <>
-                  <button className="icon-btn sm" onClick={() => move(i - 1, -1)} disabled={i === 1} aria-label={t("settings.free.moveUp")} title={t("settings.free.moveUp")}>↑</button>
-                  <button className="icon-btn sm" onClick={() => move(i - 1, 1)} disabled={i === s.fallbacks.length} aria-label={t("settings.free.moveDown")} title={t("settings.free.moveDown")}>↓</button>
-                  <button className="icon-btn sm" onClick={() => setFallbacks(s.fallbacks.filter((_, j) => j !== i - 1))} aria-label={t("common.remove")} title={t("common.remove")}>
-                    <Icon name="close" size={14} />
-                  </button>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="fb-add">
-          <label className="field">
-            {t("settings.free.addBackup")}
-            <select value={fb.provider} onChange={(e) => setFb({ provider: e.target.value as ProviderId, model: "" })}>
-              {PROVIDER_IDS.map((p) => (
-                <option key={p} value={p}>{providerName(p)}</option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            {t("common.model")}
-            <input list={`fb-models-${fb.provider}`} value={fb.model} placeholder={PROVIDERS[fb.provider].model || t("common.modelName")} onChange={(e) => setFb({ ...fb, model: e.target.value })} />
-            <datalist id={`fb-models-${fb.provider}`}>
-              {models[fb.provider]?.map((m) => <option key={m.id} value={m.id}>{m.free ? t("common.free") : ""}</option>)}
-            </datalist>
-          </label>
-          <button
-            className="btn"
-            disabled={!fb.model.trim()}
-            onClick={() => {
-              const ref = { provider: fb.provider, model: fb.model.trim() };
-              if (!s.fallbacks.some((x) => sameRef(x, ref))) setFallbacks([...s.fallbacks, ref]);
-              setFb({ ...fb, model: "" });
-            }}
-          >
-            <Icon name="plus" size={16} /> {t("common.add")}
-          </button>
-        </div>
-        <p className="note">{t("settings.free.note")}</p>
-      </div>
-    </>
-  );
+  const modelsSection = <ModelsSettings s={s} onSaved={apply} onMsg={setMsg} />;
 
   const accountsSection = (
     <>
@@ -697,7 +428,6 @@ export default function SettingsForm() {
   const sections: Record<Tab, React.ReactNode> = {
     profile: profileSection,
     models: modelsSection,
-    free: freeSection,
     accounts: accountsSection,
     search: searchSection,
     browser: browserSection,
@@ -727,11 +457,8 @@ export default function SettingsForm() {
           <h2>{t(`settings.tab.${current.id}`)}</h2>
           {sections[tab]}
           <div className="savebar">
-            {tab !== "profile" && tab !== "data" && (
+            {tab !== "profile" && tab !== "data" && tab !== "models" && (
               <button className="btn primary" onClick={() => void save()} disabled={saving}>{t("common.save")}</button>
-            )}
-            {(tab === "models" || tab === "free") && (
-              <button className="btn" onClick={() => void test()} disabled={saving}>{t("settings.saveTest")}</button>
             )}
             {msg && <span className={msg.ok ? "msg-ok" : "msg-err"}>{msg.text}</span>}
           </div>

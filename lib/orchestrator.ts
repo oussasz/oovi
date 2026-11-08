@@ -328,6 +328,8 @@ async function* runBot(
       entry.usage.output += out.usage.output;
       entry.model = out.model;
       entry.fallback = out.fallback;
+      if (typeof out.cost === "number") entry.cost = (entry.cost ?? 0) + out.cost;
+      if (out.note) entry.note = out.note;
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls });
       yield { type: "entry", entry };
     } catch (e) {

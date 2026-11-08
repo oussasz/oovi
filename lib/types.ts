@@ -69,6 +69,10 @@ export type BotEntry = {
   status: "running" | "waiting" | "done" | "error" | "stopped";
   error?: string;
   usage: Usage;
+  /** US dollars spent on this reply (only counts models whose price is known). */
+  cost?: number;
+  /** Something the user should know, e.g. a retired model was replaced. */
+  note?: string;
   /** Which model answered, e.g. "Gemini · gemini-2.5-flash". */
   model?: string;
   /** True when a backup model answered because the bot's own model failed. */
