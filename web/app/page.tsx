@@ -109,11 +109,11 @@ function Team() {
         <h2 className="h2">
           A leader and
           <br />
-          three specialists.
+          as many bots as you need.
         </h2>
         <p className="agents-sub">
-          Oovi, your leader, decides who does what and gives you one final answer. Rename the team, change their jobs,
-          or add your own bots.
+          Oovi, your leader, decides who does what and gives you one final answer. You start with these three; add as
+          many bots as you like, each with its own job, look and AI model.
         </p>
       </div>
       <div className="agent-cards">
@@ -244,7 +244,7 @@ function HowItWorks() {
     {
       n: "2",
       title: "The team works",
-      text: "Scout researches, Quill writes, Nova checks. They hand work to each other without you managing it.",
+      text: "Each bot takes the part that fits its job, for example research, writing or review. They hand work to each other without you managing it.",
       color: "yellow" as const,
     },
     {
