@@ -1,0 +1,9 @@
+node_modules/
+.next/
+dist/
+next-env.d.ts
+*.tsbuildinfo
+# API keys (encrypted) and the local encryption secret
+data/
+.env
+.env*.local

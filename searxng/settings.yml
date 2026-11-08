@@ -1,0 +1,16 @@
+# SearXNG config for oovi. Local use only (bound to 127.0.0.1 in docker-compose.yml).
+use_default_settings: true
+
+server:
+  # Overridden by the SEARXNG_SECRET environment variable.
+  secret_key: "oovi-local-only-change-me"
+  # The bot limiter would block oovi's own API calls.
+  limiter: false
+  public_instance: false
+
+search:
+  safe_search: 1
+  # oovi reads results as JSON.
+  formats:
+    - html
+    - json

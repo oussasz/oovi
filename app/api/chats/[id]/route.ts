@@ -1,0 +1,54 @@
+import { closeSession } from "@/lib/browser";
+import { guard } from "@/lib/guard";
+import { isRunning, stopRun } from "@/lib/runner";
+import { deleteChat, getChat, saveChat, validateGroup } from "@/lib/store";
+import type { ChatWithState } from "@/lib/types";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+type Ctx = { params: Promise<{ id: string }> };
+const notFound = () => Response.json({ error: "Chat not found." }, { status: 404 });
+
+export async function GET(req: Request, { params }: Ctx) {
+  const denied = guard(req);
+  if (denied) return denied;
+  const chat = getChat((await params).id);
+  if (!chat) return notFound();
+  const out: ChatWithState = { ...chat, running: isRunning(chat.id) };
+  return Response.json(out);
+}
+
+/** Edit a group ({name, memberIds, leadId}) or clear any chat ({clear: true}). */
+export async function PUT(req: Request, { params }: Ctx) {
+  const denied = guard(req);
+  if (denied) return denied;
+  const chat = getChat((await params).id);
+  if (!chat) return notFound();
+  if (isRunning(chat.id)) return Response.json({ error: "Wait for the bots to finish, or stop them first." }, { status: 409 });
+  const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+
+  if (body?.clear === true) {
+    chat.entries = [];
+    chat.pending = undefined;
+    await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
+  } else {
+    if (chat.kind !== "group") return Response.json({ error: "Only groups can be edited here." }, { status: 400 });
+    const g = validateGroup(body);
+    if (typeof g === "string") return Response.json({ error: g }, { status: 400 });
+    Object.assign(chat, g);
+  }
+  saveChat(chat);
+  return Response.json({ ...chat, running: false });
+}
+
+export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = guard(req);
+  if (denied) return denied;
+  const chat = getChat((await params).id);
+  if (!chat) return notFound();
+  stopRun(chat.id);
+  await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
+  deleteChat(chat.id);
+  return new Response(null, { status: 204 });
+}

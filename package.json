@@ -1,0 +1,68 @@
+{
+  "name": "oovi",
+  "productName": "oovi",
+  "version": "0.3.0",
+  "private": true,
+  "license": "MIT",
+  "author": "oovi contributors",
+  "description": "Your own crew of AI bots on your desktop. Bring your own API key, no subscription.",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "node electron/dev.cjs",
+    "build": "next build",
+    "start": "next build && electron .",
+    "dist": "next build && electron-builder",
+    "web": "next dev -H 127.0.0.1 -p 3100",
+    "typecheck": "tsc --noEmit",
+    "sandbox": "docker compose up -d"
+  },
+  "dependencies": {
+    "next": "15.5.29",
+    "playwright-core": "1.64.0",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.30",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0",
+    "typescript": "5.8.3"
+  },
+  "build": {
+    "appId": "app.oovi.desktop",
+    "productName": "oovi",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "asar": false,
+    "files": [
+      "electron/**",
+      ".next/**",
+      "!.next/cache/**",
+      "public/**",
+      "next.config.mjs",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "oovi"
+    },
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity"
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    }
+  }
+}

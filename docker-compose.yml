@@ -1,0 +1,25 @@
+# Sandboxed browser for oovi ("Docker" browser mode in Settings).
+# The agent's browser runs inside this container instead of on your machine.
+# The Playwright version here must match playwright-core in package.json.
+services:
+  browser:
+    image: mcr.microsoft.com/playwright:v1.64.0-noble
+    command: ["/bin/sh", "-c", "npx -y playwright@1.64.0 run-server --port 3200 --host 0.0.0.0"]
+    ports:
+      - "127.0.0.1:3200:3200"
+    init: true
+    user: pwuser
+    working_dir: /home/pwuser
+    shm_size: "1gb"
+    restart: unless-stopped
+
+  # Free, self-hosted web search ("SearXNG" in Settings → Web search).
+  search:
+    image: searxng/searxng:latest
+    ports:
+      - "127.0.0.1:8888:8080"
+    environment:
+      - SEARXNG_SECRET=${SEARXNG_SECRET:-oovi-local-only-change-me}
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
