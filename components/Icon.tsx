@@ -29,6 +29,7 @@ const PATHS = {
   back: "M19 12H5M11 6l-6 6 6 6",
   globe: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM3 12h18M12 3c2.5 2.5 3.5 6 3.5 9s-1 6.5-3.5 9c-2.5-2.5-3.5-6-3.5-9s1-6.5 3.5-9z",
   cursor: "M5 3l6 16 2.5-6.5L20 10z",
+  folder: "M3 6.5A1.5 1.5 0 0 1 4.5 5H9l2 2.5h8.5A1.5 1.5 0 0 1 21 9v9.5a1.5 1.5 0 0 1-1.5 1.5h-15A1.5 1.5 0 0 1 3 18.5z",
 } as const;
 
 export type IconName = keyof typeof PATHS;

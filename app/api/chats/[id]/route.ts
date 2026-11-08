@@ -3,6 +3,7 @@ import { guard } from "@/lib/guard";
 import { isRunning, stopRun } from "@/lib/runner";
 import { deleteChat, getChat, saveChat, validateGroup } from "@/lib/store";
 import type { ChatWithState } from "@/lib/types";
+import { validateWorkspace } from "@/lib/workspace";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,7 +20,7 @@ export async function GET(req: Request, { params }: Ctx) {
   return Response.json(out);
 }
 
-/** Edit a group ({name, memberIds, leadId}) or clear any chat ({clear: true}). */
+/** Edit a group ({name, memberIds, leadId}), set any chat's project folder ({workspace: {path, autoEdit} | null}) or clear any chat ({clear: true}). */
 export async function PUT(req: Request, { params }: Ctx) {
   const denied = guard(req);
   if (denied) return denied;
@@ -32,6 +33,11 @@ export async function PUT(req: Request, { params }: Ctx) {
     chat.entries = [];
     chat.pending = undefined;
     await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
+  } else if (body && "workspace" in body) {
+    const ws = validateWorkspace(body.workspace);
+    if (typeof ws === "string") return Response.json({ error: ws }, { status: 400 });
+    if (ws) chat.workspace = ws;
+    else delete chat.workspace;
   } else {
     if (chat.kind !== "group") return Response.json({ error: "Only groups can be edited here." }, { status: 400 });
     const g = validateGroup(body);

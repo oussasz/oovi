@@ -11,6 +11,7 @@ import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 
 type Shot = { img: string; url: string; botId: string; label: string };
@@ -393,10 +394,11 @@ export default function ChatView({ id }: { id: string }) {
     void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) });
   }
 
-  function decide(ok: boolean) {
+  /** alwaysEdit: also allow file edits in this chat's project folder from now on. */
+  function decide(ok: boolean, alwaysEdit = false) {
     if (!approval) return;
     setError(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])) }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit }) });
   }
 
   async function stop() {
@@ -498,6 +500,7 @@ export default function ChatView({ id }: { id: string }) {
             </p>
           </div>
           <div className="head-actions">
+            <ProjectFolder chat={chat} running={running} onChange={(c) => setChat(c)} />
             <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : t("chat.editBot")} aria-label={t("common.edit")}>
               <Icon name="edit" />
             </Link>
@@ -573,13 +576,24 @@ export default function ChatView({ id }: { id: string }) {
                   <strong>{t("chat.wantsTo", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
                   <ul>
                     {approval.items.map((it) => (
-                      <li key={it.call.id}>{it.summary}</li>
+                      <li key={it.call.id}>
+                        {it.summary}
+                        {it.detail && (
+                          <details className="approval-detail" open={it.call.name === "run_command" || it.detail.length < 600}>
+                            <summary>{t("chat.details")}</summary>
+                            <pre>{it.detail}</pre>
+                          </details>
+                        )}
+                      </li>
                     ))}
                   </ul>
-                  <div className="row">
+                  <div className="row wrap">
                     <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="check" size={16} /> {t("chat.allow")}
+                      <Icon name="check" size={16} /> {approval.items.some((i) => i.always) ? t("chat.allowOnce") : t("chat.allow")}
                     </button>
+                    {approval.items.some((i) => i.always) && (
+                      <button className="btn" onClick={() => decide(true, true)}>{t("chat.alwaysEdits")}</button>
+                    )}
                     <button className="btn" onClick={() => decide(false)}>{t("chat.deny")}</button>
                   </div>
                 </div>

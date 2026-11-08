@@ -7,22 +7,22 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Start a run: {text} sends a message, {decisions: {callId: true|false}} answers an approval. Streams events. */
+/** Start a run: {text} sends a message, {decisions: {callId: true|false}, alwaysEdit?} answers an approval. Streams events. */
 export async function POST(req: Request, { params }: Ctx) {
   const denied = guard(req);
   if (denied) return denied;
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown } | null;
-  let input: { text?: string; decisions?: Record<string, boolean> };
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown } | null;
+  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean };
   if (typeof body?.text === "string" && body.text.trim()) {
     if (body.text.length > 20_000) return Response.json({ error: "Message is too long." }, { status: 400 });
     input = { text: body.text.trim() };
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;
-    input = { decisions };
+    input = { decisions, alwaysEdit: body.alwaysEdit === true };
   } else {
     return Response.json({ error: "Send {text} or {decisions}." }, { status: 400 });
   }

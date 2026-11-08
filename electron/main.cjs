@@ -3,7 +3,7 @@
 // Here we run that server inside the app on a private 127.0.0.1 port and show
 // it in a native window. Nothing is exposed to the network.
 
-const { app, BrowserWindow, Menu, dialog, nativeTheme, shell } = require("electron");
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require("electron");
 const http = require("node:http");
 const path = require("node:path");
 
@@ -72,7 +72,7 @@ function createWindow(url) {
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#131312" : "#fbfaf7",
     autoHideMenuBar: true,
     show: false,
-    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true },
+    webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, preload: path.join(__dirname, "preload.cjs") },
   });
   win.once("ready-to-show", () => win.show());
 
@@ -92,6 +92,18 @@ function createWindow(url) {
   });
   void win.loadURL(url);
 }
+
+// "Choose a project folder" for a chat. Only the app's own page may ask.
+ipcMain.handle("oovi:pick-folder", async (event, current) => {
+  try {
+    if (!appUrl || new URL(event.senderFrame?.url ?? "").origin !== new URL(appUrl).origin) return null;
+  } catch {
+    return null;
+  }
+  const opts = { title: "Choose a project folder", buttonLabel: "Use this folder", properties: ["openDirectory", "createDirectory"], ...(typeof current === "string" ? { defaultPath: current } : {}) };
+  const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+  return r.canceled ? null : (r.filePaths[0] ?? null);
+});
 
 app.on("second-instance", () => {
   if (!win) return;

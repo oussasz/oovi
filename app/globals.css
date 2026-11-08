@@ -391,6 +391,24 @@ a.tag { text-decoration: none; }
 .approval { display: flex; gap: 14px; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius); padding: 14px 16px; }
 .approval ul { margin: 6px 0 12px; padding-left: 18px; }
 .approval .row { display: flex; gap: 8px; }
+.approval .row.wrap { flex-wrap: wrap; }
+.approval li { overflow-wrap: anywhere; }
+.approval-detail { margin: 6px 0 4px; }
+.approval-detail summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.approval-detail pre { margin: 6px 0 0; max-height: 260px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); font: 12.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Project folder (chat header) */
+.pf { position: relative; }
+.pf-btn { display: inline-flex; align-items: center; width: auto; min-width: 38px; padding: 0 9px; gap: 6px; }
+.pf-btn.set { color: var(--text); background: var(--soft); }
+.pf-name { font-size: 13px; font-weight: 700; max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-pop { position: absolute; top: calc(100% + 8px); inset-inline-end: 0; z-index: 30; width: min(360px, calc(100vw - 32px)); display: grid; gap: 10px; padding: 16px; background: var(--panel); border: 1px solid var(--border); border-radius: 18px; box-shadow: var(--shadow); }
+.pf-pop .note { margin: 0; }
+.pf-pop .row { display: flex; gap: 8px; flex-wrap: wrap; }
+.pf-path { font: 12.5px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--soft); border-radius: 10px; padding: 8px 10px; overflow-wrap: anywhere; }
+.pf-check { display: flex; gap: 8px; align-items: flex-start; font-size: 13.5px; font-weight: 600; cursor: pointer; }
+.pf-check input { width: auto; margin-top: 2px; }
+.pf-rules { margin: 0; padding-inline-start: 18px; color: var(--muted); font-size: 12.5px; display: grid; gap: 2px; }
 
 .composer-wrap { position: relative; max-width: 820px; width: 100%; margin: 0 auto; padding: 6px 22px 18px; }
 .mention-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }

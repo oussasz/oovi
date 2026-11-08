@@ -20,7 +20,15 @@ export type Msg =
   | { role: "assistant"; text: string; toolCalls: ToolCall[] }
   | { role: "tool"; results: ToolResult[] };
 
-export type ApprovalItem = { call: ToolCall; summary: string };
+/** detail: preview shown under the summary (file content, a diff, a command). always: can be allowed for good. */
+export type ApprovalItem = { call: ToolCall; summary: string; detail?: string; always?: boolean };
+
+/** The one folder on the user's computer that bots in a chat may work in. */
+export type Workspace = {
+  path: string;
+  /** Create and edit files without asking. Deleting and running commands always ask. */
+  autoEdit?: boolean;
+};
 
 // ---------- bots ----------
 
@@ -100,6 +108,8 @@ export type Chat = {
   pending?: Pending;
   /** Older entries (up to and including upTo) condensed to save tokens. */
   summary?: { upTo: string; text: string };
+  /** Project folder the bots in this chat can work in. */
+  workspace?: Workspace;
 };
 
 export type ChatWithState = Chat & { running: boolean };

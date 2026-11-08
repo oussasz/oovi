@@ -9,7 +9,8 @@ import { webSearch } from "./search";
 import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
 import type { Settings } from "./settings";
 import { saveShot } from "./store";
-import type { BotTools, ToolCall, ToolResult } from "./types";
+import type { ApprovalItem, BotTools, ToolCall, ToolResult, Workspace } from "./types";
+import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 
 export const TOOL_SPECS: ToolSpec[] = [
   {
@@ -219,8 +220,9 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
   return "ERR:Too many redirects.";
 }
 
-export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false): Promise<ToolResult> {
+export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false, workspace?: Workspace): Promise<ToolResult> {
   const input = call.input;
+  if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   try {
     if (call.name === "memory") {
       const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);
@@ -312,7 +314,9 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
  * Bots using the user's signed-in accounts ALWAYS ask, for every click
  * (a "link" can be a Like or Follow button), whatever the Settings toggle says.
  */
-export function needsApproval(call: ToolCall, settings: Settings, sessionId: string, usesAccounts = false): boolean {
+export function needsApproval(call: ToolCall, settings: Settings, sessionId: string, usesAccounts = false, workspace?: Workspace): boolean {
+  // Project folder: reading never asks; edits ask unless allowed for this folder; deletes and commands always ask.
+  if (FILE_TOOLS.has(call.name)) return ALWAYS_ASK_TOOLS.has(call.name) || (EDIT_TOOLS.has(call.name) && !workspace?.autoEdit);
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
   if (call.name === "use_skill") return false;
@@ -326,6 +330,12 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
     return el?.kind !== "link";
   }
   return false;
+}
+
+/** What the approval card shows for one call. */
+export function approvalItem(call: ToolCall, sessionId: string, workspace?: Workspace): ApprovalItem {
+  if (FILE_TOOLS.has(call.name)) return { call, ...describeFileCall(call, workspace), always: EDIT_TOOLS.has(call.name) };
+  return { call, summary: describeCall(call, sessionId) };
 }
 
 export function describeCall(call: ToolCall, sessionId: string): string {
