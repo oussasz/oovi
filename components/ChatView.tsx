@@ -49,8 +49,8 @@ const urlOf = (r?: ToolResult) => r?.content.match(/^URL: (.*)$/m)?.[1] ?? "";
 
 // ---------- one bot reply ----------
 
-function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void }) {
-  const { e, bot, isLast, status, bots, onShot } = props;
+function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean }) {
+  const { e, bot, isLast, status, bots, onShot, isLeader } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -73,6 +73,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
       <div className="msg-main">
         <div className="msg-meta">
           <b>{name}</b>
+          {isLeader && <span className="lead-badge">leader</span>}
           {bot?.role && <span className="role" style={{ background: FACE_COLORS[bot.face.color] }}>{bot.role}</span>}
           <span>{timeLabel(e.at)}</span>
           {tokens > 0 && <span title={`${e.usage.input} in · ${e.usage.output} out`}>· {fmtTokens(tokens)} tokens</span>}
@@ -289,6 +290,7 @@ export default function ChatView({ id }: { id: string }) {
   const isGroup = chat.kind === "group";
   const solo = isGroup ? undefined : members[0];
   const lead = members.find((m) => m.id === chat.leadId) ?? members[0];
+  const leaderMode = isGroup && chat.orchestrate !== false && members.length > 1;
   const approval = chat.pending?.approval;
   const approvalBot = approval ? bots.find((b) => b.id === approval.botId) : undefined;
   const shot = !running && picked ? picked : latest;
@@ -422,7 +424,7 @@ export default function ChatView({ id }: { id: string }) {
             <h1>{isGroup ? chat.name : (solo?.name ?? "Bot")}</h1>
             <p>
               {isGroup
-                ? `${members.map((m) => m.name).join(", ") || "No bots yet"}${lead ? ` · ${lead.name} answers first` : ""}`
+                ? `${members.map((m) => m.name).join(", ") || "No bots yet"}${lead ? (leaderMode ? ` · led by ${lead.name}` : ` · ${lead.name} answers first`) : ""}`
                 : solo && [solo.role, modelLabel(solo)].filter(Boolean).join(" · ")}
             </p>
           </div>
@@ -464,7 +466,9 @@ export default function ChatView({ id }: { id: string }) {
                 <h2>{isGroup ? `Say hi to ${chat.name}` : `Hi, I'm ${solo?.name}`}</h2>
                 <p>
                   {isGroup
-                    ? `${lead?.name ?? "The lead"} answers first. @mention anyone to choose who answers, and bots @mention each other to hand off work.`
+                    ? leaderMode
+                      ? `${lead?.name ?? "The leader"} leads this team: they plan, hand tasks to the others and give you one final answer. You can also @mention anyone directly.`
+                      : `${lead?.name ?? "The lead"} answers first. @mention anyone to choose who answers, and bots @mention each other to hand off work.`
                     : solo?.instructions || "Ask me anything."}
                 </p>
                 <div className="ideas">
@@ -485,7 +489,7 @@ export default function ChatView({ id }: { id: string }) {
                   </div>
                 </div>
               ) : (
-                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} />
+                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} />
               ),
             )}
 

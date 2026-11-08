@@ -25,7 +25,7 @@ export type ApprovalItem = { call: ToolCall; summary: string };
 // ---------- bots ----------
 
 /** accounts: the browser uses the user's signed-in sessions (needs browser). */
-export type BotTools = { web: boolean; browser: boolean; accounts?: boolean };
+export type BotTools = { web: boolean; browser: boolean; accounts?: boolean; mcp?: string[] };
 
 export type Bot = {
   id: string;
@@ -75,15 +75,25 @@ export type Entry = UserEntry | BotEntry;
 
 export type Approval = { entryId: string; botId: string; items: ApprovalItem[] };
 
-export type Pending = { queue: string[]; turnsLeft: number; approval?: Approval };
+export type Pending = {
+  queue: string[];
+  turnsLeft: number;
+  approval?: Approval;
+  /** Leader mode: the leader delegated and gets the turn back when teammates finish. */
+  awaitingLead?: boolean;
+  /** How many similar requests came before this one (nudges the bot to save a skill). */
+  learn?: number;
+};
 
 export type Chat = {
   id: string;
   kind: "group" | "direct";
   name: string;
   memberIds: string[];
-  /** Who answers when a message mentions nobody. */
+  /** Who answers when a message mentions nobody (the team leader). */
   leadId?: string;
+  /** Leader mode (default on): the leader plans, delegates and writes the final answer. */
+  orchestrate?: boolean;
   createdAt: number;
   updatedAt: number;
   entries: Entry[];

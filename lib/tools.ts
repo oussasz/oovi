@@ -3,7 +3,9 @@ import fs from "node:fs";
 import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
 import type { ToolSpec } from "./llm";
+import { callMcpTool, mcpServerOf } from "./mcp";
 import { webSearch } from "./search";
+import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
 import type { Settings } from "./settings";
 import { saveShot } from "./store";
 import type { BotTools, ToolCall, ToolResult } from "./types";
@@ -39,6 +41,28 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: "download_file",
     description: "Download a file (PDF, image, document…) from a direct URL into the user's Downloads/oovi folder. The file is saved, never opened.",
     parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+  },
+];
+
+/** Skill tools, available to every bot. */
+export const SKILL_SPECS: ToolSpec[] = [
+  {
+    name: "use_skill",
+    description: "Load a saved skill (a step-by-step procedure) by name, then follow it.",
+    parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+  },
+  {
+    name: "save_skill",
+    description: "Save a reusable procedure as a skill so this kind of task is faster next time. The user approves it first.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "Short name, e.g. 'Weekly LinkedIn post'" },
+        description: { type: "string", description: "One sentence: when to use this skill" },
+        instructions: { type: "string", description: "Markdown: steps, inputs to ask for, tips and pitfalls" },
+      },
+      required: ["name", "description", "instructions"],
+    },
   },
 ];
 
@@ -182,6 +206,20 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
 export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false): Promise<ToolResult> {
   const input = call.input;
   try {
+    if (call.name === "use_skill") {
+      const skill = getSkill(String(input.name ?? ""));
+      if (!skill) return fail(call, `No skill called "${String(input.name ?? "")}". Saved skills: ${listSkills().map((s) => s.name).join(", ") || "none yet"}.`);
+      markUsed(skill.slug);
+      return { id: call.id, name: call.name, content: `SKILL: ${skill.name}\n${skill.description}\n\n${skill.body}` };
+    }
+    if (call.name === "save_skill") {
+      const skill = saveSkill({ name: String(input.name ?? ""), description: String(input.description ?? ""), body: String(input.instructions ?? ""), source: "learned" });
+      return { id: call.id, name: call.name, content: `Saved the skill "${skill.name}". It will load automatically next time a similar request comes in.` };
+    }
+    if (call.name.startsWith("mcp_")) {
+      const r = await callMcpTool(call.name, input);
+      return r ? { id: call.id, name: call.name, content: r.content, isError: r.isError } : fail(call, "That MCP tool isn't available right now.");
+    }
     if (!TOOL_SPECS.some((t) => t.name === call.name)) return fail(call, `Unknown tool: ${call.name}`);
 
     if (call.name === "web_search") {
@@ -255,6 +293,11 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
  * (a "link" can be a Like or Follow button), whatever the Settings toggle says.
  */
 export function needsApproval(call: ToolCall, settings: Settings, sessionId: string, usesAccounts = false): boolean {
+  // Saving a skill changes how bots behave later: always ask.
+  if (call.name === "save_skill") return true;
+  if (call.name === "use_skill") return false;
+  // MCP servers can do anything; ask unless the user marked the server as trusted.
+  if (call.name.startsWith("mcp_")) return !mcpServerOf(call.name)?.trusted;
   if (!settings.approvals.clicksAndTyping && !usesAccounts) return false;
   if (call.name === "type" || call.name === "download_file") return true;
   if (call.name === "click") {
@@ -278,5 +321,11 @@ export function describeCall(call: ToolCall, sessionId: string): string {
   if (call.name === "click") return `Click ${target}${where}`;
   if (call.name === "type") return `Type "${String(call.input.text ?? "")}" into ${target}${where}${call.input.submit ? ", then press Enter" : ""}`;
   if (call.name === "download_file") return `Download ${String(call.input.url ?? "a file")} to your Downloads/oovi folder`;
+  if (call.name === "save_skill") return `Save a new skill "${String(call.input.name ?? "")}": ${String(call.input.description ?? "")}`;
+  if (call.name.startsWith("mcp_")) {
+    const server = mcpServerOf(call.name);
+    const args = JSON.stringify(call.input);
+    return `Use the "${call.name.replace(/^mcp_[a-z0-9_]*?_/i, "")}" tool of ${server?.name ?? "an MCP server"} with ${args.length > 160 ? `${args.slice(0, 160)}…` : args}`;
+  }
   return call.name;
 }

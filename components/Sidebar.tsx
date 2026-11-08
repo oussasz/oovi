@@ -100,6 +100,9 @@ export default function Sidebar() {
           })}
         </nav>
 
+        <Link href="/library" className={`side-settings side-lib${pathname === "/library" ? " active" : ""}`}>
+          <Icon name="library" /> Skills &amp; tools
+        </Link>
         <Link href="/settings" className={`side-settings${pathname === "/settings" ? " active" : ""}`}>
           <Icon name="gear" /> Settings
         </Link>

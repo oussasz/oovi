@@ -41,6 +41,16 @@ function seed(): Bot[] {
   const bots: Bot[] = [
     {
       id: newId(),
+      name: "Oovi",
+      role: "Team leader & personal assistant",
+      instructions:
+        "You are the user's personal assistant and the leader of their team. Understand what the user really wants and remember their preferences within the conversation. Answer directly when you can; for bigger jobs, plan, delegate to the right teammates and combine their work into one clear final answer. Always end with a clear result or next step.",
+      face: { color: 8, shape: 0, hair: 0, eyes: 0, nose: 0, mouth: 1, cheeks: 1, top: 4, wear: 0 },
+      tools: { web: true, browser: true },
+      createdAt: now - 1,
+    },
+    {
+      id: newId(),
       name: "Scout",
       role: "Researcher",
       instructions: "Find accurate, current information on the web. Check more than one source and always list the URLs you used. Keep notes short and factual.",
@@ -74,6 +84,7 @@ function seed(): Bot[] {
     name: "Studio",
     memberIds: bots.map((b) => b.id),
     leadId: bots[0]?.id,
+    orchestrate: true,
     createdAt: now,
     updatedAt: now,
     entries: [],
@@ -109,7 +120,12 @@ export function validateBot(input: unknown, selfId?: string): BotInput | string 
     face: cleanFace(o.face),
     provider,
     model: provider && typeof o.model === "string" && o.model.trim() ? o.model.trim().slice(0, 120) : undefined,
-    tools: { web: tools.web === true, browser: tools.browser === true, accounts: tools.browser === true && tools.accounts === true },
+    tools: {
+      web: tools.web === true,
+      browser: tools.browser === true,
+      accounts: tools.browser === true && tools.accounts === true,
+      mcp: Array.isArray(tools.mcp) ? tools.mcp.filter((x): x is string => typeof x === "string" && /^[\w-]{1,40}$/.test(x)).slice(0, 20) : [],
+    },
   };
 }
 
@@ -202,7 +218,7 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
 }
 
 /** Returns a clean group definition, or an error message. */
-export function validateGroup(input: unknown): { name: string; memberIds: string[]; leadId?: string } | string {
+export function validateGroup(input: unknown): { name: string; memberIds: string[]; leadId?: string; orchestrate: boolean } | string {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   const name = String(o.name ?? "").trim().slice(0, 48);
   if (!name) return "Give the group a name.";
@@ -210,10 +226,10 @@ export function validateGroup(input: unknown): { name: string; memberIds: string
   const memberIds = Array.isArray(o.memberIds) ? [...new Set(o.memberIds.map(String))].filter((id) => known.has(id)) : [];
   if (!memberIds.length) return "Add at least one bot to the group.";
   const leadId = typeof o.leadId === "string" && memberIds.includes(o.leadId) ? o.leadId : memberIds[0];
-  return { name, memberIds, leadId };
+  return { name, memberIds, leadId, orchestrate: o.orchestrate !== false };
 }
 
-export function createGroup(g: { name: string; memberIds: string[]; leadId?: string }): Chat {
+export function createGroup(g: { name: string; memberIds: string[]; leadId?: string; orchestrate?: boolean }): Chat {
   const now = Date.now();
   const chat: Chat = { id: newId(), kind: "group", ...g, createdAt: now, updatedAt: now, entries: [] };
   writeJson(chatFile(chat.id), chat);

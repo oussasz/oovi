@@ -12,6 +12,12 @@ import Face from "./Face";
 import Icon from "./Icon";
 
 const PRESETS: { role: string; tools: BotInput["tools"]; instructions: string }[] = [
+  {
+    role: "Personal assistant",
+    tools: { web: true, browser: true },
+    instructions:
+      "You are the user's personal assistant and team leader. Understand what they really want, keep track of their preferences, answer directly when you can, delegate bigger jobs to the right teammates and combine their work into one clear answer. Always end with a clear result or next step.",
+  },
   { role: "Researcher", tools: { web: true, browser: true }, instructions: "Find accurate, current information on the web. Check more than one source and list the URLs you used. Keep notes short and factual." },
   { role: "Writer", tools: { web: false, browser: false }, instructions: "Turn notes and ideas into clear, friendly writing. Match the tone the user asks for. Use short paragraphs." },
   { role: "Critic", tools: { web: true, browser: false }, instructions: "Review work from the user or teammates. Point out errors, gaps and risks, then suggest concrete fixes. Be direct but kind." },
@@ -39,11 +45,13 @@ export default function BotEditor({ id }: { id: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>([]);
 
   useEffect(() => {
     (async () => {
       try {
         setSettings(await api<PublicSettings>("/api/settings"));
+        setServers(await api<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>("/api/mcp").catch(() => []));
         if (isNew) setD({ name: "", role: "", instructions: "", face: randomFace(), tools: { web: true, browser: true, accounts: false } });
         else {
           const { id: _id, createdAt: _c, ...rest } = await api<Bot>(`/api/bots/${id}`);
@@ -246,6 +254,33 @@ export default function BotEditor({ id }: { id: string }) {
               </span>
             </span>
           </label>
+
+          <div className="opt-label" style={{ marginTop: 14 }}>Tools from MCP servers</div>
+          {servers.length === 0 ? (
+            <p className="note">
+              No MCP servers yet. Add some (files, GitHub, Notion…) in <Link href="/library">Skills &amp; tools</Link>.
+            </p>
+          ) : (
+            <div className="chip-row">
+              {servers.map((srv) => {
+                const on = (d.tools.mcp ?? []).includes(srv.id);
+                return (
+                  <button
+                    key={srv.id}
+                    type="button"
+                    className={`chip big${on ? " on" : ""}`}
+                    disabled={!srv.enabled}
+                    title={srv.enabled ? undefined : "This server is turned off in Skills & tools"}
+                    onClick={() => set({ tools: { ...d.tools, mcp: on ? (d.tools.mcp ?? []).filter((x) => x !== srv.id) : [...(d.tools.mcp ?? []), srv.id] } })}
+                    aria-pressed={on}
+                  >
+                    {on && <Icon name="check" size={14} />} {srv.name}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+          <p className="note">Every bot can also use and save skills from your library.</p>
         </section>
 
         <div className="savebar">

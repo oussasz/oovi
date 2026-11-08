@@ -15,6 +15,7 @@ export default function GroupEditor({ id }: { id: string }) {
   const [name, setName] = useState("");
   const [memberIds, setMemberIds] = useState<string[]>([]);
   const [leadId, setLeadId] = useState<string | undefined>();
+  const [orchestrate, setOrchestrate] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -27,6 +28,7 @@ export default function GroupEditor({ id }: { id: string }) {
           setName(c.name);
           setMemberIds(c.memberIds);
           setLeadId(c.leadId);
+          setOrchestrate(c.orchestrate !== false);
         }
       } catch (e) {
         setError((e as Error).message);
@@ -45,7 +47,7 @@ export default function GroupEditor({ id }: { id: string }) {
     setSaving(true);
     setError(null);
     try {
-      const body = JSON.stringify({ name, memberIds, leadId: lead?.id });
+      const body = JSON.stringify({ name, memberIds, leadId: lead?.id, orchestrate });
       const chat = isNew ? await api<Chat>("/api/chats", { method: "POST", body }) : await api<Chat>(`/api/chats/${id}`, { method: "PUT", body });
       refreshSidebar();
       router.push(`/c/${chat.id}`);
@@ -107,8 +109,8 @@ export default function GroupEditor({ id }: { id: string }) {
 
       {members.length > 1 && (
         <section className="card">
-          <h2>Who answers first</h2>
-          <p className="muted">When a message doesn&apos;t @mention anyone, this bot picks it up and can pull in the others.</p>
+          <h2>Team leader</h2>
+          <p className="muted">The leader answers every message that doesn&apos;t @mention someone else.</p>
           <div className="chip-row">
             {members.map((b) => (
               <button key={b.id} type="button" className={`chip big${lead?.id === b.id ? " on" : ""}`} onClick={() => setLeadId(b.id)} aria-pressed={lead?.id === b.id}>
@@ -116,6 +118,16 @@ export default function GroupEditor({ id }: { id: string }) {
               </button>
             ))}
           </div>
+          <label className="toggle" style={{ marginTop: 10 }}>
+            <input type="checkbox" checked={orchestrate} onChange={(e) => setOrchestrate(e.target.checked)} />
+            <span className="toggle-ui" />
+            <span>
+              <b>Leader mode</b>
+              <span className="hint">
+                {lead?.name ?? "The leader"} plans the work, delegates to teammates, checks their results and writes one final answer. Turn off for a free-form chat where anyone can hand off to anyone.
+              </span>
+            </span>
+          </label>
         </section>
       )}
 

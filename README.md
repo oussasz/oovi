@@ -27,6 +27,17 @@ them pass work to each other.
   *Use my signed-in accounts* can then publish posts, reply to comments and
   download files for you, asking before every click and keystroke. The AI never
   sees your passwords. Downloads land in `Downloads/oovi` and are never opened.
+- **A leader that orchestrates.** Every group has a team leader (the starter
+  crew is led by *Oovi*, your personal assistant). The leader plans, delegates
+  tasks to teammates with @mentions, gets the turn back automatically when
+  they're done, checks their work and gives you one final answer.
+- **Learns from repetition (skills).** Skills are step-by-step procedures in the
+  standard `SKILL.md` format. When you ask for the same kind of task again and
+  again, the bot offers to save it as a skill (you approve); next time the skill
+  loads automatically. Install shared skills from a link or GitHub folder.
+- **MCP tools.** Connect MCP servers (files, GitHub, Notion, databases…) from the
+  official MCP registry, presets, or your own command/URL. Pick which servers
+  each bot may use; every MCP call asks you first unless you trust the server.
 - **Mix models in one team.** Every bot can use its own provider and model, for
   example Grok for research, Claude for writing and a local Ollama model as the critic.
 - **Bring your own key:** Anthropic, OpenAI, xAI, Google Gemini, OpenRouter,
@@ -45,7 +56,14 @@ them pass work to each other.
 
 ## Install
 
-Download the installer for your system from Releases and run it. You need
+Windows: run `oovi Setup <version>.exe`. macOS: open `oovi-<version>-arm64.dmg`
+(Apple silicon) or `oovi-<version>.dmg` (Intel) and drag oovi to Applications.
+
+The installers are built by GitHub Actions (`.github/workflows/build.yml`): open
+the repo's **Actions** tab → *Build desktop apps* → *Run workflow*, then download
+them from the run's *Artifacts*. They aren't code-signed yet, so on first launch:
+Windows → "More info" → "Run anyway"; macOS → right-click oovi → **Open** → Open
+(or run `xattr -cr /Applications/oovi.app`). You need
 Google Chrome or Microsoft Edge installed for the bots' browser (or Docker, see below).
 
 Open oovi, go to **Settings**, paste an API key and click **Save & test

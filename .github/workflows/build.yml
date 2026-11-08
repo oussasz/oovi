@@ -1,0 +1,43 @@
+# Builds the oovi desktop installers on GitHub's machines:
+#   macOS  -> oovi-<version>-arm64.dmg (Apple silicon) and oovi-<version>.dmg (Intel)
+#   Windows -> oovi Setup <version>.exe
+# Run it from the Actions tab ("Run workflow") or by pushing a tag like v0.4.0.
+# Download the results from the run's "Artifacts" section.
+name: Build desktop apps
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: --mac
+          - os: windows-latest
+            target: --win
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - name: Package
+        run: npx electron-builder ${{ matrix.target }} --publish never
+        env:
+          # No Apple/Windows signing certificate yet: build unsigned.
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: oovi-${{ runner.os }}
+          path: |
+            dist/*.dmg
+            dist/*.exe
+          if-no-files-found: error

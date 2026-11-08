@@ -110,6 +110,10 @@ function writeRaw(s: Settings) {
   fs.writeFileSync(settingsFile(), JSON.stringify(s, null, 2), { mode: 0o600 });
 }
 
+/** Encrypt / decrypt other secrets (MCP tokens) with the same local key. */
+export const encryptSecret = (plain: string) => encrypt(plain);
+export const decryptSecret = (stored: string) => decrypt(stored);
+
 /** Server-only: settings with decrypted API keys. Never send this to the browser. */
 export function loadSettings(): Settings {
   const s = readRaw();

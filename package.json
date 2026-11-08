@@ -1,7 +1,7 @@
 {
   "name": "oovi",
   "productName": "oovi",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
   "license": "MIT",
   "author": "oovi contributors",
@@ -17,6 +17,7 @@
     "sandbox": "docker compose up -d"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "1.32.2",
     "next": "15.5.29",
     "playwright-core": "1.64.0",
     "react": "19.1.1",
@@ -57,7 +58,13 @@
       "shortcutName": "oovi"
     },
     "mac": {
-      "target": "dmg",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64", "x64"]
+        }
+      ],
+      "icon": "build/icon.png",
       "category": "public.app-category.productivity"
     },
     "linux": {

@@ -82,14 +82,24 @@ app.on("second-instance", () => {
 app.whenReady().then(async () => {
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
   try {
-    createWindow(DEV_URL || (await startServer()));
+    appUrl = DEV_URL || (await startServer());
+    createWindow(appUrl);
   } catch (e) {
     dialog.showErrorBox("oovi couldn't start", String((e && e.stack) || e));
     app.quit();
   }
 });
 
-app.on("window-all-closed", () => app.quit());
+let appUrl = null;
+
+// macOS: closing the window keeps oovi (and any bots still working) running;
+// clicking the Dock icon opens the window again. Windows/Linux: closing quits.
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") app.quit();
+});
+app.on("activate", () => {
+  if (!win && appUrl) createWindow(appUrl);
+});
 app.on("before-quit", () => {
   if (server) server.close();
 });
