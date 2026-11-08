@@ -5,35 +5,35 @@ export function isDownloadTarget(v: string): v is DownloadTarget {
   return (DOWNLOAD_TARGETS as readonly string[]).includes(v);
 }
 
-type ReleaseAsset = { id: number; name: string; size: number };
+type ReleaseAsset = { id: number; name: string; size: number; browser_download_url: string };
 type Release = { tag_name: string; assets: ReleaseAsset[] };
 
+// Installers are published to a PUBLIC repo that holds only the installer files
+// (the app's source code stays in the private repo). Public release assets can
+// be downloaded by anyone, so no token is needed. If GITHUB_RELEASES_TOKEN is
+// set, the private repo is used as a fallback.
+const PUBLIC_REPO = () => process.env.PUBLIC_RELEASES_REPO || "oussasz/oovi-downloads";
+const PRIVATE_REPO = () => process.env.GITHUB_REPO || "oussasz/oovi";
+
 const CACHE_MS = 5 * 60 * 1000;
-let cached: { release: Release; at: number; repo: string } | null = null;
+const cache = new Map<string, { release: Release; at: number }>();
 
-function repo() {
-  return process.env.GITHUB_REPO || "oussasz/oovi";
-}
-
-function ghHeaders(token: string, accept = "application/vnd.github+json") {
+function ghHeaders(token?: string, accept = "application/vnd.github+json"): Record<string, string> {
   return {
     Accept: accept,
-    Authorization: `Bearer ${token}`,
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "oovi-website",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 }
 
-async function latestRelease(token: string): Promise<Release> {
-  const r = repo();
-  if (cached && cached.repo === r && Date.now() - cached.at < CACHE_MS) return cached.release;
-  const res = await fetch(`https://api.github.com/repos/${r}/releases/latest`, {
-    headers: ghHeaders(token),
-    cache: "no-store",
-  });
-  if (!res.ok) throw new Error(`GitHub releases lookup failed: ${res.status}`);
+async function latestRelease(repo: string, token?: string): Promise<Release> {
+  const hit = cache.get(repo);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.release;
+  const res = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, { headers: ghHeaders(token), cache: "no-store" });
+  if (!res.ok) throw new Error(`GitHub releases lookup for ${repo} failed: ${res.status}`);
   const release = (await res.json()) as Release;
-  cached = { release, at: Date.now(), repo: r };
+  cache.set(repo, { release, at: Date.now() });
   return release;
 }
 
@@ -49,15 +49,23 @@ function matchAsset(target: DownloadTarget, assets: ReleaseAsset[]): ReleaseAsse
   }
 }
 
-/** Resolves a short-lived signed download URL for the latest installer, or null. */
+/** URL of the latest installer for this platform, or null if none is available. */
 export async function resolveDownloadUrl(target: DownloadTarget): Promise<string | null> {
+  // 1. Public downloads repo: a plain, permanent download link.
+  try {
+    const asset = matchAsset(target, (await latestRelease(PUBLIC_REPO())).assets ?? []);
+    if (asset?.browser_download_url) return asset.browser_download_url;
+  } catch (err) {
+    console.error("public download lookup failed", err);
+  }
+
+  // 2. Optional fallback: the private repo, with a read-only token.
   const token = process.env.GITHUB_RELEASES_TOKEN;
   if (!token) return null;
   try {
-    const release = await latestRelease(token);
-    const asset = matchAsset(target, release.assets ?? []);
+    const asset = matchAsset(target, (await latestRelease(PRIVATE_REPO(), token)).assets ?? []);
     if (!asset) return null;
-    const res = await fetch(`https://api.github.com/repos/${repo()}/releases/assets/${asset.id}`, {
+    const res = await fetch(`https://api.github.com/repos/${PRIVATE_REPO()}/releases/assets/${asset.id}`, {
       headers: ghHeaders(token, "application/octet-stream"),
       redirect: "manual",
       cache: "no-store",
@@ -66,7 +74,7 @@ export async function resolveDownloadUrl(target: DownloadTarget): Promise<string
     if (res.status >= 300 && res.status < 400 && location) return location;
     return null;
   } catch (err) {
-    console.error("download resolve failed", err);
+    console.error("private download lookup failed", err);
     return null;
   }
 }
