@@ -39,6 +39,8 @@ export default function BotEditor({ id }: { id: string }) {
   const [saved, setSaved] = useState(false);
   const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>([]);
   const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
+  const [isMain, setIsMain] = useState(false);
+  const [wasMain, setWasMain] = useState(false);
   const { t, rich } = useI18n();
 
   // Prices for the models the user switched on.
@@ -57,6 +59,9 @@ export default function BotEditor({ id }: { id: string }) {
       try {
         setSettings(await api<PublicSettings>("/api/settings"));
         setServers(await api<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>("/api/mcp").catch(() => []));
+        const main = await api<{ botId: string | null }>("/api/main").catch(() => ({ botId: null }));
+        setWasMain(!isNew && main.botId === id);
+        setIsMain(!isNew && main.botId === id);
         if (isNew) setD({ name: "", role: "", instructions: "", face: randomFace(), tools: { web: true, browser: true, accounts: false } });
         else {
           const { id: _id, createdAt: _c, ...rest } = await api<Bot>(`/api/bots/${id}`);
@@ -82,6 +87,10 @@ export default function BotEditor({ id }: { id: string }) {
     try {
       const body = JSON.stringify(d);
       const bot = isNew ? await api<Bot>("/api/bots", { method: "POST", body }) : await api<Bot>(`/api/bots/${id}`, { method: "PUT", body });
+      if (isMain && !wasMain) {
+        await api("/api/main", { method: "PUT", body: JSON.stringify({ botId: bot.id }) });
+        setWasMain(true);
+      }
       refreshSidebar();
       if (isNew) router.push(`/c/dm-${bot.id}`);
       else setSaved(true);
@@ -266,6 +275,14 @@ export default function BotEditor({ id }: { id: string }) {
 
         <section className="card">
           <h2>{t("bot.abilities")}</h2>
+          <label className="toggle">
+            <input type="checkbox" checked={isMain} disabled={wasMain} onChange={(e) => setIsMain(e.target.checked)} />
+            <span className="toggle-ui" />
+            <span>
+              <b>{t("bot.mainBot")}</b>
+              <span className="hint">{wasMain ? t("bot.mainBotIs") : t("bot.mainBotHint")}</span>
+            </span>
+          </label>
           <label className="toggle">
             <input type="checkbox" checked={d.tools.web} onChange={(e) => set({ tools: { ...d.tools, web: e.target.checked } })} />
             <span className="toggle-ui" />

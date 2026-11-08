@@ -3,11 +3,10 @@
 // Settings > Telegram: talk to your main bot from your phone, in three steps.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
-import type { Bot, ChatSummary } from "@/lib/types";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
-type Status = { hasToken: boolean; botUsername?: string; botName?: string; connected: boolean; userName?: string; pairLink?: string; error?: string };
+type Status = { mainName?: string; hasToken: boolean; botUsername?: string; botName?: string; connected: boolean; userName?: string; pairLink?: string; error?: string };
 
 export default function TelegramSettings() {
   const { t } = useI18n();
@@ -15,7 +14,6 @@ export default function TelegramSettings() {
   const [tokenIn, setTokenIn] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [mainName, setMainName] = useState<string>("");
 
   const load = useCallback(async () => {
     try {
@@ -27,15 +25,6 @@ export default function TelegramSettings() {
 
   useEffect(() => {
     void load();
-    // Name of the main bot (the one that leads the most groups).
-    Promise.all([api<Bot[]>("/api/bots"), api<ChatSummary[]>("/api/chats")])
-      .then(([bots, chats]) => {
-        const leads = new Map<string, number>();
-        for (const c of chats) if (c.kind === "group" && c.leadId) leads.set(c.leadId, (leads.get(c.leadId) ?? 0) + 1);
-        const main = [...bots].sort((a, b) => (leads.get(b.id) ?? 0) - (leads.get(a.id) ?? 0) || a.createdAt - b.createdAt)[0];
-        setMainName(main?.name ?? "");
-      })
-      .catch(() => {});
   }, [load]);
 
   // While waiting for the user to press Start in Telegram, check every few seconds.
@@ -67,7 +56,7 @@ export default function TelegramSettings() {
   };
 
   if (!st) return <p className="note">{t("common.loading")}</p>;
-  const name = mainName || t("tg.yourMainBot");
+  const name = st.mainName || t("tg.yourMainBot");
 
   return (
     <>

@@ -1,8 +1,11 @@
 // The main bot runs the user's groups: it can see every group, give one a task,
 // wait for the group's final answer and report back, so the user only talks to it.
 
+import fs from "node:fs";
+import path from "node:path";
 import type { ToolSpec } from "./llm";
 import { isRunning, startRun, subscribe } from "./runner";
+import { dataDir } from "./settings";
 import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
 import type { Bot, BotEntry, Chat, ToolCall, ToolResult } from "./types";
 
@@ -38,11 +41,30 @@ export const TEAM_TOOLS: ReadonlySet<string> = new Set(TEAM_SPECS.map((s) => s.n
 const WAIT_MS = 4 * 60 * 1000;
 const LEADERISH = /lead|assistant|chef|leader|boss|قائد|مساعد/i;
 
+const pinFile = () => path.join(dataDir(), "main.json");
+
+/** The bot the user (or setup) made the main bot, if it still exists. */
+export function pinnedMainBot(bots: Bot[] = listBots()): Bot | undefined {
+  try {
+    const { botId } = JSON.parse(fs.readFileSync(pinFile(), "utf8")) as { botId?: string };
+    return bots.find((b) => b.id === botId);
+  } catch {
+    return undefined;
+  }
+}
+
+export function pinMainBot(botId: string): void {
+  fs.mkdirSync(path.dirname(pinFile()), { recursive: true });
+  fs.writeFileSync(pinFile(), JSON.stringify({ botId }));
+}
+
 /**
- * The user's main bot: the one that leads the most groups (ties: a "leader" or
- * "assistant" role, then the oldest bot).
+ * The user's main bot: the pinned one, else the one that leads the most groups
+ * (ties: a "leader" or "assistant" role, then the oldest bot).
  */
 export function mainBot(bots: Bot[] = listBots(), chats: Chat[] = listChats()): Bot | undefined {
+  const pinned = pinnedMainBot(bots);
+  if (pinned) return pinned;
   const leads = new Map<string, number>();
   for (const c of chats) if (c.kind === "group" && c.leadId) leads.set(c.leadId, (leads.get(c.leadId) ?? 0) + 1);
   return [...bots].sort(

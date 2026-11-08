@@ -18,7 +18,7 @@ import { mainBot, onReport } from "./team";
 import type { BotEntry } from "./types";
 
 type Stored = { token?: string; botUsername?: string; botName?: string; chatId?: number; userName?: string; pairCode?: string };
-export type TelegramStatus = { hasToken: boolean; botUsername?: string; botName?: string; connected: boolean; userName?: string; pairLink?: string; error?: string };
+export type TelegramStatus = { mainName?: string; hasToken: boolean; botUsername?: string; botName?: string; connected: boolean; userName?: string; pairLink?: string; error?: string };
 
 const API = "https://api.telegram.org";
 const file = () => path.join(dataDir(), "telegram.json");
@@ -68,6 +68,7 @@ let lastError: string | undefined;
 export function status(): TelegramStatus {
   const s = read();
   return {
+    mainName: mainBot()?.name,
     hasToken: !!s.token,
     botUsername: s.botUsername,
     botName: s.botName,

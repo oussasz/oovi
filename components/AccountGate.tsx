@@ -181,6 +181,8 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
       if (leader) {
         const { id, createdAt: _c, ...rest } = leader;
         await api(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(rest) });
+        // The leader you set up is your main bot: it runs your groups and answers on Telegram.
+        await api("/api/main", { method: "PUT", body: JSON.stringify({ botId: id }) }).catch(() => {});
       }
       setStep(4);
     });
