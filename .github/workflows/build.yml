@@ -11,6 +11,11 @@ name: Build desktop apps
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional: attach the installers to this existing release tag (e.g. v0.4.1)"
+        required: false
+        default: ""
   release:
     types: [published]
 
@@ -53,8 +58,13 @@ jobs:
             dist/*.exe
           if-no-files-found: error
       - name: Attach installers to the release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || inputs.tag != ''
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release upload "${{ github.event.release.tag_name }}" dist/*.dmg dist/*.exe --clobber
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          shopt -s nullglob
+          files=(dist/*.dmg dist/*.exe)   # each machine uploads only what it built
+          echo "Uploading ${files[*]} to $TAG"
+          gh release upload "$TAG" "${files[@]}" --clobber
