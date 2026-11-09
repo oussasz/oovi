@@ -331,6 +331,7 @@ const ar: Dict = {
   "chat.aBot": "بوت",
   "chat.allow": "سماح",
   "chat.deny": "رفض",
+  "update.storeNote": "تصل التحديثات تلقائيًا من متجر Microsoft.",
   "settings.about.usage": "مشاركة إحصاءات استخدام مجهولة: أعداد يومية مثل الرسائل واستخدام الأدوات والرموز، للمساعدة في تحسين oovi. لا تشمل أبدًا محادثاتك أو ملفاتك أو مفاتيحك.",
   "settings.tab.computer": "الحاسوب السحابي",
   "settings.tab.computer.hint": "جهاز افتراضي للبوتات",

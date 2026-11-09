@@ -322,6 +322,7 @@ const tr: Dict = {
   "chat.aBot": "Bir bot",
   "chat.allow": "İzin ver",
   "chat.deny": "Reddet",
+  "update.storeNote": "Güncellemeler Microsoft Store üzerinden otomatik gelir.",
   "settings.about.usage": "Anonim kullanım istatistiklerini paylaş: mesaj, araç kullanımı ve token gibi günlük sayılar, oovi'yi geliştirmek için. Sohbetlerin, dosyaların veya anahtarların asla paylaşılmaz.",
   "settings.tab.computer": "Bulut bilgisayar",
   "settings.tab.computer.hint": "Botlar için sanal makine",

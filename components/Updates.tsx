@@ -149,6 +149,17 @@ export function UpdateCard() {
   else if (s.status === "error") line = t(errorKey(s.error));
   else if (s.status === "none") line = t("update.upToDate");
 
+  if (s.store) {
+    return (
+      <div className="card">
+        <h3 className="card-h">{t("update.title")}</h3>
+        <p className="note">
+          {t("update.current", { version: s.current })} {t("update.storeNote")}
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="card">
       <h3 className="card-h">{t("update.title")}</h3>

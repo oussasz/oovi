@@ -16,6 +16,8 @@ export type UpdateState = {
   /** Download in the background and install when oovi closes. */
   auto: boolean;
   /** oovi installs the update itself (Windows). Otherwise "Download" opens the website. */
+  /** Installed from the Microsoft Store: the Store handles updates. */
+  store?: boolean;
   canInstall: boolean;
   platform: string;
   notesUrl: string;

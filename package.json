@@ -61,6 +61,17 @@
       "target": "nsis",
       "icon": "build/icon.png"
     },
+    "appx": {
+      "identityName": "Conuron.oovi",
+      "publisher": "CN=FDAA9D41-AC3C-4AB9-9C48-528D5F63CA3E",
+      "publisherDisplayName": "Conuron",
+      "applicationId": "oovi",
+      "displayName": "oovi",
+      "backgroundColor": "transparent",
+      "showNameOnTiles": false,
+      "languages": ["en-US", "fr-FR", "ar-SA", "es-ES", "de-DE", "tr-TR"],
+      "artifactName": "${productName}-Store-${version}.${ext}"
+    },
     "nsis": {
       "oneClick": false,
       "perMachine": false,

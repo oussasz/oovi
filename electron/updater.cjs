@@ -21,7 +21,9 @@ const SITE = "https://oovi.vercel.app";
 const FIRST_CHECK_MS = 15_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 
-const canSelfInstall = process.platform === "win32" && app.isPackaged;
+// Installed from the Microsoft Store: the Store updates the app, so oovi doesn't.
+const fromStore = !!process.windowsStore;
+const canSelfInstall = process.platform === "win32" && app.isPackaged && !fromStore;
 const prefsFile = () => path.join(app.getPath("userData"), "update.json");
 
 function loadPrefs() {
@@ -70,6 +72,7 @@ let state = {
   error: null,
   auto: true,
   canInstall: canSelfInstall,
+  store: fromStore,
   platform: process.platform,
   notesUrl: `https://github.com/${OWNER}/${REPO}/releases/latest`,
   checkedAt: null,
@@ -125,6 +128,7 @@ async function checkLatestRelease() {
 }
 
 async function check() {
+  if (fromStore) return state;
   if (checking || state.status === "downloading" || state.status === "ready") return state;
   checking = true;
   set({ status: "checking", error: null });
@@ -201,6 +205,7 @@ function setupUpdates(isTrusted) {
   handle("oovi:update-start", () => start());
   handle("oovi:update-auto", (on) => setAuto(on === true));
 
+  if (fromStore) return; // the Microsoft Store delivers updates
   setTimeout(() => void check(), FIRST_CHECK_MS);
   setInterval(() => void check(), CHECK_EVERY_MS).unref();
 }

@@ -322,6 +322,7 @@ const de: Dict = {
   "chat.aBot": "Ein Bot",
   "chat.allow": "Erlauben",
   "chat.deny": "Ablehnen",
+  "update.storeNote": "Updates kommen automatisch über den Microsoft Store.",
   "settings.about.usage": "Anonyme Nutzungsstatistiken teilen: tägliche Zahlen wie Nachrichten, Werkzeugnutzung und Tokens, um oovi zu verbessern. Niemals deine Chats, Dateien oder Schlüssel.",
   "settings.tab.computer": "Cloud-Computer",
   "settings.tab.computer.hint": "Eine virtuelle Maschine für die Bots",

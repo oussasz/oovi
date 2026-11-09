@@ -42,7 +42,9 @@ jobs:
       - run: npm ci
       - run: npm run build
       - name: Package
-        run: npx electron-builder ${{ matrix.target }} --publish never
+        # Windows also builds the Microsoft Store package (.appx), which goes to the
+        # private release only; the Store signs it when it's published.
+        run: npx electron-builder ${{ matrix.target }} ${{ runner.os == 'Windows' && 'nsis appx' || '' }} --publish never
         env:
           # No Apple/Windows signing certificate yet: build unsigned.
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
@@ -56,6 +58,7 @@ jobs:
           path: |
             dist/*.dmg
             dist/*.exe
+            dist/*.appx
             dist/latest*.yml
             dist/*.blockmap
           if-no-files-found: error
@@ -69,6 +72,6 @@ jobs:
           shopt -s nullglob
           # Each machine uploads only what it built. latest.yml + .blockmap let the
           # Windows app update itself (they hold the installer's checksum).
-          files=(dist/*.dmg dist/*.exe dist/latest*.yml dist/*.exe.blockmap)
+          files=(dist/*.dmg dist/*.exe dist/*.appx dist/latest*.yml dist/*.exe.blockmap)
           echo "Uploading ${files[*]} to $TAG"
           gh release upload "$TAG" "${files[@]}" --clobber
