@@ -18,10 +18,14 @@ import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTO
 import { hostedMaxInput } from "./hosted";
 import { memoryPrompt } from "./memory";
 import { CORRECTION, lessonsPrompt, mergeLearned, reflect } from "./learning";
-import { mcpToolsFor } from "./mcp";
+import { capabilitiesPrompt } from "./capabilities";
+import { catalogCached } from "./catalog-remote";
+import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
+import { listServers, mcpToolsFor } from "./mcp";
 import { findMentions } from "./mentions";
 import { loadSettings, usesHosted, type Settings } from "./settings";
-import { listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
+import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
+import { parseSlash } from "./slash";
 import { getChat, listBots, newId, saveChat } from "./store";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
@@ -29,7 +33,7 @@ import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem } from "./types";
+import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /** alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on. */
 export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; via?: string; effort?: Effort; deep?: boolean };
@@ -84,7 +88,37 @@ function lastUserText(chat: Chat): string {
   return "";
 }
 
-function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean }): string {
+/** The slash command of the message being worked on, when it applies to this bot. */
+function slashFor(chat: Chat, bot: Bot): SlashUse | undefined {
+  const s = chat.pending?.slash;
+  return s && s.for.includes(bot.id) ? s : undefined;
+}
+
+/** Connector ids a /connector command lends this bot for the current message (installed and on only). */
+function turnMcpFor(chat: Chat, bot: Bot): string[] {
+  const s = slashFor(chat, bot);
+  return s?.kind === "connector" && s.installed && s.enabled && s.id ? [s.id] : [];
+}
+
+/** What the system prompt says about a slash command the user started the message with. */
+function slashLines(s: SlashUse, tools: ToolSpec[]): string[] {
+  if (s.kind === "help") return ["The user typed /help with a question about oovi. Call oovi_help with the best topic first, then answer briefly in the user's language, with oovi:// links to the right places."];
+  if (s.kind === "skill") {
+    const k = s.id ? getSkill(s.id) : undefined;
+    if (!k) return [];
+    markUsed(k.slug);
+    return [`The user asked for the "${k.name}" skill (${s.cmd}). Follow it for this request:`, `### Skill: ${k.name}`, k.body.slice(0, 4000)];
+  }
+  const link = `oovi://marketplace/connector/${s.id ?? ""}`;
+  if (!s.installed) return [`The user asked to use ${s.name} (${s.cmd}), but it isn't installed. Say so in one line with the link [Connect ${s.name}](${link}), then help as far as you can without it.`];
+  if (!s.enabled) return [`The user asked to use ${s.name} (${s.cmd}), but it's switched off for every bot. Tell them to tick "on" for it in Marketplace > Connectors > Yours ([Open ${s.name}](${link})).`];
+  const prefix = `mcp_${(s.id ?? "").replace(/-/g, "_").slice(0, 18)}_`;
+  return tools.some((t) => t.name.startsWith(prefix))
+    ? [`The user asked you to use ${s.name} for this request (${s.cmd}). Use its tools (they start with ${prefix}).`]
+    : [`The user asked you to use ${s.name} (${s.cmd}), but its tools didn't load (see the unavailable servers above). Tell the user what's wrong and how to fix it in Marketplace > Connectors > Yours.`];
+}
+
+function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.instructions) lines.push("", bot.instructions);
@@ -178,10 +212,19 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (tools.some((t) => t.name.startsWith("mcp_"))) lines.push("Tools starting with mcp_ come from connected MCP servers; the user approves each call unless the server is trusted.");
   if (extra.mcpErrors.length) lines.push(`Some tool servers are unavailable right now: ${extra.mcpErrors.join("; ")}.`);
 
+  // What's installed, what this bot may use, and Marketplace items that fit the request.
+  lines.push(
+    "",
+    capabilitiesPrompt({ bot, members, allBots: extra.bots, group: chat.kind === "group", request: lastUserText(chat), turnMcp: turnMcpFor(chat, bot) }),
+    "When the user asks how oovi works, or how to connect, enable, set up or find something in the app, call oovi_help instead of guessing, and point to the place with an oovi:// link.",
+  );
+  const slash = slashFor(chat, bot);
+  if (slash) lines.push("", ...slashLines(slash, tools));
+
   // Skills: list them, auto-load the ones that match this request.
   const all = listSkills();
-  if (all.length) lines.push("", "Saved skills (load one with use_skill when it fits):", ...all.slice(0, 25).map((s) => `- ${s.name}: ${s.description}`));
-  const rel = relevantSkills(lastUserText(chat));
+  if (all.length) lines.push("", "Saved skills (load one with use_skill when it fits; the user can force one with /skill-name):", ...all.slice(0, 25).map((s) => `- ${s.name}: ${s.description}`));
+  const rel = relevantSkills(lastUserText(chat)).filter((s) => !(slash?.kind === "skill" && s.slug === slash.id));
   if (rel.length) {
     lines.push("", "These skills match the current request. Follow them:");
     for (const s of rel) {
@@ -264,7 +307,8 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[]): Msg[] {
   for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") {
       const who = e.via ? `${bots.find((b) => b.id === e.via)?.name ?? "The main assistant"}, on the user's behalf` : "User";
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${e.text}` : e.text });
+      const text = e.command ? `${e.command}${e.text ? ` ${e.text}` : ""}` : e.text;
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}` : text });
     }
     else if (e.botId === bot.id) out.push(...e.steps);
     else if (e.text) out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"}]: ${e.text}` });
@@ -330,6 +374,7 @@ export function statusText(c: ToolCall): string {
     case "memory": return "Updating memory";
     case "list_groups": return "Checking your groups";
     case "update_plan": return "Updating the plan";
+    case "oovi_help": return "Checking how oovi works";
     case "vm_run":
     case "vm_write_file":
     case "vm_read_file":
@@ -375,11 +420,14 @@ async function* runBot(
   await compactIfLong(chat, s, signal);
   const usesAccounts = !!bot.tools.accounts;
   const sessionId = `${chat.id}_${bot.id}`;
-  const mcp = bot.tools.mcp?.length ? await mcpToolsFor(bot.tools.mcp) : { specs: [], errors: [] };
+  // The bot's own connectors, plus one lent for this message by a /connector command
+  // (only an installed, switched-on connector; mcpToolsFor skips anything else).
+  const mcpIds = [...new Set([...(bot.tools.mcp ?? []), ...turnMcpFor(chat, bot)])];
+  const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
-  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id });
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots });
   let steps = 0;
 
   for (;;) {
@@ -425,6 +473,8 @@ async function* runBot(
             results.push({ id: c.id, name: c.name, content: `Plan updated (${entry.plan.filter((x) => x.status === "done").length}/${entry.plan.length} done).` });
           } else if (c.name === "recall_history") {
             results.push({ id: c.id, name: c.name, content: recallHistory(chat, bots, String(c.input.query ?? "")) });
+          } else if (c.name === "oovi_help") {
+            results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
           } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace));
         }
       }
@@ -494,27 +544,70 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
   if (typeof input.text === "string") {
     cancelApproval(chat);
     await compactIfLong(chat, settings, signal);
+    // A slash command typed by the user (never one written by a bot on their behalf).
+    let text = input.text;
+    let effort = input.effort;
+    let deep = input.deep;
+    let command: string | undefined;
+    let slash: Omit<SlashUse, "for"> | undefined;
+    if (!input.via) {
+      const servers = listServers();
+      const parsed = parseSlash(text, {
+        skills: listSkills().map((s) => ({ slug: s.slug, name: s.name })),
+        connectors: servers.map((s) => ({ id: s.id, name: s.name })),
+        catalog: catalogCached().connectors.filter((c) => !c.soon).map((c) => ({ id: c.id, name: c.name })),
+      });
+      if (parsed) {
+        const c = parsed.command;
+        command = c.cmd;
+        text = parsed.rest;
+        if (c.kind === "deep") deep = true;
+        else if (c.kind === "effort") effort = c.level;
+        else if (c.kind === "help") slash = { kind: "help", cmd: c.cmd };
+        else if (c.kind === "skill") slash = { kind: "skill", cmd: c.cmd, id: c.id, name: c.name };
+        else slash = { kind: "connector", cmd: c.cmd, id: c.id, name: c.name, installed: !!c.installed, enabled: !!servers.find((s) => s.id === c.id)?.enabled };
+      }
+    }
     const user: UserEntry = {
       id: newId(),
       kind: "user",
-      text: input.text,
+      text,
       at: Date.now(),
       ...(input.via ? { via: input.via } : {}),
-      ...(input.effort && input.effort !== "auto" ? { effort: input.effort } : {}),
-      ...(input.deep ? { deep: true } : {}),
+      ...(effort && effort !== "auto" ? { effort } : {}),
+      ...(deep ? { deep: true } : {}),
+      ...(command ? { command } : {}),
     };
     chat.entries.push(user);
     countUsage({ messages: 1 });
-    const mentioned = findMentions(input.text, members);
+    const mentioned = findMentions(text, members);
     const first = lead ?? members.find((m) => m.id === chat.leadId) ?? members[0];
+    const queue = mentioned.length ? mentioned : first ? [first.id] : [];
+
+    // "/help" or "/help <topic>": answered from the help text, without a model call.
+    const topic = slash?.kind === "help" ? helpTopicOf(text) : null;
+    const helper = members.find((m) => m.id === queue[0]) ?? first;
+    if (topic && helper) {
+      const answer = helpAnswer(topic);
+      const reply: BotEntry = { id: newId(), kind: "bot", botId: helper.id, at: Date.now(), steps: [{ role: "assistant", text: answer, toolCalls: [] }], text: answer, status: "done", usage: { input: 0, output: 0 } };
+      chat.entries.push(reply);
+      chat.pending = undefined;
+      saveChat(chat);
+      yield { type: "entry", entry: user };
+      yield { type: "entry", entry: reply };
+      return;
+    }
+
     // Learning: how often has the user asked for this kind of thing?
-    const similar = recordCommand(input.text);
+    const similar = text ? recordCommand(text) : 0;
     chat.pending = {
-      queue: mentioned.length ? mentioned : first ? [first.id] : [],
-      turnsLeft: input.deep ? settings.maxTurns * 2 : settings.maxTurns,
-      effort: input.effort,
-      deep: input.deep,
-      learn: similar >= 2 && relevantSkills(input.text).length === 0 ? similar : 0,
+      queue,
+      turnsLeft: deep ? settings.maxTurns * 2 : settings.maxTurns,
+      // A /help question gets a quick, cheap answer unless the user chose otherwise.
+      effort: slash?.kind === "help" && (!effort || effort === "auto") ? "low" : effort,
+      deep,
+      learn: similar >= 2 && relevantSkills(text).length === 0 ? similar : 0,
+      ...(slash ? { slash: { ...slash, for: [...queue] } } : {}),
     };
     saveChat(chat);
     yield { type: "entry", entry: user };

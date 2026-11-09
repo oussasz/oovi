@@ -3,6 +3,17 @@ import type { Mood } from "./faces";
 import { activeTag, t } from "./i18n";
 import type { BotEntry, Chat, ChatEvent } from "./types";
 
+/** Scroll an element into view inside its own scroll area only (scrollIntoView also shifts the app shell). */
+export function scrollIntoArea(el: Element, pad = 16, center = false) {
+  let sc = el.parentElement;
+  while (sc && !/(auto|scroll)/.test(getComputedStyle(sc).overflowY)) sc = sc.parentElement;
+  if (!sc) return;
+  const r = el.getBoundingClientRect();
+  const box = sc.getBoundingClientRect();
+  const top = r.top - box.top + sc.scrollTop - (center ? Math.max(pad, (box.height - r.height) / 2) : pad);
+  sc.scrollTo({ top, behavior: "smooth" });
+}
+
 export async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, { ...init, headers: { "content-type": "application/json", ...init?.headers } });
   if (!res.ok) {

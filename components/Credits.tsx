@@ -174,7 +174,7 @@ export function CreditsChip() {
                 className="btn sm"
                 onClick={() => {
                   setOpen(false);
-                  openSettings();
+                  openSettings("models");
                 }}
               >
                 {t("credits.ownKey")}
@@ -225,7 +225,7 @@ export function HostedNotice({ code, message }: { code: string; message?: string
               {t("credits.subscribe")}
             </a>
           )}
-          <button type="button" className="btn sm" onClick={() => openSettings()}>
+          <button type="button" className="btn sm" onClick={() => openSettings("models")}>
             {t("credits.ownKey")}
           </button>
         </div>

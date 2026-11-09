@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { api, refreshSidebar } from "@/lib/client";
+import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
 import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import { chainOf, enabledRefs, priceText, refKey, type ModelInfo } from "@/lib/model-list";
 import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
@@ -72,6 +72,18 @@ export default function BotEditor({ id }: { id: string }) {
       }
     })();
   }, [id, isNew]);
+
+  // Opened from a chat link (oovi://bot/<name>): jump to Abilities, where connectors are switched on.
+  const loaded = !!d;
+  useEffect(() => {
+    if (!loaded || window.location.hash !== "#abilities") return;
+    const el = document.getElementById("abilities");
+    if (!el) return;
+    scrollIntoArea(el);
+    el.classList.add("flash");
+    const timer = setTimeout(() => el.classList.remove("flash"), 2400);
+    return () => clearTimeout(timer);
+  }, [loaded]);
 
   if (!d) return <div className="page center muted">{error ?? t("common.loading")}</div>;
 
@@ -273,7 +285,7 @@ export default function BotEditor({ id }: { id: string }) {
           </label>
         </section>
 
-        <section className="card">
+        <section className="card" id="abilities">
           <h2>{t("bot.abilities")}</h2>
           <label className="toggle">
             <input type="checkbox" checked={isMain} disabled={wasMain} onChange={(e) => setIsMain(e.target.checked)} />

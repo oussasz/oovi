@@ -117,7 +117,7 @@ export default function Sidebar() {
           <Icon name="library" /> {t("common.skillsTools")}
         </Link>
         <FeedbackButton />
-        <button type="button" className="side-settings" onClick={openSettings}>
+        <button type="button" className="side-settings" onClick={() => openSettings()}>
           <Icon name="gear" /> {t("common.settings")}
         </button>
       </aside>

@@ -8,7 +8,7 @@ import { PLUGINS, SKILLS, type CatalogPlugin, type CatalogSkill } from "./catalo
 import { NAME_RE } from "./mentions";
 import { dataDir } from "./settings";
 import { listSkills, parseSkill, saveSkill, slugify } from "./skills";
-import { createBot, createGroup, deleteBot, deleteChat, listBots, listChats } from "./store";
+import { createBot, createGroup, deleteBot, deleteChat, getChat, listBots, listChats } from "./store";
 import { mainBot, pinMainBot, pinnedMainBot } from "./team";
 
 type Installed = { id: string; botIds: string[]; groupId: string; at: number };
@@ -19,6 +19,16 @@ export function installedPlugins(): Installed[] {
     const all = JSON.parse(fs.readFileSync(file(), "utf8")) as Installed[];
     const chats = new Set(listChats().map((c) => c.id));
     return all.filter((p) => chats.has(p.groupId));
+  } catch {
+    return [];
+  }
+}
+
+/** Same, without reading every chat: checks only the teams' own groups (used in bot prompts). */
+export function installedPluginsQuick(): Installed[] {
+  try {
+    const all = JSON.parse(fs.readFileSync(file(), "utf8")) as Installed[];
+    return all.filter((p) => !!getChat(p.groupId));
   } catch {
     return [];
   }

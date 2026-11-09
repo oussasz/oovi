@@ -4,7 +4,7 @@
 // minutes; if the service can't be reached, the built-in catalog is used as is.
 
 import { cloud } from "./account";
-import { PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogPlugin, type CatalogSkill } from "./catalog";
+import { CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogPlugin, type CatalogSkill } from "./catalog";
 
 /** hidden: ids unpublished in the admin console (built-in copies are hidden too). */
 export type RemoteCatalog = { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[]; hidden: string[] };
@@ -84,6 +84,17 @@ export async function remoteCatalog(): Promise<RemoteCatalog> {
 /** Same, but gives up after `ms` (the fetch keeps going and fills the cache). */
 export function remoteCatalogQuick(ms = 4000): Promise<RemoteCatalog> {
   return Promise.race([remoteCatalog(), new Promise<RemoteCatalog>((r) => setTimeout(() => r(g.__ooviRemoteCatalog?.data ?? EMPTY_CATALOG), ms))]);
+}
+
+/**
+ * The whole catalog (built-in + published) right now, without waiting on the network:
+ * the last fetched copy, or the built-in items alone. A stale copy refreshes in the background.
+ */
+export function catalogCached(): { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[] } {
+  const c = g.__ooviRemoteCatalog;
+  if (!c || Date.now() - c.at >= TTL) void remoteCatalog();
+  const r = c?.data ?? EMPTY_CATALOG;
+  return { connectors: mergeById(CONNECTORS, r.connectors, r.hidden), skills: mergeById(SKILLS, r.skills, r.hidden), plugins: mergeById(PLUGINS, r.plugins, r.hidden) };
 }
 
 export async function allSkills(): Promise<CatalogSkill[]> {

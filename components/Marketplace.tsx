@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogField, type CatalogPlugin, type CatalogSkill, type ConnectorCategory } from "@/lib/catalog";
-import { api, refreshSidebar } from "@/lib/client";
+import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
 import { ANTHROPIC_LOGO, MCP_LOGO, OOVI_LOGO, githubOwnerLogo, logoFor } from "@/lib/logos";
 import "@/lib/desktop";
 import { FaceStack } from "./Face";
@@ -107,7 +107,20 @@ export default function Marketplace() {
     }
   }, []);
 
+  // Opened from a chat link (oovi://marketplace/…): /library?tab=connectors&item=zapier.
+  const [focus, setFocus] = useState<{ tab: Tab; id: string } | null>(null);
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get("tab");
+    if (t !== "connectors" && t !== "skills" && t !== "plugins" && t !== "memory") return;
+    setTab(t);
+    setView("discover");
+    const id = p.get("item");
+    if (id && t !== "memory") setFocus({ tab: t, id });
+  }, []);
+
   const pick = (nextTab: Tab, nextView: View = view) => {
+    setFocus(null);
     setTab(nextTab);
     setView(nextView);
     setQ("");
@@ -125,6 +138,8 @@ export default function Marketplace() {
   const allPlugins = useMemo(() => mergeById(PLUGINS, inst.catalog?.plugins ?? [], inst.catalog?.hidden), [inst.catalog]);
   const [lessons, setLessons] = useState<LessonView[] | null>(null);
   const [learning, setLearning] = useState<boolean | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const focusDone = useRef(false);
 
   const load = useCallback(async () => {
     try {
@@ -132,6 +147,7 @@ export default function Marketplace() {
       setSkills(s);
       setServers(m);
       setInst(c);
+      setLoaded(true);
     } catch (e) {
       setMsg({ ok: false, text: (e as Error).message });
     }
@@ -308,12 +324,48 @@ export default function Marketplace() {
       return { text: t("mk.teamAdded", { name: p.name, bots: r.bots.join(", ") }), link: { href: `/c/${r.groupId}`, label: t("mk.openGroup", { name: p.group }) } };
     });
 
+  // Show the item a chat link pointed to: "Yours" if it's installed, else "Discover", filtered to it.
+  useEffect(() => {
+    if (!focus || !loaded || focusDone.current) return;
+    focusDone.current = true;
+    const same = (a: string, b?: string) => !!b && a.toLowerCase() === b.toLowerCase();
+    let name = focus.id;
+    let installed = false;
+    if (focus.tab === "connectors") {
+      const c = allConnectors.find((x) => x.id === focus.id);
+      const s = servers.find((x) => x.id === focus.id || same(x.name, c?.name));
+      name = c?.name ?? s?.name ?? focus.id;
+      installed = !!s;
+    } else if (focus.tab === "skills") {
+      const c = allSkills.find((x) => x.id === focus.id);
+      const k = skills.find((x) => x.slug === focus.id || same(x.name, c?.name));
+      name = c?.name ?? k?.name ?? focus.id;
+      installed = !!k;
+    } else {
+      const p = allPlugins.find((x) => x.id === focus.id);
+      name = p?.name ?? focus.id;
+      installed = inst.plugins.some((x) => x.id === focus.id);
+    }
+    setView(installed ? "yours" : "discover");
+    setQ(name);
+    setTimeout(() => {
+      const el = document.querySelector(".market .focus");
+      if (el) scrollIntoArea(el, 16, true);
+    }, 150);
+  }, [focus, loaded, allConnectors, allSkills, allPlugins, servers, skills, inst.plugins]);
+  /** The card or row a chat link pointed to. */
+  const isFocus = (...keys: (string | undefined)[]) => {
+    if (!focus) return false;
+    const f = focus.id.toLowerCase();
+    return keys.some((k) => !!k && k.toLowerCase() === f);
+  };
+
   // ---------- helpers ----------
   const ql = q.trim().toLowerCase();
   const match = (...xs: (string | undefined)[]) => !ql || xs.some((x) => (x ?? "").toLowerCase().includes(ql));
 
   const card = (key: string, avatar: React.ReactNode, title: React.ReactNode, desc: string, by: string, action: React.ReactNode, extra?: React.ReactNode) => (
-    <div key={key} className="mk-card">
+    <div key={key} className={`mk-card${isFocus(key) ? " focus" : ""}`}>
       {avatar}
       <div className="mk-card-main">
         <b>{title}</b>
@@ -447,7 +499,7 @@ export default function Marketplace() {
       {servers
         .filter((s) => match(s.name))
         .map((s) => (
-          <div key={s.id} className="mk-row">
+          <div key={s.id} className={`mk-row${isFocus(s.id, allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id) ? " focus" : ""}`}>
             <Logo src={logoFor(allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id ?? "") ?? MCP_LOGO} size={40} />
             <div className="mk-card-main">
               <b>
@@ -580,7 +632,7 @@ export default function Marketplace() {
       {skills
         .filter((s) => match(s.name, s.description))
         .map((s) => (
-          <div key={s.slug} className="mk-row">
+          <div key={s.slug} className={`mk-row${isFocus(s.slug, allSkills.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id) ? " focus" : ""}`}>
             <Logo src={skillLogo(s.source)} size={40} />
             <div className="mk-card-main">
               <b>{s.name}</b>
@@ -680,7 +732,7 @@ export default function Marketplace() {
         const p = allPlugins.find((x) => x.id === ip.id);
         if (!p) return null;
         return (
-          <div key={ip.id} className="mk-row">
+          <div key={ip.id} className={`mk-row${isFocus(ip.id) ? " focus" : ""}`}>
             <span className="mk-faces">
               <FaceStack faces={p.bots.map((b) => b.face)} size={44} />
             </span>

@@ -59,7 +59,10 @@ export type Usage = { input: number; output: number };
 
 /** via: sent by the user's main bot on the user's behalf (its bot id). */
 /** effort: how hard the bots think for this message. deep: Deep work mode (plan, work longer, verify). */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean };
+/** command: the slash command the message started with ("/zapier", "/effort high"); text is the rest. */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; command?: string };
+/** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
+export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
 export type PlanItem = { text: string; status: "pending" | "doing" | "done" };
 /** Lessons, user preferences and a skill draft learned from a reply. */
@@ -118,6 +121,8 @@ export type Pending = {
   /** Settings of the message being worked on. */
   effort?: Effort;
   deep?: boolean;
+  /** A slash command used in the message being worked on. */
+  slash?: SlashUse;
 };
 
 export type Chat = {

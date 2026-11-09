@@ -798,3 +798,17 @@ a.tag { text-decoration: none; }
 .forgot-link { align-self: flex-end; margin-top: -4px; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
 .forgot-link:hover { color: var(--text); text-decoration: underline; }
 .credits-actions .fine.err { color: var(--err); }
+
+/* ---------- oovi:// links, slash commands, focused Marketplace items ---------- */
+.oovi-link { display: inline-flex; align-items: center; gap: 5px; margin: 2px 2px; padding: 3px 11px; border: none; border-radius: 99px; background: var(--primary); color: var(--on-primary); font: inherit; font-size: 13px; font-weight: 800; line-height: 1.5; cursor: pointer; vertical-align: baseline; }
+.oovi-link:hover { opacity: 0.86; }
+.oovi-link:focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+[dir="rtl"] .oovi-link svg { transform: scaleX(-1); }
+.msg-mode .slash-badge { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; background: var(--primary); color: var(--on-primary); }
+.slash-pop { width: min(420px, calc(100% - 44px)); max-height: 320px; overflow-y: auto; }
+.slash-pop button b { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; white-space: nowrap; }
+.slash-pop button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slash-pop button svg { flex: none; color: var(--muted); }
+.slash-kind { flex: none; font-size: 10.5px; font-weight: 800; color: var(--faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.mk-card.focus, .mk-row.focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 70%, transparent); }
+.card.flash { box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 70%, transparent); transition: box-shadow 0.4s; }

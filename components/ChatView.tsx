@@ -15,8 +15,11 @@ import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
+import { EFFORT_LEVELS } from "@/lib/slash";
 
 type Shot = { img: string; url: string; botId: string; label: string };
+/** One entry of the "/" command menu. */
+type SlashItem = { cmd: string; label: string; kind: "command" | "skill" | "connector"; icon: IconName };
 type Row = { call: ToolCall; result?: ToolResult };
 type TFn = (key: TKey, vars?: Vars) => string;
 
@@ -61,6 +64,7 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "memory": return t("chat.call.memory");
     case "use_skill": return t("chat.call.useSkill", { name: String(i.name ?? "") });
     case "save_skill": return t("chat.call.saveSkill", { name: String(i.name ?? "") });
+    case "oovi_help": return t("chat.call.ooviHelp");
     default: return c.name.startsWith("mcp_") ? c.name.replace(/^mcp_/, "").replace(/_/g, " ") : c.name.replace(/_/g, " ");
   }
 }
@@ -271,8 +275,8 @@ function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; on
   );
 }
 
-function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean; chatId: string; onUpdate: (e: BotEntry) => void }) {
-  const { e, bot, isLast, status, bots, onShot, isLeader, chatId, onUpdate } = props;
+function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; allBots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean; chatId: string; onUpdate: (e: BotEntry) => void }) {
+  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -384,7 +388,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
         )}
         {e.text && (
           <div className="bubble bot-bubble">
-            <Rich text={e.text} bots={bots} />
+            <Rich text={e.text} bots={bots} linkBots={allBots} />
           </div>
         )}
         {running && (
@@ -521,7 +525,15 @@ export default function ChatView({ id }: { id: string }) {
   const [showLive, setShowLive] = useState(true);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [mentionQ, setMentionQ] = useState<string | null>(null);
+  const [slashQ, setSlashQ] = useState<string | null>(null);
   const [sel, setSel] = useState(0);
+  // Installed skills and connectors, for the "/" command menu.
+  const [skillList, setSkillList] = useState<{ slug: string; name: string }[]>([]);
+  const [serverList, setServerList] = useState<{ id: string; name: string; enabled: boolean }[]>([]);
+  useEffect(() => {
+    api<{ slug: string; name: string }[]>("/api/skills").then(setSkillList).catch(() => {});
+    api<{ id: string; name: string; enabled: boolean }[]>("/api/mcp").then(setServerList).catch(() => {});
+  }, [id]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stick = useRef(true);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -632,6 +644,17 @@ export default function ChatView({ id }: { id: string }) {
 
   const members = useMemo(() => (chat?.memberIds ?? []).map((m) => bots.find((b) => b.id === m)).filter((b): b is Bot => !!b), [chat, bots]);
 
+  const slashItems = useMemo<SlashItem[]>(
+    () => [
+      { cmd: "/help", label: t("slash.help"), kind: "command", icon: "info" },
+      { cmd: "/deep", label: t("slash.deep"), kind: "command", icon: "spark" },
+      ...EFFORT_LEVELS.map((l): SlashItem => ({ cmd: `/effort ${l}`, label: t("slash.effort", { level: t(`chat.effort.${l}`) }), kind: "command", icon: "cpu" })),
+      ...serverList.filter((s) => s.enabled).map((s): SlashItem => ({ cmd: `/${s.id}`, label: t("slash.useConnector", { name: s.name }), kind: "connector", icon: "server" })),
+      ...skillList.map((s): SlashItem => ({ cmd: `/${s.slug}`, label: t("slash.useSkill", { name: s.name }), kind: "skill", icon: "bulb" })),
+    ],
+    [t, serverList, skillList],
+  );
+
   const latest = useMemo<Shot | null>(() => {
     if (!chat) return null;
     for (let i = chat.entries.length - 1; i >= 0; i--) {
@@ -681,6 +704,15 @@ export default function ChatView({ id }: { id: string }) {
   const missingKeys = settings.hosted ? [] : [...new Set(members.map(providerOf))].filter((p) => PROVIDERS[p].needsKey && !settings.providers[p]?.hasKey);
 
   const suggestions = mentionQ === null ? [] : members.filter((m) => m.name.toLowerCase().startsWith(mentionQ.toLowerCase()));
+  const slashMatches =
+    slashQ === null
+      ? []
+      : slashItems
+          .filter((it) => {
+            const q = slashQ.toLowerCase();
+            return it.cmd.slice(1).startsWith(q) || (!q.includes(" ") && it.label.toLowerCase().includes(q));
+          })
+          .slice(0, 12);
 
   const ideas: string[] = isGroup
     ? [
@@ -695,8 +727,18 @@ export default function ChatView({ id }: { id: string }) {
   function send(text: string) {
     const t = text.trim();
     if (!t || running) return;
+    // A bare /deep or /effort <level> just sets the chip under the message box.
+    const lv = t.match(/^\/effort\s+(\S+)$/i)?.[1]?.toLowerCase();
+    if (/^\/deep$/i.test(t) || (lv && (EFFORT_LEVELS as readonly string[]).includes(lv))) {
+      if (lv) pickEffort(lv as Effort);
+      else pickDeep(true);
+      setInput("");
+      setSlashQ(null);
+      return;
+    }
     setInput("");
     setMentionQ(null);
+    setSlashQ(null);
     setError(null);
     setPicked(null);
     stick.current = true;
@@ -740,7 +782,20 @@ export default function ChatView({ id }: { id: string }) {
     const caret = taRef.current?.selectionStart ?? v.length;
     const m = v.slice(0, caret).match(/@([\p{L}\p{N}_-]*)$/u);
     setMentionQ(isGroup && m ? (m[1] ?? "") : null);
+    // "/" at the very start: the command menu, while the command itself is being typed.
+    const s = v.match(/^\/([a-z0-9._-]*(?: [a-z]*)?)$/i);
+    setSlashQ(s ? (s[1] ?? "") : null);
     setSel(0);
+  }
+
+  function pickSlash(it: SlashItem) {
+    const next = `${it.cmd} `;
+    setInput(next);
+    setSlashQ(null);
+    requestAnimationFrame(() => {
+      taRef.current?.focus();
+      taRef.current?.setSelectionRange(next.length, next.length);
+    });
   }
 
   function pickMention(b: Bot) {
@@ -761,6 +816,26 @@ export default function ChatView({ id }: { id: string }) {
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (slashMatches.length) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        setSel((sel + (e.key === "ArrowDown" ? 1 : slashMatches.length - 1)) % slashMatches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        const it = slashMatches[sel];
+        // Enter on a command that's already typed in full sends it.
+        if (it && !(e.key === "Enter" && input.trim().toLowerCase() === it.cmd)) {
+          e.preventDefault();
+          pickSlash(it);
+          return;
+        }
+      }
+      if (e.key === "Escape") {
+        setSlashQ(null);
+        return;
+      }
+    }
     if (suggestions.length) {
       if (e.key === "ArrowDown") {
         e.preventDefault();
@@ -868,20 +943,27 @@ export default function ChatView({ id }: { id: string }) {
 
             {chat.entries.map((e, i) =>
               e.kind === "user" ? (
-                <div key={e.id} className={`msg user${e.via || e.deep || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
+                <div key={e.id} className={`msg user${e.via || e.deep || e.command || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
                   {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
-                  <div className="bubble user-bubble">
-                    <Rich text={e.text} bots={members} />
-                  </div>
-                  {(e.deep || (e.effort && e.effort !== "auto")) && (
+                  {e.text && (
+                    <div className="bubble user-bubble">
+                      <Rich text={e.text} bots={members} />
+                    </div>
+                  )}
+                  {(e.command || e.deep || (e.effort && e.effort !== "auto")) && (
                     <div className="msg-mode">
-                      {e.deep && <span>{t("chat.deep")}</span>}
-                      {e.effort && e.effort !== "auto" && <span>{t(`chat.effort.${e.effort}`)}</span>}
+                      {e.command && (
+                        <span className="slash-badge" title={t("slash.badge")}>
+                          {e.command}
+                        </span>
+                      )}
+                      {e.deep && e.command !== "/deep" && <span>{t("chat.deep")}</span>}
+                      {e.effort && e.effort !== "auto" && !e.command?.startsWith("/effort") && <span>{t(`chat.effort.${e.effort}`)}</span>}
                     </div>
                   )}
                 </div>
               ) : (
-                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} />
+                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} />
               ),
             )}
 
@@ -920,6 +1002,25 @@ export default function ChatView({ id }: { id: string }) {
         </div>
 
         <div className="composer-wrap">
+          {slashMatches.length > 0 && (
+            <div className="mention-pop slash-pop" role="listbox" aria-label={t("slash.menu")}>
+              {slashMatches.map((it, i) => (
+                <button
+                  key={it.cmd}
+                  role="option"
+                  aria-selected={i === sel}
+                  className={i === sel ? "on" : ""}
+                  onMouseDown={(ev) => {
+                    ev.preventDefault();
+                    pickSlash(it);
+                  }}
+                >
+                  <Icon name={it.icon} size={15} /> <b>{it.cmd}</b> <span>{it.label}</span>
+                  <small className="slash-kind">{t(`slash.kind.${it.kind}`)}</small>
+                </button>
+              ))}
+            </div>
+          )}
           {suggestions.length > 0 && (
             <div className="mention-pop" role="listbox" aria-label={t("chat.mentionABot")}>
               {suggestions.map((b, i) => (
@@ -964,7 +1065,7 @@ export default function ChatView({ id }: { id: string }) {
               value={input}
               onChange={(e) => onInput(e.target.value)}
               onKeyDown={onKeyDown}
-              placeholder={isGroup ? t("chat.placeholderGroup", { name: chat.name }) : t("chat.placeholderSolo", { name: solo?.name ?? t("chat.theBot") })}
+              placeholder={isGroup ? t("chat.placeholderGroupSlash", { name: chat.name }) : t("chat.placeholderSoloSlash", { name: solo?.name ?? t("chat.theBot") })}
               aria-label={t("chat.message")}
             />
             {running ? (
