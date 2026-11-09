@@ -22,7 +22,7 @@ gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "*.dmg" --pattern "*
 gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "latest*.yml" --pattern "*.blockmap" --dir "$WORK" 2>/dev/null || true
 ls -lh "$WORK"
 
-NOTES="oovi $TAG for Mac and Windows. Download from https://oovi.vercel.app/download.
+NOTES="oovi $TAG for Mac and Windows. Download from https://oovi.conuron.com/download.
 
 The app isn't code-signed yet:
 - Mac: right-click oovi in Applications, then Open, then Open.
