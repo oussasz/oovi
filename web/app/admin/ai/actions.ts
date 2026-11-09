@@ -18,6 +18,7 @@ import {
   type Plan,
 } from "@/lib/ai-config";
 import { audit } from "@/lib/credits";
+import { TIERS } from "@/lib/pricing-tiers";
 import { fdBool, fdNum, fdStr } from "@/lib/form";
 import type { ActionState } from "@/components/admin/ActionForm";
 
@@ -205,6 +206,12 @@ export async function savePlansAction(fd: FormData): Promise<ActionState> {
     plans.push({ id, name, price, monthlyCredits: monthly, dailyLimit: daily, visible: r.visible === true });
   });
   if (!plans.some((p) => p.id === "free")) errors.push("The “free” plan can't be removed: it's what everyone falls back to.");
+  // Plans sold through Paddle (lib/pricing-tiers.ts): payments look them up by ID to give credits.
+  for (const t of TIERS) {
+    if (t.planId && !plans.some((p) => p.id === t.planId)) {
+      errors.push(`The “${t.planId}” plan is sold as ${t.name} on the pricing page; paid customers get its credits. Keep a plan with this ID (you can change its credits and limits).`);
+    }
+  }
   if (errors.length) return { errors };
 
   const before = await getPlans();
