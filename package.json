@@ -1,7 +1,7 @@
 {
   "name": "oovi",
   "productName": "oovi",
-  "version": "0.8.2",
+  "version": "0.8.3",
   "private": true,
   "license": "UNLICENSED",
   "author": "oovi",
@@ -31,7 +31,8 @@
     "playwright-core": "1.64.0",
     "pptxgenjs": "4.0.1",
     "react": "19.1.1",
-    "react-dom": "19.1.1"
+    "react-dom": "19.1.1",
+    "unpdf": "1.9.1"
   },
   "devDependencies": {
     "@types/node": "22.15.30",
@@ -69,13 +70,22 @@
       "displayName": "oovi",
       "backgroundColor": "transparent",
       "showNameOnTiles": false,
-      "languages": ["en-US", "fr-FR", "ar-SA", "es-ES", "de-DE", "tr-TR"],
+      "languages": [
+        "en-US",
+        "fr-FR",
+        "ar-SA",
+        "es-ES",
+        "de-DE",
+        "tr-TR"
+      ],
       "artifactName": "${productName}-Store-${version}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
       "shortcutName": "oovi",
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },

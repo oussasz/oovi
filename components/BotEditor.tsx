@@ -160,7 +160,14 @@ export default function BotEditor({ id }: { id: string }) {
       <aside className="editor-preview">
         <div className="preview-card">
           <Face face={d.face} mood={mood} size={176} interactive title={t("bot.squishTitle", { name: d.name || t("common.newBot") })} />
-          <div className="preview-name">{d.name || t("common.newBot")}</div>
+          <div className="preview-name">
+            {d.name || t("common.newBot")}
+            {wasMain && (
+              <span className="chief-tag" title={t("chief.what")}>
+                {t("chief.title")}
+              </span>
+            )}
+          </div>
           <div className="preview-role" style={{ background: FACE_COLORS[d.face.color] }}>{d.role || t("bot.noRole")}</div>
           <p className="hint">{t("bot.squishHint")}</p>
           <div className="mood-row" role="group" aria-label={t("bot.previewMood")}>
@@ -178,6 +185,12 @@ export default function BotEditor({ id }: { id: string }) {
 
       <div className="editor-form">
         <h1>{isNew ? t("common.newBot") : t("bot.editTitle", { name: d.name })}</h1>
+        {wasMain && (
+          <div className="chief-note">
+            <span className="chief-tag">{t("chief.title")}</span>
+            <p>{t("chief.is", { name: d.name })}</p>
+          </div>
+        )}
 
         {isNew && (
           <div className="presets">
@@ -291,8 +304,8 @@ export default function BotEditor({ id }: { id: string }) {
             <input type="checkbox" checked={isMain} disabled={wasMain} onChange={(e) => setIsMain(e.target.checked)} />
             <span className="toggle-ui" />
             <span>
-              <b>{t("bot.mainBot")}</b>
-              <span className="hint">{wasMain ? t("bot.mainBotIs") : t("bot.mainBotHint")}</span>
+              <b>{wasMain ? t("chief.title") : t("chief.make")}</b>
+              <span className="hint">{wasMain ? t("chief.what") : t("chief.makeHint")}</span>
             </span>
           </label>
           <label className="toggle">

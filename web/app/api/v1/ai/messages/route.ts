@@ -30,13 +30,20 @@ import { verificationRequired } from "@/lib/mail";
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
 
-const MAX_BODY = 3 * 1024 * 1024;
+// Attachments (images and PDFs, base64) make requests much larger than text alone.
+const MAX_BODY = 30 * 1024 * 1024;
 const MAX_MESSAGES = 600;
 const MAX_TOOLS = 128;
 const UPSTREAM_TIMEOUT = 270_000;
 // Server-side setting only (tests point it at a local mock). Never taken from a request.
 const UPSTREAM = (process.env.OOVI_AI_UPSTREAM || "https://api.anthropic.com").replace(/\/+$/, "");
-const BLOCK_TYPES = new Set(["text", "tool_use", "tool_result", "image"]);
+const BLOCK_TYPES = new Set(["text", "tool_use", "tool_result", "image", "document"]);
+const IMAGE_TYPES = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
+const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
+/** Token estimates for binary blocks: never count their base64 text. */
+const IMAGE_TOKENS = 1600;
+const PDF_PAGE_TOKENS = 1500;
+const MAX_PDF_PAGES = 100;
 
 type Block = Record<string, unknown>;
 type Message = { role: "user" | "assistant"; content: string | Block[] };
@@ -47,6 +54,72 @@ function fail(status: number, code: string, message: string, extra: Record<strin
 
 /** Rough token estimate: about 3 characters per token for Claude 5.x tokenizers. Same rule as the app. */
 const estimateTokens = (chars: number) => Math.ceil(chars / 3);
+
+/** A base64 image or PDF block with only the fields we expect, or null. URL and file sources are refused. */
+function cleanMedia(b: Block): Block | null {
+  const src = b.source as { type?: unknown; media_type?: unknown; data?: unknown } | null;
+  if (!src || typeof src !== "object" || src.type !== "base64" || typeof src.data !== "string" || !src.data || !BASE64_RE.test(src.data)) return null;
+  if (b.type === "image") {
+    if (typeof src.media_type !== "string" || !IMAGE_TYPES.has(src.media_type)) return null;
+    return cleanCache({ type: "image", source: { type: "base64", media_type: src.media_type, data: src.data }, ...(b.cache_control ? { cache_control: b.cache_control } : {}) });
+  }
+  if (src.media_type !== "application/pdf") return null;
+  return cleanCache({
+    type: "document",
+    source: { type: "base64", media_type: "application/pdf", data: src.data },
+    ...(typeof b.title === "string" ? { title: b.title.slice(0, 500) } : {}),
+    ...(b.cache_control ? { cache_control: b.cache_control } : {}),
+  });
+}
+
+/** One content block: images and PDFs checked, tool results' inner blocks checked too. Null = invalid. */
+function cleanBlock(b: Block): Block | null {
+  if (b.type === "image" || b.type === "document") return cleanMedia(b);
+  if (b.type === "tool_result" && Array.isArray(b.content)) {
+    const inner: Block[] = [];
+    for (const c of b.content) {
+      if (!c || typeof c !== "object") return null;
+      const t = (c as Block).type;
+      if (t === "text") inner.push(cleanCache(c as Block));
+      else if (t === "image" || t === "document") {
+        const m = cleanMedia(c as Block);
+        if (!m) return null;
+        inner.push(m);
+      } else return null;
+    }
+    return cleanCache({ ...b, content: inner });
+  }
+  return cleanCache(b);
+}
+
+/** Pages in a base64 PDF (counts page objects; a size-based guess when they're compressed away). */
+function pdfPages(data: string): number {
+  const bin = Buffer.from(data, "base64").toString("latin1");
+  const n = (bin.match(/\/Type\s*\/Page(?![a-zA-Z])/g) ?? []).length;
+  return Math.min(MAX_PDF_PAGES, n || Math.max(1, Math.ceil(bin.length / 60_000)));
+}
+
+/**
+ * Input tokens for the request: text by length, images and PDFs by a fixed amount each
+ * (their base64 data is never counted as text).
+ */
+function requestTokens(system: unknown, messages: Message[], tools: unknown): number {
+  let media = 0;
+  const strip = (b: Block): Block => {
+    if (b.type === "image") {
+      media += IMAGE_TOKENS;
+      return { type: "image" };
+    }
+    if (b.type === "document") {
+      media += pdfPages(String((b.source as { data?: unknown }).data ?? "")) * PDF_PAGE_TOKENS;
+      return { type: "document" };
+    }
+    if (b.type === "tool_result" && Array.isArray(b.content)) return { ...b, content: (b.content as Block[]).map(strip) };
+    return b;
+  };
+  const light = messages.map((m) => (typeof m.content === "string" ? m : { ...m, content: m.content.map(strip) }));
+  return estimateTokens(JSON.stringify(system).length + JSON.stringify(light).length + JSON.stringify(tools).length) + media;
+}
 
 function cleanCache(b: Block): Block {
   const out = { ...b };
@@ -71,7 +144,15 @@ function cleanMessages(raw: unknown): Message[] | null {
       continue;
     }
     if (!Array.isArray(content)) return null;
-    const blocks = content.filter((b): b is Block => !!b && typeof b === "object" && BLOCK_TYPES.has(String((b as Block).type))).map(cleanCache);
+    const kept = content.filter((b): b is Block => !!b && typeof b === "object" && BLOCK_TYPES.has(String((b as Block).type)));
+    // Images and PDFs only from the user, never in a model turn.
+    if (role === "assistant" && kept.some((b) => b.type === "image" || b.type === "document")) return null;
+    const blocks: Block[] = [];
+    for (const b of kept) {
+      const c = cleanBlock(b);
+      if (!c) return null; // a URL source, a wrong media type or broken data: refuse the request
+      blocks.push(c);
+    }
     if (!blocks.length) return null;
     out.push({ role, content: blocks });
   }
@@ -180,7 +261,7 @@ export async function POST(req: Request) {
   const maxOut = Math.min(requestedOut, cfg.maxOutputTokens);
   const effort = effortOf(raw.effort, cfg);
 
-  const estIn = estimateTokens(JSON.stringify(system).length + JSON.stringify(messages).length + JSON.stringify(tools).length);
+  const estIn = requestTokens(system, messages, tools);
   if (estIn > cfg.maxInputTokens) {
     return fail(413, "context_too_large", "This conversation is too long for one request. oovi will summarize older messages and try again.", {
       maxInputTokens: cfg.maxInputTokens,

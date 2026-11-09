@@ -10,7 +10,9 @@
 import path from "node:path";
 import { CommandExitError, Sandbox } from "e2b";
 import type { ToolSpec } from "./llm";
+import { attachmentBytes } from "./attachments";
 import { saveOutput } from "./files";
+import { getChat } from "./store";
 import type { Settings } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 
@@ -52,6 +54,16 @@ export const VM_SPECS: ToolSpec[] = [
       type: "object",
       properties: { path: { type: "string", description: "File on the cloud computer." }, filename: { type: "string", description: "Name to save it as (default: same name)." } },
       required: ["path"],
+    },
+  },
+  {
+    name: "vm_upload_attachment",
+    description:
+      "Copy a file the user attached in this chat onto your cloud computer (into /home/user/attachments/ unless you give a path), so you can work on it with code: pandas on a spreadsheet, Pillow on an image, PDF tools, conversions. Hand results back with vm_download.",
+    parameters: {
+      type: "object",
+      properties: { name: { type: "string", description: "The attached file's name" }, path: { type: "string", description: "Where to put it (optional)" } },
+      required: ["name"],
     },
   },
   {
@@ -164,6 +176,17 @@ export async function runVmTool(call: ToolCall, s: Settings, chatId: string, ws?
       return saveOutput(call, name, ws, Buffer.from(bytes), "file from the cloud computer");
     }
 
+    if (call.name === "vm_upload_attachment") {
+      const chat = getChat(chatId);
+      const name = String(input.name ?? "");
+      const found = chat ? attachmentBytes(chat, name) : null;
+      if (!found) return fail(call, `No attachment called "${name}" in this chat.`);
+      const dest = typeof input.path === "string" && input.path.trim() ? abs(input.path.trim()) : `${HOME}/attachments/${found.att.name}`;
+      const bytes = found.data;
+      await sbx.files.write(dest, bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
+      return { id: call.id, name: call.name, content: `${note}Copied "${found.att.name}" (${Math.ceil(bytes.length / 1024)} KB) to ${dest} on the cloud computer.` };
+    }
+
     if (call.name === "vm_public_url") {
       const port = Math.round(Number(input.port));
       if (!(port > 0 && port < 65536)) return fail(call, "port must be a number between 1 and 65535.");
@@ -183,5 +206,6 @@ export function describeVmCall(call: ToolCall): string {
   if (call.name === "vm_read_file") return `Reading ${String(i.path ?? "")} on the cloud computer`;
   if (call.name === "vm_download") return `Saving ${String(i.filename ?? i.path ?? "")} to your computer`;
   if (call.name === "vm_public_url") return "Getting a public link";
+  if (call.name === "vm_upload_attachment") return `Copying ${String(i.name ?? "an attachment")} to the cloud computer`;
   return "Using the cloud computer";
 }

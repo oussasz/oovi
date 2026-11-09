@@ -137,9 +137,14 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
   useEffect(() => {
     (async () => {
       try {
-        const [bots, chats] = await Promise.all([api<Bot[]>("/api/bots"), api<ChatSummary[]>("/api/chats")]);
+        const [bots, chats, main] = await Promise.all([
+          api<Bot[]>("/api/bots"),
+          api<ChatSummary[]>("/api/chats"),
+          api<{ botId: string | null }>("/api/main").catch(() => ({ botId: null })),
+        ]);
+        // The bot set up here becomes the Chief (main bot): prefer the current one.
         const leadId = chats.find((c) => c.kind === "group")?.leadId;
-        setLeader(bots.find((b) => b.id === leadId) ?? bots.find((b) => /leader/i.test(b.role)) ?? bots[0] ?? null);
+        setLeader(bots.find((b) => b.id === main.botId) ?? bots.find((b) => b.id === leadId) ?? bots.find((b) => /leader/i.test(b.role)) ?? bots[0] ?? null);
       } catch {
         /* the leader step will offer to skip */
       }
@@ -196,8 +201,12 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
       if (leader) {
         const { id, createdAt: _c, ...rest } = leader;
         await api(`/api/bots/${id}`, { method: "PUT", body: JSON.stringify(rest) });
-        // The leader you set up is your main bot: it runs your groups and answers on Telegram.
+        // The bot you set up is your Chief (main bot): it runs your groups and answers on Telegram.
         await api("/api/main", { method: "PUT", body: JSON.stringify({ botId: id }) }).catch(() => {});
+      } else {
+        // The bots weren't loaded in time: still pin a Chief so it's settled from the first sign-in.
+        const main = await api<{ botId: string | null }>("/api/main").catch(() => ({ botId: null }));
+        if (main.botId) await api("/api/main", { method: "PUT", body: JSON.stringify({ botId: main.botId }) }).catch(() => {});
       }
       setStep(4);
     });

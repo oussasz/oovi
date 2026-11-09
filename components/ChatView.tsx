@@ -8,8 +8,8 @@ import { HOSTED_NAME, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import { HostedNotice, refreshCredits } from "./Credits";
 import type { PublicSettings } from "@/lib/settings";
 import "@/lib/desktop";
-import type { Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
-import Face, { Crown, FaceStack, LeadFace } from "./Face";
+import type { Attachment, Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
+import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
@@ -47,6 +47,9 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "create_presentation": return t("chat.call.createFile", { name: String(i.filename ?? "") });
     case "read_document":
     case "read_file": return t("chat.call.readFile", { name: String(i.path ?? "") });
+    case "read_attachment": return t("chat.call.readAttachment", { name: String(i.name ?? "") });
+    case "edit_attachment": return t("chat.call.editAttachment", { name: String(i.name ?? "") });
+    case "vm_upload_attachment": return t("chat.call.vmUpload", { name: String(i.name ?? "") });
     case "list_files": return t("chat.call.listFiles");
     case "search_files": return t("chat.call.searchFiles", { query: String(i.query ?? "") });
     case "write_file":
@@ -74,7 +77,7 @@ const callIcon = (c: ToolCall): IconName =>
     ? "globe"
     : c.name === "click" || c.name === "type"
       ? "cursor"
-      : c.name.startsWith("create_") || c.name.endsWith("_file") || c.name.endsWith("_files") || c.name === "read_document"
+      : c.name.startsWith("create_") || c.name.endsWith("_file") || c.name.endsWith("_files") || c.name === "read_document" || c.name.endsWith("_attachment")
         ? "folder"
         : c.name.startsWith("vm_")
           ? "server"
@@ -171,6 +174,98 @@ function FileCard({ file }: { file: NonNullable<ToolResult["file"]> }) {
       ) : (
         <code className="file-path">{file.path}</code>
       )}
+    </div>
+  );
+}
+
+// ---------- attachments ----------
+
+const MAX_FILES = 20;
+const MAX_FILE_MB = 25;
+/** Programs and scripts are refused (the server checks again, also by content). */
+const BLOCKED_FILE = /\.(exe|msi|msix|msp|appx|appxbundle|dll|sys|scr|com|pif|bat|cmd|ps1|psm1|vbs|vbe|jse|wsf|wsh|hta|lnk|reg|cpl|msc|jar|app|dmg|pkg|deb|rpm|apk|ipa|run|iso|img|vhdx?|docm|xlsm|pptm)$/i;
+
+/** A file being uploaded for the next message. */
+type Upload = { key: string; name: string; size: number; preview?: string; progress: number; att?: Attachment; error?: string };
+
+const sizeText = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(n / 1024))} KB`);
+const extText = (name: string) => (name.includes(".") ? (name.split(".").pop() ?? "").toLowerCase() : "");
+
+function Paperclip({ size = 18 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M21.4 11.1 12.2 20.3a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </svg>
+  );
+}
+
+/** Open a sent attachment in its normal app (desktop), or in a new tab in a browser. */
+async function openAttachment(chatId: string, att: Attachment): Promise<string | null> {
+  const url = `/api/chats/${chatId}/attachments/${att.id}`;
+  const bridge = typeof window !== "undefined" ? window.oovi : undefined;
+  if (bridge?.openFile) {
+    try {
+      const r = await api<{ path: string }>(`${url}?path=1`);
+      const err = await bridge.openFile(r.path);
+      return err || null;
+    } catch (e) {
+      return (e as Error).message;
+    }
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+  return null;
+}
+
+/** One attachment: thumbnail or type badge, name, size; opens on click. */
+function AttachmentChip({ chatId, att, upload, onRemove }: { chatId: string; att?: Attachment; upload?: Upload; onRemove?: () => void }) {
+  const { t } = useI18n();
+  const [err, setErr] = useState<string | null>(null);
+  const name = att?.name ?? upload?.name ?? "";
+  const ext = extText(name);
+  const thumb = upload?.preview ?? (att?.kind === "image" ? `/api/chats/${chatId}/attachments/${att.id}?thumb=1` : undefined);
+  const uploading = !!upload && !upload.att && !upload.error;
+  const failed = upload?.error;
+  const detail = failed ? failed : uploading ? t("attach.uploading", { pct: Math.round((upload?.progress ?? 0) * 100) }) : [att?.width ? `${att.width}×${att.height}` : "", sizeText(att?.size ?? upload?.size ?? 0)].filter(Boolean).join(" · ");
+  const body = (
+    <>
+      {thumb ? <img className="att-thumb" src={thumb} alt="" /> : <span className={`att-badge ext-${ext}`}>{(ext || "file").slice(0, 4).toUpperCase()}</span>}
+      <span className="att-text">
+        <b>{name}</b>
+        <small className={failed || err ? "att-err" : undefined}>{err ?? detail}</small>
+      </span>
+      {uploading && (
+        <span className="att-progress" aria-hidden>
+          <i style={{ width: `${Math.round((upload?.progress ?? 0) * 100)}%` }} />
+        </span>
+      )}
+    </>
+  );
+  return (
+    <div className={`att-chip${thumb ? " has-thumb" : ""}${failed ? " failed" : ""}${uploading ? " busy" : ""}`} title={failed ?? name}>
+      {att && !onRemove ? (
+        <button type="button" className="att-open" onClick={() => void openAttachment(chatId, att).then((e) => setErr(e ? t("attach.cantOpen") : null))} aria-label={t("attach.open", { name })}>
+          {body}
+        </button>
+      ) : (
+        <div className="att-open">{body}</div>
+      )}
+      {onRemove && (
+        <button type="button" className="att-remove" onClick={onRemove} aria-label={t("attach.remove", { name })} title={t("attach.remove", { name })}>
+          <Icon name="close" size={12} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** The files of a sent message, in the chat history. */
+function SentFiles({ chatId, files }: { chatId: string; files: Attachment[] }) {
+  const { t } = useI18n();
+  return (
+    <div className="att-sent" aria-label={t("attach.files")}>
+      {files.map((a) => (
+        <AttachmentChip key={a.id} chatId={chatId} att={a} />
+      ))}
     </div>
   );
 }
@@ -301,9 +396,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
 
   return (
     <div className="msg bot">
-      <div className="msg-face">
-        {bot && (isLeader ? <LeadFace face={bot.face} mood={entryMood(e, isLast)} size={42} title={name} /> : <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />)}
-      </div>
+      <div className="msg-face">{bot && <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />}</div>
       <div className="msg-main">
         <div className="msg-meta">
           <b>{name}</b>
@@ -521,6 +614,13 @@ export default function ChatView({ id }: { id: string }) {
   const [status, setStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
+  // Files for the next message: uploaded right away, sent by id with the text.
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [fileErr, setFileErr] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const xhrs = useRef(new Map<string, XMLHttpRequest>());
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pasted = useRef(0);
   const [picked, setPicked] = useState<Shot | null>(null);
   const [showLive, setShowLive] = useState(true);
   const [zoomOpen, setZoomOpen] = useState(false);
@@ -539,6 +639,7 @@ export default function ChatView({ id }: { id: string }) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const ctrlRef = useRef<AbortController | null>(null);
   const { t, rich, list } = useI18n();
+  const tr = t;
 
   const reload = useCallback(async () => {
     setChat(await api<ChatWithState>(`/api/chats/${id}`));
@@ -642,6 +743,86 @@ export default function ChatView({ id }: { id: string }) {
     ta.style.height = `${Math.min(ta.scrollHeight, 200)}px`;
   }, [input]);
 
+  // Switching chats drops the files waiting to be sent (their uploads are cleaned up later on the server).
+  useEffect(() => {
+    const live = xhrs.current;
+    return () => {
+      for (const x of live.values()) x.abort();
+      live.clear();
+      setUploads((u) => {
+        for (const x of u) if (x.preview) URL.revokeObjectURL(x.preview);
+        return [];
+      });
+      setFileErr(null);
+    };
+  }, [id]);
+
+  const patchUpload = useCallback((key: string, patch: Partial<Upload>) => setUploads((u) => u.map((x) => (x.key === key ? { ...x, ...patch } : x))), []);
+
+  const upload = useCallback(
+    (up: Upload, file: File) => {
+      const xhr = new XMLHttpRequest();
+      xhrs.current.set(up.key, xhr);
+      xhr.open("POST", `/api/chats/${id}/attachments`);
+      xhr.setRequestHeader("x-file-name", encodeURIComponent(up.name));
+      xhr.setRequestHeader("content-type", "application/octet-stream");
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) patchUpload(up.key, { progress: e.loaded / e.total });
+      };
+      xhr.onload = () => {
+        xhrs.current.delete(up.key);
+        let j: { attachment?: Attachment; error?: string } | null = null;
+        try {
+          j = JSON.parse(xhr.responseText) as { attachment?: Attachment; error?: string };
+        } catch {
+          j = null;
+        }
+        if (xhr.status === 200 && j?.attachment) patchUpload(up.key, { att: j.attachment, progress: 1 });
+        else patchUpload(up.key, { error: j?.error || t("attach.failed") });
+      };
+      xhr.onerror = () => {
+        xhrs.current.delete(up.key);
+        patchUpload(up.key, { error: t("attach.failed") });
+      };
+      xhr.send(file);
+    },
+    [id, patchUpload, t],
+  );
+
+  /** Check and start uploading picked, dropped or pasted files. */
+  const addFiles = useCallback(
+    (files: File[]) => {
+      if (!files.length) return;
+      const errs: string[] = [];
+      const room = MAX_FILES - uploads.filter((u) => !u.error).length;
+      if (files.length > room) errs.push(t("attach.tooMany", { max: MAX_FILES }));
+      const fresh: { up: Upload; file: File }[] = [];
+      for (const f of files.slice(0, Math.max(0, room))) {
+        const ext = extText(f.name) || (f.type.split("/")[1] ?? "png").replace("jpeg", "jpg");
+        // Clipboard images all arrive as "image.png": give each its own name.
+        const name = f.name && f.name !== "image.png" ? f.name : `pasted image ${++pasted.current}.${ext}`;
+        if (BLOCKED_FILE.test(name)) errs.push(t("attach.blocked", { name }));
+        else if (f.size > MAX_FILE_MB * 1048576) errs.push(t("attach.tooBig", { name, mb: MAX_FILE_MB }));
+        else if (!f.size) errs.push(t("attach.empty", { name }));
+        else fresh.push({ up: { key: Math.random().toString(36).slice(2), name, size: f.size, progress: 0, preview: /^image\/(png|jpeg|webp|gif)$/.test(f.type) ? URL.createObjectURL(f) : undefined }, file: f });
+      }
+      setFileErr(errs.length ? errs.join(" ") : null);
+      if (!fresh.length) return;
+      setUploads((u) => [...u, ...fresh.map((x) => x.up)]);
+      for (const x of fresh) upload(x.up, x.file);
+    },
+    [uploads, upload, t],
+  );
+
+  function removeUpload(u: Upload) {
+    xhrs.current.get(u.key)?.abort();
+    xhrs.current.delete(u.key);
+    if (u.preview) URL.revokeObjectURL(u.preview);
+    if (u.att) void fetch(`/api/chats/${id}/attachments/${u.att.id}`, { method: "DELETE" }).catch(() => {});
+    setUploads((list) => list.filter((x) => x.key !== u.key));
+    setFileErr(null);
+  }
+
   const members = useMemo(() => (chat?.memberIds ?? []).map((m) => bots.find((b) => b.id === m)).filter((b): b is Bot => !!b), [chat, bots]);
 
   const slashItems = useMemo<SlashItem[]>(
@@ -724,12 +905,19 @@ export default function ChatView({ id }: { id: string }) {
       ? [t("chat.idea.news"), t("chat.idea.passwords"), t("chat.idea.whatCanYouDo")]
       : [t("chat.idea.email"), t("chat.idea.coffee"), t("chat.idea.whatCanYouDo")];
 
+  const readyFiles = uploads.filter((u) => u.att && !u.error);
+  const uploading = uploads.some((u) => !u.att && !u.error);
+
   function send(text: string) {
     const t = text.trim();
-    if (!t || running) return;
+    if ((!t && !readyFiles.length) || running) return;
+    if (uploading) {
+      setFileErr(tr("attach.wait"));
+      return;
+    }
     // A bare /deep or /effort <level> just sets the chip under the message box.
     const lv = t.match(/^\/effort\s+(\S+)$/i)?.[1]?.toLowerCase();
-    if (/^\/deep$/i.test(t) || (lv && (EFFORT_LEVELS as readonly string[]).includes(lv))) {
+    if (!readyFiles.length && (/^\/deep$/i.test(t) || (lv && (EFFORT_LEVELS as readonly string[]).includes(lv)))) {
       if (lv) pickEffort(lv as Effort);
       else pickDeep(true);
       setInput("");
@@ -742,7 +930,11 @@ export default function ChatView({ id }: { id: string }) {
     setError(null);
     setPicked(null);
     stick.current = true;
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep }) });
+    const attachments = readyFiles.map((u) => u.att!.id);
+    for (const u of uploads) if (u.preview) URL.revokeObjectURL(u.preview);
+    setUploads([]);
+    setFileErr(null);
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, ...(attachments.length ? { attachments } : {}) }) });
   }
 
   /** alwaysEdit: also allow file edits in this chat's project folder from now on. */
@@ -866,10 +1058,34 @@ export default function ChatView({ id }: { id: string }) {
 
   return (
     <div className={`chatview${showLive ? " with-live" : ""}`}>
-      <section className="chat-col">
+      <section
+        className={`chat-col${dragging ? " att-dragging" : ""}`}
+        onDragOver={(ev) => {
+          if (!ev.dataTransfer.types.includes("Files")) return;
+          ev.preventDefault();
+          ev.dataTransfer.dropEffect = "copy";
+          if (!dragging) setDragging(true);
+        }}
+        onDragLeave={(ev) => {
+          if (!ev.currentTarget.contains(ev.relatedTarget as Node | null)) setDragging(false);
+        }}
+        onDrop={(ev) => {
+          if (!ev.dataTransfer.types.includes("Files")) return;
+          ev.preventDefault();
+          setDragging(false);
+          addFiles(Array.from(ev.dataTransfer.files));
+          taRef.current?.focus();
+        }}
+      >
+        {dragging && (
+          <div className="att-drop" aria-hidden>
+            <Paperclip size={28} />
+            <span>{t("attach.drop")}</span>
+          </div>
+        )}
         <header className="chat-head">
           {isGroup ? (
-            <FaceStack faces={members.map((m) => m.face)} moods={members.map((m) => botMood(chat, m.id))} lead={leaderMode && lead ? members.indexOf(lead) : undefined} size={46} />
+            <FaceStack faces={members.map((m) => m.face)} moods={members.map((m) => botMood(chat, m.id))} size={46} />
           ) : (
             solo && <Face face={solo.face} mood={botMood(chat, solo.id)} size={46} />
           )}
@@ -945,6 +1161,7 @@ export default function ChatView({ id }: { id: string }) {
               e.kind === "user" ? (
                 <div key={e.id} className={`msg user${e.via || e.deep || e.command || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
                   {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
+                  {e.attachments && e.attachments.length > 0 && <SentFiles chatId={id} files={e.attachments} />}
                   {e.text && (
                     <div className="bubble user-bubble">
                       <Rich text={e.text} bots={members} />
@@ -1041,15 +1258,27 @@ export default function ChatView({ id }: { id: string }) {
           )}
           {isGroup && members.length > 0 && (
             <div className="mention-bar">
-              {[...members].sort((a, b) => (leaderMode && a.id === lead?.id ? -1 : leaderMode && b.id === lead?.id ? 1 : 0)).map((m) => {
-                const isLead = leaderMode && m.id === lead?.id;
-                return (
-                  <button key={m.id} className={`chip${isLead ? " lead" : ""}`} onClick={() => insertMention(m)} title={isLead ? `${m.name} · ${t("chat.leader")}` : t("chat.mention", { name: m.name })}>
-                    <Face face={m.face} size={20} mood={botMood(chat, m.id)} /> {m.name}
-                    {isLead && <Crown size={12} />}
-                  </button>
-                );
-              })}
+              {members.map((m) => (
+                <button key={m.id} className="chip" onClick={() => insertMention(m)} title={t("chat.mention", { name: m.name })}>
+                  <Face face={m.face} size={20} mood={botMood(chat, m.id)} /> {m.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {(uploads.length > 0 || fileErr) && (
+            <div className="att-pending">
+              {uploads.length > 0 && (
+                <div className="att-list">
+                  {uploads.map((u) => (
+                    <AttachmentChip key={u.key} chatId={id} att={u.att} upload={u} onRemove={() => removeUpload(u)} />
+                  ))}
+                </div>
+              )}
+              {fileErr && (
+                <div className="att-notice" role="alert">
+                  {fileErr}
+                </div>
+              )}
             </div>
           )}
           <form
@@ -1059,12 +1288,32 @@ export default function ChatView({ id }: { id: string }) {
               send(input);
             }}
           >
+            <input
+              ref={fileRef}
+              type="file"
+              multiple
+              hidden
+              onChange={(ev) => {
+                addFiles(Array.from(ev.target.files ?? []));
+                ev.target.value = "";
+                taRef.current?.focus();
+              }}
+            />
+            <button type="button" className="att-add" onClick={() => fileRef.current?.click()} title={t("attach.addTitle", { max: MAX_FILES, mb: MAX_FILE_MB })} aria-label={t("attach.add")}>
+              <Paperclip />
+            </button>
             <textarea
               ref={taRef}
               rows={1}
               value={input}
               onChange={(e) => onInput(e.target.value)}
               onKeyDown={onKeyDown}
+              onPaste={(ev) => {
+                const files = Array.from(ev.clipboardData.files);
+                if (!files.length) return;
+                ev.preventDefault();
+                addFiles(files);
+              }}
               placeholder={isGroup ? t("chat.placeholderGroupSlash", { name: chat.name }) : t("chat.placeholderSoloSlash", { name: solo?.name ?? t("chat.theBot") })}
               aria-label={t("chat.message")}
             />
@@ -1073,7 +1322,7 @@ export default function ChatView({ id }: { id: string }) {
                 <Icon name="stop" />
               </button>
             ) : (
-              <button type="submit" className="send" disabled={!input.trim()} title={t("chat.send")} aria-label={t("chat.send")}>
+              <button type="submit" className="send" disabled={(!input.trim() && !readyFiles.length) || uploading} title={uploading ? t("attach.wait") : t("chat.send")} aria-label={t("chat.send")}>
                 <Icon name="send" />
               </button>
             )}

@@ -7,6 +7,8 @@ import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
 const HIDE_KEY = "oovi.update.later";
+/** The version whose "oovi was updated" note was closed. */
+const SEEN_KEY = "oovi.update.seen";
 
 /** Live update state from the desktop app; null in a plain browser. */
 export function useUpdates(): UpdateState | null {
@@ -35,21 +37,27 @@ export function UpdateBanner() {
   const s = useUpdates();
   const bar = useRef<HTMLDivElement>(null);
   const [hidden, setHidden] = useState<string | null>(null);
+  const [seen, setSeen] = useState<string | null>(null);
   const [tried, setTried] = useState(false);
 
   useEffect(() => {
     try {
       setHidden(sessionStorage.getItem(HIDE_KEY));
+      setSeen(localStorage.getItem(SEEN_KEY));
     } catch {
       /* storage unavailable */
     }
   }, []);
 
-  const show =
+  const installing = s?.status === "installing";
+  const offer =
     !!s &&
     !!s.version &&
     hidden !== s.version &&
     (s.status === "available" || s.status === "downloading" || s.status === "ready" || (s.status === "error" && tried));
+  // Right after a restart into a new version: say so once.
+  const updated = !!s?.updatedTo && seen !== s.updatedTo && !offer && !installing;
+  const show = installing || offer || updated;
 
   // The app below is sized to the window minus this bar.
   useLayoutEffect(() => {
@@ -69,6 +77,43 @@ export function UpdateBanner() {
   }, [show]);
 
   if (!show || !s) return null;
+
+  if (installing) {
+    return (
+      <div className="update-bar installing" ref={bar} role="status" aria-live="assertive">
+        <span className="update-spinner" aria-hidden />
+        <span className="update-text">
+          {t("update.installing", { version: s.version ?? "" })}
+          <small>{t("update.installingHint")}</small>
+        </span>
+      </div>
+    );
+  }
+
+  if (updated) {
+    const close = () => {
+      setSeen(s.updatedTo ?? null);
+      try {
+        localStorage.setItem(SEEN_KEY, s.updatedTo ?? "");
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    return (
+      <div className="update-bar updated" ref={bar} role="status">
+        <Icon name="check" size={16} />
+        <span className="update-text">{t("update.updated", { version: s.updatedTo ?? "" })}</span>
+        <div className="update-actions">
+          <a className="btn sm" href={s.updatedNotesUrl ?? s.notesUrl} target="_blank" rel="noreferrer noopener">
+            {t("update.whatsNew")}
+          </a>
+          <button className="icon-btn sm" onClick={close} title={t("common.close")} aria-label={t("common.close")}>
+            <Icon name="close" size={16} />
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const later = () => {
     setHidden(s.version);
@@ -146,6 +191,7 @@ export function UpdateCard() {
   else if (s.status === "available") line = t("update.available", { version: s.version ?? "" });
   else if (s.status === "downloading") line = t("update.downloading", { version: s.version ?? "", progress: s.progress });
   else if (s.status === "ready") line = t("update.ready", { version: s.version ?? "" });
+  else if (s.status === "installing") line = t("update.installing", { version: s.version ?? "" });
   else if (s.status === "error") line = t(errorKey(s.error));
   else if (s.status === "none") line = t("update.upToDate");
 
@@ -172,7 +218,7 @@ export function UpdateCard() {
             {s.status === "ready" ? t("update.restart") : s.canInstall ? t("update.now") : t("update.download")}
           </button>
         )}
-        <button className="btn" onClick={() => void u?.check()} disabled={s.status === "checking" || s.status === "downloading"}>
+        <button className="btn" onClick={() => void u?.check()} disabled={s.status === "checking" || s.status === "downloading" || s.status === "installing"}>
           {t("update.check")}
         </button>
       </div>

@@ -33,10 +33,12 @@ import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
+import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
+import { PROVIDERS } from "./providers-meta";
+import type { Approval, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
-/** alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on. */
-export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; via?: string; effort?: Effort; deep?: boolean };
+/** alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on. attachments: files sent with text (already saved in the chat). */
+export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[] };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
 const PLAN_SPEC: ToolSpec = {
@@ -196,6 +198,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       "- Handle simple things yourself; use a group when its members are better suited or the job is big.",
     );
   }
+  lines.push(...attachmentsPrompt(chat, tools.some((t) => t.name === "vm_upload_attachment")));
   if (chat.workspace) {
     const shell = process.platform === "win32" ? "Windows (cmd.exe)" : process.platform === "darwin" ? "macOS (sh)" : "Linux (sh)";
     lines.push(
@@ -272,7 +275,7 @@ async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal
   const transcript = old
     .map((e) =>
       e.kind === "user"
-        ? `User: ${e.text}`
+        ? `User: ${e.text}${e.attachments?.length ? ` [attached: ${e.attachments.map((a) => a.name).join(", ")}]` : ""}`
         : `${bots.find((b) => b.id === e.botId)?.name ?? "Bot"}: ${e.text || "(worked with tools)"}${activityLine(e)}`,
     )
     .join("\n")
@@ -297,18 +300,32 @@ async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal
   }
 }
 
+/** User messages whose files are sent in full; older ones get a one-line mention (read_attachment brings them back). */
+const FULL_FILE_MESSAGES = 3;
+
+/** How PDFs can go to this bot's model: as PDFs (Claude) or as text. */
+function pdfMode(s: Settings): "anthropic" | "oovi" | "other" {
+  if (usesHosted(s)) return "oovi";
+  return PROVIDERS[s.active]?.kind === "anthropic" ? "anthropic" : "other";
+}
+
 /** The conversation as this bot sees it. */
-function viewFor(bot: Bot, chat: Chat, bots: Bot[]): Msg[] {
+function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other"): Msg[] {
   const out: Msg[] = [];
   const group = chat.kind === "group";
   // Older turns may have been condensed into a summary to save tokens.
   const cut = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
   if (chat.summary && cut > 0) out.push({ role: "user", content: `[Summary of the earlier conversation]\n${chat.summary.text}\n\n(The full conversation is saved; use recall_history for exact details.)` });
+  const recentUsers = new Set(chat.entries.filter((e) => e.kind === "user").slice(-FULL_FILE_MESSAGES).map((e) => e.id));
+  const hostedMax = hostedMaxInput();
   for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") {
       const who = e.via ? `${bots.find((b) => b.id === e.via)?.name ?? "The main assistant"}, on the user's behalf` : "User";
       const text = e.command ? `${e.command}${e.text ? ` ${e.text}` : ""}` : e.text;
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}` : text });
+      const attachments = e.attachments?.length
+        ? e.attachments.map((att) => ({ chatId: chat.id, att, ...(recentUsers.has(e.id) ? {} : { brief: true }), ...(pdfAsDocument(att, pdfs, hostedMax) ? { doc: true } : {}) }))
+        : undefined;
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}` : text, ...(attachments ? { attachments } : {}) });
     }
     else if (e.botId === bot.id) out.push(...e.steps);
     else if (e.text) out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"}]: ${e.text}` });
@@ -392,6 +409,9 @@ export function statusText(c: ToolCall): string {
     case "create_spreadsheet": return `Building ${String(i.filename ?? "a spreadsheet")}`;
     case "create_presentation": return `Making ${String(i.filename ?? "slides")}`;
     case "read_document": return `Reading ${String(i.path ?? "a document")}`;
+    case "read_attachment": return `Reading ${String(i.name ?? "an attachment")}`;
+    case "edit_attachment": return `Editing a copy of ${String(i.name ?? "an attachment")}`;
+    case "vm_upload_attachment": return `Copying ${String(i.name ?? "an attachment")} to the cloud computer`;
     case "read_group": return `Reading ${String(i.group ?? "a group")}`;
     case "message_group": return `Working with ${String(i.group ?? "a group")}`;
     case "list_files": return "Looking at the project files";
@@ -426,7 +446,7 @@ async function* runBot(
   const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots });
   let steps = 0;
 
@@ -475,6 +495,8 @@ async function* runBot(
             results.push({ id: c.id, name: c.name, content: recallHistory(chat, bots, String(c.input.query ?? "")) });
           } else if (c.name === "oovi_help") {
             results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
+          } else if (ATTACH_TOOLS.has(c.name)) {
+            results.push(await runAttachmentTool(c, chat));
           } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace));
         }
       }
@@ -496,7 +518,7 @@ async function* runBot(
     try {
       const effort: Effort = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : "auto";
       let budget = budgetOf(s);
-      const view = prune(viewFor(bot, chat, bots));
+      const view = prune(viewFor(bot, chat, bots, pdfMode(s)));
       let out;
       try {
         out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
@@ -577,6 +599,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       ...(effort && effort !== "auto" ? { effort } : {}),
       ...(deep ? { deep: true } : {}),
       ...(command ? { command } : {}),
+      ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     };
     chat.entries.push(user);
     countUsage({ messages: 1 });

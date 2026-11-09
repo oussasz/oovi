@@ -11,9 +11,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./settings";
 
-export type MemoryTarget = "user" | "memory";
-export const LIMITS: Record<MemoryTarget, number> = { user: 1500, memory: 2500 };
-const FILES: Record<MemoryTarget, string> = { user: "USER.md", memory: "MEMORY.md" };
+// KNOWLEDGE.md is different: reference notes the user writes in Settings > Memory & soul
+// (company facts, product details, writing style). Bots read it but the memory tool can't change it.
+export type MemoryTarget = "user" | "memory" | "knowledge";
+export const LIMITS: Record<MemoryTarget, number> = { user: 1500, memory: 2500, knowledge: 2000 };
+const FILES: Record<MemoryTarget, string> = { user: "USER.md", memory: "MEMORY.md", knowledge: "KNOWLEDGE.md" };
+export const isMemoryTarget = (x: unknown): x is MemoryTarget => x === "user" || x === "memory" || x === "knowledge";
 const SEP = "\n§\n";
 
 const file = (t: MemoryTarget) => path.join(dataDir(), "memory", FILES[t]);
@@ -36,6 +39,15 @@ function writeEntries(t: MemoryTarget, entries: string[]) {
 }
 
 export const readRaw = (t: MemoryTarget) => readEntries(t).join(SEP);
+
+/** When a memory file last changed (ms), or null if it doesn't exist yet. */
+export function updatedAt(t: MemoryTarget): number | null {
+  try {
+    return fs.statSync(file(t)).mtimeMs;
+  } catch {
+    return null;
+  }
+}
 
 /** Replace a whole file (the Library editor and backups use this). */
 export function writeRaw(t: MemoryTarget, text: string) {
@@ -92,12 +104,23 @@ export function applyMemory(action: string, target: string, content?: string, ol
   return 'action must be "add", "replace" or "remove".';
 }
 
-/** Memory block for the system prompt (empty when there's nothing yet). */
+const bullets = (entries: string[]) => entries.map((e) => `- ${e.replace(/\n/g, "\n  ")}`);
+
+/** The user's reference knowledge for the system prompt (empty when there's none). Capped by LIMITS.knowledge. */
+export function knowledgePrompt(): string {
+  const k = readEntries("knowledge");
+  if (!k.length) return "";
+  return ["Reference knowledge from the user (always true; read-only, the memory tool can't change it):", ...bullets(k)].join("\n").slice(0, LIMITS.knowledge + 400);
+}
+
+/** Memory block for the system prompt (empty when there's nothing yet). Includes the user's knowledge notes. */
 export function memoryPrompt(): string {
   const user = readEntries("user");
   const mem = readEntries("memory");
   const parts: string[] = [];
-  if (user.length) parts.push(`About the user (USER.md, ${size(user)}/${LIMITS.user} chars):`, ...user.map((e) => `- ${e.replace(/\n/g, "\n  ")}`));
-  if (mem.length) parts.push(`Notes (MEMORY.md, ${size(mem)}/${LIMITS.memory} chars):`, ...mem.map((e) => `- ${e.replace(/\n/g, "\n  ")}`));
+  if (user.length) parts.push(`About the user (USER.md, ${size(user)}/${LIMITS.user} chars):`, ...bullets(user));
+  if (mem.length) parts.push(`Notes (MEMORY.md, ${size(mem)}/${LIMITS.memory} chars):`, ...bullets(mem));
+  const k = knowledgePrompt();
+  if (k) parts.push(k);
   return parts.join("\n");
 }

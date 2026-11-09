@@ -1,5 +1,6 @@
+import { getAttachment, MAX_ATTACHMENTS } from "@/lib/attachments";
 import { guard } from "@/lib/guard";
-import type { Effort } from "@/lib/types";
+import type { Attachment, Effort } from "@/lib/types";
 import { eventStream, startRun, stopRun } from "@/lib/runner";
 import { getChat } from "@/lib/store";
 
@@ -15,12 +16,21 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; effort?: unknown; deep?: unknown } | null;
-  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; effort?: Effort; deep?: boolean };
-  if (typeof body?.text === "string" && body.text.trim()) {
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; effort?: unknown; deep?: unknown; attachments?: unknown } | null;
+  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; effort?: Effort; deep?: boolean; attachments?: Attachment[] };
+  // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
+  const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
+  if (ids.length > MAX_ATTACHMENTS) return Response.json({ error: `Attach at most ${MAX_ATTACHMENTS} files per message.` }, { status: 400 });
+  const attachments: Attachment[] = [];
+  for (const a of ids) {
+    const att = getAttachment(id, a);
+    if (!att) return Response.json({ error: "An attached file is missing. Remove it and attach it again." }, { status: 400 });
+    attachments.push(att);
+  }
+  if (typeof body?.text === "string" && (body.text.trim() || attachments.length)) {
     if (body.text.length > 20_000) return Response.json({ error: "Message is too long." }, { status: 400 });
     const effort = ["auto", "low", "medium", "high", "max"].includes(String(body.effort)) ? (body.effort as Effort) : undefined;
-    input = { text: body.text.trim(), effort, deep: body.deep === true };
+    input = { text: body.text.trim(), effort, deep: body.deep === true, ...(attachments.length ? { attachments } : {}) };
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;

@@ -9,7 +9,7 @@ import Icon from "./Icon";
 import SettingsForm from "./SettingsForm";
 
 /** The tabs of the Settings window (SettingsForm checks the id again). */
-export const SETTINGS_TABS = ["profile", "models", "telegram", "accounts", "search", "browser", "computer", "safety", "language", "data", "about"] as const;
+export const SETTINGS_TABS = ["profile", "models", "memory", "telegram", "accounts", "search", "browser", "computer", "safety", "language", "data", "about"] as const;
 
 /** Open Settings, optionally on one tab (e.g. "models"). */
 export const openSettings = (tab?: string) => {

@@ -1,12 +1,12 @@
 "use client";
 
-// Slime avatars in the style of the oovi logo: a soft, slightly lopsided pastel
-// pebble with a few ink strokes. It breathes like jelly, squashes and stretches
-// from its bottom edge, acts out what the bot is doing (thinking, reading,
-// typing on a laptop, sleeping...), squishes when pressed and follows the pointer.
-// Everything is SVG + CSS transforms/opacity (Face.module.css), so it stays light.
+// Flat 2D avatars in the style of the oovi logo: a slightly lopsided pastel
+// pebble in one solid colour with a few ink strokes. No gloss, gradients or
+// shadows. It acts out what the bot is doing (thinking, reading, typing on a
+// laptop, sleeping...) with small flat motions, reacts when pressed and follows
+// the pointer. Everything is SVG + CSS transforms/opacity (Face.module.css).
 
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import s from "./Face.module.css";
 
@@ -15,6 +15,8 @@ const PAPER = "#ffffff";
 const BLUSH = "#ff8a96";
 const SPARK = "#FFC83D";
 const GREEN = "#34C76F";
+/** Opacity of the hairline body edge. */
+const EDGE = 0.14;
 const EYE_Y = 51;
 const EYE_X = [42.5, 57.5] as const;
 /** Below this pixel size, props lose their fine details and features get bolder. */
@@ -24,15 +26,15 @@ type Shape = (typeof SHAPES)[number];
 
 /**
  * Body outline per shape. `top`: head top near x=50 (hair/hats are drawn for top=20).
- * `sides`: body edges at eye height (headphones). `hl`: gloss highlight x, y, angle.
+ * `sides`: body edges at eye height (headphones).
  * `fy`: vertical offset of the face features.
  */
-const BODY: Record<Shape, { d: string; top: number; sides: [number, number]; hl: [number, number, number]; fy: number }> = {
-  round: { d: "M50 17 C66 15 83 22 87 40 C91 58 86 80 66 88 C54 93 34 92 22 85 C10 77 9 58 14 44 C19 29 34 19 50 17 Z", top: 17, sides: [12, 89], hl: [29, 33, -42], fy: 0 },
-  drop: { d: "M44 15 C54 14 66 26 76 38 C86 50 92 64 87 77 C82 89 66 92 50 91 C33 90 15 88 11 74 C7 60 17 44 26 32 C32 24 37 16 44 15 Z", top: 17, sides: [15, 82], hl: [30, 37, -55], fy: 4 },
-  mochi: { d: "M46 30 C64 27 84 34 91 50 C97 65 91 84 72 89 C58 92 40 92 26 89 C11 85 5 72 9 58 C13 43 28 32 46 30 Z", top: 30, sides: [9, 93], hl: [25, 45, -28], fy: 6 },
-  bean: { d: "M58 14 C72 15 82 28 83 46 C84 66 78 86 60 90 C46 93 28 89 21 76 C14 63 18 46 26 34 C34 22 45 13 58 14 Z", top: 15, sides: [19, 83], hl: [33, 30, -50], fy: -1 },
-  pebble: { d: "M62 21 C78 23 90 36 90 55 C90 76 76 90 52 91 C32 92 12 85 10 68 C8 52 20 44 30 37 C40 30 47 20 62 21 Z", top: 24, sides: [13, 90], hl: [31, 41, -38], fy: 4 },
+const BODY: Record<Shape, { d: string; top: number; sides: [number, number]; fy: number }> = {
+  round: { d: "M50 17 C66 15 83 22 87 40 C91 58 86 80 66 88 C54 93 34 92 22 85 C10 77 9 58 14 44 C19 29 34 19 50 17 Z", top: 17, sides: [12, 89], fy: 0 },
+  drop: { d: "M44 15 C54 14 66 26 76 38 C86 50 92 64 87 77 C82 89 66 92 50 91 C33 90 15 88 11 74 C7 60 17 44 26 32 C32 24 37 16 44 15 Z", top: 17, sides: [15, 82], fy: 4 },
+  mochi: { d: "M46 30 C64 27 84 34 91 50 C97 65 91 84 72 89 C58 92 40 92 26 89 C11 85 5 72 9 58 C13 43 28 32 46 30 Z", top: 30, sides: [9, 93], fy: 6 },
+  bean: { d: "M58 14 C72 15 82 28 83 46 C84 66 78 86 60 90 C46 93 28 89 21 76 C14 63 18 46 26 34 C34 22 45 13 58 14 Z", top: 15, sides: [19, 83], fy: -1 },
+  pebble: { d: "M62 21 C78 23 90 36 90 55 C90 76 76 90 52 91 C32 92 12 85 10 68 C8 52 20 44 30 37 C40 30 47 20 62 21 Z", top: 24, sides: [13, 90], fy: 4 },
 };
 
 /** Mood → where the eyes look (user units). */
@@ -81,12 +83,7 @@ function Eyes({ type, mood, hide }: { type: (typeof EYES)[number]; mood: Mood; h
           case "ticks":
             return i === 0 ? <path key={i} d={`M${x + 1.6} ${y - 3} L${x - 1.2} ${y + 3}`} strokeWidth={4.4} /> : <path key={i} d={`M${x - 1.8} ${y - 4.8} Q${x + 1.6} ${y} ${x + 0.2} ${y + 4.6}`} strokeWidth={4.4} />;
           default:
-            return (
-              <g key={i}>
-                <ellipse cx={x} cy={y} rx={3} ry={3.9} fill={INK} stroke="none" />
-                <circle cx={x + 1} cy={y - 1.4} r={0.95} fill={PAPER} stroke="none" />
-              </g>
-            );
+            return <ellipse key={i} cx={x} cy={y} rx={3} ry={3.9} fill={INK} stroke="none" />;
         }
       })}
     </g>
@@ -170,12 +167,7 @@ function Hair({ type, color }: { type: (typeof HAIR)[number]; color: string }) {
       );
     case "cloud": {
       const d = "M14 46 q-4 -9 3 -15 q-1 -11 11 -14 q4 -10 16 -7 q8 -7 18 0 q12 -2 15 8 q10 4 8 15 q5 6 2 13 Z";
-      return (
-        <g stroke="none">
-          <path d={d} fill={color} />
-          <path d={d} fill={INK} opacity={0.08} />
-        </g>
-      );
+      return <path d={d} fill={color} stroke={INK} strokeOpacity={EDGE} strokeWidth={1.6} />;
     }
     default: return null;
   }
@@ -279,7 +271,6 @@ function Wear({ type }: { type: (typeof WEAR)[number] }) {
           <circle cx={41.8} cy={51} r={6.8} fill={INK} />
           <circle cx={58.2} cy={51} r={6.8} fill={INK} />
           <path d="M48 50 Q50 48.5 52 50 M35 49.5 L28 47 M65 49.5 L72 47" />
-          <path d="M38 48.5 q1.5 -2 3.5 -2.2 M54.4 48.5 q1.5 -2 3.5 -2.2" stroke={PAPER} strokeWidth={1.5} opacity={0.65} />
         </g>
       );
     case "monocle":
@@ -333,7 +324,6 @@ export type FaceProps = { face: FaceT | Record<string, unknown>; mood?: Mood; si
 export default function Face({ face: raw, mood = "idle", size = 40, title, className, interactive = false }: FaceProps) {
   const face = normalizeFace(raw);
   const ref = useRef<SVGSVGElement>(null);
-  const uid = `f${useId().replace(/[^a-zA-Z0-9_-]/g, "")}`;
   const [look, setLook] = useState({ x: 0, y: 0 });
   const [poke, setPoke] = useState<"" | "down" | "up">("");
 
@@ -464,19 +454,6 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
       onPointerLeave={release}
     >
       {title && <title>{title}</title>}
-      <defs>
-        <radialGradient id={`${uid}s`}>
-          <stop offset="0" stopColor={INK} stopOpacity={0.2} />
-          <stop offset="1" stopColor={INK} stopOpacity={0} />
-        </radialGradient>
-        <radialGradient id={`${uid}g`} cx="0.34" cy="0.26" r="0.85">
-          <stop offset="0" stopColor={PAPER} stopOpacity={0.3} />
-          <stop offset="0.45" stopColor={PAPER} stopOpacity={0} />
-          <stop offset="0.78" stopColor={INK} stopOpacity={0} />
-          <stop offset="1" stopColor={INK} stopOpacity={0.09} />
-        </radialGradient>
-      </defs>
-      <ellipse className={s.shadow} cx={50} cy={92.5} rx={32} ry={5} fill={`url(#${uid}s)`} />
       <g fill="none" stroke={INK} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round">
         <g className={s.body}>
           <g transform={`translate(0 ${dy})`}>
@@ -484,10 +461,8 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
             {hair === "cloud" && !coversHair && <Hair type="cloud" color={color} />}
             {hair === "bun" && !coversHair && <Hair type="bun" color={color} />}
           </g>
-          <path d={body.d} fill={color} stroke="none" />
-          <path d={body.d} fill={`url(#${uid}g)`} stroke="none" />
-          <ellipse cx={body.hl[0]} cy={body.hl[1]} rx={6.2} ry={2.8} fill={PAPER} opacity={0.45} stroke="none" transform={`rotate(${body.hl[2]} ${body.hl[0]} ${body.hl[1]})`} />
-          {detailed && <circle cx={body.hl[0] - 4} cy={body.hl[1] + 8} r={1.4} fill={PAPER} opacity={0.4} stroke="none" />}
+          {/* One solid colour. A hairline edge keeps pale bodies visible on a light page. */}
+          <path d={body.d} fill={color} stroke={INK} strokeOpacity={EDGE} strokeWidth={small ? 2.4 : 1.6} />
 
           <g transform={featT}>
             <g className={s.feat} style={{ transform: `translate(${gaze.x + look.x}px, ${gaze.y + look.y}px)` }}>
@@ -543,57 +518,9 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
   );
 }
 
-/** A small crown: marks the group leader wherever it appears. */
-export function Crown({ size = 12 }: { size?: number }) {
-  return (
-    <svg className="crown" width={size} height={Math.round(size * 0.72)} viewBox="0 0 18 13" aria-hidden>
-      <path d="M1.5 11.5 0.8 3.2l4.6 3.4L9 .8l3.6 5.8 4.6-3.4-.7 8.3z" fill="currentColor" stroke="var(--bg)" strokeWidth="1.2" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-/** The group leader's face: a warm ring and a crown, so it stands out anywhere. */
-export function LeadFace(props: FaceProps) {
-  const size = props.size ?? 40;
-  return (
-    <span className="face-lead" style={{ width: size, height: size }}>
-      <Face {...props} />
-      {/* On small faces the ring alone is clearer than a tiny crown. */}
-      {size >= 34 && (
-        <span className="face-lead-crown">
-          <Crown size={Math.round(size * 0.3)} />
-        </span>
-      )}
-    </span>
-  );
-}
-
-/**
- * Up to three slimes huddled together, like the oovi logo. With `lead` (an index into
- * faces), the leader stands in front, bigger and framed, with teammates behind it.
- */
-export function FaceStack({ faces, size = 40, moods, lead }: { faces: (FaceT | Record<string, unknown>)[]; size?: number; moods?: Mood[]; lead?: number }) {
+/** Up to three faces huddled together, like the oovi logo. */
+export function FaceStack({ faces, size = 40, moods }: { faces: (FaceT | Record<string, unknown>)[]; size?: number; moods?: Mood[] }) {
   const box = { position: "relative" as const, display: "inline-block", flex: "none", width: size, height: size };
-  const hasLead = lead !== undefined && lead >= 0 && lead < faces.length && faces.length > 1;
-  if (hasLead) {
-    const order = [lead!, ...faces.map((_, i) => i).filter((i) => i !== lead)].slice(0, 3);
-    const big = Math.round(size * 0.72);
-    const small = Math.round(size * (order.length === 2 ? 0.52 : 0.46));
-    // Teammates at the back (top corners), the leader in front at the bottom.
-    const back: [number, number][] = order.length === 2 ? [[size - small, 0]] : [[0, 0], [size - small, 0]];
-    return (
-      <span className="face-stack" style={box}>
-        {order.slice(1).map((fi, i) => (
-          <span key={fi} style={{ position: "absolute", left: back[i]?.[0], top: back[i]?.[1], zIndex: 1, opacity: 0.92 }}>
-            <Face face={faces[fi]!} size={small} mood={moods?.[fi]} />
-          </span>
-        ))}
-        <span style={{ position: "absolute", left: order.length === 2 ? 0 : (size - big) / 2, top: size - big, zIndex: 2 }}>
-          <LeadFace face={faces[order[0]!]!} size={big} mood={moods?.[order[0]!]} />
-        </span>
-      </span>
-    );
-  }
   const shown = faces.slice(0, 3);
   if (shown.length <= 1) return shown[0] ? <Face face={shown[0]} size={size} mood={moods?.[0]} /> : <span className="face-stack" style={box} />;
   const s2 = Math.round(size * (shown.length === 2 ? 0.7 : 0.66));

@@ -45,6 +45,24 @@ export function listLessons(): Lesson[] {
   }
 }
 
+/** Restore from a backup: lessons with the same id are replaced, others kept. */
+export function importLessons(raw: unknown): number {
+  if (!Array.isArray(raw)) return 0;
+  const cur = listLessons();
+  let n = 0;
+  for (const x of raw.slice(0, 2000)) {
+    const l = x as Partial<Lesson>;
+    if (!l || typeof l.id !== "string" || typeof l.text !== "string" || !l.text.trim()) continue;
+    const i = cur.findIndex((c) => c.id === l.id);
+    const clean = { ...(l as Lesson), text: l.text.slice(0, 600) };
+    if (i >= 0) cur[i] = clean;
+    else cur.push(clean);
+    n++;
+  }
+  writeLessons(cur.slice(-400));
+  return n;
+}
+
 function writeLessons(lessons: Lesson[]) {
   fs.mkdirSync(path.dirname(file()), { recursive: true });
   fs.writeFileSync(file(), JSON.stringify({ lessons }, null, 1));
@@ -105,6 +123,16 @@ export function rateLessons(entryId: string, delta: number): void {
   let hit = false;
   for (const l of lessons) if (l.entryId === entryId) ((l.score = Math.max(0, l.score + delta)), (hit = true));
   if (hit) writeLessons(lessons);
+}
+
+/** Raise or lower one lesson's score (0 = never recalled). Settings > Memory & soul uses this. */
+export function scoreLesson(id: string, delta: number): Lesson | null {
+  const lessons = listLessons();
+  const l = lessons.find((x) => x.id === id);
+  if (!l) return null;
+  l.score = Math.max(0, Math.min(20, l.score + Math.sign(delta)));
+  writeLessons(lessons);
+  return l;
 }
 
 /** The lessons that match a request, best first. */

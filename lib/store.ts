@@ -45,7 +45,7 @@ function seed(): Bot[] {
       role: "Team leader & personal assistant",
       instructions:
         "You are the user's personal assistant and the leader of their team. Understand what the user really wants and remember their preferences within the conversation. Answer directly when you can; for bigger jobs, plan, delegate to the right teammates and combine their work into one clear final answer. Always end with a clear result or next step.",
-      face: { color: 8, shape: 0, hair: 0, eyes: 0, nose: 0, mouth: 1, cheeks: 1, top: 4, wear: 0 },
+      face: { color: 8, shape: 0, hair: 0, eyes: 0, nose: 0, mouth: 1, cheeks: 1, top: 0, wear: 0 },
       tools: { web: true, browser: true },
       createdAt: now - 1,
     },

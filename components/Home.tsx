@@ -14,6 +14,7 @@ export default function Home() {
   const [bots, setBots] = useState<Bot[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [settings, setSettings] = useState<PublicSettings | null>(null);
+  const [chiefId, setChiefId] = useState<string | null>(null);
   const { t, rich } = useI18n();
 
   useEffect(() => {
@@ -24,10 +25,16 @@ export default function Home() {
         setSettings(s);
       })
       .catch(() => {});
+    api<{ botId: string | null }>("/api/main")
+      .then((m) => setChiefId(m.botId))
+      .catch(() => {});
   }, []);
 
   const groups = chats.filter((c) => c.kind === "group");
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
+  // The Chief (main bot) comes first.
+  const chief = bots.find((b) => b.id === chiefId);
+  const botList = chief ? [chief, ...bots.filter((b) => b !== chief)] : bots;
   // With theOovi (signed in, no own key needed) there's nothing to set up.
   const needsKey = settings && !settings.hosted && PROVIDERS[settings.active].needsKey && !settings.providers[settings.active]?.hasKey;
   const first = groups[0];
@@ -61,14 +68,7 @@ export default function Home() {
         <div className="tiles">
           {groups.map((g) => (
             <Link key={g.id} href={`/c/${g.id}`} className="tile">
-              <FaceStack
-                faces={g.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)}
-                lead={(() => {
-                  const ids = g.memberIds.filter((id) => face(id));
-                  return ids.length > 1 ? Math.max(0, ids.indexOf(g.leadId ?? ids[0]!)) : undefined;
-                })()}
-                size={64}
-              />
+              <FaceStack faces={g.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={64} />
               <b>{g.name}</b>
               <span>{g.preview || g.memberIds.map((id) => bots.find((b) => b.id === id)?.name).filter(Boolean).join(", ")}</span>
             </Link>
@@ -86,10 +86,17 @@ export default function Home() {
       <section>
         <h2 className="section-title">{t("common.bots")}</h2>
         <div className="tiles">
-          {bots.map((b) => (
+          {botList.map((b) => (
             <Link key={b.id} href={`/c/dm-${b.id}`} className="tile">
               <Face face={b.face} size={64} />
-              <b>{b.name}</b>
+              <b>
+                {b.name}
+                {b === chief && (
+                  <span className="chief-tag" title={t("chief.what")}>
+                    {t("chief.title")}
+                  </span>
+                )}
+              </b>
               <span>{b.role || t("common.bot")}</span>
               <span className="tags">
                 {b.tools.web && <span className="tag">{t("home.tagWeb")}</span>}

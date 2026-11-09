@@ -11,6 +11,7 @@ import "@/lib/desktop";
 import { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
+import { openSettings } from "./SettingsModal";
 
 type Tab = "connectors" | "skills" | "plugins" | "memory";
 type View = "yours" | "discover";
@@ -820,6 +821,7 @@ export default function Marketplace() {
     <>
     <div className="card">
       <p className="muted">{rich("lib.memoryIntro", { about: <b>{t("lib.memoryAbout")}</b>, notes: <b>{t("lib.memoryNotes")}</b>, sep: <code>§</code> })}</p>
+      <button className="btn sm" onClick={() => openSettings("memory")}>{t("mem.openSettings")}</button>
       {mem ? (
         <div className="grid">
           {(["user", "memory"] as const).map((k) => (

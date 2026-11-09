@@ -15,10 +15,33 @@ export type ToolResult = {
   image?: string;
   /** A file the tool created (UI shows Open / Show in folder). */
   file?: { path: string; name: string; size: number };
+  /** Attachments shown to the model with this result (read_attachment on an image). */
+  attach?: AttachRef[];
 };
 
+// ---------- attachments (files the user adds to a message) ----------
+
+export type AttachmentKind = "image" | "pdf" | "docx" | "xlsx" | "xls" | "pptx" | "csv" | "text";
+
+/** A file attached to a user message. Stored in the chat's data folder; the model never sees its path. */
+export type Attachment = {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+  kind: AttachmentKind;
+  /** Images: pixel size of the original. */
+  width?: number;
+  height?: number;
+  /** PDFs (pages), slides (pptx) or sheets (xlsx). */
+  pages?: number;
+};
+
+/** An attachment as part of what a model sees. brief: only a one-line mention. doc: send a PDF as a PDF (not text). */
+export type AttachRef = { chatId: string; att: Attachment; brief?: boolean; doc?: boolean };
+
 export type Msg =
-  | { role: "user"; content: string }
+  | { role: "user"; content: string; attachments?: AttachRef[] }
   | { role: "assistant"; text: string; toolCalls: ToolCall[]; reasoning?: string }
   | { role: "tool"; results: ToolResult[] };
 
@@ -60,7 +83,7 @@ export type Usage = { input: number; output: number };
 /** via: sent by the user's main bot on the user's behalf (its bot id). */
 /** effort: how hard the bots think for this message. deep: Deep work mode (plan, work longer, verify). */
 /** command: the slash command the message started with ("/zapier", "/effort high"); text is the rest. */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; command?: string };
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; command?: string; attachments?: Attachment[] };
 /** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
 export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";

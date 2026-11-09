@@ -1,7 +1,8 @@
 // What the desktop app exposes to the page (electron/preload.cjs).
 // Missing when the UI runs in a normal browser (e.g. `npm run web`).
 
-export type UpdateStatus = "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "error";
+/** installing: oovi is about to close, install the update and restart by itself. */
+export type UpdateStatus = "idle" | "checking" | "none" | "available" | "downloading" | "ready" | "installing" | "error";
 
 export type UpdateState = {
   status: UpdateStatus;
@@ -20,8 +21,13 @@ export type UpdateState = {
   store?: boolean;
   canInstall: boolean;
   platform: string;
+  /** Release notes of the new version. */
   notesUrl: string;
   checkedAt: number | null;
+  /** Set (for this run only) when oovi just restarted into a new version. */
+  updatedTo?: string | null;
+  /** Release notes of the version just installed. */
+  updatedNotesUrl?: string | null;
 };
 
 export type DesktopBridge = {

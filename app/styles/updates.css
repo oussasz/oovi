@@ -1,0 +1,33 @@
+/* updates: owned by one feature, kept separate so parallel work never overwrites globals.css */
+
+/* Installing: the update bar turns into a clear "Updating... oovi will restart" state. */
+.update-bar.installing { background: var(--text); color: var(--bg); border-bottom-color: var(--text); }
+.update-bar.installing .update-text small { display: block; font-weight: 500; opacity: 0.75; }
+.update-spinner {
+  flex: none; width: 16px; height: 16px; border-radius: 50%;
+  border: 2px solid currentColor; border-right-color: transparent;
+  animation: update-spin 0.8s linear infinite;
+}
+@keyframes update-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .update-spinner { animation: none; border-right-color: currentColor; opacity: 0.6; } }
+
+/* Shown once after a restart into a new version. */
+.update-bar.updated .update-text b { font-weight: 800; }
+
+/* "Chief": the main bot, who runs every group. Neutral, minimal: no colour, no crown. */
+.chief-tag {
+  display: inline-flex; align-items: center; flex: none;
+  font-size: 10.5px; font-weight: 800; line-height: 1.5; letter-spacing: 0.02em;
+  padding: 0 7px; border-radius: 99px;
+  border: 1px solid var(--border); background: var(--soft); color: var(--muted);
+  vertical-align: middle; white-space: nowrap;
+}
+.tile b .chief-tag { margin-inline-start: 6px; position: relative; top: -1px; }
+.preview-name .chief-tag { margin-inline-start: 8px; font-size: 11.5px; padding: 1px 9px; position: relative; top: -3px; }
+.chief-note {
+  display: flex; align-items: flex-start; gap: 10px;
+  margin: -4px 0 16px; padding: 10px 12px;
+  border: 1px solid var(--border); border-radius: 14px; background: var(--soft);
+}
+.chief-note .chief-tag { margin-top: 2px; background: var(--panel); color: var(--text); }
+.chief-note p { margin: 0; font-size: 13.5px; color: var(--muted); line-height: 1.45; }

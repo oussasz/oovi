@@ -15,6 +15,7 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [bots, setBots] = useState<Bot[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
+  const [chiefId, setChiefId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const t = useT();
 
@@ -26,6 +27,10 @@ export default function Sidebar() {
     } catch {
       /* keep the last good lists */
     }
+    // The Chief (main bot) is pinned first in the Bots list.
+    api<{ botId: string | null }>("/api/main")
+      .then((m) => setChiefId(m.botId))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -46,10 +51,10 @@ export default function Sidebar() {
   useEffect(() => setOpen(false), [pathname]);
 
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
-  /** The leader's position among the members shown (the first member when none is set). */
-  const leadIndex = (ids: string[], leadId?: string) => (ids.length > 1 ? Math.max(0, ids.indexOf(leadId ?? ids[0]!)) : undefined);
   const groups = chats.filter((c) => c.kind === "group");
   const dm = (botId: string) => chats.find((c) => c.id === `dm-${botId}`);
+  const chief = bots.find((b) => b.id === chiefId);
+  const botList = chief ? [chief, ...bots.filter((b) => b !== chief)] : bots;
 
   return (
     <>
@@ -76,12 +81,7 @@ export default function Sidebar() {
           {groups.length === 0 && <p className="side-empty">{t("side.noGroups")}</p>}
           {groups.map((c) => (
             <Link key={c.id} href={`/c/${c.id}`} className={`side-item${pathname === `/c/${c.id}` ? " active" : ""}`}>
-              <FaceStack
-                faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)}
-                lead={leadIndex(c.memberIds.filter((id) => face(id)), c.leadId)}
-                size={38}
-                moods={c.running ? ["thinking", "working", "thinking"] : undefined}
-              />
+              <FaceStack faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={38} moods={c.running ? ["thinking", "working", "thinking"] : undefined} />
               <span className="side-text">
                 <span className="side-name">
                   {c.name}
@@ -94,7 +94,7 @@ export default function Sidebar() {
           ))}
 
           <div className="side-label">{t("common.bots")}</div>
-          {bots.map((b) => {
+          {botList.map((b) => {
             const c = dm(b.id);
             return (
               <Link key={b.id} href={`/c/dm-${b.id}`} className={`side-item${pathname === `/c/dm-${b.id}` ? " active" : ""}`}>
@@ -102,6 +102,7 @@ export default function Sidebar() {
                 <span className="side-text">
                   <span className="side-name">
                     {b.name}
+                    {b === chief && <span className="chief-tag" title={t("chief.what")}>{t("chief.title")}</span>}
                     {c?.running && <span className="live-dot" title={t("side.working")} />}
                     {c?.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
                   </span>

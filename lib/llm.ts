@@ -8,6 +8,7 @@
 // one "cools down" for a while so later calls skip straight past it.
 
 import { appVersion, cloudUrl, sessionToken } from "./account";
+import { attachmentParts, INLINE_MAX, INLINE_TOTAL, type MediaPart } from "./attachments";
 import { noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
 import { costOf, readableError, replacementFor } from "./models";
 import { HOSTED_NAME, PROVIDERS, providerName, type ProviderId } from "./providers-meta";
@@ -153,19 +154,25 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
     const ref = queue[qi]!;
     let maxOut = effort === "auto" ? MAX_OUTPUT : OUTPUT_FOR[effort];
     let reasoning = effort !== "auto";
-    for (let attempt = 0; attempt < 4; attempt++) {
+    let noMedia = false;
+    for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto");
+        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto", noMedia);
         cooldown.delete(keyOf(ref));
         if (ref.provider === "oovi") return { ...out, model: out.hostedName || HOSTED_NAME, ref, fallback: false, note };
         const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
         return { ...out, model: modelLabel(ref), ref, cost, fallback: keyOf(ref) !== keyOf(chain[0]!), note };
       } catch (e) {
         if (signal?.aborted) throw e;
-        if (ref.provider === "oovi") throw hostedFailure(e);
         const status = e instanceof ProviderError ? e.status : 0;
         const retryAfter = e instanceof ProviderError ? e.retryAfter : undefined;
         const raw = (e as Error).message || String(e);
+        // This model can't take images/PDFs, or the request got too big with them: send the files as text notes instead.
+        if (!noMedia && hasMedia(messages) && (status === 413 || (status === 400 && MEDIA_REJECTED.test(raw)))) {
+          noMedia = true;
+          continue;
+        }
+        if (ref.provider === "oovi") throw hostedFailure(e);
         const busy = status === 429 || status === 503 || status === 529;
         // A short "try again in a few seconds" is worth waiting for once.
         if (busy && attempt === 0 && retryAfter && retryAfter <= 8) {
@@ -235,11 +242,17 @@ function hostedFailure(e: unknown): HostedError {
   return new HostedError(message, code);
 }
 
-async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort): Promise<RawCompletion> {
+const MEDIA_REJECTED = /image|vision|multimodal|image_url|document|pdf|media.?type|content.{0,40}(array|string|type)|unsupported content|too large/i;
+
+/** The conversation includes images or PDFs sent as files. */
+const hasMedia = (messages: Msg[]) =>
+  messages.some((m) => (m.role === "user" && !!m.attachments?.some((a) => !a.brief && (a.att.kind === "image" || (a.att.kind === "pdf" && a.doc)))) || (m.role === "tool" && m.results.some((t) => !!t.attach?.length)));
+
+async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort, noMedia = false): Promise<RawCompletion> {
   if (ref.provider === "oovi") {
     const timeout = AbortSignal.timeout(290_000);
     const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    return hosted({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig });
+    return hosted({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig, noMedia });
   }
   const meta = PROVIDERS[ref.provider];
   const cfg = s.providers[ref.provider] ?? {};
@@ -248,11 +261,51 @@ async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Ms
   if (meta.needsKey && !cfg.apiKey) throw new ProviderError(`No API key for ${meta.label}. Add one in Settings.`, 401);
   const timeout = AbortSignal.timeout(TIMEOUT_FOR[effort]);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig };
+  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig, noMedia };
   return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible(req, ref.provider === "openrouter");
 }
 
-type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; effort: Effort; signal?: AbortSignal };
+/** noMedia: send attachments as text notes only (the model rejected images or PDFs). */
+type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; effort: Effort; signal?: AbortSignal; noMedia?: boolean };
+
+// ---------- attachments ----------
+
+type Wire = "anthropic" | "oovi" | "openai";
+/**
+ * Base64 bytes of images and PDFs allowed in one request: Anthropic takes 32 MB per request;
+ * theOovi goes through a server with a ~4.5 MB body limit.
+ */
+const MEDIA_BYTES: Record<Wire, number> = { anthropic: 24_000_000, oovi: 3_200_000, openai: 15_000_000 };
+
+/**
+ * What each attachment becomes in this request. The newest messages get the media budget
+ * first, so older images fall back to a text note before recent ones do.
+ */
+function mediaPlan(r: Req, wire: Wire): Map<object, MediaPart[]> {
+  const plan = new Map<object, MediaPart[]>();
+  const budget = { bytes: r.noMedia ? 0 : MEDIA_BYTES[wire] };
+  const images = !r.noMedia;
+  const pdfs = !r.noMedia && wire !== "openai";
+  for (let i = r.messages.length - 1; i >= 0; i--) {
+    const m = r.messages[i]!;
+    if (m.role === "user" && m.attachments?.length) {
+      const texty = m.attachments.filter((a) => !a.brief && a.att.kind !== "image" && !(pdfs && a.doc)).length;
+      const textMax = Math.min(INLINE_MAX, Math.max(6000, Math.floor(INLINE_TOTAL / Math.max(1, texty))));
+      plan.set(m, m.attachments.flatMap((a) => attachmentParts(a, { images, pdfs, textMax, budget })));
+    } else if (m.role === "tool") {
+      for (const t of m.results) if (t.attach?.length) plan.set(t, t.attach.flatMap((a) => attachmentParts(a, { images, pdfs, textMax: INLINE_MAX, budget })));
+    }
+  }
+  return plan;
+}
+
+function anthropicMedia(p: MediaPart): ABlock {
+  if (p.type === "image") return { type: "image", source: { type: "base64", media_type: p.mediaType, data: p.data } };
+  if (p.type === "pdf") return { type: "document", source: { type: "base64", media_type: "application/pdf", data: p.data }, title: p.name.slice(0, 200) };
+  return { type: "text", text: p.text };
+}
+
+const userText = (content: string, withFiles: boolean) => content.trim() || (withFiles ? "(The user sent the attached files without a message.)" : "(empty message)");
 
 // ---------- thinking / effort per provider ----------
 
@@ -309,7 +362,8 @@ async function post(label: string, url: string, headers: Record<string, string>,
 type ABlock = Record<string, unknown>;
 
 /** Messages, tools and system prompt in Anthropic's format, with prompt-caching marks. */
-function anthropicParts(r: Req) {
+function anthropicParts(r: Req, wire: Wire = "anthropic") {
+  const plan = mediaPlan(r, wire);
   const msgs: { role: "user" | "assistant"; content: ABlock[] }[] = [];
   // Anthropic wants strictly alternating roles; merge neighbours with the same role.
   const push = (role: "user" | "assistant", blocks: ABlock[]) => {
@@ -318,14 +372,24 @@ function anthropicParts(r: Req) {
     else msgs.push({ role, content: blocks });
   };
   for (const m of r.messages) {
-    if (m.role === "user") push("user", [{ type: "text", text: m.content }]);
-    else if (m.role === "assistant") {
+    if (m.role === "user") {
+      // Files first (Claude reads documents and images best before the question), then the text.
+      const files = (plan.get(m) ?? []).map(anthropicMedia);
+      push("user", [...files, { type: "text", text: files.length ? userText(m.content, true) : m.content }]);
+    } else if (m.role === "assistant") {
       const blocks: ABlock[] = [];
       if (m.text.trim()) blocks.push({ type: "text", text: m.text });
       for (const c of m.toolCalls) blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.input });
       push("assistant", blocks.length ? blocks : [{ type: "text", text: "(no reply)" }]);
     } else {
-      push("user", m.results.map((t) => ({ type: "tool_result", tool_use_id: t.id, content: t.content, ...(t.isError ? { is_error: true } : {}) })));
+      push(
+        "user",
+        m.results.map((t) => {
+          const media = plan.get(t);
+          const content = media?.length ? [{ type: "text", text: t.content || "(no text)" }, ...media.map(anthropicMedia)] : t.content;
+          return { type: "tool_result", tool_use_id: t.id, content, ...(t.isError ? { is_error: true } : {}) };
+        }),
+      );
     }
   }
 
@@ -385,7 +449,7 @@ async function anthropic(r: Req): Promise<RawCompletion> {
 async function hosted(r: Req): Promise<RawCompletion> {
   const token = sessionToken();
   if (!token) throw new HostedError("You're signed out. Sign in again to use theOovi.", "signed_out");
-  const p = anthropicParts(r);
+  const p = anthropicParts(r, "oovi");
   let res: Response;
   try {
     res = await fetch(`${r.baseUrl}/api/v1/ai/messages`, {
@@ -423,10 +487,18 @@ async function hosted(r: Req): Promise<RawCompletion> {
 // ---------- OpenAI-compatible ----------
 
 async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompletion> {
+  const plan = mediaPlan(r, "openai");
+  /** OpenAI-style content parts: text, and images as data URLs (PDFs are always sent as text here). */
+  const oaParts = (parts: MediaPart[]) =>
+    parts.map((p) => (p.type === "image" ? { type: "image_url", image_url: { url: `data:${p.mediaType};base64,${p.data}` } } : { type: "text", text: p.type === "text" ? p.text : `[PDF ${p.name}]` }));
   const msgs: Record<string, unknown>[] = [{ role: "system", content: r.system }];
   for (const m of r.messages) {
-    if (m.role === "user") msgs.push({ role: "user", content: m.content });
-    else if (m.role === "assistant") {
+    if (m.role === "user") {
+      const files = plan.get(m) ?? [];
+      if (!files.length) msgs.push({ role: "user", content: m.content });
+      else if (files.every((p) => p.type === "text")) msgs.push({ role: "user", content: [...files.map((p) => (p as { text: string }).text), userText(m.content, true)].join("\n\n") });
+      else msgs.push({ role: "user", content: [...oaParts(files), { type: "text", text: userText(m.content, true) }] });
+    } else if (m.role === "assistant") {
       msgs.push({
         role: "assistant",
         content: m.text || null,
@@ -436,6 +508,9 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
       });
     } else {
       for (const t of m.results) msgs.push({ role: "tool", tool_call_id: t.id, content: t.content });
+      // Tool messages can't hold images here: show them right after, as a user message.
+      const shown = m.results.flatMap((t) => plan.get(t) ?? []);
+      if (shown.some((p) => p.type === "image")) msgs.push({ role: "user", content: [{ type: "text", text: "(Images returned by read_attachment:)" }, ...oaParts(shown)] });
     }
   }
 

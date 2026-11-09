@@ -5,6 +5,9 @@ import { I18nProvider } from "@/components/I18n";
 import Sidebar from "@/components/Sidebar";
 import { UpdateBanner } from "@/components/Updates";
 import "./globals.css";
+import "./styles/updates.css";
+import "./styles/attachments.css";
+import "./styles/memory.css";
 
 const nunito = Nunito({ subsets: ["latin"], display: "swap", variable: "--font-nunito" });
 // Nunito has no Arabic glyphs. This face only covers the Arabic range (unicode-range), so it

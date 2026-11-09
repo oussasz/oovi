@@ -10,14 +10,36 @@
 //
 // theOovi requests must stay under the limit set in the console (100K tokens by
 // default); the budget leaves room for the reply and for estimation error.
+import { attachmentTokens } from "./attachments";
 import type { ToolSpec } from "./llm";
-import type { Bot, Chat, Msg } from "./types";
+import type { AttachRef, Bot, Chat, Msg } from "./types";
 
 /** About 3 characters per token for Claude 5.x tokenizers (the same rule the server uses). */
 export const estimateTokens = (v: unknown): number => Math.ceil((typeof v === "string" ? v.length : JSON.stringify(v ?? "").length) / 3);
 
+/** Attachments count by what they really cost (an image about 1,600 tokens, a PDF page about 1,500), never by base64 length. */
+function filesTokens(messages: Msg[]): number {
+  let n = 0;
+  const add = (refs?: AttachRef[]) => refs?.forEach((r) => (n += attachmentTokens(r)));
+  for (const m of messages) {
+    if (m.role === "user") add(m.attachments);
+    else if (m.role === "tool") m.results.forEach((t) => add(t.attach));
+  }
+  return n;
+}
+
 export function requestTokens(system: string, messages: Msg[], tools: ToolSpec[]): number {
-  return estimateTokens(system) + estimateTokens(messages) + estimateTokens(tools);
+  return estimateTokens(system) + estimateTokens(messages) + filesTokens(messages) + estimateTokens(tools);
+}
+
+/** Attachments become one-line mentions (read_attachment brings them back). keepLast: leave the newest message with files whole. */
+function briefFiles(messages: Msg[], keepLast: boolean): Msg[] {
+  const last = keepLast ? messages.map((m, i) => (m.role === "user" && m.attachments?.length ? i : -1)).filter((i) => i >= 0).at(-1) : -1;
+  return messages.map((m, i): Msg => {
+    if (m.role === "user" && m.attachments?.length && i !== last) return { ...m, attachments: m.attachments.map((a) => ({ ...a, brief: true })) };
+    if (m.role === "tool" && m.results.some((t) => t.attach?.length) && !(keepLast && i === messages.length - 1)) return { role: "tool", results: m.results.map((t) => ({ ...t, attach: undefined })) };
+    return m;
+  });
 }
 
 /** Token budget for one request: theOovi's limit with a safety margin, or a generous cap for own keys. */
@@ -48,6 +70,11 @@ const SUMMARY_MARK = "[Summary of the earlier conversation]";
 export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], budget: number): Msg[] {
   if (requestTokens(system, messages, tools) <= budget) return messages;
   let msgs = messages;
+  // Files in older messages go first (they're the biggest), then even the newest ones.
+  for (const keepLast of [true, false]) {
+    msgs = briefFiles(msgs, keepLast);
+    if (requestTokens(system, msgs, tools) <= budget) return msgs;
+  }
   const lastTool = msgs.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0).at(-1) ?? -1;
 
   for (const max of [400, 150]) {
@@ -123,7 +150,7 @@ export function recallHistory(chat: Chat, bots: Bot[], query: string): string {
   };
   for (const e of chat.entries) {
     const when = new Date(e.at).toISOString().slice(0, 16).replace("T", " ");
-    if (e.kind === "user") consider(e.text, `[${when}] User: `, e.at);
+    if (e.kind === "user") consider(`${e.text}${e.attachments?.length ? ` [attached: ${e.attachments.map((a) => a.name).join(", ")}]` : ""}`, `[${when}] User: `, e.at);
     else {
       consider(e.text, `[${when}] ${name(e.botId)}: `, e.at);
       for (const st of e.steps) {

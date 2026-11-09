@@ -6,12 +6,13 @@ import { resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import MemorySettings from "./MemorySettings";
 import ModelsSettings from "./ModelsSettings";
 import TelegramSettings from "./TelegramSettings";
 import { UpdateCard } from "./Updates";
 
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "profile" | "models" | "telegram" | "accounts" | "search" | "browser" | "computer" | "safety" | "language" | "data" | "about";
+type Tab = "profile" | "models" | "memory" | "telegram" | "accounts" | "search" | "browser" | "computer" | "safety" | "language" | "data" | "about";
 type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
 /** "Français (French)": the language's own name, plus its name in the UI language when different. */
@@ -30,6 +31,7 @@ function languageLabel(id: Locale, uiTag: string): string {
 const TABS: { id: Tab; icon: IconName }[] = [
   { id: "profile", icon: "user" },
   { id: "models", icon: "cpu" },
+  { id: "memory", icon: "bulb" },
   { id: "telegram", icon: "send" },
   { id: "accounts", icon: "globe" },
   { id: "search", icon: "zoomIn" },
@@ -475,6 +477,7 @@ export default function SettingsForm() {
   const sections: Record<Tab, React.ReactNode> = {
     profile: profileSection,
     models: modelsSection,
+    memory: <MemorySettings />,
     telegram: <TelegramSettings />,
     accounts: accountsSection,
     search: searchSection,
@@ -506,7 +509,7 @@ export default function SettingsForm() {
           <h2>{t(`settings.tab.${current.id}`)}</h2>
           {sections[tab]}
           <div className="savebar">
-            {tab !== "profile" && tab !== "data" && tab !== "models" && tab !== "telegram" && (
+            {tab !== "profile" && tab !== "data" && tab !== "models" && tab !== "memory" && tab !== "telegram" && (
               <button className="btn primary" onClick={() => void save()} disabled={saving}>{t("common.save")}</button>
             )}
             {msg && <span className={msg.ok ? "msg-ok" : "msg-err"}>{msg.text}</span>}
