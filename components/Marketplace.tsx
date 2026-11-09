@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, type CatalogConnector, type CatalogField, type ConnectorCategory } from "@/lib/catalog";
 import { api, refreshSidebar } from "@/lib/client";
+import { ANTHROPIC_LOGO, MCP_LOGO, OOVI_LOGO, githubOwnerLogo, logoFor } from "@/lib/logos";
 import "@/lib/desktop";
 import { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
@@ -42,16 +43,22 @@ type SkillDraft = { slug?: string; name: string; description: string; body: stri
 type Custom = { name: string; transport: "stdio" | "http"; command: string; args: string; url: string; secrets: string };
 type Msg = { ok: boolean; text: string; link?: { href: string; label: string } };
 
-const COLORS = ["#A9BCF7", "#FDDA80", "#FF9F86", "#9EDBB4", "#D7B4F3", "#8FD3E8", "#F7B2D0", "#C9C2B4"];
-const colorOf = (s: string) => COLORS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % COLORS.length];
 const parseArgs = (s: string) => [...s.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)].map((m) => m[1] ?? m[2] ?? m[3] ?? "");
 
-function Avatar({ name, size = 44 }: { name: string; size?: number }) {
+/** A brand's logo on a white tile. Falls back to the MCP logo if the image can't load. */
+function Logo({ src, size = 44 }: { src: string | undefined; size?: number }) {
+  const [failed, setFailed] = useState(false);
   return (
-    <span className="mk-avatar" style={{ width: size, height: size, background: colorOf(name), fontSize: size * 0.42 }} aria-hidden>
-      {name.replace(/[^\p{L}\p{N}]/gu, "").slice(0, 1).toUpperCase() || "•"}
+    <span className="mk-logo" style={{ width: size, height: size, borderRadius: Math.round(size * 0.27) }} aria-hidden>
+      <img src={!failed && src ? src : MCP_LOGO} alt="" loading="lazy" onError={() => setFailed(true)} />
     </span>
   );
+}
+
+/** Logo for a skill: its publisher (oovi, Anthropic, or the GitHub owner it came from). */
+function skillLogo(source: string | undefined): string {
+  if (source && /github\.com\/anthropics\//i.test(source)) return ANTHROPIC_LOGO;
+  return githubOwnerLogo(source) ?? OOVI_LOGO;
 }
 
 function regToConnector(r: RegItem): CatalogConnector {
@@ -366,7 +373,7 @@ export default function Marketplace() {
               </button>
             )}
           </div>
-          <Avatar name={zapier.name} size={84} />
+          <Logo src={logoFor("zapier")} size={84} />
         </div>
       )}
       {!ql && (
@@ -386,7 +393,7 @@ export default function Marketplace() {
         {shownConnectors.map((c) =>
           card(
             c.id,
-            <Avatar name={c.name} />,
+            <Logo src={logoFor(c.id)} />,
             <>
               {c.name} {verified(c.verified)}
             </>,
@@ -411,7 +418,7 @@ export default function Marketplace() {
             <div className="mk-grid">
               {registry.slice(0, 30).map((r) => {
                 const c = regToConnector(r);
-                return card(r.name, <Avatar name={c.name} />, c.name, c.description, c.by, hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
+                return card(r.name, <Logo src={githubOwnerLogo(r.repo)} />, c.name, c.description, c.by, hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
               })}
             </div>
           )}
@@ -428,7 +435,7 @@ export default function Marketplace() {
         .filter((s) => match(s.name))
         .map((s) => (
           <div key={s.id} className="mk-row">
-            <Avatar name={s.name} size={40} />
+            <Logo src={logoFor(CONNECTORS.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id ?? "") ?? MCP_LOGO} size={40} />
             <div className="mk-card-main">
               <b>
                 <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} /> {s.name}
@@ -504,7 +511,7 @@ export default function Marketplace() {
               </button>
             )}
           </div>
-          <Avatar name={featuredSkill.name} size={84} />
+          <Logo src={OOVI_LOGO} size={84} />
         </div>
       )}
       <div className="mk-section-head">
@@ -513,7 +520,7 @@ export default function Marketplace() {
       </div>
       <div className="mk-grid">
         {SKILLS.filter((s) => match(s.name, s.description)).map((s) =>
-          card(s.id, <Avatar name={s.name} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name }))),
+          card(s.id, <Logo src={OOVI_LOGO} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name }))),
         )}
       </div>
       <div className="mk-section-head">
@@ -531,7 +538,7 @@ export default function Marketplace() {
             .map((s) =>
               card(
                 s.id,
-                <Avatar name={s.name} />,
+                <Logo src={ANTHROPIC_LOGO} />,
                 <>
                   {s.name} {verified(true)}
                 </>,
@@ -561,7 +568,7 @@ export default function Marketplace() {
         .filter((s) => match(s.name, s.description))
         .map((s) => (
           <div key={s.slug} className="mk-row">
-            <Avatar name={s.name} size={40} />
+            <Logo src={skillLogo(s.source)} size={40} />
             <div className="mk-card-main">
               <b>{s.name}</b>
               <p>{s.description}</p>
@@ -816,7 +823,7 @@ export default function Marketplace() {
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={soonItem.name} onMouseDown={(e) => e.target === e.currentTarget && setSoonItem(null)}>
           <div className="mk-sheet">
             <div className="mk-sheet-head">
-              <Avatar name={soonItem.name} />
+              <Logo src={logoFor(soonItem.id)} />
               <div>
                 <h3>{soonItem.name}</h3>
                 <p className="note">{soonItem.description}</p>
@@ -857,7 +864,7 @@ export default function Marketplace() {
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={installing.name} onMouseDown={(e) => e.target === e.currentTarget && setInstalling(null)}>
           <div className="mk-sheet">
             <div className="mk-sheet-head">
-              <Avatar name={installing.name} />
+              <Logo src={logoFor(installing.id) ?? githubOwnerLogo(installing.docs)} />
               <div>
                 <h3>
                   {installing.name} {verified(installing.verified)}
