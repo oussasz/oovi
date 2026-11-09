@@ -9,20 +9,27 @@
   "main": "electron/main.cjs",
   "scripts": {
     "dev": "node electron/dev.cjs",
-    "build": "next build",
+    "build": "next build && node scripts/prepare-server.mjs",
     "start": "next build && electron .",
-    "dist": "next build && electron-builder",
+    "dist": "npm run build && electron-builder",
     "web": "next dev -H 127.0.0.1 -p 3100",
     "typecheck": "tsc --noEmit",
     "sandbox": "docker compose up -d",
     "publish:downloads": "bash scripts/publish-downloads.sh"
   },
   "dependencies": {
+    "electron-updater": "6.8.11"
+  },
+  "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
     "@mozilla/readability": "0.6.0",
+    "@types/node": "22.15.30",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
     "docx": "9.14.0",
     "e2b": "2.59.0",
-    "electron-updater": "6.8.11",
+    "electron": "44.9.3",
+    "electron-builder": "26.18.0",
     "exceljs": "4.4.0",
     "jszip": "3.10.2",
     "linkedom": "0.18.14",
@@ -32,15 +39,8 @@
     "pptxgenjs": "4.0.1",
     "react": "19.1.1",
     "react-dom": "19.1.1",
+    "typescript": "5.8.3",
     "unpdf": "1.9.1"
-  },
-  "devDependencies": {
-    "@types/node": "22.15.30",
-    "@types/react": "19.1.10",
-    "@types/react-dom": "19.1.7",
-    "electron": "44.9.3",
-    "electron-builder": "26.18.0",
-    "typescript": "5.8.3"
   },
   "build": {
     "appId": "app.oovi.desktop",
@@ -49,13 +49,11 @@
       "output": "dist",
       "buildResources": "build"
     },
-    "asar": false,
+    "asar": true,
     "files": [
       "electron/**",
-      ".next/**",
-      "!.next/cache/**",
-      "public/**",
-      "next.config.mjs",
+      "!electron/dev.cjs",
+      "build/icon.png",
       "package.json"
     ],
     "win": {
@@ -81,12 +79,13 @@
       "artifactName": "${productName}-Store-${version}.${ext}"
     },
     "nsis": {
-      "oneClick": false,
+      "oneClick": true,
       "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
+      "runAfterFinish": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "oovi",
+      "deleteAppDataOnUninstall": false,
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "mac": {
@@ -113,6 +112,15 @@
         "repo": "oovi-downloads",
         "releaseType": "release"
       }
-    ]
+    ],
+    "electronLanguages": [
+      "en-US",
+      "fr",
+      "ar",
+      "es",
+      "de",
+      "tr"
+    ],
+    "afterPack": "scripts/after-pack.cjs"
   }
 }
