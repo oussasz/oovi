@@ -151,6 +151,8 @@ export type Pending = {
   slash?: SlashUse;
   /** Where the user is talking from right now (files bots send go there too). */
   channel?: "telegram";
+  /** Which Telegram chat the message came from (the main chat or a chat linked to this group). */
+  telegramChatId?: number;
 };
 
 export type Chat = {

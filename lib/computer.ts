@@ -524,7 +524,7 @@ export async function runComputerTool(call: ToolCall, chat: Chat, s: Settings): 
       const note = typeof call.input.note === "string" ? call.input.note.slice(0, 1000) : undefined;
       if (chat.pending?.channel === "telegram") {
         const { sendFileToTelegram } = await import("./telegram");
-        const err = size > 50 * 1024 * 1024 ? `"${name}" is ${sizeLabel(size)}. Telegram only lets bots send files up to 50 MB, so it can't go there. Tell the user it's waiting in the oovi chat on their computer.` : await sendFileToTelegram({ name, data: fs.readFileSync(t.real) }, note);
+        const err = size > 50 * 1024 * 1024 ? `"${name}" is ${sizeLabel(size)}. Telegram only lets bots send files up to 50 MB, so it can't go there. Tell the user it's waiting in the oovi chat on their computer.` : await sendFileToTelegram({ name, data: fs.readFileSync(t.real) }, note, chat.pending.telegramChatId);
         if (err) return { ...bad(call, `${err} (It is shown in the oovi chat on the computer.)`), file: card };
         return ok(call, `Sent ${name} (${sizeLabel(size)}) to the user's Telegram chat. It's also shown in the oovi chat.`, { file: card });
       }

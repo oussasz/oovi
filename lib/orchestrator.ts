@@ -41,9 +41,10 @@ import type { Approval, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCal
 /**
  * alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on.
  * alwaysFolders: with decisions, bots may read and send files from the approved files' folders without asking from now on.
- * attachments: files sent with text (already saved in the chat). channel: the user writes from Telegram.
+ * attachments: files sent with text (already saved in the chat). channel: the user writes from Telegram
+ * (telegramChatId: which Telegram chat, so files go back there).
  */
-export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[]; channel?: "telegram" };
+export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[]; channel?: "telegram"; telegramChatId?: number };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
 const PLAN_SPEC: ToolSpec = {
@@ -653,6 +654,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       learn: similar >= 2 && relevantSkills(text).length === 0 ? similar : 0,
       ...(slash ? { slash: { ...slash, for: [...queue] } } : {}),
       ...(input.channel ? { channel: input.channel } : {}),
+      ...(input.channel && input.telegramChatId !== undefined ? { telegramChatId: input.telegramChatId } : {}),
     };
     saveChat(chat);
     yield { type: "entry", entry: user };
@@ -661,6 +663,8 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
     chat.pending.approval = undefined;
     if (input.channel) chat.pending.channel = input.channel;
     else delete chat.pending.channel;
+    if (input.channel && input.telegramChatId !== undefined) chat.pending.telegramChatId = input.telegramChatId;
+    else delete chat.pending.telegramChatId;
     if (input.alwaysEdit && chat.workspace) chat.workspace.autoEdit = true;
     if (e?.kind === "bot") resume = { entry: e, decisions: input.decisions };
   } else {

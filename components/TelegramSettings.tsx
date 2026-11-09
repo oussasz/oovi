@@ -3,10 +3,12 @@
 // Settings > Telegram: talk to your main bot from your phone, in three steps.
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
+import type { TelegramStatus } from "@/lib/telegram";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
+import TelegramAdvanced from "./TelegramAdvanced";
 
-type Status = { mainName?: string; hasToken: boolean; botUsername?: string; botName?: string; connected: boolean; userName?: string; pairLink?: string; error?: string };
+type Status = TelegramStatus;
 
 export default function TelegramSettings() {
   const { t } = useI18n();
@@ -146,6 +148,7 @@ export default function TelegramSettings() {
       <p className="note">{t("tg.privacy")}</p>
       {st.error && <p className="msg-err">{st.error}</p>}
       {msg && <p className={msg.ok ? "msg-ok" : "msg-err"}>{msg.text}</p>}
+      {st.hasToken && <TelegramAdvanced st={st} onStatus={setSt} />}
     </>
   );
 }

@@ -1,0 +1,37 @@
+/* telegram: Settings > Telegram > Advanced (components/TelegramAdvanced.tsx), kept separate so parallel work never overwrites globals.css */
+
+.tg-adv { margin-top: 22px; border-top: 1px solid var(--border); padding-top: 6px; }
+.tg-adv-toggle { display: flex; align-items: center; gap: 8px; width: 100%; font: inherit; font-size: 13.5px; font-weight: 700; color: var(--muted); background: none; border: none; padding: 8px 4px; border-radius: 10px; cursor: pointer; text-align: start; }
+.tg-adv-toggle:hover { color: var(--text); }
+.tg-adv-toggle small { font-weight: 600; font-size: 12.5px; opacity: 0.8; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tg-adv-toggle svg { flex: none; transition: transform 0.15s; }
+.tg-adv.open .tg-adv-toggle svg { transform: rotate(90deg); }
+[dir="rtl"] .tg-adv-toggle svg { transform: scaleX(-1); }
+[dir="rtl"] .tg-adv.open .tg-adv-toggle svg { transform: rotate(90deg); }
+
+.tg-adv-body { display: grid; gap: 10px; justify-items: start; padding: 4px 4px 8px 26px; }
+[dir="rtl"] .tg-adv-body { padding: 4px 26px 8px 4px; }
+.tg-adv-body > * { max-width: 100%; }
+.tg-adv-body h4 { margin: 4px 0 0; font-size: 14.5px; }
+.tg-adv-body .note { margin: 0; }
+
+.tg-waiting, .tg-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; width: 100%; }
+.tg-waiting li, .tg-links li { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 12px; border-radius: 12px; border: 1px solid var(--border); background: var(--panel); min-width: 0; }
+.tg-waiting li { border-style: dashed; background: var(--soft); }
+.tg-waiting-text { flex: 1; min-width: 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.tg-waiting-text code, .tg-link-main code { font-size: 12px; }
+.tg-link-main { flex: 1; min-width: 0; display: grid; gap: 1px; }
+.tg-link-main b { font-size: 14px; overflow-wrap: anywhere; }
+.tg-link-main small { color: var(--muted); font-size: 12.5px; overflow-wrap: anywhere; }
+.tg-gone { color: var(--err); }
+.tg-row-act { flex: none; display: flex; align-items: center; gap: 4px; }
+
+.tg-link-form { width: 100%; max-width: 420px; padding: 4px 14px 8px; border-radius: 14px; background: var(--soft); }
+.tg-link-form .field small { font-weight: 600; }
+.tg-link-form input, .tg-link-form select { width: 100%; }
+
+.tg-help { width: 100%; font-size: 13px; color: var(--muted); }
+.tg-help summary { cursor: pointer; font-weight: 700; padding: 2px 0; }
+.tg-help summary:hover { color: var(--text); }
+.tg-help ol, .tg-help ul { margin: 6px 0; padding-inline-start: 20px; display: grid; gap: 4px; }
+.tg-help .note { margin: 4px 0 2px; }
