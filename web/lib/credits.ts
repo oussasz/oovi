@@ -117,10 +117,13 @@ async function syncPlan(row: AccountRow): Promise<AccountRow> {
       let renewsAt = r.plan_renews_at?.getTime() ?? null;
       const plan = await planById(r.plan);
       let added = 0;
-      for (let i = 0; i < 12 && renewsAt !== null && renewsAt <= now && renewsAt < until; i++) {
+      // A monthly top-up only when at least half a month of the plan is left (a 365-day plan gets 12, not 13).
+      for (let i = 0; i < 12 && renewsAt !== null && renewsAt <= now && renewsAt + 15 * 86_400_000 <= until; i++) {
         added += plan.monthlyCredits;
         renewsAt += 30 * 86_400_000;
       }
+      // No more top-ups fit before the plan ends: stop checking on every request.
+      if (renewsAt !== null && renewsAt + 15 * 86_400_000 > until) renewsAt = null;
       if (added > 0) {
         await c.query("INSERT INTO credit_ledger (user_id, delta_mc, kind, note) VALUES ($1, $2, 'plan', $3)", [r.user_id, added * MC, `${plan.name}: monthly credits`]);
       }
@@ -348,7 +351,7 @@ export async function audit(adminEmail: string, action: string, target: string |
   ]);
 }
 
-async function inTx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
+export async function inTx<T>(fn: (c: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool.connect();
   try {
     await client.query("BEGIN");

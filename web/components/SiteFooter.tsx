@@ -14,6 +14,7 @@ export function SiteFooter() {
           <li><Link href="/#about">About</Link></li>
           <li><Link href="/privacy">Privacy</Link></li>
           <li><Link href="/terms">Terms</Link></li>
+          <li><Link href="/refund">Refunds</Link></li>
           <li><Link href="/download">Download</Link></li>
         </ul>
       </div>

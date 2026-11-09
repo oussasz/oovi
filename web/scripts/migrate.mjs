@@ -204,6 +204,62 @@ await pool.query(`
 `);
 console.log("theOovi credits, pilot, feedback and audit tables: ok");
 
+// Paddle billing: a mirror of Paddle customers and subscriptions (written only from verified
+// webhooks), the payments that granted credits, and the events already handled. These rows are
+// live billing state: never delete them to tidy up.
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS customers (
+    customer_id        TEXT PRIMARY KEY,
+    user_id            TEXT NULL REFERENCES "user"(id) ON DELETE SET NULL,
+    email              TEXT NOT NULL DEFAULT '',
+    paddle_updated_at  TIMESTAMPTZ NULL,
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS customers_user_idx ON customers (user_id);
+  CREATE INDEX IF NOT EXISTS customers_email_idx ON customers (lower(email));
+
+  CREATE TABLE IF NOT EXISTS subscriptions (
+    subscription_id          TEXT PRIMARY KEY,
+    customer_id              TEXT NOT NULL REFERENCES customers(customer_id),
+    user_id                  TEXT NULL REFERENCES "user"(id) ON DELETE SET NULL,
+    status                   TEXT NOT NULL,
+    price_id                 TEXT NOT NULL,
+    product_id               TEXT NOT NULL,
+    billing_interval         TEXT NULL,
+    current_period_ends_at   TIMESTAMPTZ NULL,
+    scheduled_change_action  TEXT NULL,
+    scheduled_change_at      TIMESTAMPTZ NULL,
+    paddle_updated_at        TIMESTAMPTZ NULL,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS subscriptions_user_idx ON subscriptions (user_id);
+  CREATE INDEX IF NOT EXISTS subscriptions_customer_idx ON subscriptions (customer_id);
+
+  CREATE TABLE IF NOT EXISTS paddle_transactions (
+    transaction_id   TEXT PRIMARY KEY,
+    user_id          TEXT NULL REFERENCES "user"(id) ON DELETE SET NULL,
+    customer_id      TEXT NULL,
+    subscription_id  TEXT NULL,
+    price_id         TEXT NULL,
+    plan_id          TEXT NULL,
+    credits_mc       BIGINT NOT NULL DEFAULT 0,
+    period_ends_at   TIMESTAMPTZ NULL,
+    refunded_at      TIMESTAMPTZ NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS paddle_transactions_user_idx ON paddle_transactions (user_id, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS paddle_events (
+    event_id     TEXT PRIMARY KEY,
+    event_type   TEXT NOT NULL,
+    occurred_at  TIMESTAMPTZ NOT NULL,
+    received_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+`);
+console.log("Paddle billing tables: ok");
+
 const { rows } = await pool.query(
   "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
 );

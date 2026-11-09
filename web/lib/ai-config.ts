@@ -81,8 +81,10 @@ export type PilotConfig = {
 export const DEFAULT_PLANS: Plan[] = [
   // Daily limits are a safety cap against runaway use, not a quota people should feel.
   { id: "free", name: "Free", price: "", monthlyCredits: 0, dailyLimit: 1000, visible: true },
-  { id: "plus", name: "Plus", price: "$9.99 / month", monthlyCredits: 5000, dailyLimit: 2000, visible: true },
-  { id: "pro", name: "Pro", price: "$24.99 / month", monthlyCredits: 12000, dailyLimit: 5000, visible: true },
+  // Sold through Paddle (lib/pricing-tiers.ts planId). Credits: 1 credit = $0.001 of model cost.
+  { id: "starter", name: "Starter", price: "$10 / month", monthlyCredits: 4000, dailyLimit: 2000, visible: true },
+  { id: "pro", name: "Pro", price: "$40 / month", monthlyCredits: 16000, dailyLimit: 5000, visible: true },
+  { id: "advanced", name: "Advanced", price: "$120 / month", monthlyCredits: 50000, dailyLimit: 15000, visible: true },
   { id: "pilot", name: "Pilot", price: "", monthlyCredits: 0, dailyLimit: 5000, visible: false },
 ];
 

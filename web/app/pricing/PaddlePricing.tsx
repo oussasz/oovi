@@ -73,6 +73,11 @@ export function PaddlePricing({ config, tiers, country, email, userId, leading, 
 
   function subscribe(tier: PricedTier) {
     if (!paddle) return;
+    // Paid plans add credits to an oovi account, so the buyer signs in first.
+    if (!userId) {
+      window.location.href = "/login?next=%2Fpricing";
+      return;
+    }
     paddle.Checkout.open({
       items: [{ priceId: tier.priceId[cycle], quantity: 1 }],
       ...(email ? { customer: { email } } : {}),

@@ -10,14 +10,21 @@ import { smtpStatus } from "@/lib/mail";
 import { ResendVerification } from "@/components/ResendVerification";
 import { AccountClient } from "./AccountClient";
 import { CreditsCard } from "./CreditsCard";
+import { BillingCard } from "./BillingCard";
+import { billingFor } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "Your account" };
 export const dynamic = "force-dynamic";
 
-export default async function AccountPage({ searchParams }: { searchParams: Promise<{ welcome?: string }> }) {
+export default async function AccountPage({ searchParams }: { searchParams: Promise<{ welcome?: string; billing?: string }> }) {
   const session = await getServerSession();
   if (!session) redirect("/login?next=/account");
-  const { welcome } = await searchParams;
+  const { welcome, billing: billingNotice } = await searchParams;
+  // Paddle billing for this account (null: never subscribed). Optional, like credits.
+  const billing = await billingFor(session.user.id).catch((err) => {
+    console.error("account billing failed", err instanceof Error ? err.message : err);
+    return null;
+  });
   let credits: CreditStatus | null = null;
   try {
     credits = await creditStatus(session.user.id, session.user.createdAt, await requestIp(), !!session.user.emailVerified);
@@ -38,7 +45,15 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
         <AccountClient
           user={toPublicUser(session.user)}
           welcome={welcome === "1"}
-          credits={credits ? <CreditsCard s={credits} /> : null}
+          credits={
+            <>
+              {credits ? <CreditsCard s={credits} /> : null}
+              <BillingCard
+                status={billing ? billing.status : undefined}
+                notice={billingNotice === "none" || billingNotice === "unavailable" ? billingNotice : undefined}
+              />
+            </>
+          }
           notice={
             askToVerify ? (
               <div className="verify-note">
