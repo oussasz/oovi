@@ -1,5 +1,6 @@
 import { closeSession } from "@/lib/browser";
 import { guard } from "@/lib/guard";
+import { stopVm } from "@/lib/sandbox";
 import { isRunning, stopRun } from "@/lib/runner";
 import { deleteChat, getChat, saveChat, validateGroup } from "@/lib/store";
 import type { ChatWithState } from "@/lib/types";
@@ -33,6 +34,7 @@ export async function PUT(req: Request, { params }: Ctx) {
     chat.entries = [];
     chat.pending = undefined;
     await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
+    await stopVm(chat.id);
   } else if (body && "workspace" in body) {
     const ws = validateWorkspace(body.workspace);
     if (typeof ws === "string") return Response.json({ error: ws }, { status: 400 });
@@ -55,6 +57,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!chat) return notFound();
   stopRun(chat.id);
   await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
+  await stopVm(chat.id);
   deleteChat(chat.id);
   return new Response(null, { status: 204 });
 }

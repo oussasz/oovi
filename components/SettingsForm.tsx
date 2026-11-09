@@ -11,7 +11,7 @@ import TelegramSettings from "./TelegramSettings";
 import { UpdateCard } from "./Updates";
 
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "profile" | "models" | "telegram" | "accounts" | "search" | "browser" | "safety" | "language" | "data" | "about";
+type Tab = "profile" | "models" | "telegram" | "accounts" | "search" | "browser" | "computer" | "safety" | "language" | "data" | "about";
 type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
 /** "Français (French)": the language's own name, plus its name in the UI language when different. */
@@ -34,6 +34,7 @@ const TABS: { id: Tab; icon: IconName }[] = [
   { id: "accounts", icon: "globe" },
   { id: "search", icon: "zoomIn" },
   { id: "browser", icon: "cursor" },
+  { id: "computer", icon: "server" },
   { id: "safety", icon: "shield" },
   { id: "language", icon: "lang" },
   { id: "data", icon: "box" },
@@ -45,6 +46,7 @@ export default function SettingsForm() {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [searchKeys, setSearchKeys] = useState({ brave: "", tavily: "" });
+  const [e2bKey, setE2bKey] = useState("");
   const [acc, setAcc] = useState<Accounts | null>(null);
   const [accBusy, setAccBusy] = useState(false);
   const [tab, setTab] = useState<Tab>("profile");
@@ -158,8 +160,10 @@ export default function SettingsForm() {
         maxTurns: s.maxTurns,
         language: s.language,
         crashReports: s.crashReports,
+        ...(e2bKey.trim() ? { sandbox: { e2bKey: e2bKey.trim() } } : {}),
       });
       setSearchKeys({ brave: "", tavily: "" });
+      setE2bKey("");
       announceLanguage(next.language ?? "auto"); // switch the UI language right away
       if (!quiet) setMsg({ ok: true, text: t("common.saved") });
       return true;
@@ -317,6 +321,42 @@ export default function SettingsForm() {
     </>
   );
 
+  const computerSection = (
+    <>
+      <p className="lead">{t("settings.vm.lead")}</p>
+      <div className="card">
+        <ul className="vm-points">
+          <li>{t("settings.vm.p1")}</li>
+          <li>{t("settings.vm.p2")}</li>
+          <li>{t("settings.vm.p3")}</li>
+        </ul>
+        <label className="field">
+          <span>
+            {t("settings.vm.key")}{" "}
+            <a href="https://e2b.dev/dashboard?tab=keys" target="_blank" rel="noreferrer noopener">
+              {t("common.getOne")}
+            </a>
+          </span>
+          <input type="password" autoComplete="off" value={e2bKey} placeholder={s.sandbox?.hasKey ? t("settings.vm.saved", { hint: s.sandbox.keyHint ?? "" }) : t("common.pasteKey")} onChange={(e) => setE2bKey(e.target.value)} />
+          <span className="hint">{s.sandbox?.hasKey ? t("settings.vm.on") : t("settings.vm.off")}</span>
+        </label>
+        {s.sandbox?.hasKey && (
+          <button
+            className="btn sm"
+            onClick={() =>
+              void post({ sandbox: { clearKey: true } })
+                .then(() => setMsg({ ok: true, text: t("settings.vm.removed") }))
+                .catch((e: Error) => setMsg({ ok: false, text: e.message }))
+            }
+          >
+            {t("settings.vm.remove")}
+          </button>
+        )}
+        <p className="note">{t("settings.vm.note")}</p>
+      </div>
+    </>
+  );
+
   const safetySection = (
     <>
       <p className="lead">{t("settings.safety.lead")}</p>
@@ -434,6 +474,7 @@ export default function SettingsForm() {
     accounts: accountsSection,
     search: searchSection,
     browser: browserSection,
+    computer: computerSection,
     safety: safetySection,
     language: languageSection,
     data: dataSection,

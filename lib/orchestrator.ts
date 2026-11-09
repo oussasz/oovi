@@ -24,6 +24,7 @@ import { getChat, listBots, newId, saveChat } from "./store";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { DOC_SPECS } from "./files";
+import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { FILE_SPECS } from "./workspace";
 import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem } from "./types";
 
@@ -142,6 +143,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     `When the user asks for a document, report, table, budget, plan or slides, make the actual file instead of only pasting text. Files go ${chat.workspace ? "into the project folder" : "into the user's Downloads/oovi folder"}; mention the file name in your reply.`,
     "For Google Docs, Sheets or Slides: create .docx / .xlsx / .pptx (Google opens them). If a Google Drive, Zapier or Pipedream tool is available, you can upload it there when the user asks.",
   );
+  if (tools.some((t) => t.name === "vm_run")) {
+    lines.push(
+      "",
+      "You have your own cloud computer for this chat (Linux, Python, Node.js, internet): vm_run, vm_write_file, vm_read_file, vm_download, vm_public_url. Use it whenever running code helps: data analysis and charts (pandas, matplotlib), calculations you must get right, testing code, converting files, scraping, building and previewing apps. Install what you need. Always hand results to the user with vm_download, and share vm_public_url links for web apps. It's a separate machine: the user's files aren't there unless you write them.",
+    );
+  }
   if (tools.some((t) => t.name === "message_group")) {
     lines.push(
       "",
@@ -304,6 +311,11 @@ export function statusText(c: ToolCall): string {
     case "memory": return "Updating memory";
     case "list_groups": return "Checking your groups";
     case "update_plan": return "Updating the plan";
+    case "vm_run":
+    case "vm_write_file":
+    case "vm_read_file":
+    case "vm_download":
+    case "vm_public_url": return describeVmCall(c);
     case "research": return `Researching “${String(i.question ?? "").slice(0, 60)}”`;
     case "read_url": {
       try {
@@ -345,7 +357,7 @@ async function* runBot(
   const mcp = bot.tools.mcp?.length ? await mcpToolsFor(bot.tools.mcp) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...SKILL_SPECS, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...mcp.specs];
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...mcp.specs];
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id });
   let steps = 0;
 

@@ -12,6 +12,7 @@ import { saveShot } from "./store";
 import type { ApprovalItem, BotTools, ToolCall, ToolResult, Workspace } from "./types";
 import { DOC_TOOLS, DOC_WRITE_TOOLS, describeDocCall, runDocTool } from "./files";
 import { READER_SPECS, READER_TOOLS, runReaderTool } from "./reader";
+import { VM_TOOLS, runVmTool } from "./sandbox";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -227,6 +228,8 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
   if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings);
+  // One cloud computer per chat (sessionId is "<chatId>_<botId>").
+  if (VM_TOOLS.has(call.name)) return runVmTool(call, settings, sessionId.split("_")[0] ?? sessionId, workspace);
   try {
     if (call.name === "memory") {
       const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);
@@ -323,6 +326,8 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
   if (FILE_TOOLS.has(call.name)) return ALWAYS_ASK_TOOLS.has(call.name) || (EDIT_TOOLS.has(call.name) && !workspace?.autoEdit);
   // Documents: new files in Downloads/oovi need no OK; writing into a project folder asks like an edit.
   if (DOC_TOOLS.has(call.name)) return DOC_WRITE_TOOLS.has(call.name) && !!workspace && !workspace.autoEdit;
+  // Cloud computer: it's a separate machine, so only bringing a file into the project folder asks.
+  if (VM_TOOLS.has(call.name)) return call.name === "vm_download" && !!workspace && !workspace.autoEdit;
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
   if (call.name === "use_skill") return false;
@@ -342,6 +347,7 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
 export function approvalItem(call: ToolCall, sessionId: string, workspace?: Workspace): ApprovalItem {
   if (FILE_TOOLS.has(call.name)) return { call, ...describeFileCall(call, workspace), always: EDIT_TOOLS.has(call.name) };
   if (DOC_TOOLS.has(call.name)) return { call, ...describeDocCall(call, workspace), always: true };
+  if (VM_TOOLS.has(call.name)) return { call, summary: `Save ${String(call.input.filename ?? call.input.path ?? "a file")} from the cloud computer into the project folder`, always: true };
   return { call, summary: describeCall(call, sessionId) };
 }
 

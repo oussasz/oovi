@@ -49,6 +49,11 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "edit_file": return t("chat.call.editFile", { name: String(i.path ?? "") });
     case "delete_file": return t("chat.call.deleteFile", { name: String(i.path ?? "") });
     case "run_command": return t("chat.call.runCommand", { command: String(i.command ?? "").slice(0, 80) });
+    case "vm_run": return t("chat.call.vmRun", { command: String(i.command ?? "").slice(0, 80) });
+    case "vm_write_file":
+    case "vm_read_file": return t("chat.call.vmFile", { name: String(i.path ?? "") });
+    case "vm_download": return t("chat.call.vmDownload", { name: String(i.filename ?? i.path ?? "") });
+    case "vm_public_url": return t("chat.call.vmUrl", { port: String(i.port ?? "") });
     case "message_group": return t("chat.call.messageGroup", { group: String(i.group ?? "") });
     case "list_groups":
     case "read_group": return t("chat.call.checkGroups");
@@ -66,7 +71,9 @@ const callIcon = (c: ToolCall): IconName =>
       ? "cursor"
       : c.name.startsWith("create_") || c.name.endsWith("_file") || c.name.endsWith("_files") || c.name === "read_document"
         ? "folder"
-        : c.name === "run_command"
+        : c.name.startsWith("vm_")
+          ? "server"
+          : c.name === "run_command"
           ? "cpu"
           : "arrow";
 

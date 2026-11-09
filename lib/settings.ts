@@ -34,13 +34,15 @@ export type Settings = {
   crashReports: boolean;
   /** Self-learning: review finished work and keep lessons (one small extra model call). */
   learning: boolean;
+  /** Cloud computer for the bots (E2B virtual machines, the user's own key). */
+  sandbox?: { e2bKey?: string };
   /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
   retired?: Record<string, string>;
 };
 
 export type PublicProvider = { baseUrl?: string; model?: string; models?: string[]; hasKey: boolean; keyHint?: string };
 export type PublicSearch = { provider: SearchProvider; searxngUrl: string; hasBraveKey: boolean; hasTavilyKey: boolean };
-export type PublicSettings = Omit<Settings, "providers" | "search"> & { providers: Partial<Record<ProviderId, PublicProvider>>; search: PublicSearch };
+export type PublicSettings = Omit<Settings, "providers" | "search" | "sandbox"> & { providers: Partial<Record<ProviderId, PublicProvider>>; search: PublicSearch; sandbox: { hasKey: boolean; keyHint?: string } };
 
 export type SettingsPatch = {
   active?: ProviderId;
@@ -54,6 +56,7 @@ export type SettingsPatch = {
   language?: string;
   crashReports?: boolean;
   learning?: boolean;
+  sandbox?: { e2bKey?: string; clearKey?: boolean };
 };
 
 const DEFAULTS: Settings = {
@@ -164,6 +167,13 @@ export function loadSettings(): Settings {
       }
     }
   }
+  if (s.sandbox?.e2bKey) {
+    try {
+      s.sandbox.e2bKey = decrypt(s.sandbox.e2bKey);
+    } catch {
+      s.sandbox.e2bKey = undefined;
+    }
+  }
   for (const k of ["braveKey", "tavilyKey"] as const) {
     const v = s.search[k];
     if (v) {
@@ -186,7 +196,8 @@ export function publicSettings(): PublicSettings {
     providers[id] = { baseUrl: p.baseUrl, model: p.model, models: p.models, hasKey: !!p.apiKey, keyHint: p.apiKey ? `…${p.apiKey.slice(-4)}` : undefined };
   }
   const search: PublicSearch = { provider: s.search.provider, searxngUrl: s.search.searxngUrl, hasBraveKey: !!s.search.braveKey, hasTavilyKey: !!s.search.tavilyKey };
-  return { ...s, providers, search };
+  const key = s.sandbox?.e2bKey;
+  return { ...s, providers, search, sandbox: { hasKey: !!key, keyHint: key ? `…${key.slice(-4)}` : undefined } };
 }
 
 export function updateSettings(patch: SettingsPatch): void {
@@ -232,6 +243,8 @@ export function updateSettings(patch: SettingsPatch): void {
   if (typeof patch.language === "string" && /^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(patch.language)) raw.language = patch.language;
   if (typeof patch.crashReports === "boolean") raw.crashReports = patch.crashReports;
   if (typeof patch.learning === "boolean") raw.learning = patch.learning;
+  if (patch.sandbox?.clearKey) delete raw.sandbox;
+  else if (typeof patch.sandbox?.e2bKey === "string" && patch.sandbox.e2bKey.trim()) raw.sandbox = { e2bKey: encrypt(patch.sandbox.e2bKey.trim()) };
   if (Array.isArray(patch.fallbacks)) {
     raw.fallbacks = patch.fallbacks
       .filter((f) => f && typeof f.provider === "string" && f.provider in PROVIDERS && typeof f.model === "string" && f.model.trim())

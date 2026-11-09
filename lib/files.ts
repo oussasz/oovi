@@ -134,6 +134,14 @@ function done(call: ToolCall, abs: string, shown: string, what: string): ToolRes
   };
 }
 
+/** Save bytes made elsewhere (e.g. on the cloud computer) where documents go, and show it in the chat. */
+export function saveOutput(call: ToolCall, filename: string, ws: Workspace | undefined, data: Buffer, what: string): ToolResult {
+  const { abs, shown } = outputPath(filename, ws, path.extname(filename) || ".bin");
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, data);
+  return done(call, abs, shown, what);
+}
+
 // ---------- Markdown -> Word ----------
 
 type Run = TextRun | ExternalHyperlink;
