@@ -10,6 +10,7 @@
     "db:migrate": "node --env-file=.env.local scripts/migrate.mjs"
   },
   "dependencies": {
+    "@paddle/paddle-js": "^1.6.6",
     "better-auth": "1.7.12",
     "next": "15.5.29",
     "nodemailer": "10.2.1",

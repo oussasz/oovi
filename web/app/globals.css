@@ -2596,6 +2596,23 @@ textarea.input {
   font-weight: 900;
   letter-spacing: -0.02em;
 }
+.price-per {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0;
+}
+.price-loading {
+  color: var(--muted);
+}
+.price-card-featured {
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
+}
+.pricing-cycle {
+  max-width: 280px;
+  margin: 0 auto 22px;
+}
 .price-list {
   margin: 0;
   padding-left: 20px;
