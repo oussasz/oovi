@@ -802,3 +802,8 @@ a.tag { text-decoration: none; }
 .slash-kind { flex: none; font-size: 10.5px; font-weight: 800; color: var(--faint); text-transform: uppercase; letter-spacing: 0.03em; }
 .mk-card.focus, .mk-row.focus { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 70%, transparent); }
 .card.flash { box-shadow: 0 0 0 3px color-mix(in srgb, var(--yellow) 70%, transparent); transition: box-shadow 0.4s; }
+
+/* Loading screen: the logo breathes gently while oovi starts. */
+.logo-pulse { animation: logo-pulse 1.6s ease-in-out infinite; }
+@keyframes logo-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.94); opacity: 0.75; } }
+@media (prefers-reduced-motion: reduce) { .logo-pulse { animation: none; } }

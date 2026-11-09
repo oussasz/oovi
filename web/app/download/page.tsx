@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { DownloadChooser } from "@/components/download/DownloadChooser";
-import { Slime } from "@/components/Slime";
+import { LogoMark } from "@/components/LogoMark";
 
 export const metadata: Metadata = {
   title: "Download",
@@ -16,11 +16,7 @@ export default async function DownloadPage({ searchParams }: { searchParams: Pro
       <SiteNav />
       <main className="container page page-narrow">
         <div className="page-head">
-          <div style={{ display: "flex", gap: 6, alignItems: "flex-end" }} aria-hidden>
-            <Slime color="blue" shape="egg" face="dash" size={56} />
-            <Slime color="yellow" shape="round" face="smile" size={48} delay={0.6} />
-            <Slime color="coral" shape="lump" face="happy" size={52} delay={1.2} />
-          </div>
+          <LogoMark size={64} priority />
           <h1 className="h2">Download oovi</h1>
           <p className="lead small">
             oovi runs on your computer. Pick your system below, then sign in with your oovi account inside the app.

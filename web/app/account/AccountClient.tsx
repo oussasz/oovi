@@ -6,6 +6,7 @@ import { authClient } from "@/lib/auth-client";
 import type { PublicUser } from "@/lib/api";
 import { DownloadButton } from "@/components/download/DownloadButton";
 import { Slime } from "@/components/Slime";
+import { LogoMark } from "@/components/LogoMark";
 import { CloseIcon } from "@/components/icons";
 
 const MAX_IMAGE = 200 * 1024;
@@ -204,11 +205,7 @@ export function AccountClient({
         <div className="account-col">
           {credits}
           <section className="card desktop-card">
-            <div style={{ display: "flex", gap: 6, alignItems: "flex-end", marginBottom: 14 }} aria-hidden>
-              <Slime color="blue" shape="egg" face="dash" size={50} />
-              <Slime color="yellow" shape="round" face="smile" size={44} delay={0.5} />
-              <Slime color="coral" shape="lump" face="happy" size={46} delay={1} />
-            </div>
+            <LogoMark size={56} style={{ marginBottom: 14 }} />
             <h2>oovi runs on your computer.</h2>
             <p className="muted" style={{ marginBottom: 18 }}>
               Download it and sign in with this account. Your bots, chats and keys live on your device, not here.

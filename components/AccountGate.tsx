@@ -9,9 +9,10 @@ import { api, resizeImage } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
 import { HOSTED_NAME, PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { Bot, ChatSummary } from "@/lib/types";
-import Face, { FaceStack } from "./Face";
+import Face from "./Face";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon from "./Icon";
+import Logo from "./Logo";
 import SettingsModal from "./SettingsModal";
 
 export type AccountState = {
@@ -21,11 +22,8 @@ export type AccountState = {
   user: { id: string; email: string; name: string; image: string | null } | null;
 };
 
-const LOGO_FACES: FaceT[] = [
-  { color: 0, shape: 0, hair: 0, eyes: 1, nose: 0, mouth: 2, cheeks: 0, top: 0, wear: 0 },
-  { color: 1, shape: 2, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 1, top: 0, wear: 0 },
-  { color: 2, shape: 1, hair: 0, eyes: 1, nose: 0, mouth: 1, cheeks: 1, top: 0, wear: 0 },
-];
+/** Shown in place of the user's photo until they pick one (a bot face, not the logo). */
+const PHOTO_PLACEHOLDER: FaceT = { color: 1, shape: 2, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 1, top: 0, wear: 0 };
 
 function reportCrash(message: string, stack?: string) {
   void fetch("/api/crash", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, stack, context: location.pathname }) }).catch(() => {});
@@ -61,7 +59,7 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
     <div className="gate">
       <div className="gate-card">
         <div className="gate-hero">
-          <FaceStack faces={LOGO_FACES} size={92} moods={["happy", "idle", "idle"]} />
+          <Logo size={92} />
           <h1>{mode === "signin" ? t("auth.welcomeBack") : t("auth.meetTeam")}</h1>
           <p className="muted">{mode === "signin" ? t("auth.signInSub") : t("auth.signUpSub")}</p>
         </div>
@@ -226,7 +224,7 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
 
         {step === 0 && (
           <div className="onb">
-            <FaceStack faces={LOGO_FACES} size={150} moods={["happy", "idle", "idle"]} />
+            <Logo size={150} />
             <h1>{account.user?.name ? t("onb.hiName", { name: account.user.name.split(" ")[0] ?? "" }) : t("onb.hi")}</h1>
             <p className="muted">{t("onb.intro")}</p>
             <button className="btn primary" onClick={() => setStep(1)}>{t("onb.letsGo")} <Icon name="arrow" size={16} /></button>
@@ -238,7 +236,7 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
             <h1>{t("onb.aboutTitle")}</h1>
             <p className="muted">{t("onb.aboutSub")}</p>
             <div className="avatar-pick">
-              {image ? <img src={image} alt={t("common.yourPhoto")} className="avatar-img big" /> : <Face face={LOGO_FACES[1]!} size={96} />}
+              {image ? <img src={image} alt={t("common.yourPhoto")} className="avatar-img big" /> : <Face face={PHOTO_PLACEHOLDER} size={96} />}
               <div className="row-btns">
                 <label className="btn sm">
                   {t("onb.choosePhoto")}
@@ -349,7 +347,7 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
 
         {step === 4 && (
           <div className="onb">
-            <FaceStack faces={LOGO_FACES} size={130} moods={["happy", "happy", "happy"]} />
+            <Logo size={130} />
             <h1>{name ? t("onb.doneName", { name: name.split(" ")[0] ?? "" }) : t("onb.done")}</h1>
             <p className="muted">{t("onb.doneSub")}</p>
             <button className="btn primary" disabled={busy} onClick={() => void finish()}>{t("onb.start")} <Icon name="arrow" size={16} /></button>
@@ -400,7 +398,7 @@ export default function AccountGate({ children }: { children: React.ReactNode })
     return (
       <div className="gate">
         <div className="gate-splash">
-          <FaceStack faces={LOGO_FACES} size={96} moods={["thinking", "idle", "idle"]} />
+          <Logo size={96} className="logo-pulse" />
           {failed && (
             <p className="muted">
               {t("gate.cantStart")} <button className="link-btn" onClick={() => { setFailed(false); void load(); }}>{t("gate.tryAgain")}</button>

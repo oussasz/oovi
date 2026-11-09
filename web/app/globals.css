@@ -2884,3 +2884,7 @@ textarea.input {
 .fin-cost-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 8px; align-items: center; }
 .fin-cost-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
 @media (max-width: 640px) { .fin-cost-row { grid-template-columns: minmax(0, 1fr) 110px; } .fin-cost-row .btn { grid-column: 1 / -1; justify-self: start; } }
+
+/* The real logo in the home hero and on the sign-in pages (replaces the drawn slime trio). */
+.hs-logo { position: absolute; left: 14%; top: 4%; z-index: 2; }
+.auth-art { display: grid; place-items: center; }
