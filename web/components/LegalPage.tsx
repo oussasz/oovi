@@ -3,8 +3,11 @@ import { SiteNav } from "./SiteNav";
 import { SiteFooter } from "./SiteFooter";
 import { LEGAL_LAST_UPDATED, TERMS_VERSION } from "@/lib/legal";
 
+/** A value from lib/legal.ts. Highlighted only while it's still an unfilled "[PLACEHOLDER]". */
 export function Ph({ children }: { children: ReactNode }) {
-  return <span className="placeholder">{children}</span>;
+  const text = typeof children === "string" ? children : "";
+  if (text.includes("@") && !text.startsWith("[")) return <a href={`mailto:${text}`}>{text}</a>;
+  return <span className={/^\[.*\]$/.test(text) ? "placeholder" : undefined}>{children}</span>;
 }
 
 export function LegalPage({ title, summary, children }: { title: string; summary: ReactNode; children: ReactNode }) {
