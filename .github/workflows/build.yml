@@ -49,7 +49,7 @@ jobs:
       - name: Give the Windows installer a URL-friendly name
         if: runner.os == 'Windows'
         shell: bash
-        run: for f in dist/*Setup*.exe; do mv "$f" "${f// /-}"; done
+        run: for f in dist/*Setup*.exe; do n="${f// /-}"; [ "$f" = "$n" ] || mv "$f" "$n"; done
       - uses: actions/upload-artifact@v4
         with:
           name: oovi-${{ runner.os }}
