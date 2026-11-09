@@ -98,20 +98,33 @@ export function hasNode(): boolean {
 export type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
 let remoteCache: { at: number; list: RemoteSkill[] } | null = null;
 
+/**
+ * Anthropic's public skills that work in oovi. Only skills made of a single
+ * SKILL.md are listed: many others rely on scripts, templates or reference files
+ * next to it (docx, pdf, pptx…), which oovi doesn't install, so they'd look
+ * installed without really working.
+ */
 export async function anthropicSkills(): Promise<RemoteSkill[]> {
   if (remoteCache && Date.now() - remoteCache.at < 24 * 60 * 60 * 1000) return remoteCache.list;
-  const r = await fetch("https://api.github.com/repos/anthropics/skills/contents/skills", {
+  // One request for the whole repository tree (GitHub allows 60 an hour without a token).
+  const r = await fetch("https://api.github.com/repos/anthropics/skills/git/trees/main?recursive=1", {
     headers: { accept: "application/vnd.github+json", "user-agent": "oovi-desktop" },
     signal: AbortSignal.timeout(15_000),
   });
   if (!r.ok) throw new Error(`GitHub answered ${r.status}`);
-  const dirs = ((await r.json()) as { name: string; type: string; html_url: string }[]).filter((d) => d.type === "dir");
+  const paths = ((await r.json()) as { tree?: { path: string; type: string }[] }).tree ?? [];
+  const files = new Map<string, string[]>();
+  for (const p of paths) {
+    const m = p.path.match(/^skills\/([^/]+)\/(.+)$/);
+    if (m?.[1] && m[2] && p.type === "blob") files.set(m[1], [...(files.get(m[1]) ?? []), m[2]]);
+  }
+  const complete = [...files.entries()].filter(([, f]) => f.includes("SKILL.md") && f.every((x) => x === "SKILL.md" || /^LICEN[CS]E/i.test(x))).map(([name]) => name);
   const list = await Promise.all(
-    dirs.map(async (d): Promise<RemoteSkill | null> => {
+    complete.map(async (name): Promise<RemoteSkill | null> => {
       try {
-        const md = await fetch(`https://raw.githubusercontent.com/anthropics/skills/main/skills/${d.name}/SKILL.md`, { signal: AbortSignal.timeout(15_000) }).then((x) => (x.ok ? x.text() : ""));
+        const md = await fetch(`https://raw.githubusercontent.com/anthropics/skills/main/skills/${name}/SKILL.md`, { signal: AbortSignal.timeout(15_000) }).then((x) => (x.ok ? x.text() : ""));
         const p = parseSkill(md);
-        return { id: d.name, name: p.name || d.name, description: (p.description || "").slice(0, 300), url: d.html_url, by: "Anthropic" };
+        return { id: name, name: p.name || name, description: (p.description || "").slice(0, 300), url: `https://github.com/anthropics/skills/tree/main/skills/${name}`, by: "Anthropic" };
       } catch {
         return null;
       }

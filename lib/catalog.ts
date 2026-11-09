@@ -21,6 +21,8 @@ export type CatalogField = {
   template?: string;
   /** Pick a folder with the system dialog. */
   folder?: boolean;
+  /** Can be left empty. */
+  optional?: boolean;
 };
 
 export type CatalogConnector = {
@@ -95,7 +97,7 @@ export const CONNECTORS: CatalogConnector[] = [
     description: "Search models, datasets, Spaces and papers on the Hugging Face Hub.",
     transport: "http",
     url: "https://huggingface.co/mcp",
-    fields: [{ key: "token", label: "Hugging Face token", secret: true, placeholder: "hf_…", help: "https://huggingface.co/settings/tokens", to: "header", name: "Authorization", template: "Bearer {value}" }],
+    fields: [{ key: "token", label: "Hugging Face token (optional)", optional: true, secret: true, placeholder: "hf_…", help: "https://huggingface.co/settings/tokens", to: "header", name: "Authorization", template: "Bearer {value}" }],
     docs: "https://huggingface.co/settings/mcp",
   },
   {
@@ -151,18 +153,6 @@ export const CONNECTORS: CatalogConnector[] = [
     needsNode: true,
     fields: [{ key: "token", label: "Supabase access token", secret: true, placeholder: "sbp_…", help: "https://supabase.com/dashboard/account/tokens", to: "env", name: "SUPABASE_ACCESS_TOKEN" }],
     docs: "https://supabase.com/docs/guides/getting-started/mcp",
-  },
-  {
-    id: "postgres",
-    name: "PostgreSQL",
-    by: "MCP reference servers",
-    category: "data",
-    description: "Ask questions about a Postgres database. Read-only queries.",
-    transport: "stdio",
-    command: "npx",
-    args: ["-y", "@modelcontextprotocol/server-postgres", "{url}"],
-    needsNode: true,
-    fields: [{ key: "url", label: "Connection string", secret: true, placeholder: "postgresql://user:password@host:5432/db", to: "arg" }],
   },
   {
     id: "filesystem",

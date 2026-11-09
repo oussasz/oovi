@@ -172,7 +172,7 @@ export default function Marketplace() {
   const addConnector = (c: CatalogConnector, vals: Record<string, string>) =>
     run(`add-${c.id}`, async () => {
       const fromCatalog = CONNECTORS.some((x) => x.id === c.id);
-      const missing = (c.fields ?? []).filter((f) => !vals[f.key]?.trim()).map((f) => f.label);
+      const missing = (c.fields ?? []).filter((f) => !f.optional && !vals[f.key]?.trim()).map((f) => f.label);
       if (fromCatalog && missing.length) throw new Error(t("mk.fillIn", { fields: missing.join(", ") }));
       const env: Record<string, string> = {};
       const headers: Record<string, string> = {};
@@ -193,7 +193,7 @@ export default function Marketplace() {
 
   function startInstall(c: CatalogConnector) {
     setValues({});
-    if (!c.fields?.length && !(c.needsNode && !inst.node)) void addConnector(c, {});
+    if (!c.fields?.some((f) => !f.optional) && !(c.needsNode && !inst.node) && !c.fields?.length) void addConnector(c, {});
     else setInstalling(c);
   }
 
@@ -339,7 +339,7 @@ export default function Marketplace() {
             <div className="mk-grid">
               {registry.slice(0, 30).map((r) => {
                 const c = regToConnector(r);
-                return card(r.name, <Avatar name={c.name} />, c.name, c.description, c.by, hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })));
+                return card(r.name, <Avatar name={c.name} />, c.name, c.description, c.by, hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
               })}
             </div>
           )}
