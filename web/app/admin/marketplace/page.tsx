@@ -28,7 +28,7 @@ export default async function AdminMarketplace({
     <>
       <PageHead
         title="Marketplace"
-        sub="Connectors, skills and plugins the desktop app can show. Published items appear in the app within about 10 minutes."
+        sub="Everything the desktop app’s Marketplace shows, including the items built into the app. Changes reach the app (0.7.0 and later) within about 10 minutes: unpublish an item to hide it, edit it to change it, or add new ones."
       >
         <Link href={`/admin/marketplace/edit${kind ? `?kind=${kind}` : ""}`} className="btn btn-dark btn-sm">
           New item

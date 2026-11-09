@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { requireAdmin } from "@/lib/admin";
 import { getOverview, parsePeriod } from "@/lib/admin-stats";
+import { githubDownloadCounts } from "@/lib/releases";
 import { DOWNLOAD_TARGETS } from "@/lib/releases";
 import { BarChart, LineChart, SplitBars, StackedBarChart } from "@/components/admin/Charts";
 import { Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
@@ -12,7 +13,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parsePeriod((await searchParams).period);
-  const o = await getOverview(period);
+  const [o, gh] = await Promise.all([getOverview(period), githubDownloadCounts()]);
 
   const stickiness = o.mau.value ? o.dau.value / o.mau.value : null;
   const prevStickiness = o.mau.previous ? (o.dau.previous ?? 0) / o.mau.previous : null;
@@ -62,6 +63,13 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
               : "No active users this week yet"
           }
         />
+        {gh && (
+          <Kpi
+            label="Installers downloaded, all time"
+            value={fmtInt(gh.total)}
+            hint={`Counted by GitHub, including before the site started counting · latest ${gh.byVersion[0]?.tag ?? "–"}: ${fmtInt(gh.byVersion[0]?.total ?? 0)}`}
+          />
+        )}
         <Kpi label="Crash reports, 7 days" value={fmtInt(o.crashes7.value)} change={o.crashes7} previousLabel="the 7 days before" lowerIsBetter />
       </div>
 

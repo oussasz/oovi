@@ -48,9 +48,12 @@ export type CatalogConnector = {
   logo?: string;
 };
 
-/** Built-in list plus published items (same id: the published one wins). */
-export function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
-  const ids = new Set(extra.map((x) => x.id));
+/**
+ * Built-in list plus published items (same id: the published one wins).
+ * `hidden`: items unpublished in the admin console, removed even if built in.
+ */
+export function mergeById<T extends { id: string }>(base: T[], extra: T[], hidden: string[] = []): T[] {
+  const ids = new Set([...extra.map((x) => x.id), ...hidden]);
   return [...base.filter((x) => !ids.has(x.id)), ...extra];
 }
 

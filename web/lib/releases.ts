@@ -49,6 +49,47 @@ function matchAsset(target: DownloadTarget, assets: ReleaseAsset[]): ReleaseAsse
   }
 }
 
+export type GithubDownloads = {
+  total: number;
+  byTarget: Record<DownloadTarget, number>;
+  byVersion: { tag: string; publishedAt: string | null; total: number; byTarget: Record<DownloadTarget, number> }[];
+};
+let countsCache: { at: number; data: GithubDownloads } | null = null;
+
+const emptyTargets = (): Record<DownloadTarget, number> => ({ "mac-arm64": 0, "mac-intel": 0, windows: 0 });
+
+/**
+ * Installer download counts as GitHub counts them, for every release of the
+ * public downloads repo. Includes downloads from before the site's own counting
+ * started, and direct links. Null if GitHub can't be reached.
+ */
+export async function githubDownloadCounts(): Promise<GithubDownloads | null> {
+  if (countsCache && Date.now() - countsCache.at < 10 * 60 * 1000) return countsCache.data;
+  try {
+    const res = await fetch(`https://api.github.com/repos/${PUBLIC_REPO()}/releases?per_page=100`, { headers: ghHeaders(), cache: "no-store" });
+    if (!res.ok) throw new Error(`GitHub releases list failed: ${res.status}`);
+    const releases = (await res.json()) as (Release & { published_at?: string | null; assets: (ReleaseAsset & { download_count?: number })[] })[];
+    const data: GithubDownloads = { total: 0, byTarget: emptyTargets(), byVersion: [] };
+    for (const r of releases) {
+      const v = { tag: r.tag_name, publishedAt: r.published_at ?? null, total: 0, byTarget: emptyTargets() };
+      for (const t of DOWNLOAD_TARGETS) {
+        const a = matchAsset(t, r.assets ?? []) as (ReleaseAsset & { download_count?: number }) | undefined;
+        const n = a?.download_count ?? 0;
+        v.byTarget[t] += n;
+        v.total += n;
+      }
+      for (const t of DOWNLOAD_TARGETS) data.byTarget[t] += v.byTarget[t];
+      data.total += v.total;
+      data.byVersion.push(v);
+    }
+    countsCache = { at: Date.now(), data };
+    return data;
+  } catch (err) {
+    console.error("github download counts failed", err);
+    return countsCache?.data ?? null;
+  }
+}
+
 /** URL of the latest installer for this platform, or null if none is available. */
 export async function resolveDownloadUrl(target: DownloadTarget): Promise<string | null> {
   // 1. Public downloads repo: a plain, permanent download link.

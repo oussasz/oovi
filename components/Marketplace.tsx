@@ -37,7 +37,7 @@ type RegItem = {
   install: { transport: "stdio"; command: string; args: string[]; env: RegField[] } | { transport: "http"; url: string; headers: RegField[] };
 };
 type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
-type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean; catalog?: { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[] } };
+type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean; catalog?: { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[]; hidden?: string[] } };
 type Mem = { user: string; memory: string; limits: { user: number; memory: number } };
 type LessonView = { id: string; text: string; botName?: string; source: "reflection" | "feedback"; score: number; updatedAt: number };
 type SkillDraft = { slug?: string; name: string; description: string; body: string };
@@ -120,9 +120,9 @@ export default function Marketplace() {
   };
 
   // Built-in catalog plus items published from the oovi admin console.
-  const allConnectors = useMemo(() => mergeById(CONNECTORS, inst.catalog?.connectors ?? []), [inst.catalog]);
-  const allSkills = useMemo(() => mergeById(SKILLS, inst.catalog?.skills ?? []), [inst.catalog]);
-  const allPlugins = useMemo(() => mergeById(PLUGINS, inst.catalog?.plugins ?? []), [inst.catalog]);
+  const allConnectors = useMemo(() => mergeById(CONNECTORS, inst.catalog?.connectors ?? [], inst.catalog?.hidden), [inst.catalog]);
+  const allSkills = useMemo(() => mergeById(SKILLS, inst.catalog?.skills ?? [], inst.catalog?.hidden), [inst.catalog]);
+  const allPlugins = useMemo(() => mergeById(PLUGINS, inst.catalog?.plugins ?? [], inst.catalog?.hidden), [inst.catalog]);
   const [lessons, setLessons] = useState<LessonView[] | null>(null);
   const [learning, setLearning] = useState<boolean | null>(null);
 
@@ -355,7 +355,8 @@ export default function Marketplace() {
 
   // ---------- views ----------
   const shownConnectors = allConnectors.filter((c) => (cat === "all" || !!ql || c.category === cat) && match(c.name, c.description, c.by));
-  const zapier = allConnectors.find((c) => c.id === "zapier")!;
+  // Fall back to the built-in item, so hiding one in the admin console never breaks the page.
+  const zapier = allConnectors.find((c) => c.id === "zapier") ?? CONNECTORS.find((c) => c.id === "zapier")!;
   const connectorAction = (c: CatalogConnector) =>
     hasServer(c.name) ? (
       done(t("mk.added"))
@@ -506,7 +507,7 @@ export default function Marketplace() {
     </div>
   );
 
-  const featuredSkill = allSkills[0]!;
+  const featuredSkill = allSkills[0] ?? SKILLS[0]!;
   const discoverSkills = (
     <>
       {!ql && (
@@ -642,7 +643,7 @@ export default function Marketplace() {
     );
   };
 
-  const featuredPlugin = allPlugins[0]!;
+  const featuredPlugin = allPlugins[0] ?? PLUGINS[0]!;
   const discoverPlugins = (
     <>
       {!ql && (
@@ -897,7 +898,7 @@ export default function Marketplace() {
             <p>{soonItem.soon}</p>
             <div className="row-btns">
               {(["zapier", "pipedream"] as const).map((gid) => {
-                const g = allConnectors.find((c) => c.id === gid)!;
+                const g = allConnectors.find((c) => c.id === gid) ?? CONNECTORS.find((c) => c.id === gid)!;
                 return hasServer(g.name) ? (
                   <span key={gid} className="tag ok">
                     {t("mk.alreadyConnected", { name: g.name })}

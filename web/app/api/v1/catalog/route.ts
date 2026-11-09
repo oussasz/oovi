@@ -1,18 +1,19 @@
 import { NextResponse } from "next/server";
-import { listPublishedCatalog } from "@/lib/catalog-db";
+import { listHiddenCatalogIds, listPublishedCatalog } from "@/lib/catalog-db";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET /api/v1/catalog  (public)
- * Published marketplace items (connectors, skills, plugins) ordered by sort.
- * Cached at the edge for 5 minutes.
+ * Published marketplace items (connectors, skills, plugins) ordered by sort,
+ * plus `hidden`: ids of unpublished items, which the app (0.7.0+) hides even
+ * when it has a built-in copy. Cached at the edge for 5 minutes.
  */
 export async function GET() {
   try {
-    const items = await listPublishedCatalog();
+    const [items, hidden] = await Promise.all([listPublishedCatalog(), listHiddenCatalogIds()]);
     return NextResponse.json(
-      { items },
+      { items, hidden },
       { headers: { "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600" } },
     );
   } catch (err) {

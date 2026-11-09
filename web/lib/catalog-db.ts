@@ -32,6 +32,12 @@ export async function listPublishedCatalog(): Promise<PublicCatalogItem[]> {
   return rows.map((r) => ({ id: r.id, kind: r.kind, data: r.data, updatedAt: new Date(r.updated_at).toISOString() }));
 }
 
+/** Ids of unpublished items: the app hides its built-in copy of these. */
+export async function listHiddenCatalogIds(): Promise<string[]> {
+  const { rows } = await pool.query<{ id: string }>(`SELECT id FROM catalog_items WHERE NOT published ORDER BY id`);
+  return rows.map((r) => r.id);
+}
+
 export async function listCatalog(kind: CatalogKind | null): Promise<CatalogItem[]> {
   const { rows } = await pool.query<Row>(
     `SELECT id, kind, data, published, sort, created_at, updated_at

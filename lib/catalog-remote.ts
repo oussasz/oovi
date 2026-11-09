@@ -6,10 +6,11 @@
 import { cloud } from "./account";
 import { PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogPlugin, type CatalogSkill } from "./catalog";
 
-export type RemoteCatalog = { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[] };
+/** hidden: ids unpublished in the admin console (built-in copies are hidden too). */
+export type RemoteCatalog = { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[]; hidden: string[] };
 type Item = { id?: unknown; kind?: unknown; data?: unknown };
 
-export const EMPTY_CATALOG: RemoteCatalog = { connectors: [], skills: [], plugins: [] };
+export const EMPTY_CATALOG: RemoteCatalog = { connectors: [], skills: [], plugins: [], hidden: [] };
 const TTL = 5 * 60_000;
 const g = globalThis as unknown as { __ooviRemoteCatalog?: { at: number; data: RemoteCatalog } };
 
@@ -45,7 +46,8 @@ function toPlugin(id: string, d: Record<string, unknown>): CatalogPlugin | null 
 
 /** Turn the service's answer into catalog items, skipping anything malformed. */
 export function parseCatalog(j: unknown): RemoteCatalog {
-  const out: RemoteCatalog = { connectors: [], skills: [], plugins: [] };
+  const hidden = isObj(j) && Array.isArray(j.hidden) ? j.hidden.filter((x): x is string => typeof x === "string" && ID_RE.test(x)).slice(0, 1000) : [];
+  const out: RemoteCatalog = { connectors: [], skills: [], plugins: [], hidden };
   const items = isObj(j) && Array.isArray(j.items) ? (j.items as Item[]) : [];
   for (const it of items.slice(0, 500)) {
     if (typeof it.id !== "string" || !ID_RE.test(it.id) || !isObj(it.data)) continue;
@@ -85,9 +87,11 @@ export function remoteCatalogQuick(ms = 4000): Promise<RemoteCatalog> {
 }
 
 export async function allSkills(): Promise<CatalogSkill[]> {
-  return mergeById(SKILLS, (await remoteCatalogQuick()).skills);
+  const r = await remoteCatalogQuick();
+  return mergeById(SKILLS, r.skills, r.hidden);
 }
 
 export async function allPlugins(): Promise<CatalogPlugin[]> {
-  return mergeById(PLUGINS, (await remoteCatalogQuick()).plugins);
+  const r = await remoteCatalogQuick();
+  return mergeById(PLUGINS, r.plugins, r.hidden);
 }
