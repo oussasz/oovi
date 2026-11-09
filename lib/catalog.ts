@@ -44,6 +44,8 @@ export type CatalogConnector = {
   oauth?: boolean;
   /** Not available directly yet: why, and what to use meanwhile. */
   soon?: string;
+  /** The service's page where the user chooses what oovi may do (shown in the connector's setup card). */
+  setupUrl?: string;
   /** Logo URL, for items published from the admin console (built-in ones use lib/logos). */
   logo?: string;
 };
@@ -61,7 +63,7 @@ export type ConnectorCategory = "everything" | "google-microsoft" | "productivit
 export const CONNECTOR_CATEGORIES: ConnectorCategory[] = ["everything", "google-microsoft", "productivity", "files", "design", "sales", "finance", "dev", "docs", "local"];
 
 export const CONNECTORS: CatalogConnector[] = [
-  { id: "zapier", name: "Zapier", by: "Zapier", verified: true, category: "everything", oauth: true, transport: "http", url: "https://mcp.zapier.com/api/mcp/mcp", description: "Connect 8,000+ apps, including Gmail, Google Drive, Calendar, Sheets, Docs, Outlook, Teams, Slack and HubSpot. Pick the actions you allow in Zapier.", docs: "https://zapier.com/mcp" },
+  { id: "zapier", name: "Zapier", by: "Zapier", verified: true, category: "everything", oauth: true, transport: "http", url: "https://mcp.zapier.com/api/v1/connect", setupUrl: "https://mcp.zapier.com/mcp/servers", description: "Connect 8,000+ apps, including Gmail, Google Drive, Calendar, Sheets, Docs, Outlook, Teams, Slack and HubSpot. Pick the actions you allow in Zapier.", docs: "https://zapier.com/mcp" },
   { id: "pipedream", name: "Pipedream", by: "Pipedream", verified: true, category: "everything", oauth: true, transport: "http", url: "https://remote.mcp.pipedream.net", description: "Connect 2,800+ apps, including Gmail, Google Sheets, Drive, Calendar, Outlook, Slack and Salesforce, with your own accounts.", docs: "https://mcp.pipedream.com" },
   { id: "make", name: "Make", by: "Make", verified: true, category: "everything", oauth: true, transport: "http", url: "https://mcp.make.com", description: "Run your Make scenarios as tools: automations across 2,000+ apps.", docs: "https://developers.make.com/mcp-server" },
   { id: "gmail", name: "Gmail", by: "Google", verified: true, category: "google-microsoft", transport: "http", description: "Read, search and draft emails.", soon: "Google's own Gmail connector is still in developer preview. Connect Gmail through Zapier or Pipedream today." },

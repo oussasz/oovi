@@ -9,15 +9,15 @@ export const dynamic = "force-dynamic";
 
 type Ctx = { params: Promise<{ id: string }> };
 
-/** Start a run: {text} sends a message, {decisions: {callId: true|false}, alwaysEdit?} answers an approval. Streams events. */
+/** Start a run: {text} sends a message, {decisions: {callId: true|false}, alwaysEdit?, alwaysFolders?} answers an approval. Streams events. */
 export async function POST(req: Request, { params }: Ctx) {
   const denied = guard(req);
   if (denied) return denied;
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; effort?: unknown; deep?: unknown; attachments?: unknown } | null;
-  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; effort?: Effort; deep?: boolean; attachments?: Attachment[] };
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; attachments?: unknown } | null;
+  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; effort?: Effort; deep?: boolean; attachments?: Attachment[] };
   // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
   const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
   if (ids.length > MAX_ATTACHMENTS) return Response.json({ error: `Attach at most ${MAX_ATTACHMENTS} files per message.` }, { status: 400 });
@@ -34,7 +34,7 @@ export async function POST(req: Request, { params }: Ctx) {
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;
-    input = { decisions, alwaysEdit: body.alwaysEdit === true };
+    input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true };
   } else {
     return Response.json({ error: "Send {text} or {decisions}." }, { status: 400 });
   }

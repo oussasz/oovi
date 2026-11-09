@@ -9,6 +9,8 @@ import type { ToolSpec } from "./llm";
 export const HELP_TOPICS = {
   overview: "What oovi is, and the list of help topics",
   marketplace: "Connectors, skills and plugins: add, turn on per bot, remove",
+  connectors: "Setting up a connector (Zapier and others): sign in, choose what oovi may do, test, which bots; fixing 0 tools or sign-in problems",
+  files: "Files on this computer: finding, reading and sending your files (also on Telegram), approvals, allowed folders",
   skills: "Create, install and use skills",
   groups: "Groups, @mentions, the team leader and leader mode, the main bot",
   effort: "Effort levels and Deep work",
@@ -36,10 +38,33 @@ Connectors (MCP servers) link bots to apps:
 - Zapier (featured) and Pipedream connect thousands of apps: Gmail, Google Drive, Docs, Sheets, Calendar, Outlook, Teams, Slack, HubSpot… In Zapier you choose which apps and actions bots may use (zapier.com/mcp).
 - Gmail, Google Drive, Google Calendar, Microsoft 365, Slack and HubSpot show "Coming soon": connect them through Zapier or Pipedream today.
 - Typing in the search box also searches the official MCP registry (community listings, not checked by oovi). "+ Add > Custom connector" adds any MCP server by command or URL.
-- Turn a connector on for a bot: open the bot (pencil in its chat header, "Edit bot") > Abilities > "Tools from MCP servers" > click the connector > Save. A connector is not available to a bot until this is done.
-- Connectors > Yours: each one shows its status; "on" switches it off for every bot, "Always allow" lets bots use it without asking (otherwise every use asks you first), Connect / Sign in again, Test, and the bin icon removes it.
+- A new connector is turned on for the main bot (the Chief) automatically. Other bots: Connectors > Yours > "Set up" > "Which bots can use it" ("All bots" in one click), or open the bot ("Edit bot") > Abilities > "Tools from MCP servers" > click the connector > Save. A connector is not available to a bot until this is done.
+- Connectors > Yours: each one shows its status and how many tools it has; "on" switches it off for every bot, "Always allow" lets bots use it without asking (otherwise every use asks you first), Connect / Reconnect / Disconnect (sign out, keep the connector), "Set up" (the setup card: see topic "connectors"), and the bin icon removes it.
 Skills: step-by-step procedures every bot can use (no per-bot switch). Skills > Discover: oovi skills and skills from Anthropic; press + to add. Skills > Yours: edit or delete. See topic "skills".
 Plugins: ready-made bot teams. Plugins > Discover > "Add team" creates the bots, a group with leader mode on, and installs the team's skills. Plugins > Yours: Open the group, or the bin icon removes the team (its bots and group; skills stay).`,
+
+  connectors: `Setting up a connector: Marketplace > Connectors > Yours > "Set up" opens its setup card (it also opens by itself right after connecting):
+1. Signed in: press Connect, approve in the browser page that opens, then come back to oovi. "Reconnect" signs in again; "Disconnect" signs out.
+2. Choose what oovi may do in the service (when it has such a page): the "Open…" button goes there.
+3. "Test now" lists the tools oovi finds right now. Press it again after changing anything in the service.
+4. "Which bots can use it": tick bots, or "All bots". The main bot gets new connectors automatically.
+Zapier (verified with Zapier's docs, docs.zapier.com/mcp):
+- oovi connects to https://mcp.zapier.com/api/v1/connect and you sign in with your Zapier account; Zapier creates your MCP server on first sign-in.
+- Agentic mode (the default for new servers): oovi sees about 16 Zapier tools (discover_zapier_actions, enable_zapier_action, execute_zapier_read_action, execute_zapier_write_action, list_zapier_connections, get_configuration_url…). The bot finds and enables actions itself, e.g. Gmail: Find email, Send email; Google Drive: Find file. The app (Gmail, Drive…) must be connected in Zapier: get_configuration_url gives the link.
+- Managed mode: each action you add is its own tool. With none added, oovi finds 0 tools. Fix: open mcp.zapier.com > your server > "+ Add tool", pick the app and its actions and connect your account; or switch the server to Agentic mode (Settings tab > Agentic mode > Save changes). Then press "Test now" in oovi.
+- Every successful action uses 2 Zapier tasks from your Zapier plan.
+Problems:
+- 0 tools: nothing is enabled in the service yet (step 2), then "Test now".
+- "Not signed in" or "needs you to sign in again": press Connect / Reconnect.
+- The bot says it can't use the connector: it isn't turned on for that bot (step 4).
+- An older Zapier connector that keeps failing: remove it (bin icon) and add Zapier again from Discover.`,
+
+  files: `Files on this computer: bots can find, read and send you your own files (Desktop, Documents, Downloads, Pictures, Videos, Music, OneDrive, or any folder you name). Settings > Safety > "Files on this computer":
+- "Ask me each time" (default): finding files by name never asks; reading, copying or sending a file asks you first: "Allow once", "Always allow this folder" or "Deny".
+- "Allowed folders, no need to ask": add folders (Add folder…); bots read and send from them without asking. Everything else still asks.
+- "Off": bots can't reach your files.
+- Sending: the file shows in the chat (Open / Show in folder). When you write from Telegram, the file is uploaded there too (Telegram's limit is 50 MB).
+- Never allowed, even with your OK: system folders, app data (browser profiles, passwords), hidden folders like .ssh, keys and secrets (.env, .key, .pem, .kdbx…), and oovi's own data. Bots never change or delete your files: edits are made on a copy in Downloads/oovi.`,
 
   skills: `A skill is a step-by-step procedure (a SKILL.md file: name, when to use it, Markdown instructions). Every bot can use every skill; there's nothing to switch on per bot.
 - Install: Marketplace > Skills > Discover > press + (oovi skills and skills from Anthropic).
@@ -72,6 +97,7 @@ Plugins: ready-made bot teams. Plugins > Discover > "Add team" creates the bots,
 - Reading and searching files never asks. Creating and editing files asks you first, unless you tick "Let bots create and edit files without asking". Deleting files and running commands always ask. Files outside the folder: never.
 - Approvals appear in the chat: Allow (or "Allow once"), "Always allow edits here", or Deny.
 - Without a project folder, files bots make (Word, Excel, PowerPoint, PDF…) go to your Downloads/oovi folder.
+- Your other files (outside a project folder): see topic "files".
 - Other approvals live in Settings > Safety: asking before a bot types, downloads or clicks buttons on a web page; "Max steps per bot reply"; "Hand-offs per message". Bots using your signed-in accounts, saving a skill and connector (MCP) actions always ask, unless a connector is marked "Always allow" in Marketplace > Connectors > Yours.`,
 
   computer: `Cloud computer: Settings > Cloud computer. Paste an E2B API key (free sign-up at e2b.dev; "(get one)" link next to the field) and save. Then every bot can use it.
@@ -83,14 +109,14 @@ Plugins: ready-made bot teams. Plugins > Discover > "Add team" creates the bots,
 1. In Telegram, open @BotFather, send /newbot, choose a name and a username ending in "bot". BotFather replies with a token.
 2. Paste the token in oovi.
 3. Open the link oovi shows and press Start (a one-time code, so only you can connect).
-Then: write to it like in oovi; when a bot needs your OK you get the details there (reply /yes or /no); results of long group jobs arrive there too. oovi must stay open on this computer. The main bot is chosen in Edit bot > Abilities > "Main bot".`,
+Then: write to it like in oovi; when a bot needs your OK you get the details there (reply /yes, /no, or /yes always to also allow that folder or those edits from now on); results of long group jobs arrive there too. Ask for a file from your computer ("send me the report.pdf from my Documents") and it arrives in Telegram (up to 50 MB). oovi must stay open on this computer. The main bot is chosen in Edit bot > Abilities > "Main bot".`,
 
   memory: `Memory: Marketplace > Memory. All bots share two small notebooks they update on their own: "About you (USER.md)" (your name, role, preferences, projects, people) and "Notes (MEMORY.md)" (lessons and facts). You can edit both there and Save; separate entries with a line containing only §.
 - Lessons learned (same tab): bots write them after real work and when you rate a reply. Each request only brings in matching lessons. "Forget" removes one. "Learn from my chats" turns self-learning on or off (one small extra model call after bigger tasks).
 - Under each reply: thumbs up / thumbs down; with thumbs down you can say what should be better and the bots learn from it.
 - Your name and photo: Settings > Profile.`,
 
-  settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
+  settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs, Files on this computer), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
 Elsewhere: per-bot settings in Edit bot (pencil in a bot's chat header): About, Look, Brain (model), Abilities (Main bot, Web search, Browser, signed-in accounts, Tools from MCP servers). Group settings: pencil in a group's header. Connectors, skills, plugins and memory: Marketplace.
 Links into the app, written by bots, show as buttons in chat: \`[Label](oovi://marketplace/connector/ID)\`, \`oovi://marketplace/skill/ID\`, \`oovi://marketplace/plugin/ID\`, \`oovi://marketplace/memory\`, \`oovi://settings/TAB\` (profile, models, telegram, accounts, search, browser, computer, safety, language, data, about), \`oovi://bot/BOTNAME\` (opens that bot's Abilities).`,
 

@@ -1,0 +1,65 @@
+/* files: owned by "Files on this computer" and the connector setup card, kept separate so parallel work never overwrites globals.css */
+
+/* ---------- Settings > Safety > Files on this computer (components/ComputerFilesSettings.tsx) ---------- */
+
+.cf-card .cf-intro { margin: -4px 0 12px; }
+.cf-modes { display: grid; gap: 8px; margin-bottom: 12px; }
+.cf-mode { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+.cf-mode:hover { background: var(--soft); }
+.cf-mode.on { border-color: var(--text); background: var(--soft); }
+.cf-mode input { margin: 3px 0 0; flex: none; accent-color: var(--text); }
+.cf-mode > span { display: grid; gap: 2px; min-width: 0; }
+.cf-mode b { font-size: 14.5px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.cf-mode small { color: var(--muted); font-size: 13px; line-height: 1.45; }
+.cf-default { font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--blue); color: #171717; }
+
+.cf-folders { margin: 0 0 12px; padding: 12px; border-radius: 14px; background: var(--soft); }
+.cf-folders ul { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 6px; }
+.cf-folders li { display: flex; align-items: center; gap: 8px; padding: 6px 6px 6px 10px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); }
+.cf-folders li > svg { flex: none; color: var(--muted); }
+.cf-path { flex: 1; min-width: 0; font-size: 13px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; overflow-wrap: anywhere; }
+.cf-add { display: flex; gap: 8px; flex-wrap: wrap; }
+.cf-add input { flex: 1 1 220px; width: auto; }
+.cf-add .btn { display: inline-flex; align-items: center; gap: 4px; }
+.cf-usual { margin: 0 0 6px; }
+
+/* ---------- Marketplace > Connectors > Yours: tool counts and the setup card (components/ConnectorSetup.tsx) ---------- */
+
+.mk-row-wrap { display: grid; grid-template-columns: minmax(0, 1fr); }
+.mk-row-wrap.open > .mk-row { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.cs-count { margin-inline-start: 8px; font-size: 11.5px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); vertical-align: 2px; }
+.cs-usedby { font-size: 12.5px; color: var(--muted); margin: 2px 0 0; }
+.cs-usedby.none { color: var(--err); }
+.cs-row-act { flex: 0 1 auto; max-width: 55%; flex-wrap: wrap; justify-content: flex-end; }
+.cs-row-act .btn.on { background: var(--soft); }
+.cs-chip-count { font-size: 11.5px; font-weight: 700; opacity: 0.7; margin-inline-start: 2px; }
+
+.cs-card { border: 1px solid var(--border); border-top: none; border-radius: 0 0 16px 16px; background: var(--panel); padding: 14px 16px 6px; }
+.cs-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.cs-steps > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
+.cs-steps > li:last-child { border-bottom: none; }
+.cs-steps > li > div { display: grid; gap: 4px; min-width: 0; }
+.cs-steps b { font-size: 14px; }
+.cs-steps .note { margin: 0; line-height: 1.5; }
+.cs-num { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; font-size: 13px; background: var(--soft); color: var(--muted); }
+.cs-steps > li.done .cs-num { background: var(--ok); color: #fff; }
+.cs-example { font-style: italic; }
+.cs-act { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+.cs-act .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.cs-msg { margin-top: 6px; line-height: 1.5; }
+.cs-fix { font-weight: 700; }
+.cs-tools { margin-top: 6px; }
+.cs-tools small { color: var(--muted); font-size: 12.5px; font-weight: 700; }
+.cs-tools ul { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.cs-tools li { font-size: 12px; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; padding: 2px 8px; border-radius: 8px; background: var(--soft); overflow-wrap: anywhere; }
+.cs-tools li.more { font-family: inherit; color: var(--muted); }
+.cs-bots { margin-top: 4px; align-items: center; }
+.cs-main { margin-inline-start: 6px; font-size: 10.5px; font-weight: 800; padding: 0 6px; border-radius: 99px; background: var(--yellow); color: #171717; }
+
+@media (max-width: 560px) {
+  .cs-card { padding: 12px 12px 4px; }
+  .cs-row-act { max-width: none; justify-content: flex-start; }
+}
+/* Keep the mode radios small: the general input style makes inputs full width. */
+.cf-mode input[type="radio"] { width: auto; height: auto; padding: 0; border: 0; box-shadow: none; background: none; }
+.cf-mode > span { flex: 1; }

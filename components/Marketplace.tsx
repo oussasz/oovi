@@ -11,6 +11,7 @@ import "@/lib/desktop";
 import { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
+import ConnectorSetup from "./ConnectorSetup";
 import { openSettings } from "./SettingsModal";
 
 type Tab = "connectors" | "skills" | "plugins" | "memory";
@@ -28,6 +29,8 @@ type Server = {
   signedIn?: boolean;
   error?: string;
   tools: { name: string; description?: string }[];
+  /** Bots that have it on. */
+  bots?: string[];
 };
 type RegField = { name: string; description?: string; required?: boolean; secret?: boolean };
 type RegItem = {
@@ -96,6 +99,9 @@ export default function Marketplace() {
   const [cat, setCat] = useState<ConnectorCategory | "all">("all");
   const [waiting, setWaiting] = useState<{ id: string; name: string; authUrl: string; since: number } | null>(null);
   const [soonItem, setSoonItem] = useState<CatalogConnector | null>(null);
+  /** The connector whose setup card is open. */
+  const [setupOpen, setSetupOpen] = useState<string | null>(null);
+  const [botNames, setBotNames] = useState<Record<string, string>>({});
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -144,7 +150,8 @@ export default function Marketplace() {
 
   const load = useCallback(async () => {
     try {
-      const [s, m, c] = await Promise.all([api<Skill[]>("/api/skills"), api<Server[]>("/api/mcp"), api<Installed>("/api/catalog")]);
+      const [s, m, c, b] = await Promise.all([api<Skill[]>("/api/skills"), api<Server[]>("/api/mcp"), api<Installed>("/api/catalog"), api<{ id: string; name: string }[]>("/api/bots").catch(() => [])]);
+      setBotNames(Object.fromEntries(b.map((x) => [x.id, x.name])));
       setSkills(s);
       setServers(m);
       setInst(c);
@@ -228,6 +235,7 @@ export default function Marketplace() {
       const body = c.transport === "stdio" ? { name: c.name, transport: "stdio", command: c.command, args, env } : { name: c.name, transport: "http", url: c.url, headers };
       const { id } = await api<{ id: string }>("/api/mcp", { method: "POST", body: JSON.stringify(body) });
       setInstalling(null);
+      setSetupOpen(id);
       const r = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${id}`, { method: "POST" });
       if (!r.ok) throw new Error(t("mk.addedButError", { name: c.name, error: r.error ?? "" }));
       return t("mk.connectorAdded", { name: c.name, count: r.tools?.length ?? 0 });
@@ -251,6 +259,7 @@ export default function Marketplace() {
     run(`add-${c.id}`, async () => {
       let id = servers.find((s) => s.name.toLowerCase() === c.name.toLowerCase())?.id;
       if (!id) id = (await api<{ id: string }>("/api/mcp", { method: "POST", body: JSON.stringify({ name: c.name, transport: "http", url: c.url, auth: "oauth" }) })).id;
+      setSetupOpen(id);
       return beginSignIn(id, c.name);
     });
 
@@ -268,6 +277,7 @@ export default function Marketplace() {
           const s = list.find((x) => x.id === waiting.id);
           if (s?.signedIn && s.status === "connected") {
             setWaiting(null);
+            setSetupOpen(s.id);
             setMsg({ ok: true, text: t("mk.connectorAdded", { name: waiting.name, count: s.tools.length }) });
           }
         })
@@ -294,6 +304,7 @@ export default function Marketplace() {
       const body = c.transport === "stdio" ? { name: c.name, transport: "stdio", command: c.command, args: parseArgs(c.args), env: kv } : { name: c.name, transport: "http", url: c.url, headers: kv };
       const { id } = await api<{ id: string }>("/api/mcp", { method: "POST", body: JSON.stringify(body) });
       setCustom(null);
+      setSetupOpen(id);
       const r = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${id}`, { method: "POST" });
       if (!r.ok) throw new Error(t("mk.addedButError", { name: c.name, error: r.error ?? "" }));
       return t("mk.connectorAdded", { name: c.name, count: r.tools?.length ?? 0 });
@@ -337,6 +348,7 @@ export default function Marketplace() {
       const s = servers.find((x) => x.id === focus.id || same(x.name, c?.name));
       name = c?.name ?? s?.name ?? focus.id;
       installed = !!s;
+      if (s) setSetupOpen(s.id);
     } else if (focus.tab === "skills") {
       const c = allSkills.find((x) => x.id === focus.id);
       const k = skills.find((x) => x.slug === focus.id || same(x.name, c?.name));
@@ -494,68 +506,93 @@ export default function Marketplace() {
     </>
   );
 
+  const disconnect = (s: Server) => {
+    if (confirm(t("conn.confirmDisconnect", { name: s.name }))) void run(`out-${s.id}`, async () => void (await api(`/api/mcp/${s.id}/oauth`, { method: "DELETE" })));
+  };
+  /** One line under a connector's name: sign-in, error, or how many tools it has right now. */
+  const statusLine = (s: Server) => {
+    if (s.auth === "oauth" && !s.signedIn) return t("mk.notSignedIn");
+    if (s.status === "error") return s.error;
+    if (s.tools.length) return t("mk.toolsCount", { count: s.tools.length });
+    if (s.status === "connected") return t("conn.zeroTools");
+    return t("mk.notStarted");
+  };
+  const usedBy = (s: Server) => {
+    const names = (s.bots ?? []).map((id) => botNames[id]).filter(Boolean);
+    return names.length ? t("conn.onFor", { names: names.join(", ") }) : t("conn.onForNobody");
+  };
+
   const yourConnectors = (
     <div className="mk-list">
       {servers.length === 0 && <p className="note">{t("mk.noConnectors")}</p>}
       {servers
         .filter((s) => match(s.name))
-        .map((s) => (
-          <div key={s.id} className={`mk-row${isFocus(s.id, allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id) ? " focus" : ""}`}>
-            <Logo src={logoFor(allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id ?? "") ?? MCP_LOGO} size={40} />
-            <div className="mk-card-main">
-              <b>
-                <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} /> {s.name}
-              </b>
-              <p>{s.auth === "oauth" && !s.signedIn ? t("mk.notSignedIn") : s.status === "error" ? s.error : s.tools.length ? t("mk.toolsCount", { count: s.tools.length }) : t("mk.notStarted")}</p>
-              <div className="tags">
-                <label className="mini-check">
-                  <input type="checkbox" checked={s.enabled} onChange={(e) => void run(`en-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ enabled: e.target.checked }) })))} /> {t("lib.on")}
-                </label>
-                <label className="mini-check" title={t("lib.trustedTitle")}>
-                  <input
-                    type="checkbox"
-                    checked={s.trusted}
-                    onChange={(e) => {
-                      if (e.target.checked && !confirm(t("lib.confirmTrust", { name: s.name }))) return;
-                      void run(`tr-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ trusted: e.target.checked }) })));
+        .map((s) => {
+          const cat = allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase());
+          const open = setupOpen === s.id;
+          return (
+            <div key={s.id} className={`mk-row-wrap${open ? " open" : ""}`}>
+              <div className={`mk-row${isFocus(s.id, cat?.id) ? " focus" : ""}`}>
+                <Logo src={logoFor(cat?.id ?? "") ?? MCP_LOGO} size={40} />
+                <div className="mk-card-main">
+                  <b>
+                    <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} /> {s.name}
+                    {s.tools.length > 0 && <span className="cs-count">{t("conn.toolsShort", { count: s.tools.length })}</span>}
+                  </b>
+                  <p>{statusLine(s)}</p>
+                  <p className={`cs-usedby${(s.bots ?? []).length ? "" : " none"}`}>{usedBy(s)}</p>
+                  <div className="tags">
+                    <label className="mini-check">
+                      <input type="checkbox" checked={s.enabled} onChange={(e) => void run(`en-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ enabled: e.target.checked }) })))} /> {t("lib.on")}
+                    </label>
+                    <label className="mini-check" title={t("lib.trustedTitle")}>
+                      <input
+                        type="checkbox"
+                        checked={s.trusted}
+                        onChange={(e) => {
+                          if (e.target.checked && !confirm(t("lib.confirmTrust", { name: s.name }))) return;
+                          void run(`tr-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ trusted: e.target.checked }) })));
+                        }}
+                      />{" "}
+                      {t("mk.alwaysAllow")}
+                    </label>
+                  </div>
+                </div>
+                <div className="mk-card-act cs-row-act">
+                  {s.auth === "oauth" && !s.signedIn && (
+                    <button className="btn sm primary" disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
+                      {t("mk.connect")}
+                    </button>
+                  )}
+                  {s.auth === "oauth" && s.signedIn && (
+                    <>
+                      <button className={`btn sm${s.status === "error" ? " primary" : ""}`} disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
+                        {t("conn.reconnect")}
+                      </button>
+                      <button className="btn sm" disabled={!!busy} onClick={() => disconnect(s)}>
+                        {t("conn.disconnect")}
+                      </button>
+                    </>
+                  )}
+                  <button className={`btn sm${open ? " on" : ""}`} aria-expanded={open} onClick={() => setSetupOpen(open ? null : s.id)}>
+                    {t("conn.setup")}
+                  </button>
+                  <button
+                    className="icon-btn sm"
+                    onClick={() => {
+                      if (confirm(t("lib.confirmRemove", { name: s.name }))) void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })));
                     }}
-                  />{" "}
-                  {t("mk.alwaysAllow")}
-                </label>
+                    title={t("common.remove")}
+                    aria-label={t("common.remove")}
+                  >
+                    <Icon name="trash" size={16} />
+                  </button>
+                </div>
               </div>
+              {open && <ConnectorSetup server={s} catalogId={cat?.id} setupUrl={cat?.setupUrl} busy={!!busy} onSignIn={() => void signIn(s.id, s.name)} onChanged={() => void load()} />}
             </div>
-            <div className="mk-card-act">
-              {s.auth === "oauth" && (!s.signedIn || s.status === "error") && (
-                <button className="btn sm primary" disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
-                  {s.signedIn ? t("mk.signInAgain") : t("mk.connect")}
-                </button>
-              )}
-              <button
-                className="btn sm"
-                disabled={!!busy}
-                onClick={() =>
-                  void run(`test-${s.id}`, async () => {
-                    const r = await api<{ ok: boolean; tools?: string[]; error?: string }>(`/api/mcp/${s.id}`, { method: "POST" });
-                    if (!r.ok) throw new Error(r.error);
-                    return t("lib.testResult", { name: s.name, count: r.tools?.length ?? 0 });
-                  })
-                }
-              >
-                {busy === `test-${s.id}` ? t("common.testing") : t("common.test")}
-              </button>
-              <button
-                className="icon-btn sm"
-                onClick={() => {
-                  if (confirm(t("lib.confirmRemove", { name: s.name }))) void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })));
-                }}
-                title={t("common.remove")}
-                aria-label={t("common.remove")}
-              >
-                <Icon name="trash" size={16} />
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       <p className="note">{t("mk.connectorsHowto")}</p>
     </div>
   );

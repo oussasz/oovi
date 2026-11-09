@@ -37,7 +37,7 @@ export default function BotEditor({ id }: { id: string }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
-  const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>([]);
+  const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[]; auth?: "oauth"; signedIn?: boolean }[]>([]);
   const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
   const [isMain, setIsMain] = useState(false);
   const [wasMain, setWasMain] = useState(false);
@@ -58,7 +58,7 @@ export default function BotEditor({ id }: { id: string }) {
     (async () => {
       try {
         setSettings(await api<PublicSettings>("/api/settings"));
-        setServers(await api<{ id: string; name: string; enabled: boolean; tools: unknown[] }[]>("/api/mcp").catch(() => []));
+        setServers(await api<{ id: string; name: string; enabled: boolean; tools: unknown[]; auth?: "oauth"; signedIn?: boolean }[]>("/api/mcp").catch(() => []));
         const main = await api<{ botId: string | null }>("/api/main").catch(() => ({ botId: null }));
         setWasMain(!isNew && main.botId === id);
         setIsMain(!isNew && main.botId === id);
@@ -351,6 +351,7 @@ export default function BotEditor({ id }: { id: string }) {
                     aria-pressed={on}
                   >
                     {on && <Icon name="check" size={14} />} {srv.name}
+                    <span className="cs-chip-count">{srv.auth === "oauth" && !srv.signedIn ? t("conn.notSignedInShort") : t("conn.toolsShort", { count: srv.tools.length })}</span>
                   </button>
                 );
               })}

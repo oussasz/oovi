@@ -45,8 +45,11 @@ export type Msg =
   | { role: "assistant"; text: string; toolCalls: ToolCall[]; reasoning?: string }
   | { role: "tool"; results: ToolResult[] };
 
-/** detail: preview shown under the summary (file content, a diff, a command). always: can be allowed for good. */
-export type ApprovalItem = { call: ToolCall; summary: string; detail?: string; always?: boolean };
+/**
+ * detail: preview shown under the summary (file content, a diff, a command). always: edits in the project folder can be allowed for good.
+ * folder: a file on this computer; "Always allow this folder" lets bots read and send from this folder without asking.
+ */
+export type ApprovalItem = { call: ToolCall; summary: string; detail?: string; always?: boolean; folder?: string };
 
 /** The one folder on the user's computer that bots in a chat may work in. */
 export type Workspace = {
@@ -146,6 +149,8 @@ export type Pending = {
   deep?: boolean;
   /** A slash command used in the message being worked on. */
   slash?: SlashUse;
+  /** Where the user is talking from right now (files bots send go there too). */
+  channel?: "telegram";
 };
 
 export type Chat = {

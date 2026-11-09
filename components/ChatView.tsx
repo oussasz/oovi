@@ -68,6 +68,12 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "use_skill": return t("chat.call.useSkill", { name: String(i.name ?? "") });
     case "save_skill": return t("chat.call.saveSkill", { name: String(i.name ?? "") });
     case "oovi_help": return t("chat.call.ooviHelp");
+    case "find_files": return t("chat.call.findFiles", { query: String(i.query ?? "") });
+    case "list_folder": return t("chat.call.listFolder", { name: String(i.path ?? "") });
+    case "read_computer_file": return t("chat.call.readFile", { name: String(i.path ?? "") });
+    case "send_file_to_user": return t("chat.call.sendFile", { name: String(i.path ?? "").split(/[\\/]/).pop() ?? "" });
+    case "copy_file_to_downloads": return t("chat.call.copyFile", { name: String(i.path ?? "").split(/[\\/]/).pop() ?? "" });
+    case "edit_copy_of_file": return t("chat.call.editAttachment", { name: String(i.path ?? "").split(/[\\/]/).pop() ?? "" });
     default: return c.name.startsWith("mcp_") ? c.name.replace(/^mcp_/, "").replace(/_/g, " ") : c.name.replace(/_/g, " ");
   }
 }
@@ -937,11 +943,11 @@ export default function ChatView({ id }: { id: string }) {
     void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, ...(attachments.length ? { attachments } : {}) }) });
   }
 
-  /** alwaysEdit: also allow file edits in this chat's project folder from now on. */
-  function decide(ok: boolean, alwaysEdit = false) {
+  /** always: "edits" also allows file edits in this chat's project folder from now on; "folders" lets bots read and send from these files' folders without asking. */
+  function decide(ok: boolean, always?: "edits" | "folders") {
     if (!approval) return;
     setError(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders" }) });
   }
 
   async function stop() {
@@ -1204,10 +1210,15 @@ export default function ChatView({ id }: { id: string }) {
                   </ul>
                   <div className="row wrap">
                     <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="check" size={16} /> {approval.items.some((i) => i.always) ? t("chat.allowOnce") : t("chat.allow")}
+                      <Icon name="check" size={16} /> {approval.items.some((i) => i.always || i.folder) ? t("chat.allowOnce") : t("chat.allow")}
                     </button>
+                    {approval.items.some((i) => i.folder) && (
+                      <button className="btn" onClick={() => decide(true, "folders")} title={[...new Set(approval.items.map((i) => i.folder).filter(Boolean))].join(" · ")}>
+                        {new Set(approval.items.map((i) => i.folder).filter(Boolean)).size > 1 ? t("files.alwaysFolders") : t("files.alwaysFolder")}
+                      </button>
+                    )}
                     {approval.items.some((i) => i.always) && (
-                      <button className="btn" onClick={() => decide(true, true)}>{t("chat.alwaysEdits")}</button>
+                      <button className="btn" onClick={() => decide(true, "edits")}>{t("chat.alwaysEdits")}</button>
                     )}
                     <button className="btn" onClick={() => decide(false)}>{t("chat.deny")}</button>
                   </div>

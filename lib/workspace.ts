@@ -101,12 +101,12 @@ const MAX_OUTPUT = 16_000;
 const isWin = process.platform === "win32";
 const norm = (p: string) => (isWin ? p.toLowerCase() : p);
 /** True when `child` is `parent` or inside it. */
-function within(parent: string, child: string): boolean {
+export function within(parent: string, child: string): boolean {
   const rel = path.relative(norm(parent), norm(child));
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
-function systemDirs(): string[] {
+export function systemDirs(): string[] {
   if (isWin) {
     const env = process.env;
     return [env.SystemRoot || "C:\\Windows", env.ProgramFiles || "C:\\Program Files", env["ProgramFiles(x86)"] || "C:\\Program Files (x86)", env.ProgramData || "C:\\ProgramData"];

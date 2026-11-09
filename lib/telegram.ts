@@ -15,6 +15,7 @@ import { isRunning, startRun, subscribe } from "./runner";
 import { dataDir, decryptSecret, encryptSecret } from "./settings";
 import { dmId, getChat } from "./store";
 import { mainBot, onReport } from "./team";
+import { telegramUploadRequest } from "./telegram-upload";
 import type { BotEntry } from "./types";
 
 type Stored = { token?: string; botUsername?: string; botName?: string; chatId?: number; userName?: string; pairCode?: string };
@@ -137,6 +138,22 @@ async function say(tok: string, chatId: number, text: string) {
   for (const part of chunks(text)) await tg(tok, "sendMessage", { chat_id: chatId, text: part, disable_web_page_preview: true });
 }
 
+/** Upload a file to the paired Telegram chat (photos inline, everything else as a document). Returns an error message, or null when sent. */
+export async function sendFileToTelegram(file: { name: string; data: Buffer }, caption?: string): Promise<string | null> {
+  const s = read();
+  const tok = token(s);
+  if (!tok || !s.chatId) return "Telegram isn't connected (Settings > Telegram).";
+  const req = telegramUploadRequest(tok, s.chatId, file, caption);
+  if ("error" in req) return req.error;
+  try {
+    const r = await fetch(req.url, { ...req.init, body: new Uint8Array(req.init.body), signal: AbortSignal.timeout(180_000) });
+    const j = (await r.json().catch(() => ({}))) as { ok?: boolean; description?: string };
+    return j.ok ? null : `Telegram didn't accept the file: ${j.description || `error ${r.status}`}`;
+  } catch (e) {
+    return `Couldn't reach Telegram: ${(e as Error).message}`;
+  }
+}
+
 function waitDone(chatId: string): Promise<void> {
   return new Promise((resolve) => {
     const unsub = subscribe(chatId, (e) => {
@@ -150,7 +167,7 @@ function waitDone(chatId: string): Promise<void> {
 }
 
 /** Run the main bot on a message (or approval) and send back what it said. */
-async function relay(tok: string, chatId: number, input: { text?: string; decisions?: Record<string, boolean> }) {
+async function relay(tok: string, chatId: number, input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean }) {
   const bot = mainBot();
   if (!bot) return say(tok, chatId, "You have no bots yet. Create one in oovi first.");
   const id = dmId(bot.id);
@@ -160,7 +177,7 @@ async function relay(tok: string, chatId: number, input: { text?: string; decisi
   const typing = setInterval(() => void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}), 4500);
   void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
   try {
-    if (!startRun(id, input)) return say(tok, chatId, `${bot.name} is busy. Try again in a moment.`);
+    if (!startRun(id, { ...input, channel: "telegram" })) return say(tok, chatId, `${bot.name} is busy. Try again in a moment.`);
     await waitDone(id);
   } finally {
     clearInterval(typing);
@@ -170,8 +187,15 @@ async function relay(tok: string, chatId: number, input: { text?: string; decisi
   const fresh = chat.entries.filter((e): e is BotEntry => e.kind === "bot" && (!before.has(e.id) || e.id === chat.pending?.approval?.entryId));
   const last = [...fresh].reverse().find((e) => e.text || e.error);
   if (chat.pending?.approval) {
-    const items = chat.pending.approval.items.map((x, i) => `${i + 1}. ${x.summary}${x.detail ? `\n${x.detail.slice(0, 600)}` : ""}`).join("\n");
-    return say(tok, chatId, `${bot.name} needs your OK:\n${items}\n\nReply /yes to allow or /no to deny.`);
+    const a = chat.pending.approval;
+    const items = a.items.map((x, i) => `${i + 1}. ${x.summary}${x.detail ? `\n${x.detail.slice(0, 600)}` : ""}`).join("\n");
+    const folders = [...new Set(a.items.map((x) => x.folder).filter((f): f is string => !!f))];
+    const always = folders.length
+      ? `\n/yes always: allow, and let bots read and send files from ${folders.length === 1 ? folders[0] : "these folders"} without asking from now on.`
+      : a.items.some((x) => x.always)
+        ? "\n/yes always: allow, and allow edits in this project folder from now on."
+        : "";
+    return say(tok, chatId, `${bot.name} needs your OK:\n${items}\n\nReply /yes to allow once or /no to deny.${always}`);
   }
   if (last?.status === "error") return say(tok, chatId, `${bot.name} hit a problem: ${last.error ?? "unknown error"}`);
   if (last?.text) return say(tok, chatId, last.text);
@@ -210,7 +234,12 @@ async function handle(tok: string, u: Update) {
   if (/^\/(yes|no)\b/i.test(text)) {
     if (!pending) return say(tok, m.chat.id, "Nothing is waiting for your OK right now.");
     const ok = /^\/yes/i.test(text);
-    return relay(tok, m.chat.id, { decisions: Object.fromEntries(pending.items.map((i) => [i.call.id, ok])) });
+    // "/yes always": also remember the folder (files on this computer) or allow edits (project folder).
+    const always = ok && /^\/yes\s+always\b/i.test(text);
+    return relay(tok, m.chat.id, {
+      decisions: Object.fromEntries(pending.items.map((i) => [i.call.id, ok])),
+      ...(always ? { alwaysFolders: pending.items.some((i) => !!i.folder), alwaysEdit: pending.items.some((i) => i.always) } : {}),
+    });
   }
   return relay(tok, m.chat.id, { text: text.slice(0, 20_000) });
 }

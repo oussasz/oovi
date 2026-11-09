@@ -15,6 +15,12 @@ export type BrowserConfig = {
 /** auto = the AI provider's own built-in web search (Claude or Gemini), no extra setup. */
 export type SearchProvider = "auto" | "none" | "searxng" | "brave" | "tavily";
 export type SearchConfig = { provider: SearchProvider; searxngUrl: string; braveKey?: string; tavilyKey?: string };
+/**
+ * Files on this computer (lib/computer.ts): off; ask before every read or send (default);
+ * or read and send from the listed folders without asking (everything else still asks).
+ */
+export type ComputerFilesMode = "off" | "ask" | "folders";
+export type ComputerFiles = { mode: ComputerFilesMode; folders: string[] };
 /** One model on one provider. */
 export type ModelRef = { provider: ProviderId; model: string };
 export type Settings = {
@@ -25,6 +31,7 @@ export type Settings = {
   search: SearchConfig;
   browser: BrowserConfig;
   approvals: { clicksAndTyping: boolean };
+  computerFiles: ComputerFiles;
   maxSteps: number;
   /** In groups: how many bot-to-bot hand-offs one user message may trigger. */
   maxTurns: number;
@@ -81,6 +88,7 @@ const DEFAULTS: Settings = {
     allowPrivateNetwork: false,
   },
   approvals: { clicksAndTyping: true },
+  computerFiles: { mode: "ask", folders: [] },
   maxSteps: 25,
   maxTurns: 6,
   language: "auto",
@@ -131,10 +139,25 @@ function readRaw(): Settings {
       search: { ...DEFAULTS.search, ...j.search },
       browser: { ...DEFAULTS.browser, ...j.browser },
       approvals: { ...DEFAULTS.approvals, ...j.approvals },
+      computerFiles: cleanComputerFiles(j.computerFiles),
     };
   } catch {
     return structuredClone(DEFAULTS);
   }
+}
+
+function cleanComputerFiles(v: unknown): ComputerFiles {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<ComputerFiles>;
+  const mode: ComputerFilesMode = o.mode === "off" || o.mode === "folders" ? o.mode : "ask";
+  const folders = Array.isArray(o.folders) ? [...new Set(o.folders.filter((f): f is string => typeof f === "string" && !!f.trim()))].slice(0, 50) : [];
+  return { mode, folders };
+}
+
+/** Save the "Files on this computer" setting. Folders must already be checked (lib/computer.ts). */
+export function setComputerFiles(next: ComputerFiles): void {
+  const raw = readRaw();
+  raw.computerFiles = cleanComputerFiles(next);
+  writeRaw(raw);
 }
 
 function writeRaw(s: Settings) {

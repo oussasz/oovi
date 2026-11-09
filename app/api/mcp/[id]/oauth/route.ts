@@ -1,5 +1,5 @@
 import { guard } from "@/lib/guard";
-import { getServer, oauthStore, resetConnection, testServer } from "@/lib/mcp";
+import { getServer, oauthStore, resetConnection, signOut, testServer } from "@/lib/mcp";
 import { startSignIn } from "@/lib/mcp-oauth";
 
 export const runtime = "nodejs";
@@ -22,4 +22,12 @@ export async function POST(req: Request, { params }: Ctx) {
   } catch (e) {
     return Response.json({ error: `Couldn't start signing in to ${s.name}: ${(e as Error).message}` }, { status: 502 });
   }
+}
+
+/** Disconnect: sign out (forget the tokens) but keep the connector, so Connect signs in again. */
+export async function DELETE(req: Request, { params }: Ctx) {
+  const denied = guard(req);
+  if (denied) return denied;
+  await signOut((await params).id);
+  return new Response(null, { status: 204 });
 }

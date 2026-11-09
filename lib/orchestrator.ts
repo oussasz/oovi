@@ -33,12 +33,17 @@ import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
+import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import type { Approval, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
-/** alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on. attachments: files sent with text (already saved in the chat). */
-export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[] };
+/**
+ * alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on.
+ * alwaysFolders: with decisions, bots may read and send files from the approved files' folders without asking from now on.
+ * attachments: files sent with text (already saved in the chat). channel: the user writes from Telegram.
+ */
+export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[]; channel?: "telegram" };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
 const PLAN_SPEC: ToolSpec = {
@@ -120,7 +125,7 @@ function slashLines(s: SlashUse, tools: ToolSpec[]): string[] {
     : [`The user asked you to use ${s.name} (${s.cmd}), but its tools didn't load (see the unavailable servers above). Tell the user what's wrong and how to fix it in Marketplace > Connectors > Yours.`];
 }
 
-function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[] }): string {
+function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.instructions) lines.push("", bot.instructions);
@@ -199,6 +204,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     );
   }
   lines.push(...attachmentsPrompt(chat, tools.some((t) => t.name === "vm_upload_attachment")));
+  lines.push(...extra.files);
   if (chat.workspace) {
     const shell = process.platform === "win32" ? "Windows (cmd.exe)" : process.platform === "darwin" ? "macOS (sh)" : "Linux (sh)";
     lines.push(
@@ -369,6 +375,8 @@ function cancelApproval(chat: Chat) {
   chat.pending = undefined;
 }
 
+const baseName = (p: unknown) => String(p ?? "a file").split(/[\\/]/).pop() || "a file";
+
 export function statusText(c: ToolCall): string {
   const i = c.input;
   if (c.name.startsWith("mcp_")) return `Using ${c.name.replace(/^mcp_/, "").replace(/_/g, " ")}`;
@@ -421,6 +429,12 @@ export function statusText(c: ToolCall): string {
     case "edit_file": return `Editing ${String(i.path ?? "a file")}`;
     case "delete_file": return `Deleting ${String(i.path ?? "a file")}`;
     case "run_command": return `Running ${String(i.command ?? "a command").slice(0, 60)}`;
+    case "find_files": return `Looking for “${String(i.query ?? "")}” on your computer`;
+    case "list_folder": return `Looking in ${String(i.path ?? "your folders")}`;
+    case "read_computer_file": return `Reading ${String(i.path ?? "a file")}`;
+    case "send_file_to_user": return `Sending ${baseName(i.path)}`;
+    case "copy_file_to_downloads": return `Copying ${baseName(i.path)}`;
+    case "edit_copy_of_file": return `Editing a copy of ${baseName(i.path)}`;
     default: return c.name;
   }
 }
@@ -446,8 +460,8 @@ async function* runBot(
   const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
-  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots });
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: computerFilesPrompt(settings, chat.pending?.channel === "telegram") });
   let steps = 0;
 
   for (;;) {
@@ -497,6 +511,8 @@ async function* runBot(
             results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
           } else if (ATTACH_TOOLS.has(c.name)) {
             results.push(await runAttachmentTool(c, chat));
+          } else if (COMPUTER_TOOLS.has(c.name)) {
+            results.push(await runComputerTool(c, chat, s));
           } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace));
         }
       }
@@ -553,6 +569,11 @@ async function* runBot(
 }
 
 export async function* orchestrate(chatId: string, input: RunInput, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  // "Always allow this folder": remember the approved files' folders before settings are loaded for this run.
+  if (input.decisions && input.alwaysFolders) {
+    const items = getChat(chatId)?.pending?.approval?.items ?? [];
+    for (const it of items) if (it.folder && input.decisions[it.call.id] === true) allowFolder(it.folder, loadSettings().computerFiles);
+  }
   const settings = loadSettings();
   const chat = getChat(chatId);
   if (!chat) throw new Error("Chat not found.");
@@ -631,12 +652,15 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       deep,
       learn: similar >= 2 && relevantSkills(text).length === 0 ? similar : 0,
       ...(slash ? { slash: { ...slash, for: [...queue] } } : {}),
+      ...(input.channel ? { channel: input.channel } : {}),
     };
     saveChat(chat);
     yield { type: "entry", entry: user };
   } else if (input.decisions && chat.pending?.approval) {
     const e = chat.entries.find((x) => x.id === chat.pending?.approval?.entryId);
     chat.pending.approval = undefined;
+    if (input.channel) chat.pending.channel = input.channel;
+    else delete chat.pending.channel;
     if (input.alwaysEdit && chat.workspace) chat.workspace.autoEdit = true;
     if (e?.kind === "bot") resume = { entry: e, decisions: input.decisions };
   } else {

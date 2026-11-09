@@ -811,10 +811,15 @@ function readTool(call: ToolCall, chat: Chat): ToolResult {
   if (att.kind === "image") {
     return { id: call.id, name: call.name, content: `The image ${describeAttachment(att)} is shown to you again below.`, attach: [{ chatId: chat.id, att }] };
   }
-  const segs = segmentsOf(chat.id, att.id);
-  const note = stored(chat.id, att.id)?.note;
-  if (!segs.length || segs.every((s) => !s.text.trim())) return fail(call, `No text could be read from "${att.name}".${note ? ` ${note}` : ""}`);
+  const r = readSegments(segmentsOf(chat.id, att.id), att.kind, att.name, describeAttachment(att), "read_attachment", i, stored(chat.id, att.id)?.note);
+  return "error" in r ? fail(call, r.error) : { id: call.id, name: call.name, content: r.text };
+}
 
+type ReadOpts = { from?: unknown; to?: unknown; page?: unknown; sheet?: unknown };
+
+/** One part of a document's text: lines, a PDF page or slide, or an Excel sheet. `tool` names the tool to continue with. */
+function readSegments(segs: Segment[], kind: AttachmentKind, name: string, title: string, tool: string, i: ReadOpts, note?: string): { text: string } | { error: string } {
+  if (!segs.length || segs.every((s) => !s.text.trim())) return { error: `No text could be read from "${name}".${note ? ` ${note}` : ""}` };
   let lines: string[];
   let scope = "";
   let summary = "";
@@ -824,11 +829,11 @@ function readTool(call: ToolCall, chat: Chat): ToolResult {
       const q = String(i.sheet).trim().toLowerCase();
       const sheets = segs.filter((s) => s.label.startsWith("Sheet"));
       seg = sheets.find((s) => s.label.toLowerCase() === `sheet: ${q}`) ?? (/^\d+$/.test(q) ? sheets[Number(q) - 1] : undefined) ?? sheets.find((s) => s.label.toLowerCase().includes(q));
-      if (!seg) return fail(call, `No sheet "${String(i.sheet)}" in "${att.name}". Sheets: ${sheets.map((s) => s.label.replace(/^Sheet: /, "")).join(", ") || "none"}.`);
+      if (!seg) return { error: `No sheet "${String(i.sheet)}" in "${name}". Sheets: ${sheets.map((s) => s.label.replace(/^Sheet: /, "")).join(", ") || "none"}.` };
     } else {
       const n = Math.floor(Number(i.page));
       seg = segs[n - 1];
-      if (!seg || !/^(Page|Slide)/.test(seg.label)) return fail(call, `"${att.name}" has ${segs.length} ${att.kind === "pptx" ? "slides" : "pages"}; there's no number ${n}.`);
+      if (!seg || !/^(Page|Slide)/.test(seg.label)) return { error: `"${name}" has ${segs.length} ${kind === "pptx" ? "slides" : "pages"}; there's no number ${n}.` };
     }
     lines = seg.text.split(/\r?\n/);
     scope = `${seg.label}, `;
@@ -842,8 +847,32 @@ function readTool(call: ToolCall, chat: Chat): ToolResult {
   const wanted = i.to !== undefined ? Math.min(total, Math.max(from, Math.floor(Number(i.to)))) : total;
   const f = firstLines(lines.slice(from - 1, wanted), READ_MAX);
   const to = from - 1 + f.upTo;
-  const more = to < total ? `\n[Lines ${from}-${to} of ${total}. Continue with read_attachment from=${to + 1}${i.page !== undefined ? ` page=${i.page}` : ""}${i.sheet !== undefined ? ` sheet="${String(i.sheet)}"` : ""}.]` : "";
-  return { id: call.id, name: call.name, content: `${describeAttachment(att)}, ${scope}lines ${from}-${to} of ${total}:\n${summary}${f.text}${more}` };
+  const more = to < total ? `\n[Lines ${from}-${to} of ${total}. Continue with ${tool} from=${to + 1}${i.page !== undefined ? ` page=${String(i.page)}` : ""}${i.sheet !== undefined ? ` sheet="${String(i.sheet)}"` : ""}.]` : "";
+  return { text: `${title}, ${scope}lines ${from}-${to} of ${total}:\n${note ? `[${note}]\n` : ""}${summary}${f.text}${more}` };
+}
+
+/** File type of bytes from disk (same rules as uploads: never programs or scripts). */
+export function detectKind(name: string, data: Buffer): { kind: AttachmentKind; mime: string } | { error: string } {
+  return detect(cleanFileName(name), data);
+}
+
+/**
+ * Read a document from this computer (read_computer_file) with the same extractors as
+ * attachments. Images return {image}: the caller stores them as an attachment to show them.
+ */
+export async function readDocumentBytes(name: string, data: Buffer, i: ReadOpts, tool: string): Promise<{ text: string } | { error: string } | { image: { mime: string } }> {
+  const det = detectKind(name, data);
+  if ("error" in det) return det;
+  if (det.kind === "image") return { image: { mime: det.mime } };
+  let ex: { segments: Segment[]; pages?: number; note?: string };
+  try {
+    ex = await extract(det.kind, data);
+  } catch (e) {
+    return { error: `oovi couldn't read "${name}": ${((e as Error).message || String(e)).slice(0, 200)}` };
+  }
+  const extra = ex.pages ? `${ex.pages} ${det.kind === "pdf" ? "pages" : det.kind === "pptx" ? "slides" : "sheets"}` : "";
+  const title = `"${name}" (${[KIND_LABEL[det.kind], extra, sizeLabel(data.length)].filter(Boolean).join(", ")})`;
+  return readSegments(ex.segments, det.kind, name, title, tool, i, ex.note);
 }
 
 // ----- editing -----
@@ -1025,6 +1054,16 @@ async function editTool(call: ToolCall, chat: Chat): Promise<ToolResult> {
   if (!att) return notFound(call, chat, name);
   const src = attachmentPath(chat.id, att.id);
   if (!src) return fail(call, `The file "${att.name}" is missing from this chat's storage.`);
+  return makeEditedCopy(call, fs.readFileSync(src), att.name, att.kind, "the original attachment", "read_attachment");
+}
+
+/**
+ * Make an edited copy of a file (an attachment, or a file on this computer) in Downloads/oovi.
+ * The original is never changed. `original` says what stays unchanged; `readTool` how to read the source again.
+ */
+export async function makeEditedCopy(call: ToolCall, data: Buffer, fileName: string, kind: AttachmentKind, original: string, readTool: string): Promise<ToolResult> {
+  const i = call.input;
+  const att = { name: fileName, kind };
   if (att.kind === "pdf" || att.kind === "image" || att.kind === "xls")
     return fail(
       call,
@@ -1039,7 +1078,6 @@ async function editTool(call: ToolCall, chat: Chat): Promise<ToolResult> {
   const content = typeof i.content === "string" ? i.content : undefined;
   if (!reps.length && !cells.length && content === undefined) return fail(call, "Say what to change: replacements, cells (Excel) or content (text files).");
   const counts = reps.map(() => 0);
-  const data = fs.readFileSync(src);
   let out: Buffer;
   const changes: string[] = [];
   try {
@@ -1075,12 +1113,12 @@ async function editTool(call: ToolCall, chat: Chat): Promise<ToolResult> {
   }
   const missing = reps.filter((_, k) => counts[k] === 0).map((r) => `"${r.find.slice(0, 80)}"`);
   const done = reps.reduce((n, _, k) => n + counts[k]!, 0);
-  if (!done && !changes.length) return fail(call, `Nothing changed: ${missing.join(", ")} ${missing.length === 1 ? "wasn't" : "weren't"} found in "${att.name}". Read it again with read_attachment and copy the exact text.`);
+  if (!done && !changes.length) return fail(call, `Nothing changed: ${missing.join(", ")} ${missing.length === 1 ? "wasn't" : "weren't"} found in "${att.name}". Read it again with ${readTool} and copy the exact text.`);
   const abs = copyPath(att.name, i.new_name);
   fs.writeFileSync(abs, out);
   const shown = path.basename(abs);
   const lines = [
-    `Saved the edited copy "${shown}" in the user's Downloads/oovi folder (${sizeLabel(out.length)}); the original attachment is unchanged. The user can open it from the chat.`,
+    `Saved the edited copy "${shown}" in the user's Downloads/oovi folder (${sizeLabel(out.length)}); ${original} is unchanged. The user can open it from the chat.`,
     ...(done ? [`${done} replacement${done === 1 ? "" : "s"} made.`] : []),
     ...changes.map((c) => `- ${c}`),
     ...(missing.length ? [`Not found (unchanged): ${missing.join(", ")}.`] : []),

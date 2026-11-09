@@ -88,10 +88,20 @@ export function capabilitiesPrompt({ bot, members, allBots, group, request, turn
   const { connectors: catalog, skills: catSkills, plugins: catPlugins } = catalogCached();
   const catalogOf = (name: string): CatalogConnector | undefined => catalog.find((c) => c.name.toLowerCase() === name.toLowerCase());
   const mine = new Set([...(bot.tools.mcp ?? []), ...turnMcp]);
-  const label = (s: { name: string; auth?: string; signedIn?: boolean }) => {
+  const label = (s: (typeof servers)[number]) => {
     const d = catalogOf(s.name)?.description;
-    const signIn = s.auth === "oauth" && !s.signedIn ? " [not signed in yet: Marketplace > Connectors > Yours > Connect]" : "";
-    return `${d ? `${s.name} (${clip(d)})` : s.name}${signIn}`;
+    const link = `oovi://marketplace/connector/${catalogOf(s.name)?.id ?? s.id}`;
+    const state =
+      s.auth === "oauth" && !s.signedIn
+        ? ` [not signed in yet: tell the user to press Connect: [Set up ${s.name}](${link})]`
+        : s.status === "error"
+          ? ` [not working right now: ${clip(s.error ?? "", 120)}; call oovi_help topic "connectors" and help the user fix it: [Set up ${s.name}](${link})]`
+          : s.checkedAt && !s.tools.length
+            ? ` [0 tools: nothing is enabled in ${s.name} yet; call oovi_help topic "connectors" and walk the user through it: [Set up ${s.name}](${link})]`
+            : s.tools.length
+              ? ` [${s.tools.length} tools]`
+              : "";
+    return `${d ? `${s.name} (${clip(d)})` : s.name}${state}`;
   };
   /** Who else has this connector switched on: teammates in this chat first. */
   const holders = (id: string) => {
@@ -138,7 +148,7 @@ export function capabilitiesPrompt({ bot, members, allBots, group, request, turn
 
   if (notOn.length || off.length) {
     lines.push(
-      `If a request needs a connector that isn't on for you, don't try without it: say so plainly (e.g. "Zapier is connected but not turned on for me.") and tell the user how to turn it on: [Open ${bot.name}'s abilities](oovi://bot/${bot.name}) > Tools from MCP servers > tick it > Save, or start the message with /<connector> to lend it to me for one message.${group ? " Or @mention a teammate who has it." : ""}`,
+      `If a request needs a connector that isn't on for you, don't try without it: say so plainly (e.g. "Zapier is connected but not turned on for me.") and tell the user how to turn it on: [Open ${bot.name}'s abilities](oovi://bot/${bot.name}) > Tools from MCP servers > tick it > Save (or Marketplace > Connectors > Yours > Set up > "Which bots can use it"), or start the message with /<connector> to lend it to me for one message.${group ? " Or @mention a teammate who has it." : ""}`,
     );
   }
 

@@ -30,19 +30,24 @@ export type McpServer = {
   enabled: boolean;
   trusted: boolean;
   createdAt: number;
+  /** The tools found the last time oovi connected, so counts show before the next connection. */
+  known?: { tools: { name: string; description?: string }[]; at: number };
 };
 
-export type McpPublic = Omit<McpServer, "env" | "headers" | "oauth"> & {
+export type McpPublic = Omit<McpServer, "env" | "headers" | "oauth" | "known"> & {
   /** Sign-in connectors: tokens are saved. */
   signedIn?: boolean;
   envKeys: string[];
   headerKeys: string[];
   status: "connected" | "error" | "idle";
   error?: string;
+  /** Live tools when connected, else the ones found last time. */
   tools: { name: string; description?: string }[];
+  /** When the tool list was last checked (ms). */
+  checkedAt?: number;
 };
 
-type Conn = { client: Client; tools: { name: string; description?: string; inputSchema?: Record<string, unknown> }[]; key: string };
+type Conn = { client: Client; tools: { name: string; description?: string; inputSchema?: Record<string, unknown> }[]; key: string; at?: number };
 const g = globalThis as typeof globalThis & { __ooviMcp?: Map<string, Conn>; __ooviMcpErr?: Map<string, string> };
 const conns = (g.__ooviMcp ??= new Map<string, Conn>());
 const errors = (g.__ooviMcpErr ??= new Map<string, string>());
@@ -84,17 +89,19 @@ export function listServers(): McpServer[] {
 }
 
 export function publicServers(): McpPublic[] {
-  return listServers().map(({ env, headers, oauth, ...s }) => {
+  return listServers().map(({ env, headers, oauth, known, ...s }) => {
     const c = conns.get(s.id);
     const err = errors.get(s.id);
+    const signedIn = s.auth === "oauth" ? !!(oauth && readOAuth(oauth).tokens) : undefined;
     return {
       ...s,
-      signedIn: s.auth === "oauth" ? !!(oauth && readOAuth(oauth).tokens) : undefined,
+      signedIn,
       envKeys: Object.keys(env ?? {}),
       headerKeys: Object.keys(headers ?? {}),
       status: c ? "connected" : err ? "error" : "idle",
       error: err,
-      tools: (c?.tools ?? []).map((t) => ({ name: t.name, description: t.description })),
+      tools: c ? c.tools.map((t) => ({ name: t.name, description: t.description })) : signedIn === false ? [] : (known?.tools ?? []),
+      checkedAt: c ? (c.at ?? known?.at) : known?.at,
     };
   });
 }
@@ -203,8 +210,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
 }
 
 async function connect(s: McpServer): Promise<Conn> {
-  // Token refreshes change s.oauth; that alone mustn't force a reconnect.
-  const key = JSON.stringify({ ...s, oauth: undefined });
+  // Token refreshes change s.oauth, and every connection updates s.known; neither may force a reconnect.
+  const key = JSON.stringify({ ...s, oauth: undefined, known: undefined });
   const existing = conns.get(s.id);
   if (existing && existing.key === key) return existing;
   if (existing) await disconnect(s.id);
@@ -232,20 +239,41 @@ async function connect(s: McpServer): Promise<Conn> {
     }
   }
   const { tools } = await withTimeout(client.listTools(), 30_000, `Listing tools of ${s.name}`);
-  const conn: Conn = { client, key, tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema as Record<string, unknown> })) };
+  const conn: Conn = { client, key, at: Date.now(), tools: tools.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema as Record<string, unknown> })) };
   conns.set(s.id, conn);
   errors.delete(s.id);
+  rememberTools(s.id, conn.tools);
   return conn;
 }
 
+/** Keep the tool list (names and descriptions only) so the Marketplace and bots know the count after a restart. */
+function rememberTools(id: string, tools: { name: string; description?: string }[]) {
+  const all = readRaw();
+  const s = all.find((x) => x.id === id);
+  if (!s) return;
+  s.known = { tools: tools.slice(0, 300).map((t) => ({ name: t.name, ...(t.description ? { description: t.description.slice(0, 300) } : {}) })), at: Date.now() };
+  writeRaw(all);
+}
+
+/** Sign out of a sign-in connector: forget its tokens and tools, keep the connector. */
+export async function signOut(id: string): Promise<void> {
+  await disconnect(id);
+  const all = readRaw();
+  const s = all.find((x) => x.id === id);
+  if (!s) return;
+  delete s.oauth;
+  delete s.known;
+  writeRaw(all);
+}
+
 /** Connect now and report tools or the error (the Library "Test" button). */
-export async function testServer(id: string): Promise<{ ok: boolean; tools?: string[]; error?: string }> {
+export async function testServer(id: string): Promise<{ ok: boolean; tools?: string[]; details?: { name: string; description?: string }[]; error?: string }> {
   const s = listServers().find((x) => x.id === id);
   if (!s) return { ok: false, error: "Server not found." };
   await disconnect(id);
   try {
     const c = await connect(s);
-    return { ok: true, tools: c.tools.map((t) => t.name) };
+    return { ok: true, tools: c.tools.map((t) => t.name), details: c.tools.map((t) => ({ name: t.name, description: t.description?.slice(0, 200) })) };
   } catch (e) {
     const msg = (e as Error).message || String(e);
     errors.set(id, msg);
