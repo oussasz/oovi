@@ -14,7 +14,14 @@ import { replaceBotModel } from "./store";
 import type { Msg, ToolCall } from "./types";
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
-type RawCompletion = { text: string; toolCalls: ToolCall[]; usage: { input: number; output: number } };
+type RawCompletion = { text: string; toolCalls: ToolCall[]; usage: { input: number; output: number }; reasoning?: string };
+
+/** How hard the model thinks. "auto" = the model's own default. */
+export type Effort = "auto" | "low" | "medium" | "high" | "max";
+export type CallOptions = { effort?: Effort };
+/** Longest reply per effort level. */
+const OUTPUT_FOR: Record<Effort, number> = { auto: 8192, low: 4096, medium: 8192, high: 16000, max: 32000 };
+const TIMEOUT_FOR: Record<Effort, number> = { auto: 120_000, low: 90_000, medium: 120_000, high: 240_000, max: 480_000 };
 /** cost: US dollars for this call, when the price is known. note: something the user should know (a model was replaced). */
 export type Completion = RawCompletion & { model: string; fallback: boolean; ref: ModelRef; cost?: number; note?: string };
 
@@ -101,7 +108,8 @@ function explain(ref: ModelRef, status: number, raw: string): string {
   return `${who}: ${raw}`;
 }
 
-export async function complete(s: Settings, system: string, messages: Msg[], tools: ToolSpec[], signal?: AbortSignal): Promise<Completion> {
+export async function complete(s: Settings, system: string, messages: Msg[], tools: ToolSpec[], signal?: AbortSignal, opts: CallOptions = {}): Promise<Completion> {
+  const effort: Effort = opts.effort ?? "auto";
   const chain = modelChain(s);
   if (!chain.length) throw new Error("Connect an AI model in Settings > AI models.");
   const now = Date.now();
@@ -114,10 +122,11 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
 
   for (let qi = 0; qi < queue.length; qi++) {
     const ref = queue[qi]!;
-    let maxOut = MAX_OUTPUT;
-    for (let attempt = 0; attempt < 3; attempt++) {
+    let maxOut = effort === "auto" ? MAX_OUTPUT : OUTPUT_FOR[effort];
+    let reasoning = effort !== "auto";
+    for (let attempt = 0; attempt < 4; attempt++) {
       try {
-        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal);
+        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto");
         cooldown.delete(keyOf(ref));
         const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
         return { ...out, model: modelLabel(ref), ref, cost, fallback: keyOf(ref) !== keyOf(chain[0]!), note };
@@ -130,6 +139,11 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
         // A short "try again in a few seconds" is worth waiting for once.
         if (busy && attempt === 0 && retryAfter && retryAfter <= 8) {
           await sleep(retryAfter * 1000, signal);
+          continue;
+        }
+        // This model doesn't take a thinking/effort setting: try again without it.
+        if (reasoning && status === 400 && /reasoning|thinking|effort|output_config|budget/i.test(raw)) {
+          reasoning = false;
           continue;
         }
         // Not enough credit for a long reply: ask for a shorter one.
@@ -172,19 +186,53 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
   );
 }
 
-async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal?: AbortSignal): Promise<RawCompletion> {
+async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort): Promise<RawCompletion> {
   const meta = PROVIDERS[ref.provider];
   const cfg = s.providers[ref.provider] ?? {};
   const baseUrl = (cfg.baseUrl || meta.baseUrl).replace(/\/+$/, "");
   if (!baseUrl) throw new Error(`Set a server address for ${meta.label} in Settings.`);
   if (meta.needsKey && !cfg.apiKey) throw new ProviderError(`No API key for ${meta.label}. Add one in Settings.`, 401);
-  const timeout = AbortSignal.timeout(120_000);
+  const timeout = AbortSignal.timeout(TIMEOUT_FOR[effort]);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, signal: sig };
+  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig };
   return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible(req, ref.provider === "openrouter");
 }
 
-type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; signal?: AbortSignal };
+type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; effort: Effort; signal?: AbortSignal };
+
+// ---------- thinking / effort per provider ----------
+
+/** Claude model generation, e.g. claude-sonnet-5-5 -> 5.5, claude-haiku-4-5 -> 4.5. */
+function claudeVersion(model: string): number {
+  const m = model.match(/claude-(?:opus|sonnet|haiku|fable|mythos)-(\d+)(?:[-.](\d+))?/);
+  if (!m) return 0;
+  return Number(m[1]) + Number(m[2] ?? 0) / 10;
+}
+
+/** Anthropic request fields for an effort level (thinking blocks are never sent back: see below). */
+function anthropicReasoning(model: string, effort: Effort, maxOut: number): Record<string, unknown> {
+  if (effort === "auto") return {};
+  const v = claudeVersion(model);
+  if (v >= 4.6) {
+    // Adaptive thinking + effort. 4.6 has no "display"; 4.7+ hide thinking text unless asked.
+    const thinking = v >= 4.7 ? { type: "adaptive", display: "summarized" } : { type: "adaptive" };
+    return { thinking, output_config: { effort } };
+  }
+  // Older models (Haiku 4.5, Sonnet 4.5…): a fixed thinking budget, only for the higher levels.
+  if (effort === "high" || effort === "max") return { thinking: { type: "enabled", budget_tokens: Math.min(effort === "max" ? 16000 : 6000, maxOut - 1024) } };
+  return {};
+}
+
+/** OpenAI-compatible reasoning fields, only for models known to accept them. */
+function openaiReasoning(provider: ProviderId, model: string, effort: Effort): Record<string, unknown> {
+  if (effort === "auto") return {};
+  const level = effort === "max" ? "high" : effort;
+  if (provider === "openrouter") return { reasoning: { effort: level } };
+  if (provider === "openai" && /^(o\d|gpt-5)/.test(model)) return { reasoning_effort: level };
+  if (provider === "gemini" && /gemini-(2\.5|[3-9]|flash|pro)/.test(model)) return { reasoning_effort: level };
+  if (provider === "xai" && /grok-3-mini/.test(model)) return { reasoning_effort: level === "medium" ? "low" : level };
+  return {};
+}
 
 async function post(label: string, url: string, headers: Record<string, string>, body: unknown, signal?: AbortSignal): Promise<unknown> {
   let res: Response;
@@ -244,13 +292,14 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     {
       model: r.model,
       max_tokens: r.maxOut,
+      ...anthropicReasoning(r.model, r.effort, r.maxOut),
       system: [{ type: "text", text: r.system, cache_control: CACHE }],
       messages: msgs,
       ...(tools.length ? { tools } : {}),
     },
     r.signal,
   )) as {
-    content?: { type: string; text?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
+    content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
     usage?: { input_tokens?: number; output_tokens?: number };
   };
 
@@ -259,6 +308,9 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     text: content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim(),
     toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id || randomId(), name: b.name ?? "", input: b.input ?? {} })),
     usage: { input: j.usage?.input_tokens ?? 0, output: j.usage?.output_tokens ?? 0 },
+    // Thinking blocks are kept for the UI only and never replayed: oovi trims old
+    // history to save tokens, and replayed thinking requires an unedited history.
+    reasoning: content.filter((b) => b.type === "thinking" && b.thinking).map((b) => b.thinking).join("\n\n") || undefined,
   };
 }
 
@@ -294,11 +346,12 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
       messages: msgs,
       // OpenAI's newer models only accept max_completion_tokens.
       ...(r.provider === "openai" ? { max_completion_tokens: r.maxOut } : { max_tokens: r.maxOut }),
+      ...openaiReasoning(r.provider, r.model, r.effort),
       ...(r.tools.length ? { tools: r.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {}),
     },
     r.signal,
   )) as {
-    choices?: { message?: { content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+    choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
     error?: { message?: string; code?: number };
   };
@@ -320,5 +373,6 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
       return { id: c.id || randomId(), name: c.function?.name ?? "", input };
     }),
     usage: { input: j.usage?.prompt_tokens ?? 0, output: j.usage?.completion_tokens ?? 0 },
+    reasoning: (msg.reasoning ?? msg.reasoning_content ?? "").trim() || undefined,
   };
 }

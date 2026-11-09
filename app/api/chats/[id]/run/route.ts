@@ -1,4 +1,5 @@
 import { guard } from "@/lib/guard";
+import type { Effort } from "@/lib/types";
 import { eventStream, startRun, stopRun } from "@/lib/runner";
 import { getChat } from "@/lib/store";
 
@@ -14,11 +15,12 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown } | null;
-  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean };
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; effort?: unknown; deep?: unknown } | null;
+  let input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; effort?: Effort; deep?: boolean };
   if (typeof body?.text === "string" && body.text.trim()) {
     if (body.text.length > 20_000) return Response.json({ error: "Message is too long." }, { status: 400 });
-    input = { text: body.text.trim() };
+    const effort = ["auto", "low", "medium", "high", "max"].includes(String(body.effort)) ? (body.effort as Effort) : undefined;
+    input = { text: body.text.trim(), effort, deep: body.deep === true };
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;

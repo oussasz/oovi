@@ -19,7 +19,7 @@ export type ToolResult = {
 
 export type Msg =
   | { role: "user"; content: string }
-  | { role: "assistant"; text: string; toolCalls: ToolCall[] }
+  | { role: "assistant"; text: string; toolCalls: ToolCall[]; reasoning?: string }
   | { role: "tool"; results: ToolResult[] };
 
 /** detail: preview shown under the summary (file content, a diff, a command). always: can be allowed for good. */
@@ -58,7 +58,10 @@ export type BotInput = Omit<Bot, "id" | "createdAt">;
 export type Usage = { input: number; output: number };
 
 /** via: sent by the user's main bot on the user's behalf (its bot id). */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string };
+/** effort: how hard the bots think for this message. deep: Deep work mode (plan, work longer, verify). */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean };
+export type Effort = "auto" | "low" | "medium" | "high" | "max";
+export type PlanItem = { text: string; status: "pending" | "doing" | "done" };
 
 export type BotEntry = {
   id: string;
@@ -80,6 +83,8 @@ export type BotEntry = {
   model?: string;
   /** True when a backup model answered because the bot's own model failed. */
   fallback?: boolean;
+  /** Deep work checklist the bot keeps up to date. */
+  plan?: PlanItem[];
   /** Teammates this reply handed off to (bot ids). */
   handoff?: string[];
   /** Hand-off requested but the per-message limit was reached. */
@@ -100,6 +105,9 @@ export type Pending = {
   learn?: number;
   /** This bot gets the last word: it gives the user the final answer and the conversation ends. */
   wrapUpFor?: string;
+  /** Settings of the message being worked on. */
+  effort?: Effort;
+  deep?: boolean;
 };
 
 export type Chat = {

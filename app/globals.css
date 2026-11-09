@@ -468,6 +468,26 @@ a.tag { text-decoration: none; }
 .pf-rules { margin: 0; padding-inline-start: 18px; color: var(--muted); font-size: 12.5px; display: grid; gap: 2px; }
 
 .composer-wrap { position: relative; max-width: 820px; width: 100%; margin: 0 auto; padding: 6px 22px 18px; }
+.composer-tools { display: flex; gap: 6px; align-items: center; margin-top: 8px; padding-inline-start: 6px; }
+.composer-tools .chip { font-size: 12.5px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; }
+.deep-chip.on { background: color-mix(in srgb, var(--blue, #a9bcf7) 40%, var(--panel)); color: var(--text); border-color: transparent; }
+.effort { position: relative; }
+.effort-pop { position: absolute; bottom: calc(100% + 6px); inset-inline-start: 0; z-index: 30; width: 270px; display: grid; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
+.effort-pop button { display: grid; gap: 1px; text-align: start; font: inherit; padding: 8px 10px; border: none; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
+.effort-pop button small { color: var(--muted); font-size: 12px; }
+.effort-pop button:hover, .effort-pop button.on { background: var(--soft); }
+.msg-mode { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
+.msg-mode span { font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); }
+.plan { list-style: none; margin: 6px 0; padding: 10px 12px; display: grid; gap: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); max-width: 560px; font-size: 13.5px; }
+.plan li { display: flex; gap: 8px; align-items: flex-start; }
+.plan li.done { color: var(--muted); text-decoration: line-through; }
+.plan li.doing { font-weight: 700; }
+.plan-box { flex: none; width: 16px; height: 16px; margin-top: 2px; border-radius: 5px; border: 1.5px solid var(--border); display: grid; place-items: center; font-size: 11px; }
+.plan li.done .plan-box { background: var(--ok); border-color: var(--ok); color: #fff; }
+.plan li.doing .plan-box { border-color: var(--text); }
+.thinking { margin: 4px 0 6px; max-width: 640px; }
+.thinking summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--muted); }
+.thinking > div { margin-top: 6px; padding: 8px 12px; border-inline-start: 3px solid var(--border); color: var(--muted); font-size: 13px; white-space: pre-wrap; max-height: 320px; overflow: auto; }
 .mention-bar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; }
 .mention-bar .chip { padding: 3px 10px 3px 4px; font-size: 12.5px; }
 .composer { display: flex; align-items: flex-end; gap: 8px; background: var(--panel); border: 1.5px solid var(--border); border-radius: 22px; padding: 7px 7px 7px 16px; box-shadow: var(--shadow); }

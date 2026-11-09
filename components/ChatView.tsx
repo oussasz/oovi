@@ -7,7 +7,7 @@ import { FACE_COLORS } from "@/lib/faces";
 import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
 import "@/lib/desktop";
-import type { Bot, BotEntry, ChatEvent, ChatWithState, ToolCall, ToolResult } from "@/lib/types";
+import type { Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
@@ -84,6 +84,50 @@ const urlOf = (r?: ToolResult) => r?.content.match(/^URL: (.*)$/m)?.[1] ?? "";
 
 const FILE_KIND: Record<string, string> = { docx: "Word", doc: "Word", xlsx: "Excel", xls: "Excel", csv: "CSV", pptx: "PowerPoint", pdf: "PDF", md: "Markdown", html: "Web page", txt: "Text" };
 
+const EFFORTS: Effort[] = ["auto", "low", "medium", "high", "max"];
+
+/** How hard the bots think for the next message, like Claude's effort setting. */
+function EffortMenu({ value, onChange }: { value: Effort; onChange: (e: Effort) => void }) {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (ev: MouseEvent) => {
+      if (ref.current && !ref.current.contains(ev.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, [open]);
+  return (
+    <div className="effort" ref={ref}>
+      <button type="button" className={`chip${value !== "auto" ? " on" : ""}`} onClick={() => setOpen(!open)} aria-expanded={open} title={t("chat.effortTitle")}>
+        <Icon name="cpu" size={14} /> {value === "auto" ? t("chat.effort") : t(`chat.effort.${value}`)}
+      </button>
+      {open && (
+        <div className="effort-pop" role="listbox" aria-label={t("chat.effortTitle")}>
+          {EFFORTS.map((e) => (
+            <button
+              key={e}
+              type="button"
+              role="option"
+              aria-selected={value === e}
+              className={value === e ? "on" : ""}
+              onClick={() => {
+                onChange(e);
+                setOpen(false);
+              }}
+            >
+              <b>{t(`chat.effort.${e}`)}</b>
+              <small>{t(`chat.effort.${e}.hint`)}</small>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /** A file a bot made, with buttons to open it in its normal app or show it in its folder. */
 function FileCard({ file }: { file: NonNullable<ToolResult["file"]> }) {
   const { t } = useI18n();
@@ -128,6 +172,10 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
   const collapsed = !running && rows.length > 3 && !showAll;
   const tokens = e.usage.input + e.usage.output;
   const files = rows.map((r) => r.result?.file).filter((f): f is NonNullable<ToolResult["file"]> => !!f);
+  const thinking = e.steps
+    .map((s) => (s.role === "assistant" ? (s.reasoning ?? "") : ""))
+    .filter(Boolean)
+    .join("\n\n");
   const { t, tag } = useI18n();
   const name = bot?.name ?? t("chat.deletedBot");
 
@@ -163,6 +211,24 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
         </div>
 
         {e.note && <div className="msg-note">{e.note}</div>}
+        {e.plan && e.plan.length > 0 && (
+          <ol className="plan" aria-label={t("chat.plan")}>
+            {e.plan.map((p, i) => (
+              <li key={i} className={p.status}>
+                <span className="plan-box" aria-hidden>
+                  {p.status === "done" ? "✓" : p.status === "doing" ? "…" : ""}
+                </span>
+                {p.text}
+              </li>
+            ))}
+          </ol>
+        )}
+        {thinking && (
+          <details className="thinking">
+            <summary>{t("chat.thinking")}</summary>
+            <div>{thinking}</div>
+          </details>
+        )}
         {rows.length > 0 && (
           <div className="steps">
             {collapsed ? (
@@ -303,6 +369,33 @@ export default function ChatView({ id }: { id: string }) {
   const [settings, setSettings] = useState<PublicSettings | null>(null);
   const [missing, setMissing] = useState(false);
   const [running, setRunning] = useState(false);
+  const [effort, setEffort] = useState<Effort>("auto");
+  const [deep, setDeep] = useState(false);
+  useEffect(() => {
+    try {
+      const e = localStorage.getItem("oovi.effort") as Effort | null;
+      if (e && EFFORTS.includes(e)) setEffort(e);
+      setDeep(localStorage.getItem(`oovi.deep.${id}`) === "1");
+    } catch {
+      /* storage unavailable */
+    }
+  }, [id]);
+  const pickEffort = (e: Effort) => {
+    setEffort(e);
+    try {
+      localStorage.setItem("oovi.effort", e);
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const pickDeep = (on: boolean) => {
+    setDeep(on);
+    try {
+      localStorage.setItem(`oovi.deep.${id}`, on ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  };
   const [status, setStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -487,7 +580,7 @@ export default function ChatView({ id }: { id: string }) {
     setError(null);
     setPicked(null);
     stick.current = true;
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep }) });
   }
 
   /** alwaysEdit: also allow file edits in this chat's project folder from now on. */
@@ -660,6 +753,12 @@ export default function ChatView({ id }: { id: string }) {
                   <div className="bubble user-bubble">
                     <Rich text={e.text} bots={members} />
                   </div>
+                  {(e.deep || (e.effort && e.effort !== "auto")) && (
+                    <div className="msg-mode">
+                      {e.deep && <span>{t("chat.deep")}</span>}
+                      {e.effort && e.effort !== "auto" && <span>{t(`chat.effort.${e.effort}`)}</span>}
+                    </div>
+                  )}
                 </div>
               ) : (
                 <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} />
@@ -754,6 +853,12 @@ export default function ChatView({ id }: { id: string }) {
               </button>
             )}
           </form>
+          <div className="composer-tools">
+            <EffortMenu value={effort} onChange={pickEffort} />
+            <button type="button" className={`chip deep-chip${deep ? " on" : ""}`} aria-pressed={deep} onClick={() => pickDeep(!deep)} title={t("chat.deepHint")}>
+              <Icon name="spark" size={14} /> {t("chat.deep")}
+            </button>
+          </div>
         </div>
       </section>
 
