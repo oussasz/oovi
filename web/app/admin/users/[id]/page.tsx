@@ -1,0 +1,175 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { requireAdmin } from "@/lib/admin";
+import { getUserDetail } from "@/lib/admin-stats";
+import { USAGE_COUNT_KEYS } from "@/lib/telemetry";
+import { Empty, PageHead, Section } from "@/components/admin/ui";
+import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/components/admin/format";
+import { USAGE_LABELS } from "@/components/admin/usage-labels";
+
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "User" };
+
+const EVENT_LABELS: Record<string, string> = {
+  app_open: "Opened the app",
+  download: "Downloaded",
+};
+
+function eventDetails(data: unknown): string {
+  if (!data || typeof data !== "object") return "";
+  try {
+    const s = JSON.stringify(data);
+    return s.length > 200 ? `${s.slice(0, 200)}…` : s;
+  } catch {
+    return "";
+  }
+}
+
+export default async function AdminUser({ params }: { params: Promise<{ id: string }> }) {
+  await requireAdmin();
+  const { id } = await params;
+  if (!id || id.length > 200) notFound();
+  let userId = id;
+  try {
+    userId = decodeURIComponent(id);
+  } catch {
+    notFound();
+  }
+  const detail = await getUserDetail(userId);
+  if (!detail) notFound();
+  const { user, events, crashes, usage, counts } = detail;
+
+  return (
+    <>
+      <PageHead title={user.name || user.email} sub={user.email}>
+        <Link href="/admin/users" className="btn btn-ghost btn-sm">
+          All users
+        </Link>
+      </PageHead>
+
+      <Section title="Account">
+        <dl className="adm-dl">
+          <dt>Email</dt>
+          <dd>{user.email}</dd>
+          <dt>Name</dt>
+          <dd>{user.name || "–"}</dd>
+          <dt>Account ID</dt>
+          <dd className="adm-mono">{user.id}</dd>
+          <dt>Created</dt>
+          <dd>{fmtDateTime(user.createdAt)}</dd>
+          <dt>Last seen in app</dt>
+          <dd>
+            {user.lastSeenAt ? `${fmtDateTime(user.lastSeenAt)} (${fmtAgo(user.lastSeenAt)})` : "Never opened the desktop app"}
+          </dd>
+          <dt>App version</dt>
+          <dd className="adm-mono">{user.appVersion ?? "–"}</dd>
+          <dt>Platform</dt>
+          <dd>{platformLabel(user.platform)}</dd>
+          <dt>Terms version</dt>
+          <dd>{user.termsVersion ?? "–"}</dd>
+          <dt>Recorded</dt>
+          <dd>
+            {fmtInt(counts.events)} events · {fmtInt(counts.crashes)} crash reports · {fmtInt(counts.usageDays)} days of usage
+          </dd>
+        </dl>
+      </Section>
+
+      <Section title="Daily usage" sub="Numbers the desktop app reports once a day (latest 60 days). Never chat content.">
+        {usage.length === 0 ? (
+          <Empty>No usage reported yet.</Empty>
+        ) : (
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr>
+                  <th>Day</th>
+                  <th>Version</th>
+                  {USAGE_COUNT_KEYS.map((k) => (
+                    <th key={k} className="num">
+                      {USAGE_LABELS[k].short}
+                    </th>
+                  ))}
+                  <th>Bots · groups · connectors · skills</th>
+                </tr>
+              </thead>
+              <tbody>
+                {usage.map((u) => (
+                  <tr key={u.day}>
+                    <td className="nowrap">{fmtDate(`${u.day}T00:00:00Z`)}</td>
+                    <td className="adm-mono">{u.appVersion ?? "–"}</td>
+                    {USAGE_COUNT_KEYS.map((k) => (
+                      <td key={k} className="num">
+                        {k === "costUsd" ? fmtUsd(Number(u.counts[k] ?? 0)) : fmtInt(Number(u.counts[k] ?? 0))}
+                      </td>
+                    ))}
+                    <td className="nowrap">
+                      {u.totals
+                        ? [u.totals.bots, u.totals.groups, u.totals.connectors, u.totals.skills].map((v) => fmtInt(Number(v ?? 0))).join(" · ")
+                        : "–"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Section>
+
+      <div className="adm-grid-2">
+        <Section title="Activity" sub="Latest 100 events">
+          {events.length === 0 ? (
+            <Empty>No activity recorded yet.</Empty>
+          ) : (
+            <div className="adm-table-wrap">
+              <table className="adm-table">
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>What</th>
+                    <th>Version</th>
+                    <th>Platform</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e) => (
+                    <tr key={e.id}>
+                      <td className="nowrap">{fmtDateTime(e.createdAt)}</td>
+                      <td>
+                        {EVENT_LABELS[e.kind] ?? e.kind}
+                        {eventDetails(e.data) && <div className="adm-mono fine">{eventDetails(e.data)}</div>}
+                      </td>
+                      <td className="adm-mono">{e.appVersion ?? "–"}</td>
+                      <td>{platformLabel(e.platform)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Section>
+
+        <Section title="Crash reports" sub="Latest 20">
+          {crashes.length === 0 ? (
+            <Empty>No crashes. Nice.</Empty>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {crashes.map((c) => (
+                <details key={c.id} className="adm-details">
+                  <summary>
+                    {c.message.length > 140 ? `${c.message.slice(0, 140)}…` : c.message}
+                  </summary>
+                  <p className="fine" style={{ marginTop: 6 }}>
+                    {fmtDateTime(c.createdAt)} · v{c.appVersion} · {platformLabel(c.platform)}
+                  </p>
+                  {c.stack && <pre className="adm-pre">{c.stack}</pre>}
+                  {c.context && <pre className="adm-pre">{c.context}</pre>}
+                </details>
+              ))}
+            </div>
+          )}
+        </Section>
+      </div>
+    </>
+  );
+}

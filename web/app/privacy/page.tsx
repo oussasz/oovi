@@ -13,7 +13,8 @@ export default function PrivacyPage() {
         <p>
           <b>The short version:</b> your bots, chats, memories, skills and API keys stay on your computer. We never
           receive your conversations. Your oovi account only stores what we need to sign you in (email, name, optional
-          profile photo, and when you accepted our terms), plus optional crash reports that help us fix bugs. You can
+          profile photo, and when you accepted our terms), plus crash reports and simple usage numbers (never your content)
+          that help us fix bugs and improve oovi. You can
           delete your account at any time.
         </p>
       }
@@ -52,12 +53,19 @@ export default function PrivacyPage() {
       </ul>
       <p>We do <b>not</b> collect anything from your chats, prompts, memories, skills or files.</p>
 
-      <h2>4. Crash reports</h2>
+      <h2>4. Crash reports and usage statistics</h2>
       <p>
         If the App runs into an error, it may send a crash report to help us fix bugs. A crash report contains the App
         version, your operating system, and technical error details (an error message, a stack trace and limited
         technical context). Crash reports are not meant to contain your chats or content, and we design them to avoid
         it. If you are signed in, a crash report may be linked to your account.
+      </p>
+      <p>
+        When you are signed in, the App also tells us its version and your operating system when it starts, and sends
+        a daily summary of usage numbers (for example how many messages were sent, tool calls made and AI cost, plus
+        how many bots, groups, connectors and skills you have set up). These are numbers only, never your chats,
+        prompts, files or other content. Our website counts downloads by platform and country without storing IP
+        addresses. We use this to understand how oovi is used and to improve it.
       </p>
 
       <h2>5. Website</h2>
@@ -72,6 +80,7 @@ export default function PrivacyPage() {
         <li>to create and run your account and sign you in to the App and website;</li>
         <li>to keep the Service secure, prevent abuse and enforce our <Link href="/terms">Terms</Link>;</li>
         <li>to find and fix bugs using crash reports;</li>
+        <li>to understand how oovi is used, using usage numbers and download counts;</li>
         <li>to contact you about important changes to the Service, your account, or these policies.</li>
       </ul>
       <p>

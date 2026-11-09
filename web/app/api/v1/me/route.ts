@@ -1,12 +1,22 @@
 import { apiError, getRequestSession, json, loadPublicUser, readJson, toPublicUser } from "@/lib/api";
 import { pool } from "@/lib/db";
+import { parsePlatform, parseVersion, recordAppOpen } from "@/lib/telemetry";
 import { validateImage, validateName } from "@/lib/validation";
+import { after } from "next/server";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const session = await getRequestSession(req);
   if (!session) return apiError("Not signed in or session expired.", 401);
+  // The desktop app calls this on startup with a Bearer token. Record that it was
+  // opened (version + platform only) after the response is sent; never blocks or fails it.
+  if (req.headers.get("authorization")?.toLowerCase().startsWith("bearer ")) {
+    const version = parseVersion(req.headers.get("x-oovi-version"));
+    const platform = parsePlatform(req.headers.get("x-oovi-platform"));
+    const userId = session.user.id;
+    after(() => recordAppOpen(userId, version, platform));
+  }
   return json({ user: toPublicUser(session.user) });
 }
 

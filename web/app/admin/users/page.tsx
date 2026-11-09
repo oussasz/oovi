@@ -1,0 +1,107 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import { requireAdmin } from "@/lib/admin";
+import { listUsers, USERS_PAGE_SIZE } from "@/lib/admin-stats";
+import { Empty, PageHead, Section } from "@/components/admin/ui";
+import { fmtAgo, fmtDate, fmtInt, platformLabel } from "@/components/admin/format";
+
+export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Users" };
+
+type SP = { q?: string; page?: string };
+
+function pageHref(q: string, page: number) {
+  const p = new URLSearchParams();
+  if (q) p.set("q", q);
+  if (page > 1) p.set("page", String(page));
+  const s = p.toString();
+  return `/admin/users${s ? `?${s}` : ""}`;
+}
+
+export default async function AdminUsers({ searchParams }: { searchParams: Promise<SP> }) {
+  await requireAdmin();
+  const sp = await searchParams;
+  const q = typeof sp.q === "string" ? sp.q.slice(0, 100) : "";
+  const page = Math.min(10_000, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
+  const { rows, total } = await listUsers(q, page);
+  const pages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
+  const from = total ? (page - 1) * USERS_PAGE_SIZE + 1 : 0;
+  const to = Math.min(total, page * USERS_PAGE_SIZE);
+
+  return (
+    <>
+      <PageHead title="Users" sub="Everyone with an oovi account, newest first." />
+      <Section
+        title={q ? `Results for “${q}”` : "All accounts"}
+        actions={
+          <form className="adm-search" role="search" action="/admin/users">
+            <label htmlFor="user-q" className="sr-only">
+              Search by email or name
+            </label>
+            <input id="user-q" className="input" type="search" name="q" defaultValue={q} placeholder="Search email or name" maxLength={100} />
+            <button className="btn btn-dark btn-sm" type="submit">
+              Search
+            </button>
+            {q && (
+              <Link className="btn btn-ghost btn-sm" href="/admin/users">
+                Clear
+              </Link>
+            )}
+          </form>
+        }
+      >
+        {rows.length === 0 ? (
+          <Empty>{q ? "No accounts match that search." : "No accounts yet."}</Empty>
+        ) : (
+          <div className="adm-table-wrap">
+            <table className="adm-table">
+              <thead>
+                <tr>
+                  <th>Email</th>
+                  <th>Name</th>
+                  <th>Created</th>
+                  <th>Last seen in app</th>
+                  <th>App version</th>
+                  <th>Platform</th>
+                  <th>Terms</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((u) => (
+                  <tr key={u.id}>
+                    <td>
+                      <Link href={`/admin/users/${encodeURIComponent(u.id)}`}>{u.email}</Link>
+                    </td>
+                    <td>{u.name || "–"}</td>
+                    <td className="nowrap">{fmtDate(u.createdAt)}</td>
+                    <td className="nowrap">{fmtAgo(u.lastSeenAt)}</td>
+                    <td className="adm-mono">{u.appVersion ?? "–"}</td>
+                    <td>{platformLabel(u.platform)}</td>
+                    <td className="nowrap">{u.termsVersion ?? "–"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <div className="adm-pager">
+          <span>
+            {total ? `${fmtInt(from)}–${fmtInt(to)} of ${fmtInt(total)}` : "0 accounts"}
+          </span>
+          <span className="adm-row-actions">
+            {page > 1 && (
+              <Link className="btn btn-ghost btn-sm" href={pageHref(q, page - 1)}>
+                Previous
+              </Link>
+            )}
+            {page < pages && (
+              <Link className="btn btn-ghost btn-sm" href={pageHref(q, page + 1)}>
+                Next
+              </Link>
+            )}
+          </span>
+        </div>
+      </Section>
+    </>
+  );
+}
