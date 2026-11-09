@@ -2,7 +2,6 @@ import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { Slime } from "@/components/Slime";
-import { LogoMark } from "@/components/LogoMark";
 import { Underline } from "@/components/Doodles";
 import { DownloadButton } from "@/components/download/DownloadButton";
 import { BookIcon, BotIcon, CheckIcon, FolderIcon, HomeIcon } from "@/components/icons";
@@ -51,7 +50,9 @@ function Hero() {
         <svg className="orbit orbit-back" viewBox="0 0 600 300">
           <ellipse cx="300" cy="150" rx="285" ry="88" transform="rotate(-14 300 150)" fill="none" stroke="currentColor" strokeWidth="2.2" />
         </svg>
-        <LogoMark size="72%" className="hs-logo" priority />
+        <Slime color="blue" shape="egg" face="dash" faceAt={[110, 92]} faceTilt={-8} className="hs hs-blue" delay={0.4} />
+        <Slime color="yellow" shape="round" face="smile" faceAt={[92, 100]} faceTilt={6} className="hs hs-yellow" delay={1.2} />
+        <Slime color="coral" shape="lump" face="happy" faceAt={[104, 108]} faceTilt={-4} className="hs hs-coral" delay={0} />
         <svg className="orbit orbit-front" viewBox="0 0 600 300">
           <path
             d="M15 150 A285 88 0 0 0 585 150"
