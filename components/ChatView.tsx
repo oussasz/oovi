@@ -856,7 +856,7 @@ export default function ChatView({ id }: { id: string }) {
 
             {chat.entries.map((e, i) =>
               e.kind === "user" ? (
-                <div key={e.id} className={`msg user${e.via ? " via" : ""}`}>
+                <div key={e.id} className={`msg user${e.via || e.deep || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
                   {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
                   <div className="bubble user-bubble">
                     <Rich text={e.text} bots={members} />

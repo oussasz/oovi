@@ -224,7 +224,11 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
     memberIds: c.memberIds,
     leadId: c.leadId,
     updatedAt: c.updatedAt,
-    preview: preview.replace(/\s+/g, " ").slice(0, 90),
+    preview: preview
+      .replace(/\*\*|__|`|^#+\s*/gm, "")
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+      .replace(/\s+/g, " ")
+      .slice(0, 90),
     running,
     waiting: !!c.pending?.approval,
   };

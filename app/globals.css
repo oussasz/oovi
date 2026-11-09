@@ -476,7 +476,8 @@ a.tag { text-decoration: none; }
 .effort-pop button { display: grid; gap: 1px; text-align: start; font: inherit; padding: 8px 10px; border: none; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }
 .effort-pop button small { color: var(--muted); font-size: 12px; }
 .effort-pop button:hover, .effort-pop button.on { background: var(--soft); }
-.msg-mode { display: flex; gap: 4px; justify-content: flex-end; margin-top: 4px; }
+.msg-mode { display: flex; gap: 4px; justify-content: flex-end; align-items: center; margin-top: 4px; }
+.msg-mode span { line-height: 1.6; }
 .msg-mode span { font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--soft); color: var(--muted); }
 .plan { list-style: none; margin: 6px 0; padding: 10px 12px; display: grid; gap: 5px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); max-width: 560px; font-size: 13.5px; }
 .plan li { display: flex; gap: 8px; align-items: flex-start; }

@@ -56,13 +56,42 @@ oovi runs on your own API keys from Anthropic (Claude), OpenAI, Google Gemini,
 OpenRouter and others. No subscription. Your chats and files stay on your
 computer.
 
-**What's new in this version:** see the GitHub release notes for the version.
+**What's new in this version:** leave blank for the first submission.
+
+**Product features** (one per line in Partner Center):
+- A team of AI bots that plan, hand work to each other and give you one answer
+- Real web research with sources: several searches, full pages read
+- Creates Word, Excel, PowerPoint, PDF and CSV files
+- Deep work mode and an effort level for every message
+- Bots learn your preferences and lessons from past work
+- Private cloud computer to run code and analyze data
+- Works in your project folders, with your approval for every change
+- 60+ connectors: Google, Microsoft 365, Notion, Slack, GitHub and more
+- Uses your own API keys: Claude, OpenAI, Gemini, OpenRouter and more
+- No subscription; your chats and files stay on your computer
+- Reach your main bot on Telegram when you're away
+- English, French, Arabic, Spanish, German and Turkish
+
+**Short description** (Supplemental fields, ≤ 270 characters):
+A team of AI bots that research, write and build for you. They plan together,
+read the web with sources, create Word and Excel files and learn your
+preferences, all on your own API keys with no subscription.
 
 **Keywords (up to 7):** AI agents, AI assistant, Claude, ChatGPT, research,
 automation, productivity
 
-**Screenshots:** at least one, 1366×768 or larger (PNG). Good ones: a group chat
-with bots working, the Marketplace, a reply with a created Excel file.
+**Copyright and trademark info:** © 2026 Conuron. All rights reserved.
+
+**Developed by:** Conuron
+
+**Images** (all in docs/store/):
+- Screenshots (upload in this order): 1-team-plan.png, 2-report-learned.png,
+  5-effort.png, 4-marketplace.png, 3-home.png (1920×1080, from the real app with
+  an example team).
+- 9:16 Poster art: poster-720x1080.png
+- 1:1 Box art: box-1080x1080.png
+- 1:1 App tile icon (300×300): tile-300x300.png
+- Leave trailers and Xbox images empty.
 
 ## Store listing: Français (fr-FR)
 
@@ -96,6 +125,24 @@ Vos clés, vos données
 oovi fonctionne avec vos propres clés API d'Anthropic (Claude), OpenAI, Google
 Gemini, OpenRouter et d'autres. Sans abonnement. Vos discussions et vos fichiers
 restent sur votre ordinateur.
+
+**Fonctionnalités :**
+- Une équipe de bots IA qui planifient, se passent le travail et vous donnent une seule réponse
+- De vraies recherches sur le web, avec les sources
+- Crée des fichiers Word, Excel, PowerPoint, PDF et CSV
+- Mode Travail approfondi et niveau d'effort pour chaque message
+- Les bots retiennent vos préférences et les leçons du travail passé
+- Ordinateur cloud privé pour exécuter du code et analyser des données
+- Travaille dans vos dossiers de projet, avec votre accord pour chaque modification
+- Plus de 60 connecteurs : Google, Microsoft 365, Notion, Slack, GitHub…
+- Fonctionne avec vos propres clés API : Claude, OpenAI, Gemini, OpenRouter…
+- Sans abonnement ; vos discussions et fichiers restent sur votre ordinateur
+
+**Description courte :**
+Une équipe de bots IA qui cherchent, écrivent et créent pour vous. Ils
+planifient ensemble, lisent le web avec les sources, créent des fichiers Word
+et Excel et retiennent vos préférences, avec vos propres clés API, sans
+abonnement.
 
 **Mots-clés :** agents IA, assistant IA, Claude, ChatGPT, recherche,
 automatisation, productivité
