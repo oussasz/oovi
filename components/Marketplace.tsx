@@ -39,6 +39,7 @@ type RegItem = {
 type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
 type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean };
 type Mem = { user: string; memory: string; limits: { user: number; memory: number } };
+type LessonView = { id: string; text: string; botName?: string; source: "reflection" | "feedback"; score: number; updatedAt: number };
 type SkillDraft = { slug?: string; name: string; description: string; body: string };
 type Custom = { name: string; transport: "stdio" | "http"; command: string; args: string; url: string; secrets: string };
 type Msg = { ok: boolean; text: string; link?: { href: string; label: string } };
@@ -73,7 +74,7 @@ function regToConnector(r: RegItem): CatalogConnector {
 }
 
 export default function Marketplace() {
-  const { t, rich } = useI18n();
+  const { t, rich, tag } = useI18n();
   const [tab, setTab] = useState<Tab>("connectors");
   const [view, setView] = useState<View>("discover");
   const [q, setQ] = useState("");
@@ -118,6 +119,9 @@ export default function Marketplace() {
     }
   };
 
+  const [lessons, setLessons] = useState<LessonView[] | null>(null);
+  const [learning, setLearning] = useState<boolean | null>(null);
+
   const load = useCallback(async () => {
     try {
       const [s, m, c] = await Promise.all([api<Skill[]>("/api/skills"), api<Server[]>("/api/mcp"), api<Installed>("/api/catalog")]);
@@ -135,11 +139,15 @@ export default function Marketplace() {
 
   useEffect(() => {
     if (tab === "memory" && !mem) api<Mem>("/api/memory").then(setMem).catch(() => {});
+    if (tab === "memory" && !lessons) {
+      api<{ lessons: LessonView[] }>("/api/lessons").then((r) => setLessons(r.lessons)).catch(() => setLessons([]));
+      api<{ learning?: boolean }>("/api/settings").then((s) => setLearning(s.learning !== false)).catch(() => {});
+    }
     if (tab === "skills" && view === "discover" && !remote)
       api<{ skills: RemoteSkill[] }>("/api/catalog?remote=anthropic")
         .then((r) => setRemote(r.skills))
         .catch(() => setRemote([]));
-  }, [tab, view, mem, remote]);
+  }, [tab, view, mem, remote, lessons]);
 
   // Search the official MCP registry as you type (Connectors > Discover).
   useEffect(() => {
@@ -701,7 +709,58 @@ export default function Marketplace() {
     </div>
   );
 
+  const lessonsCard = (
+    <div className="card">
+      <h3>{t("lib.lessons")}</h3>
+      <p className="muted">{t("lib.lessonsIntro")}</p>
+      {learning !== null && (
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={learning}
+            onChange={(e) => {
+              const on = e.target.checked;
+              setLearning(on);
+              api("/api/settings", { method: "POST", body: JSON.stringify({ learning: on }) }).catch((x: Error) => setMsg({ ok: false, text: x.message }));
+            }}
+          />
+          <span>{t("lib.learnToggle")}</span>
+        </label>
+      )}
+      {lessons === null ? (
+        <p className="note">{t("common.loading")}</p>
+      ) : lessons.length === 0 ? (
+        <p className="note">{t("lib.lessonsEmpty")}</p>
+      ) : (
+        <ul className="lessons">
+          {lessons.map((l) => (
+            <li key={l.id}>
+              <div>
+                <span>{l.text}</span>
+                <small>
+                  {[l.botName ? t("lib.byBot", { name: l.botName }) : "", l.source === "feedback" ? t("lib.fromFeedback") : "", new Date(l.updatedAt).toLocaleDateString(tag)].filter(Boolean).join(" · ")}
+                </small>
+              </div>
+              <button
+                className="btn sm"
+                disabled={!!busy}
+                onClick={() =>
+                  void run(`lesson-${l.id}`, async () => {
+                    setLessons((await api<{ lessons: LessonView[] }>(`/api/lessons?id=${encodeURIComponent(l.id)}`, { method: "DELETE" })).lessons);
+                  })
+                }
+              >
+                {t("lib.forget")}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+
   const memoryView = (
+    <>
     <div className="card">
       <p className="muted">{rich("lib.memoryIntro", { about: <b>{t("lib.memoryAbout")}</b>, notes: <b>{t("lib.memoryNotes")}</b>, sep: <code>§</code> })}</p>
       {mem ? (
@@ -731,6 +790,8 @@ export default function Marketplace() {
         <p className="note">{t("common.loading")}</p>
       )}
     </div>
+    {lessonsCard}
+    </>
   );
 
   const views: Record<Exclude<Tab, "memory">, Record<View, React.ReactNode>> = {

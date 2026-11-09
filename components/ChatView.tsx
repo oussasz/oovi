@@ -163,8 +163,108 @@ function FileCard({ file }: { file: NonNullable<ToolResult["file"]> }) {
   );
 }
 
-function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean }) {
-  const { e, bot, isLast, status, bots, onShot, isLeader } = props;
+/** Thumbs up/down and what the bots learned from a reply (self-learning). */
+function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; onUpdate: (e: BotEntry) => void }) {
+  const { t } = useI18n();
+  const [asking, setAsking] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const send = async (body: Record<string, unknown>) => {
+    setBusy(true);
+    setErr("");
+    // Show the rating right away; learning from it can take a few seconds.
+    if ("rating" in body) {
+      const rating = body.rating === "up" || body.rating === "down" ? body.rating : null;
+      onUpdate({ ...e, feedback: rating ? { rating, at: Date.now() } : undefined });
+      setAsking(false);
+    }
+    try {
+      const r = await api<{ entry: BotEntry }>(`/api/chats/${chatId}/learn`, { method: "POST", body: JSON.stringify({ entryId: e.id, ...body }) });
+      onUpdate(r.entry);
+      setAsking(false);
+      setNote("");
+    } catch (x) {
+      setErr((x as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+  const rating = e.feedback?.rating;
+  const l = e.learned;
+  return (
+    <>
+      {l && (l.lessons.length > 0 || l.user.length > 0 || l.skill) && (
+        <div className="learned">
+          <div className="learned-head">
+            <Icon name="bulb" size={14} /> {t("chat.learned")}
+          </div>
+          {l.lessons.length > 0 && (
+            <ul>
+              {l.lessons.map((x, i) => (
+                <li key={i}>{x}</li>
+              ))}
+            </ul>
+          )}
+          {l.user.length > 0 && (
+            <p>
+              <b>{t("chat.learnedUser")}:</b> {l.user.join(" · ")}
+            </p>
+          )}
+          {l.skill &&
+            (l.skillSaved ? (
+              <span className="tag ok">{t("chat.skillSaved")}</span>
+            ) : (
+              <button type="button" className="btn sm" disabled={busy} title={l.skill.description} onClick={() => void send({ saveSkill: true })}>
+                {t("chat.saveSkill", { name: l.skill.name })}
+              </button>
+            ))}
+        </div>
+      )}
+      <div className="msg-actions">
+        <button type="button" className={`icon-btn${rating === "up" ? " on" : ""}`} aria-pressed={rating === "up"} title={t("chat.good")} aria-label={t("chat.good")} disabled={busy} onClick={() => void send({ rating: rating === "up" ? null : "up" })}>
+          <Icon name="thumbUp" size={15} />
+        </button>
+        <button
+          type="button"
+          className={`icon-btn${rating === "down" ? " on" : ""}`}
+          aria-pressed={rating === "down"}
+          title={t("chat.bad")}
+          aria-label={t("chat.bad")}
+          disabled={busy}
+          onClick={() => (rating === "down" ? void send({ rating: null }) : setAsking(!asking))}
+        >
+          <Icon name="thumbDown" size={15} />
+        </button>
+        {busy && <span className="hint">{t("chat.learning")}</span>}
+        {!busy && rating && !asking && <span className="hint">{t("chat.thanks")}</span>}
+      </div>
+      {asking && (
+        <form
+          className="fb-form"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            void send({ rating: "down", note });
+          }}
+        >
+          <textarea rows={2} value={note} maxLength={600} autoFocus onChange={(ev) => setNote(ev.target.value)} placeholder={t("chat.badPh")} />
+          <div className="row-btns">
+            <button className="btn sm primary" disabled={busy}>
+              {t("chat.badSend")}
+            </button>
+            <button type="button" className="btn sm" onClick={() => setAsking(false)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+        </form>
+      )}
+      {err && <div className="notice error small">{err}</div>}
+    </>
+  );
+}
+
+function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean; chatId: string; onUpdate: (e: BotEntry) => void }) {
+  const { e, bot, isLast, status, bots, onShot, isLeader, chatId, onUpdate } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -225,7 +325,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
         )}
         {thinking && (
           <details className="thinking">
-            <summary>{t("chat.thinking")}</summary>
+            <summary>{t("chat.thoughts")}</summary>
             <div>{thinking}</div>
           </details>
         )}
@@ -295,6 +395,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
             })}
           </div>
         )}
+        {e.status === "done" && !!e.text && <ReplyActions e={e} chatId={chatId} onUpdate={onUpdate} />}
       </div>
     </div>
   );
@@ -761,7 +862,7 @@ export default function ChatView({ id }: { id: string }) {
                   )}
                 </div>
               ) : (
-                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} />
+                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} />
               ),
             )}
 

@@ -62,6 +62,8 @@ export type Usage = { input: number; output: number };
 export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
 export type PlanItem = { text: string; status: "pending" | "doing" | "done" };
+/** Lessons, user preferences and a skill draft learned from a reply. */
+export type LearnedNote = { lessons: string[]; user: string[]; skill?: { name: string; description: string; body: string }; skillSaved?: boolean; at: number };
 
 export type BotEntry = {
   id: string;
@@ -85,6 +87,10 @@ export type BotEntry = {
   fallback?: boolean;
   /** Deep work checklist the bot keeps up to date. */
   plan?: PlanItem[];
+  /** What the bots learned from this reply (self-learning). */
+  learned?: LearnedNote;
+  /** The user's thumbs up/down on this reply. */
+  feedback?: { rating: "up" | "down"; note?: string; at: number };
   /** Teammates this reply handed off to (bot ids). */
   handoff?: string[];
   /** Hand-off requested but the per-message limit was reached. */

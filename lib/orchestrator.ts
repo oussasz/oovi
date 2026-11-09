@@ -15,6 +15,7 @@
 import { currentUser } from "./account";
 import { complete, type ToolSpec } from "./llm";
 import { memoryPrompt } from "./memory";
+import { CORRECTION, lessonsPrompt, mergeLearned, reflect } from "./learning";
 import { mcpToolsFor } from "./mcp";
 import { findMentions } from "./mentions";
 import { loadSettings, type Settings } from "./settings";
@@ -92,6 +93,8 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     mem || "(empty so far)",
     "Save durable things worth remembering next time: the user's preferences, role, projects, people, and lessons learned. Keep entries short; never store secrets or one-off details. Don't announce memory updates unless asked.",
   );
+  const lessons = lessonsPrompt(lastUserText(chat));
+  if (lessons) lines.push("", lessons);
 
   const mates = members.filter((m) => m.id !== bot.id);
   if (chat.kind === "group" && mates.length) {
@@ -555,4 +558,38 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
 
   if (chat.pending && !chat.pending.approval) chat.pending = undefined;
   saveChat(chat);
+
+  // Self-learning: review real work and keep what's worth remembering.
+  if (!signal.aborted && settings.learning !== false && !chat.pending) {
+    const learned = await learnFromRun(chat, bots, settings, signal);
+    if (learned) {
+      saveChat(chat);
+      yield { type: "entry", entry: learned };
+    }
+  }
+}
+
+/** Run a reflection on the work since the user's last message, when it's worth it. */
+async function learnFromRun(chat: Chat, bots: Bot[], settings: Settings, signal: AbortSignal): Promise<BotEntry | null> {
+  let u = -1;
+  for (let i = chat.entries.length - 1; i >= 0; i--) if (chat.entries[i]?.kind === "user") ((u = i), (i = -1));
+  const user = chat.entries[u];
+  if (!user || user.kind !== "user") return null;
+  const work = chat.entries.slice(u + 1).filter((e): e is BotEntry => e.kind === "bot");
+  const last = work.at(-1);
+  if (!last || last.status !== "done" || last.learned) return null;
+  const toolCalls = work.reduce((n, e) => n + e.steps.reduce((m, s) => m + (s.role === "assistant" ? s.toolCalls.length : 0), 0), 0);
+  // The bots' answer just before this message, when the user is correcting it.
+  const prev = chat.entries.slice(0, u).reverse().find((e): e is BotEntry => e.kind === "bot" && !!e.text);
+  const correcting = !!prev && CORRECTION.test(user.text.trim());
+  if (toolCalls < 3 && !user.deep && !correcting) return null;
+  const withBots = work.map((entry) => ({ entry, bot: bots.find((b) => b.id === entry.botId) })).filter((x): x is { entry: BotEntry; bot: Bot } => !!x.bot);
+  try {
+    const note = await reflect(settings, { request: user.text, previous: correcting ? prev?.text : undefined, work: withBots }, signal);
+    if (!note) return null;
+    last.learned = mergeLearned(last.learned, note);
+    return last;
+  } catch {
+    return null; // learning is a bonus; never fail the chat over it
+  }
 }

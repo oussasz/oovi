@@ -32,6 +32,8 @@ export type Settings = {
   language: string;
   /** Send anonymous crash reports (app version, OS, error) to oovi. */
   crashReports: boolean;
+  /** Self-learning: review finished work and keep lessons (one small extra model call). */
+  learning: boolean;
   /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
   retired?: Record<string, string>;
 };
@@ -51,6 +53,7 @@ export type SettingsPatch = {
   fallbacks?: ModelRef[];
   language?: string;
   crashReports?: boolean;
+  learning?: boolean;
 };
 
 const DEFAULTS: Settings = {
@@ -69,6 +72,7 @@ const DEFAULTS: Settings = {
   maxTurns: 6,
   language: "auto",
   crashReports: true,
+  learning: true,
 };
 
 /** The signed-in account's data folder (falls back to a guest folder when signed out). */
@@ -227,6 +231,7 @@ export function updateSettings(patch: SettingsPatch): void {
   if (typeof patch.maxTurns === "number" && Number.isFinite(patch.maxTurns)) raw.maxTurns = Math.min(30, Math.max(0, Math.round(patch.maxTurns)));
   if (typeof patch.language === "string" && /^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(patch.language)) raw.language = patch.language;
   if (typeof patch.crashReports === "boolean") raw.crashReports = patch.crashReports;
+  if (typeof patch.learning === "boolean") raw.learning = patch.learning;
   if (Array.isArray(patch.fallbacks)) {
     raw.fallbacks = patch.fallbacks
       .filter((f) => f && typeof f.provider === "string" && f.provider in PROVIDERS && typeof f.model === "string" && f.model.trim())

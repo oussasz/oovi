@@ -49,7 +49,7 @@ export function writeRaw(t: MemoryTarget, text: string) {
 const size = (entries: string[]) => entries.join(SEP).length;
 
 // Memory is read back into every prompt, so refuse text that tries to give orders.
-const SUSPICIOUS = /(ignore (all|any|previous|prior)|disregard (the|all|previous)|system prompt|you are now|new instructions|api[_ -]?key|password\s*[:=])/i;
+export const SUSPICIOUS = /(ignore (all|any|previous|prior)|disregard (the|all|previous)|system prompt|you are now|new instructions|api[_ -]?key|password\s*[:=])/i;
 
 /** The memory tool. Returns a short result message for the model. */
 export function applyMemory(action: string, target: string, content?: string, oldText?: string): string {
