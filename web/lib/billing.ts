@@ -177,8 +177,107 @@ export async function onSubscription(s: SubscriptionNotification): Promise<void>
   });
 }
 
-/** A completed payment for a plan: put the account on the plan and give this period's credits, once. */
+// ---------- money (Admin > Finance) ----------
+
+/** Paddle amounts are strings in the currency's smallest unit ("1000" = $10.00). */
+const units = (v: string | null | undefined): number => {
+  const n = Number(v ?? 0);
+  return Number.isFinite(n) ? Math.round(n) : 0;
+};
+
+/** The money side of every completed payment (plans or not): what was charged, Paddle's fee, what you earn. */
+async function recordPayment(t: TransactionNotification): Promise<void> {
+  const totals = t.details?.totals;
+  if (!totals) return;
+  const payout = t.details?.payoutTotals ?? null;
+  const item = t.items.find((i) => i.price && planForPrice(i.price.id)) ?? t.items[0];
+  const sold = item?.price ? planForPrice(item.price.id) : null;
+  await inTx(async (c) => {
+    const userId = await resolveUser(c, t.customData, t.customerId);
+    await c.query(
+      `INSERT INTO paddle_payments (transaction_id, subscription_id, customer_id, user_id, origin, price_id, plan_id, billing_interval,
+                                    currency, subtotal, tax, total, payout_currency, payout_subtotal, payout_tax, payout_total,
+                                    payout_fee, payout_earnings, billed_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+       ON CONFLICT (transaction_id) DO UPDATE SET
+         subtotal = EXCLUDED.subtotal, tax = EXCLUDED.tax, total = EXCLUDED.total,
+         payout_currency = EXCLUDED.payout_currency, payout_subtotal = EXCLUDED.payout_subtotal, payout_tax = EXCLUDED.payout_tax,
+         payout_total = EXCLUDED.payout_total, payout_fee = EXCLUDED.payout_fee, payout_earnings = EXCLUDED.payout_earnings,
+         user_id = COALESCE(paddle_payments.user_id, EXCLUDED.user_id)`,
+      [
+        t.id,
+        t.subscriptionId,
+        t.customerId,
+        userId,
+        t.origin ?? null,
+        item?.price?.id ?? null,
+        sold?.planId ?? null,
+        sold?.interval ?? item?.price?.billingCycle?.interval ?? null,
+        totals.currencyCode,
+        units(totals.subtotal),
+        units(totals.tax),
+        units(totals.total),
+        payout?.currencyCode ?? null,
+        units(payout?.subtotal),
+        units(payout?.tax),
+        units(payout?.total),
+        units(payout?.fee),
+        units(payout?.earnings),
+        t.billedAt ?? t.updatedAt,
+      ],
+    );
+  });
+}
+
+/** Refunds, chargebacks and credits as Paddle reports them (pending, approved, rejected...), newest state wins. */
+async function recordAdjustment(a: AdjustmentNotification): Promise<void> {
+  const p = a.payoutTotals;
+  await pool.query(
+    `INSERT INTO paddle_adjustments (adjustment_id, transaction_id, subscription_id, customer_id, action, type, status, reason, currency, total,
+                                     payout_currency, payout_subtotal, payout_total, payout_fee, payout_earnings, chargeback_fee,
+                                     paddle_created_at, paddle_updated_at)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
+     ON CONFLICT (adjustment_id) DO UPDATE SET
+       status = EXCLUDED.status, type = EXCLUDED.type, total = EXCLUDED.total, payout_currency = EXCLUDED.payout_currency,
+       payout_subtotal = EXCLUDED.payout_subtotal, payout_total = EXCLUDED.payout_total, payout_fee = EXCLUDED.payout_fee,
+       payout_earnings = EXCLUDED.payout_earnings, chargeback_fee = EXCLUDED.chargeback_fee,
+       paddle_updated_at = EXCLUDED.paddle_updated_at, updated_at = now()
+     WHERE paddle_adjustments.paddle_updated_at IS NULL OR EXCLUDED.paddle_updated_at >= paddle_adjustments.paddle_updated_at`,
+    [
+      a.id,
+      a.transactionId,
+      a.subscriptionId,
+      a.customerId,
+      a.action,
+      a.type ?? null,
+      a.status,
+      a.reason?.slice(0, 300) ?? null,
+      a.totals.currencyCode,
+      units(a.totals.total),
+      p?.currencyCode ?? null,
+      units(p?.subtotal),
+      units(p?.total),
+      units(p?.fee),
+      units(p?.earnings),
+      units(p?.chargebackFee?.amount),
+      a.createdAt,
+      a.updatedAt,
+    ],
+  );
+}
+
+/**
+ * A completed payment: for a plan, put the account on the plan and give this period's credits
+ * (once), then record its money. Credits come first: if recording fails, the error makes Paddle
+ * deliver the event again, and the credit step skips what it already did.
+ */
 export async function onTransactionCompleted(t: TransactionNotification): Promise<void> {
+  await grantPlan(t);
+  await recordPayment(t);
+}
+
+/** Put the account on the plan this payment bought and give this period's credits, once. */
+async function grantPlan(t: TransactionNotification): Promise<void> {
   const item = t.items.find((i) => i.price && planForPrice(i.price.id));
   if (!item?.price) return; // not a plan payment
   const sold = planForPrice(item.price.id)!;
@@ -227,6 +326,11 @@ export async function onTransactionCompleted(t: TransactionNotification): Promis
 
 /** A full refund or chargeback, once approved: take back that payment's credits (not below 0) and end its plan. */
 export async function onAdjustment(a: AdjustmentNotification): Promise<void> {
+  await takeBackCredits(a);
+  await recordAdjustment(a);
+}
+
+async function takeBackCredits(a: AdjustmentNotification): Promise<void> {
   if ((a.action !== "refund" && a.action !== "chargeback") || a.status !== "approved") return;
   if (a.type !== "full") {
     console.warn(`[billing] partial ${a.action} ${a.id} on ${a.transactionId}: credits left as they are.`);

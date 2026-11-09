@@ -2878,3 +2878,9 @@ textarea.input {
   font-size: 15px;
   padding: 4px 12px;
 }
+
+/* Admin > Finance: fixed monthly costs editor */
+.fin-costs { display: grid; gap: 8px; margin-top: 8px; }
+.fin-cost-row { display: grid; grid-template-columns: minmax(0, 1fr) 140px auto; gap: 8px; align-items: center; }
+.fin-cost-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+@media (max-width: 640px) { .fin-cost-row { grid-template-columns: minmax(0, 1fr) 110px; } .fin-cost-row .btn { grid-column: 1 / -1; justify-self: start; } }

@@ -260,6 +260,61 @@ await pool.query(`
 `);
 console.log("Paddle billing tables: ok");
 
+// Money, for Admin > Finance: every completed Paddle payment and every refund, chargeback or
+// credit, as Paddle reported them (amounts in the currency's smallest unit, e.g. cents; payout_*
+// in the payout currency, i.e. what reaches your Paddle balance). Live financial records: never
+// delete them to tidy up.
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS paddle_payments (
+    transaction_id    TEXT PRIMARY KEY,
+    subscription_id   TEXT NULL,
+    customer_id       TEXT NULL,
+    user_id           TEXT NULL REFERENCES "user"(id) ON DELETE SET NULL,
+    origin            TEXT NULL,
+    price_id          TEXT NULL,
+    plan_id           TEXT NULL,
+    billing_interval  TEXT NULL,
+    currency          TEXT NOT NULL,
+    subtotal          BIGINT NOT NULL DEFAULT 0,
+    tax               BIGINT NOT NULL DEFAULT 0,
+    total             BIGINT NOT NULL DEFAULT 0,
+    payout_currency   TEXT NULL,
+    payout_subtotal   BIGINT NOT NULL DEFAULT 0,
+    payout_tax        BIGINT NOT NULL DEFAULT 0,
+    payout_total      BIGINT NOT NULL DEFAULT 0,
+    payout_fee        BIGINT NOT NULL DEFAULT 0,
+    payout_earnings   BIGINT NOT NULL DEFAULT 0,
+    billed_at         TIMESTAMPTZ NOT NULL,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS paddle_payments_billed_idx ON paddle_payments (billed_at DESC);
+  CREATE INDEX IF NOT EXISTS paddle_payments_sub_idx ON paddle_payments (subscription_id, billed_at DESC);
+
+  CREATE TABLE IF NOT EXISTS paddle_adjustments (
+    adjustment_id      TEXT PRIMARY KEY,
+    transaction_id     TEXT NOT NULL,
+    subscription_id    TEXT NULL,
+    customer_id        TEXT NULL,
+    action             TEXT NOT NULL,
+    type               TEXT NULL,
+    status             TEXT NOT NULL,
+    reason             TEXT NULL,
+    currency           TEXT NOT NULL,
+    total              BIGINT NOT NULL DEFAULT 0,
+    payout_currency    TEXT NULL,
+    payout_subtotal    BIGINT NOT NULL DEFAULT 0,
+    payout_total       BIGINT NOT NULL DEFAULT 0,
+    payout_fee         BIGINT NOT NULL DEFAULT 0,
+    payout_earnings    BIGINT NOT NULL DEFAULT 0,
+    chargeback_fee     BIGINT NOT NULL DEFAULT 0,
+    paddle_created_at  TIMESTAMPTZ NOT NULL,
+    paddle_updated_at  TIMESTAMPTZ NULL,
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS paddle_adjustments_created_idx ON paddle_adjustments (paddle_created_at DESC);
+`);
+console.log("Paddle finance tables: ok");
+
 const { rows } = await pool.query(
   "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
 );
