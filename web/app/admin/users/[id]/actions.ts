@@ -6,6 +6,10 @@ import { getPlans } from "@/lib/ai-config";
 import { userExists } from "@/lib/ai-admin";
 import { adjustCredits, audit, resetToday, setAiEnabled, setBlocked, setDailyOverride, setPlan } from "@/lib/credits";
 import { fdNum, fdStr } from "@/lib/form";
+import { auth } from "@/lib/auth";
+import { pool } from "@/lib/db";
+import { rateLimit } from "@/lib/api";
+import { smtpStatus } from "@/lib/mail";
 import type { ActionState } from "@/components/admin/ActionForm";
 
 function refresh(userId: string) {
@@ -136,4 +140,41 @@ export async function setBlockedAction(fd: FormData): Promise<ActionState> {
   }
   refresh(userId);
   return { ok: block ? "Account blocked and signed out everywhere." : "Account unblocked. They can sign in again." };
+}
+
+// ---------- email confirmation ----------
+
+export async function markEmailVerifiedAction(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const userId = await target(fd);
+  if (!userId) return { errors: ["This account no longer exists."] };
+  try {
+    const res = await pool.query(`UPDATE "user" SET "emailVerified" = true, "updatedAt" = now() WHERE id = $1 AND "emailVerified" = false`, [userId]);
+    if (!res.rowCount) return { ok: "This email was already confirmed." };
+    await audit(admin.email, "email.mark_verified", userId, null);
+  } catch (err) {
+    return fail(err, "mark email verified");
+  }
+  refresh(userId);
+  return { ok: "Email marked as confirmed." };
+}
+
+export async function resendVerificationAction(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const userId = await target(fd);
+  if (!userId) return { errors: ["This account no longer exists."] };
+  const { rows } = await pool.query<{ email: string; emailVerified: boolean }>(`SELECT email, "emailVerified" FROM "user" WHERE id = $1`, [userId]);
+  const u = rows[0];
+  if (!u) return { errors: ["This account no longer exists."] };
+  if (u.emailVerified) return { ok: "This email is already confirmed." };
+  if (!(await smtpStatus()).ready) return { errors: ["Email isn't set up yet. Add the mail server in Email first."] };
+  if (!rateLimit(`admin-verify-mail:${userId}`, 3, 10 * 60_000)) return { errors: ["A few emails were sent to this person already. Wait a few minutes."] };
+  try {
+    await auth.api.sendVerificationEmail({ body: { email: u.email, callbackURL: "/verified" } });
+    await audit(admin.email, "email.resend_verification", userId, null);
+  } catch (err) {
+    console.error("admin resend verification failed", err instanceof Error ? err.message : "unknown error");
+    return { errors: ["Couldn't send the email. Try a test email on the Email page to check the settings."] };
+  }
+  return { ok: `Confirmation email sent to ${u.email}.` };
 }

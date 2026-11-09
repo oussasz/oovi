@@ -22,8 +22,10 @@ import {
   settle,
   spendToday,
   usdToMc,
+  VERIFY_MESSAGE,
   type Usage,
 } from "@/lib/credits";
+import { verificationRequired } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -149,6 +151,9 @@ export async function POST(req: Request) {
   if (cfg.paused) return fail(503, "paused", cfg.pausedMessage);
   if (cfg.dailyBudgetUsd > 0 && (await spendToday()) >= cfg.dailyBudgetUsd) {
     return fail(503, "paused", `${cfg.displayName} has reached today's capacity and will be back at midnight UTC. Your own API keys still work.`);
+  }
+  if (!session.user.emailVerified && (await verificationRequired())) {
+    return fail(403, "verify_email", VERIFY_MESSAGE);
   }
   const key = await getProviderKey();
   if (!key) {

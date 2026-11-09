@@ -271,6 +271,11 @@ function unseal(v: Sealed): string {
   return Buffer.concat([d.update(Buffer.from(v.data, "base64")), d.final()]).toString("utf8");
 }
 
+/** The same encryption for other secrets kept in app_config (for example the SMTP password). */
+export const sealSecret = seal;
+export const unsealSecret = unseal;
+export type { Sealed };
+
 type KeyCache = { key: string | null; at: number };
 const kg = globalThis as typeof globalThis & { __ooviAiKey?: KeyCache };
 

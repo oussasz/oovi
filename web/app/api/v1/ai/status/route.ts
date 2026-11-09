@@ -9,7 +9,7 @@ export async function GET(req: Request) {
   if (!session) return apiError("Not signed in or session expired.", 401);
   if (await isBlocked(session.user.id)) return json({ error: "This account has been blocked. Contact contact@conuron.com.", code: "blocked" }, 403);
   try {
-    return json(await creditStatus(session.user.id, session.user.createdAt, clientIp(req)));
+    return json(await creditStatus(session.user.id, session.user.createdAt, clientIp(req), !!session.user.emailVerified));
   } catch (err) {
     console.error("credit status failed", err instanceof Error ? err.message : err);
     return apiError("Couldn't load your credits. Please try again.", 503);

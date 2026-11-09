@@ -794,3 +794,7 @@ a.tag { text-decoration: none; }
 .chip.lead { border-color: color-mix(in srgb, var(--lead) 60%, var(--border)); background: color-mix(in srgb, var(--lead) 9%, var(--bg)); }
 .chip .crown { color: var(--lead); margin-left: 2px; }
 .face-lead-crown .crown path, .chip .crown path { fill: var(--lead); }
+
+.forgot-link { align-self: flex-end; margin-top: -4px; color: var(--muted); font-size: 13px; font-weight: 600; text-decoration: none; }
+.forgot-link:hover { color: var(--text); text-decoration: underline; }
+.credits-actions .fine.err { color: var(--err); }

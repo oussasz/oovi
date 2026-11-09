@@ -7,7 +7,9 @@ import { USAGE_COUNT_KEYS } from "@/lib/telemetry";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/components/admin/format";
 import { USAGE_LABELS } from "@/components/admin/usage-labels";
+import { ActionForm } from "@/components/admin/ActionForm";
 import { CreditsPanel } from "./CreditsPanel";
+import { markEmailVerifiedAction, resendVerificationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "User" };
@@ -51,10 +53,17 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
 
       <CreditsPanel userId={user.id} email={user.email} isSelf={user.id === admin.id} />
 
-      <Section title="Account">
+      <Section
+        title="Account"
+        actions={
+          <span className={`adm-badge ${user.emailVerified ? "on" : "warn"}`}>{user.emailVerified ? "Email confirmed" : "Email not confirmed"}</span>
+        }
+      >
         <dl className="adm-dl">
           <dt>Email</dt>
-          <dd>{user.email}</dd>
+          <dd>
+            {user.email} · {user.emailVerified ? "confirmed" : "not confirmed yet"}
+          </dd>
           <dt>Name</dt>
           <dd>{user.name || "–"}</dd>
           <dt>Account ID</dt>
@@ -76,6 +85,28 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
             {fmtInt(counts.events)} events · {fmtInt(counts.crashes)} crash reports · {fmtInt(counts.usageDays)} days of usage
           </dd>
         </dl>
+        {!user.emailVerified && (
+          <div className="adm-row-actions" style={{ marginTop: 16 }}>
+            <ActionForm
+              action={resendVerificationAction}
+              submitLabel="Resend confirmation email"
+              pendingLabel="Sending…"
+              submitClassName="btn btn-light btn-sm"
+            >
+              <input type="hidden" name="userId" value={user.id} />
+            </ActionForm>
+            <ActionForm
+              action={markEmailVerifiedAction}
+              submitLabel="Mark email as confirmed"
+              submitClassName="btn btn-ghost btn-sm"
+              confirm={`Mark ${user.email} as confirmed without them clicking the link?
+
+Only do this when you know the address belongs to them.`}
+            >
+              <input type="hidden" name="userId" value={user.id} />
+            </ActionForm>
+          </div>
+        )}
       </Section>
 
       <Section title="Daily usage" sub="Numbers the desktop app reports once a day (latest 60 days). Never chat content.">

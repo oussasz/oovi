@@ -51,6 +51,35 @@ function untilReset(iso: string): { h: number; m: number } {
   return { h: Math.floor(ms / 3_600_000), m: Math.floor((ms % 3_600_000) / 60_000) };
 }
 
+/** Sends the email confirmation link again (free credits wait for it). */
+function ResendButton({ primary = false }: { primary?: boolean }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [msg, setMsg] = useState("");
+  async function send() {
+    setState("sending");
+    try {
+      const r = await fetch("/api/account/verify", { method: "POST" });
+      const j = (await r.json().catch(() => ({}))) as { error?: string; alreadyVerified?: boolean };
+      if (!r.ok) throw new Error(j.error || t("credits.resendFailed"));
+      setState("sent");
+      setMsg(j.alreadyVerified ? t("credits.alreadyVerified") : t("credits.resent"));
+      if (j.alreadyVerified) refreshCredits();
+    } catch (e) {
+      setState("error");
+      setMsg((e as Error).message);
+    }
+  }
+  return (
+    <>
+      <button type="button" className={`btn sm${primary ? " primary" : ""}`} disabled={state === "sending" || state === "sent"} onClick={() => void send()}>
+        {state === "sending" ? t("credits.resending") : t("credits.resend")}
+      </button>
+      {msg && <span className={`fine${state === "error" ? " err" : ""}`} role="status">{msg}</span>}
+    </>
+  );
+}
+
 /** The credits chip at the bottom of the sidebar, with a details panel. */
 export function CreditsChip() {
   const { t, tag } = useI18n();
@@ -129,6 +158,11 @@ export function CreditsChip() {
               </div>
             )}
             <p className="fine">{t("credits.explain")}</p>
+            {status.state === "verify_email" && (
+              <div className="credits-actions">
+                <ResendButton primary />
+              </div>
+            )}
             <div className="credits-actions">
               {status.links.subscribe && (
                 <a className="btn primary sm" href={status.links.subscribe} target="_blank" rel="noreferrer">
@@ -173,11 +207,18 @@ export function HostedNotice({ code, message }: { code: string; message?: string
           ? t("credits.offlineTitle")
           : code === "signed_out"
             ? t("credits.signedOut")
-            : (message ?? "");
+            : code === "verify_email"
+              ? t("credits.verifyTitle")
+              : (message ?? "");
   return (
     <div className={`hosted-notice${code === "no_credits" ? " strong" : ""}`}>
       <p>{text}</p>
-      {code !== "offline" && code !== "signed_out" && (
+      {code === "verify_email" && (
+        <div className="credits-actions">
+          <ResendButton primary />
+        </div>
+      )}
+      {code !== "offline" && code !== "signed_out" && code !== "verify_email" && (
         <div className="credits-actions">
           {code === "no_credits" && links?.subscribe && (
             <a className="btn primary sm" href={links.subscribe} target="_blank" rel="noreferrer">

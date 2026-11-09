@@ -72,11 +72,14 @@ export function AccountClient({
   user: initialUser,
   welcome,
   credits = null,
+  notice = null,
 }: {
   user: PublicUser;
   welcome: boolean;
   /** theOovi credits card, rendered on the server. */
   credits?: ReactNode;
+  /** "Confirm your email" reminder, when it applies. */
+  notice?: ReactNode;
 }) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
@@ -194,6 +197,7 @@ export function AccountClient({
         </span>
         <h1 className="h2">Hi, {user.name.split(" ")[0] || "there"}!</h1>
         {welcome && <p className="alert alert-ok">Your account is ready. Welcome to oovi!</p>}
+        {notice}
       </div>
 
       <div className="account-grid">

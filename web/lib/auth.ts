@@ -3,6 +3,8 @@ import { APIError } from "better-auth/api";
 import { bearer } from "better-auth/plugins";
 import { pool } from "./db";
 import { isBlocked } from "./credits";
+import { sendInBackground } from "./mail";
+import { passwordChanged, resetPassword, verifyEmail } from "./mail-templates";
 import { TERMS_VERSION } from "./legal";
 import { siteUrl } from "./site";
 import { validateImage, MIN_PASSWORD, MAX_PASSWORD } from "./validation";
@@ -33,6 +35,28 @@ export const auth = betterAuth({
     autoSignIn: true,
     minPasswordLength: MIN_PASSWORD,
     maxPasswordLength: MAX_PASSWORD,
+    // Password reset by email (through the SMTP server set in the console).
+    resetPasswordTokenExpiresIn: 60 * 60,
+    revokeSessionsOnPasswordReset: true,
+    sendResetPassword: async ({ user, url }) => {
+      sendInBackground(resetPassword(user.email, user.name, url));
+    },
+    onPasswordReset: async ({ user }) => {
+      sendInBackground(passwordChanged(user.email, user.name));
+    },
+  },
+  // Email confirmation: sent on sign-up and on request ("Resend email" in the app).
+  // People can still sign in before confirming; free theOovi credits wait for it
+  // when the console says so.
+  emailVerification: {
+    sendOnSignUp: true,
+    autoSignInAfterVerification: true,
+    expiresIn: 60 * 60 * 24,
+    sendVerificationEmail: async ({ user, url }) => {
+      const link = new URL(url);
+      link.searchParams.set("callbackURL", "/verified");
+      sendInBackground(verifyEmail(user.email, user.name, link.toString()));
+    },
   },
   session: {
     expiresIn: SESSION_LIFETIME_SECONDS,

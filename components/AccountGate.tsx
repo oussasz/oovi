@@ -84,6 +84,11 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
             {t("auth.password")}
             <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} />
           </label>
+          {mode === "signin" && (
+            <a className="forgot-link" href={`${cloudUrl}/forgot-password`} target="_blank" rel="noreferrer noopener">
+              {t("auth.forgot")}
+            </a>
+          )}
           {mode === "signup" && (
             <label className="check">
               <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} required />

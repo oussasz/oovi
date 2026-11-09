@@ -3,10 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { pool } from "@/lib/db";
-import { getPilotConfig, getPlans } from "@/lib/ai-config";
+import { getPilotConfig, getPlans, planById } from "@/lib/ai-config";
 import { getPilotRequest } from "@/lib/ai-admin";
 import { adjustCredits, audit, setPlan } from "@/lib/credits";
 import { fdNum, fdStr, ID_RE } from "@/lib/form";
+import { sendMailQuietly, smtpStatus } from "@/lib/mail";
+import { pilotApproved } from "@/lib/mail-templates";
 import type { ActionState } from "@/components/admin/ActionForm";
 
 function refresh(userId: string) {
@@ -62,7 +64,27 @@ export async function approvePilot(fd: FormData): Promise<ActionState> {
   await audit(admin.email, "pilot.approve", userId, { requestId: id, credits, plan: cfg.plan, days: cfg.days, note: note || null, planError });
   refresh(userId);
   if (planError) return { errors: [`The ${credits.toLocaleString("en-US")} credits were added, but the plan couldn’t be set. Set it by hand on the user’s page.`] };
-  return { ok: `Approved: ${credits.toLocaleString("en-US")} credits and the ${cfg.plan} plan for ${cfg.days} days.` };
+  const emailed = await emailApproval(userId, credits, cfg.plan, cfg.days);
+  return {
+    ok: `Approved: ${credits.toLocaleString("en-US")} credits and the ${cfg.plan} plan for ${cfg.days} days.${
+      emailed === "sent" ? " They were emailed." : emailed === "failed" ? " The email to them couldn’t be sent." : ""
+    }`,
+  };
+}
+
+/** Tells the person by email. Never fails the approval: email may not be set up. */
+async function emailApproval(userId: string, credits: number, planId: string, days: number): Promise<"sent" | "failed" | "off"> {
+  try {
+    if (!(await smtpStatus()).ready) return "off";
+    const { rows } = await pool.query<{ email: string; name: string | null }>(`SELECT email, name FROM "user" WHERE id = $1`, [userId]);
+    const u = rows[0];
+    if (!u) return "off";
+    const plan = await planById(planId);
+    return (await sendMailQuietly(pilotApproved(u.email, u.name ?? "", credits, days, plan.dailyLimit))) ? "sent" : "failed";
+  } catch (err) {
+    console.error("pilot approval email failed", err instanceof Error ? err.message : "unknown error");
+    return "failed";
+  }
 }
 
 export async function rejectPilot(fd: FormData): Promise<ActionState> {

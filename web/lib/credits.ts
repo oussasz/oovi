@@ -11,6 +11,7 @@ import type { PoolClient } from "pg";
 import { pool } from "./db";
 import { getAiConfig, getPilotConfig, pilotOpenFor, planById, type AiConfig, type Prices } from "./ai-config";
 import { siteUrl } from "./site";
+import { verificationRequired } from "./mail";
 
 export const MC = 1000;
 const STALE_HOLD = "interval '10 minutes'";
@@ -145,7 +146,8 @@ export async function dailyLimitFor(row: AccountRow): Promise<number> {
 
 // ---------- status (what the app and the website show) ----------
 
-export type CreditState = "ok" | "no_credits" | "daily_limit" | "suspended" | "paused" | "off";
+/** verify_email: free credits wait until the email address is confirmed (console setting). */
+export type CreditState = "ok" | "verify_email" | "no_credits" | "daily_limit" | "suspended" | "paused" | "off";
 
 export type CreditStatus = {
   /** "ok" = theOovi can be used now; anything else says why not. */
@@ -168,9 +170,12 @@ const MSG = {
   suspended: (name: string) => `${name} is turned off for your account. Contact contact@conuron.com if you think this is a mistake. Your own API keys still work.`,
   noCredits: "You've used all your credits. Subscribe for more, or add your own API key.",
   daily: "You've reached today's safety limit, which protects your credits from runaway use. It resets at midnight UTC.",
+  verify: "Confirm your email to start using your free credits. We sent you a link; check your inbox (and spam).",
 };
 
-export async function creditStatus(userId: string, userCreatedAt: Date | string, ip: string | null): Promise<CreditStatus> {
+export const VERIFY_MESSAGE = MSG.verify;
+
+export async function creditStatus(userId: string, userCreatedAt: Date | string, ip: string | null, emailVerified = true): Promise<CreditStatus> {
   const cfg = await getAiConfig();
   const row = await ensureAccount(userId, ip);
   const plan = await planById(row.plan);
@@ -194,6 +199,9 @@ export async function creditStatus(userId: string, userCreatedAt: Date | string,
   } else if (!row.ai_enabled) {
     state = "suspended";
     message = MSG.suspended(cfg.displayName);
+  } else if (!emailVerified && (await verificationRequired())) {
+    state = "verify_email";
+    message = MSG.verify;
   } else if (balance <= 0) {
     state = "no_credits";
     // Never had any: the welcome grant was skipped (too many new accounts on one network).

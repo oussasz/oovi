@@ -332,6 +332,7 @@ export type UserRow = {
   appVersion: string | null;
   platform: string | null;
   termsVersion: string | null;
+  emailVerified: boolean;
 };
 
 const iso = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
@@ -346,10 +347,11 @@ function toUserRow(r: Record<string, unknown>): UserRow {
     appVersion: (r.last_app_version as string | null) ?? null,
     platform: (r.last_platform as string | null) ?? null,
     termsVersion: (r.termsVersion as string | null) ?? null,
+    emailVerified: r.emailVerified === true,
   };
 }
 
-const USER_COLUMNS = `id, email, name, "createdAt", last_seen_at, last_app_version, last_platform, "termsVersion"`;
+const USER_COLUMNS = `id, email, name, "createdAt", last_seen_at, last_app_version, last_platform, "termsVersion", "emailVerified"`;
 
 /** theOovi columns for the users list. `credits` is null for people without a credit account yet. */
 export type UserListRow = UserRow & {
@@ -380,7 +382,7 @@ function toUserListRow(r: Record<string, unknown>): UserListRow {
   };
 }
 
-const LIST_COLUMNS = `u.id, u.email, u.name, u."createdAt", u.last_seen_at, u.last_app_version, u.last_platform, u."termsVersion",
+const LIST_COLUMNS = `u.id, u.email, u.name, u."createdAt", u.last_seen_at, u.last_app_version, u.last_platform, u."termsVersion", u."emailVerified",
        u.oovi_status, ca.plan AS ca_plan, ca.balance_mc AS ca_balance_mc,
        CASE WHEN ca.day = (now() AT TIME ZONE 'UTC')::date THEN ca.day_used_mc ELSE 0 END AS ca_today_mc,
        ca.daily_limit_override AS ca_override, ca.ai_enabled AS ca_ai_enabled`;

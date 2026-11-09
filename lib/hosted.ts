@@ -4,7 +4,7 @@
 import { CloudError, cloud, sessionToken } from "./account";
 import { HOSTED_NAME } from "./providers-meta";
 
-export type HostedState = "ok" | "no_credits" | "daily_limit" | "suspended" | "paused" | "off" | "blocked" | "offline";
+export type HostedState = "ok" | "verify_email" | "no_credits" | "daily_limit" | "suspended" | "paused" | "off" | "blocked" | "offline";
 
 export type HostedStatus = {
   state: HostedState;

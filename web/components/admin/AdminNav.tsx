@@ -8,6 +8,7 @@ const LINKS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/ai", label: "theOovi" },
   { href: "/admin/pilot", label: "Pilot" },
+  { href: "/admin/email", label: "Email" },
   { href: "/admin/feedback", label: "Feedback" },
   { href: "/admin/downloads", label: "Downloads" },
   { href: "/admin/crashes", label: "Crashes" },

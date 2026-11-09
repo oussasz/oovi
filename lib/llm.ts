@@ -217,7 +217,7 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
   );
 }
 
-const HOSTED_STATES = new Set<string>(["no_credits", "daily_limit", "suspended", "paused", "off", "blocked"]);
+const HOSTED_STATES = new Set<string>(["verify_email", "no_credits", "daily_limit", "suspended", "paused", "off", "blocked"]);
 
 /** Turns a failed theOovi call into a HostedError with a clear message and code. */
 function hostedFailure(e: unknown): HostedError {
