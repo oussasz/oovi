@@ -62,13 +62,35 @@ function mapValues(o: Record<string, string> | undefined, fn: (v: string) => str
   return Object.fromEntries(Object.entries(o).map(([k, v]) => [k, fn(v)]));
 }
 
+// Zapier's old MCP address doesn't accept browser sign-in tokens (it answers 401 with no
+// sign-in details), so signing in "worked" but tools never loaded. Move such connections
+// to the current address once; the old token isn't valid there, so it is cleared and the
+// user signs in one more time.
+const ZAPIER_OLD = "https://mcp.zapier.com/api/mcp/mcp";
+const ZAPIER_NEW = "https://mcp.zapier.com/api/v1/connect";
+
 function readRaw(): McpServer[] {
+  let servers: McpServer[];
   try {
     const j = JSON.parse(fs.readFileSync(file(), "utf8")) as { servers?: McpServer[] };
-    return Array.isArray(j.servers) ? j.servers : [];
+    servers = Array.isArray(j.servers) ? j.servers : [];
   } catch {
     return [];
   }
+  if (servers.some((s) => s.url === ZAPIER_OLD)) {
+    servers = servers.map((s) => {
+      if (s.url !== ZAPIER_OLD) return s;
+      const { oauth: _old, ...rest } = s;
+      void _old;
+      return { ...rest, url: ZAPIER_NEW };
+    });
+    try {
+      writeRaw(servers);
+    } catch {
+      /* read-only disk: use the fixed list in memory */
+    }
+  }
+  return servers;
 }
 
 function writeRaw(servers: McpServer[]) {
