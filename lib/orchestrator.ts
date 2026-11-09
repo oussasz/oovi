@@ -87,7 +87,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   const builtIn = tools.filter((t) => !t.name.startsWith("mcp_") && t.name !== "use_skill" && t.name !== "save_skill");
   if (builtIn.length) {
     lines.push("", `Your tools: ${builtIn.map((t) => t.name).join(", ")}.`);
-    if (bot.tools.web) lines.push("For facts, use web_search, then open_url on the best results. Cite the URLs you relied on.");
+    if (bot.tools.web || bot.tools.browser) {
+      lines.push(
+        "For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser). Use open_url only when you must click, type, sign in or see the page.",
+        "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
+      );
+    }
     if (bot.tools.browser) {
       lines.push(
         "Element numbers for click/type come from the latest element list.",
@@ -271,6 +276,14 @@ export function statusText(c: ToolCall): string {
     case "save_skill": return "Saving a skill";
     case "memory": return "Updating memory";
     case "list_groups": return "Checking your groups";
+    case "research": return `Researching “${String(i.question ?? "").slice(0, 60)}”`;
+    case "read_url": {
+      try {
+        return `Reading ${new URL(String(i.url)).host}`;
+      } catch {
+        return "Reading a page";
+      }
+    }
     case "create_document": return `Writing ${String(i.filename ?? "a document")}`;
     case "create_spreadsheet": return `Building ${String(i.filename ?? "a spreadsheet")}`;
     case "create_presentation": return `Making ${String(i.filename ?? "slides")}`;

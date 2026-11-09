@@ -11,6 +11,7 @@ import type { Settings } from "./settings";
 import { saveShot } from "./store";
 import type { ApprovalItem, BotTools, ToolCall, ToolResult, Workspace } from "./types";
 import { DOC_TOOLS, DOC_WRITE_TOOLS, describeDocCall, runDocTool } from "./files";
+import { READER_SPECS, READER_TOOLS, runReaderTool } from "./reader";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -130,7 +131,7 @@ const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "dow
 
 /** The tools a bot may use, from its toggles. */
 export function toolsFor(t: BotTools): ToolSpec[] {
-  return TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false));
+  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? READER_SPECS : [])];
 }
 
 async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean): Promise<ToolResult> {
@@ -225,6 +226,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   const input = call.input;
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
+  if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings);
   try {
     if (call.name === "memory") {
       const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);

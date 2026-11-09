@@ -7,6 +7,8 @@
 // - auto:    the AI provider's own built-in web search (Claude's web search tool,
 //            or Gemini's Google Search grounding), so search works with no setup.
 
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { Settings } from "./settings";
 
 export type SearchHit = { title: string; url: string; snippet: string };
@@ -46,7 +48,7 @@ async function aiSearch(s: Settings, query: string): Promise<SearchHit[]> {
   }
   const geminiKey = s.providers.gemini?.apiKey;
   if (geminiKey) {
-    const model = s.providers.gemini?.model?.includes("flash") ? s.providers.gemini.model : "gemini-2.5-flash";
+    const model = s.providers.gemini?.model?.includes("flash") ? s.providers.gemini.model : "gemini-flash-latest";
     const j = (await getJson("Gemini web search", `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-goog-api-key": geminiKey },
@@ -57,7 +59,67 @@ async function aiSearch(s: Settings, query: string): Promise<SearchHit[]> {
     if (listed.length) return listed.slice(0, 10);
     return (c?.groundingMetadata?.groundingChunks ?? []).filter((g) => g.web?.uri).slice(0, 10).map((g) => ({ title: g.web?.title ?? "", url: g.web?.uri ?? "", snippet: "" }));
   }
-  throw new Error("Web search needs a Claude or Gemini key (Settings → AI models), or a search service in Settings → Web search.");
+  // No Claude or Gemini key: Exa's free public search (no key, no sign-up).
+  return exaSearch(query);
+}
+
+// ---------- Exa (free, public MCP endpoint: search + page reader) ----------
+
+const EXA_URL = "https://mcp.exa.ai/mcp";
+const gx = globalThis as typeof globalThis & { __ooviExa?: Promise<Client> | null };
+
+async function exaClient(): Promise<Client> {
+  if (!gx.__ooviExa) {
+    gx.__ooviExa = (async () => {
+      const c = new Client({ name: "oovi", version: "1.0.0" });
+      await c.connect(new StreamableHTTPClientTransport(new URL(EXA_URL)));
+      return c;
+    })();
+    gx.__ooviExa.catch(() => (gx.__ooviExa = null));
+  }
+  return gx.__ooviExa;
+}
+
+async function exaCall(tool: string, args: Record<string, unknown>): Promise<string> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const c = await exaClient();
+      const r = (await c.callTool({ name: tool, arguments: args }, undefined, { timeout: 30_000 })) as { content?: { type: string; text?: string }[]; isError?: boolean };
+      const text = (r.content ?? []).map((x) => x.text ?? "").join("\n");
+      if (r.isError) throw new Error(text.slice(0, 300) || "Exa search failed");
+      return text;
+    } catch (e) {
+      gx.__ooviExa = null; // reconnect once (session expired)
+      if (attempt === 1) throw new Error(`Exa search isn't answering: ${(e as Error).message}`);
+    }
+  }
+  return "";
+}
+
+/** Exa's text format: blocks of "Title: … / URL: … / Published: … / Highlights: …". */
+function parseExa(text: string): { title: string; url: string; published?: string; body: string }[] {
+  return text
+    .split(/\n(?=Title: )/)
+    .map((b) => {
+      const url = b.match(/^URL: (\S+)/m)?.[1] ?? "";
+      return {
+        title: b.match(/^Title: (.*)$/m)?.[1]?.trim() ?? url,
+        url,
+        published: b.match(/^Published: (\S+)/m)?.[1],
+        body: b.replace(/^(Title|URL|Published|Author|ID):.*$/gm, "").replace(/^(Highlights|Text|Summary):\s*/m, "").trim(),
+      };
+    })
+    .filter((x) => /^https?:/.test(x.url));
+}
+
+export async function exaSearch(query: string): Promise<SearchHit[]> {
+  return parseExa(await exaCall("web_search_exa", { query, numResults: 8 })).map((r) => ({ title: r.title, url: r.url, snippet: r.body.replace(/\s+/g, " ").slice(0, 400) }));
+}
+
+/** Read one page through Exa (handles JavaScript-heavy pages and PDFs). */
+export async function exaFetch(url: string): Promise<{ url: string; title: string; text: string; published?: string } | null> {
+  const r = parseExa(await exaCall("web_fetch_exa", { urls: [url], maxCharacters: 40_000 }))[0];
+  return r ? { url: r.url, title: r.title, text: r.body, published: r.published } : null;
 }
 
 const TIMEOUT = 20_000;

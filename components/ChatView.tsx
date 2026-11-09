@@ -36,11 +36,39 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "click": return t("chat.call.click", { element: String(i.element) });
     case "type": return t(i.submit ? "chat.call.typeEnter" : "chat.call.type", { text: String(i.text ?? "") });
     case "go_back": return t("chat.call.back");
-    default: return c.name;
+    case "research": return t("chat.call.research", { query: String(i.question ?? "") });
+    case "read_url": return t("chat.call.readUrl", { host: host(i.url) });
+    case "create_document":
+    case "create_spreadsheet":
+    case "create_presentation": return t("chat.call.createFile", { name: String(i.filename ?? "") });
+    case "read_document":
+    case "read_file": return t("chat.call.readFile", { name: String(i.path ?? "") });
+    case "list_files": return t("chat.call.listFiles");
+    case "search_files": return t("chat.call.searchFiles", { query: String(i.query ?? "") });
+    case "write_file":
+    case "edit_file": return t("chat.call.editFile", { name: String(i.path ?? "") });
+    case "delete_file": return t("chat.call.deleteFile", { name: String(i.path ?? "") });
+    case "run_command": return t("chat.call.runCommand", { command: String(i.command ?? "").slice(0, 80) });
+    case "message_group": return t("chat.call.messageGroup", { group: String(i.group ?? "") });
+    case "list_groups":
+    case "read_group": return t("chat.call.checkGroups");
+    case "memory": return t("chat.call.memory");
+    case "use_skill": return t("chat.call.useSkill", { name: String(i.name ?? "") });
+    case "save_skill": return t("chat.call.saveSkill", { name: String(i.name ?? "") });
+    default: return c.name.startsWith("mcp_") ? c.name.replace(/^mcp_/, "").replace(/_/g, " ") : c.name.replace(/_/g, " ");
   }
 }
 
-const callIcon = (c: ToolCall): IconName => (c.name === "web_search" ? "globe" : c.name === "click" || c.name === "type" ? "cursor" : "arrow");
+const callIcon = (c: ToolCall): IconName =>
+  ["web_search", "research", "read_url"].includes(c.name)
+    ? "globe"
+    : c.name === "click" || c.name === "type"
+      ? "cursor"
+      : c.name.startsWith("create_") || c.name.endsWith("_file") || c.name.endsWith("_files") || c.name === "read_document"
+        ? "folder"
+        : c.name === "run_command"
+          ? "cpu"
+          : "arrow";
 
 function rowsOf(e: BotEntry): Row[] {
   const results = new Map<string, ToolResult>();
