@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useRef, useState, type ChangeEvent, type FormEvent } from "react";
+import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } from "react";
 import { authClient } from "@/lib/auth-client";
 import type { PublicUser } from "@/lib/api";
 import { DownloadButton } from "@/components/download/DownloadButton";
@@ -68,7 +68,16 @@ async function patchMe(body: { name?: string; image?: string | null }): Promise<
 
 type Msg = { kind: "ok" | "error"; text: string } | null;
 
-export function AccountClient({ user: initialUser, welcome }: { user: PublicUser; welcome: boolean }) {
+export function AccountClient({
+  user: initialUser,
+  welcome,
+  credits = null,
+}: {
+  user: PublicUser;
+  welcome: boolean;
+  /** theOovi credits card, rendered on the server. */
+  credits?: ReactNode;
+}) {
   const router = useRouter();
   const [user, setUser] = useState(initialUser);
   const [name, setName] = useState(initialUser.name);
@@ -189,6 +198,7 @@ export function AccountClient({ user: initialUser, welcome }: { user: PublicUser
 
       <div className="account-grid">
         <div className="account-col">
+          {credits}
           <section className="card desktop-card">
             <div style={{ display: "flex", gap: 6, alignItems: "flex-end", marginBottom: 14 }} aria-hidden>
               <Slime color="blue" shape="egg" face="dash" size={50} />
@@ -211,7 +221,7 @@ export function AccountClient({ user: initialUser, welcome }: { user: PublicUser
                 <h2 style={{ marginBottom: 4 }}>
                   Backup &amp; sync across devices <span className="pill-soon">Coming soon</span>
                 </h2>
-                <p className="muted">Keep your team in sync on all your computers. Part of a future paid plan.</p>
+                <p className="muted">Keep your team in sync on all your computers. Free with every oovi account.</p>
               </div>
               <span className="toggle" role="switch" aria-checked="false" aria-disabled="true" aria-label="Backup and sync (coming soon)" />
             </div>

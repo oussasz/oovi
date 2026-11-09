@@ -6,7 +6,7 @@ import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 import { TERMS_VERSION } from "@/lib/legal";
 
-export function SignupForm() {
+export function SignupForm({ next = null }: { next?: string | null }) {
   const router = useRouter();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -39,7 +39,7 @@ export function SignupForm() {
       }
       return;
     }
-    router.replace("/account?welcome=1");
+    router.replace(next ?? "/account?welcome=1");
     router.refresh();
   }
 
@@ -110,7 +110,7 @@ export function SignupForm() {
         </button>
       </form>
       <p className="switch-line">
-        Already have an account? <Link href="/login">Log in</Link>
+        Already have an account? <Link href={next ? `/login?next=${encodeURIComponent(next)}` : "/login"}>Log in</Link>
       </p>
     </>
   );

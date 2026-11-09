@@ -79,6 +79,10 @@ export type BotEntry = {
   usage: Usage;
   /** US dollars spent on this reply (only counts models whose price is known). */
   cost?: number;
+  /** theOovi credits this reply used (hosted model only). */
+  credits?: number;
+  /** Why a theOovi reply couldn't run: no_credits, daily_limit, offline, signed_out... */
+  errorCode?: string;
   /** Something the user should know, e.g. a retired model was replaced. */
   note?: string;
   /** Which model answered, e.g. "Gemini · gemini-2.5-flash". */

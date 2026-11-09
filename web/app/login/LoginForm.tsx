@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 
-export function LoginForm() {
+export function LoginForm({ next = null }: { next?: string | null }) {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,7 +22,7 @@ export function LoginForm() {
       setError(error.status === 429 ? "Too many attempts. Please wait a minute." : "Invalid email or password.");
       return;
     }
-    router.replace("/account");
+    router.replace(next ?? "/account");
     router.refresh();
   }
 
@@ -63,7 +63,7 @@ export function LoginForm() {
         </button>
       </form>
       <p className="switch-line">
-        New to oovi? <Link href="/signup">Create an account</Link>
+        New to oovi? <Link href={next ? `/signup?next=${encodeURIComponent(next)}` : "/signup"}>Create an account</Link>
       </p>
     </>
   );

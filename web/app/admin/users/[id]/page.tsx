@@ -7,6 +7,7 @@ import { USAGE_COUNT_KEYS } from "@/lib/telemetry";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/components/admin/format";
 import { USAGE_LABELS } from "@/components/admin/usage-labels";
+import { CreditsPanel } from "./CreditsPanel";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "User" };
@@ -27,7 +28,7 @@ function eventDetails(data: unknown): string {
 }
 
 export default async function AdminUser({ params }: { params: Promise<{ id: string }> }) {
-  await requireAdmin();
+  const admin = await requireAdmin();
   const { id } = await params;
   if (!id || id.length > 200) notFound();
   let userId = id;
@@ -47,6 +48,8 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
           All users
         </Link>
       </PageHead>
+
+      <CreditsPanel userId={user.id} email={user.email} isSelf={user.id === admin.id} />
 
       <Section title="Account">
         <dl className="adm-dl">

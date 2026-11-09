@@ -351,18 +351,70 @@ function toUserRow(r: Record<string, unknown>): UserRow {
 
 const USER_COLUMNS = `id, email, name, "createdAt", last_seen_at, last_app_version, last_platform, "termsVersion"`;
 
-export async function listUsers(search: string, page: number): Promise<{ rows: UserRow[]; total: number }> {
+/** theOovi columns for the users list. `credits` is null for people without a credit account yet. */
+export type UserListRow = UserRow & {
+  status: "active" | "blocked";
+  credits: {
+    plan: string;
+    balance: number;
+    todayUsed: number;
+    dailyLimitOverride: number | null;
+    aiEnabled: boolean;
+  } | null;
+};
+
+function toUserListRow(r: Record<string, unknown>): UserListRow {
+  return {
+    ...toUserRow(r),
+    status: r.oovi_status === "blocked" ? "blocked" : "active",
+    credits:
+      r.ca_plan === null || r.ca_plan === undefined
+        ? null
+        : {
+            plan: String(r.ca_plan),
+            balance: n(r.ca_balance_mc) / 1000,
+            todayUsed: n(r.ca_today_mc) / 1000,
+            dailyLimitOverride: r.ca_override === null || r.ca_override === undefined ? null : n(r.ca_override),
+            aiEnabled: Boolean(r.ca_ai_enabled),
+          },
+  };
+}
+
+const LIST_COLUMNS = `u.id, u.email, u.name, u."createdAt", u.last_seen_at, u.last_app_version, u.last_platform, u."termsVersion",
+       u.oovi_status, ca.plan AS ca_plan, ca.balance_mc AS ca_balance_mc,
+       CASE WHEN ca.day = (now() AT TIME ZONE 'UTC')::date THEN ca.day_used_mc ELSE 0 END AS ca_today_mc,
+       ca.daily_limit_override AS ca_override, ca.ai_enabled AS ca_ai_enabled`;
+
+export async function listUsers(search: string, page: number): Promise<{ rows: UserListRow[]; total: number }> {
   const q = search.trim().slice(0, 100);
   const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
   const offset = Math.max(0, page - 1) * USERS_PAGE_SIZE;
-  const { rows } = await pool.query(
-    `SELECT ${USER_COLUMNS}, count(*) OVER () AS total
-       FROM "user"
-      WHERE ($1 = '' OR email ILIKE $2 OR name ILIKE $2)
-      ORDER BY "createdAt" DESC, id
-      LIMIT ${USERS_PAGE_SIZE} OFFSET $3`,
-    [q, like, offset],
-  );
+  let rows: Record<string, unknown>[];
+  try {
+    rows = (
+      await pool.query(
+        `SELECT ${LIST_COLUMNS}, count(*) OVER () AS total
+           FROM "user" u LEFT JOIN credit_accounts ca ON ca.user_id = u.id
+          WHERE ($1 = '' OR u.email ILIKE $2 OR u.name ILIKE $2)
+          ORDER BY u."createdAt" DESC, u.id
+          LIMIT ${USERS_PAGE_SIZE} OFFSET $3`,
+        [q, like, offset],
+      )
+    ).rows;
+  } catch (err) {
+    // theOovi tables/columns missing (migration not run yet): list accounts without credits.
+    console.error("users list with credits failed", err instanceof Error ? err.message : err);
+    rows = (
+      await pool.query(
+        `SELECT ${USER_COLUMNS}, count(*) OVER () AS total
+           FROM "user"
+          WHERE ($1 = '' OR email ILIKE $2 OR name ILIKE $2)
+          ORDER BY "createdAt" DESC, id
+          LIMIT ${USERS_PAGE_SIZE} OFFSET $3`,
+        [q, like, offset],
+      )
+    ).rows;
+  }
   let total = rows[0] ? n(rows[0].total) : 0;
   if (!rows.length && offset > 0) {
     const c = await pool.query(`SELECT count(*) AS c FROM "user" WHERE ($1 = '' OR email ILIKE $2 OR name ILIKE $2)`, [
@@ -371,7 +423,7 @@ export async function listUsers(search: string, page: number): Promise<{ rows: U
     ]);
     total = n(c.rows[0]?.c);
   }
-  return { rows: rows.map(toUserRow), total };
+  return { rows: rows.map(toUserListRow), total };
 }
 
 export type AppEventRow = {

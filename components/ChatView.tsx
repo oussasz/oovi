@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
 import { FACE_COLORS } from "@/lib/faces";
-import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";
+import { HOSTED_NAME, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
+import { HostedNotice, refreshCredits } from "./Credits";
 import type { PublicSettings } from "@/lib/settings";
 import "@/lib/desktop";
 import type { Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
@@ -304,10 +305,17 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
           {bot?.role && <span className="role" style={{ background: FACE_COLORS[bot.face.color] }}>{bot.role}</span>}
           <span>{timeLabel(e.at, tag)}</span>
           {tokens > 0 && <span title={t("chat.tokensTitle", { input: e.usage.input, output: e.usage.output })}>{t("chat.tokens", { n: fmtTokens(tokens, tag) })}</span>}
-          {typeof e.cost === "number" && tokens > 0 && (
-            <span className="cost" title={t("chat.costTitle")}>
-              {fmtCost(e.cost, t("common.free"))}
+          {typeof e.credits === "number" ? (
+            <span className="cost" title={t("chat.creditsTitle")}>
+              {t("chat.credits", { n: e.credits < 10 ? e.credits.toFixed(1) : Math.round(e.credits) })}
             </span>
+          ) : (
+            typeof e.cost === "number" &&
+            tokens > 0 && (
+              <span className="cost" title={t("chat.costTitle")}>
+                {fmtCost(e.cost, t("common.free"))}
+              </span>
+            )
           )}
           {e.model && (
             <span className={`model-badge${e.fallback ? " fb" : ""}`} title={e.fallback ? t("chat.fallbackTitle") : t("chat.modelTitle")}>
@@ -388,7 +396,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
         {e.status === "waiting" && <div className="note">{t("chat.waiting")}</div>}
         {e.status === "stopped" && !e.text && <div className="note">{t("chat.stopped")}</div>}
         {e.status === "done" && !e.text && <div className="note">{t("chat.noReply")}</div>}
-        {e.error && <div className="notice error small">{e.error}</div>}
+        {e.error && (e.errorCode && e.errorCode !== "busy" && e.errorCode !== "bad_request" ? <HostedNotice code={e.errorCode} message={e.error} /> : <div className="notice error small">{e.error}</div>)}
         {e.handoff && e.handoff.length > 0 && (
           <div className="handoff">
             <Icon name="arrow" size={14} /> {t("chat.passedTo")}
@@ -559,6 +567,7 @@ export default function ChatView({ id }: { id: string }) {
             /* chat may have been deleted */
           }
           refreshSidebar();
+          refreshCredits();
         }
       }
     },
@@ -663,10 +672,11 @@ export default function ChatView({ id }: { id: string }) {
 
   const providerOf = (b: Bot): ProviderId => b.provider ?? settings.active;
   const modelLabel = (b: Bot) => {
+    if (settings.hosted) return HOSTED_NAME;
     const p = providerOf(b);
     return `${PROVIDERS[p].label.replace(/ \(.*\)$/, "")} · ${b.model || settings.providers[p]?.model || PROVIDERS[p].model || t("chat.modelUnknown")}`;
   };
-  const missingKeys = [...new Set(members.map(providerOf))].filter((p) => PROVIDERS[p].needsKey && !settings.providers[p]?.hasKey);
+  const missingKeys = settings.hosted ? [] : [...new Set(members.map(providerOf))].filter((p) => PROVIDERS[p].needsKey && !settings.providers[p]?.hasKey);
 
   const suggestions = mentionQ === null ? [] : members.filter((m) => m.name.toLowerCase().startsWith(mentionQ.toLowerCase()));
 

@@ -28,7 +28,8 @@ export default function Home() {
 
   const groups = chats.filter((c) => c.kind === "group");
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
-  const needsKey = settings && PROVIDERS[settings.active].needsKey && !settings.providers[settings.active]?.hasKey;
+  // With theOovi (signed in, no own key needed) there's nothing to set up.
+  const needsKey = settings && !settings.hosted && PROVIDERS[settings.active].needsKey && !settings.providers[settings.active]?.hasKey;
   const first = groups[0];
 
   return (

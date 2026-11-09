@@ -24,14 +24,15 @@ Package identity: Conuron.oovi (publisher Conuron), set in package.json > build.
 - Website: https://oovi.vercel.app
 - Support contact: your email.
 - Age ratings: answer the questionnaire. oovi has user-generated text and talks
-  to AI services on the user's own key; no violence, no purchases.
+  to AI services (theOovi or the user's own key); subscriptions are sold on the
+  oovi website; no violence.
 
 ## Store listing: English (en-US)
 
 **Product name:** oovi
 
 **Short description (≤ 100 characters):**
-Your own team of AI agents that research, write and build, on your own API keys.
+Your own team of AI agents that research, write and build. Start free, no API key needed.
 
 **Description:**
 oovi gives you a team of friendly AI bots that work together on real tasks. Give
@@ -51,10 +52,12 @@ What your team can do
   big tasks.
 • Answer you on Telegram while you're away from your computer.
 
-Your keys, your data
-oovi runs on your own API keys from Anthropic (Claude), OpenAI, Google Gemini,
-OpenRouter and others. No subscription. Your chats and files stay on your
-computer.
+Start free, no API key needed
+Your bots run on theOovi 1.1, the AI model included with your oovi account. You
+get free credits to start and a daily limit that resets every day; subscribe for
+more. Prefer your own provider? Add your own API key from Anthropic (Claude),
+OpenAI, Google Gemini, OpenRouter and others at no extra cost. Your chats and
+files are saved on your computer.
 
 **What's new in this version:** leave blank for the first submission.
 
@@ -67,15 +70,16 @@ computer.
 - Private cloud computer to run code and analyze data
 - Works in your project folders, with your approval for every change
 - 60+ connectors: Google, Microsoft 365, Notion, Slack, GitHub and more
-- Uses your own API keys: Claude, OpenAI, Gemini, OpenRouter and more
-- No subscription; your chats and files stay on your computer
+- Start free with theOovi 1.1, no API key needed
+- Or use your own API keys: Claude, OpenAI, Gemini, OpenRouter and more
+- Your chats and files are saved on your computer
 - Reach your main bot on Telegram when you're away
 - English, French, Arabic, Spanish, German and Turkish
 
 **Short description** (Supplemental fields, ≤ 270 characters):
 A team of AI bots that research, write and build for you. They plan together,
 read the web with sources, create Word and Excel files and learn your
-preferences, all on your own API keys with no subscription.
+preferences. Start free with theOovi, or use your own API keys.
 
 **Keywords (up to 7):** AI agents, AI assistant, Claude, ChatGPT, research,
 automation, productivity
@@ -98,7 +102,7 @@ automation, productivity
 **Nom du produit :** oovi
 
 **Description courte (≤ 100 caractères) :**
-Votre équipe d'agents IA qui cherchent, écrivent et créent, avec vos propres clés API.
+Votre équipe d'agents IA qui cherchent, écrivent et créent. Gratuit pour commencer, sans clé API.
 
 **Description :**
 oovi vous donne une équipe de bots IA sympathiques qui travaillent ensemble sur de
@@ -121,9 +125,12 @@ Ce que votre équipe sait faire
   activez le Travail approfondi.
 • Vous répondre sur Telegram quand vous n'êtes pas devant votre ordinateur.
 
-Vos clés, vos données
-oovi fonctionne avec vos propres clés API d'Anthropic (Claude), OpenAI, Google
-Gemini, OpenRouter et d'autres. Sans abonnement. Vos discussions et vos fichiers
+Gratuit pour commencer, sans clé API
+Vos bots fonctionnent avec theOovi 1.1, le modèle d'IA inclus avec votre compte
+oovi : des crédits gratuits pour commencer et une limite quotidienne remise à zéro
+chaque jour ; abonnez-vous pour en avoir plus. Vous préférez votre fournisseur ?
+Ajoutez votre propre clé API d'Anthropic (Claude), OpenAI, Google Gemini,
+OpenRouter et d'autres, sans frais supplémentaires. Vos discussions et vos fichiers
 restent sur votre ordinateur.
 
 **Fonctionnalités :**
@@ -135,14 +142,15 @@ restent sur votre ordinateur.
 - Ordinateur cloud privé pour exécuter du code et analyser des données
 - Travaille dans vos dossiers de projet, avec votre accord pour chaque modification
 - Plus de 60 connecteurs : Google, Microsoft 365, Notion, Slack, GitHub…
-- Fonctionne avec vos propres clés API : Claude, OpenAI, Gemini, OpenRouter…
-- Sans abonnement ; vos discussions et fichiers restent sur votre ordinateur
+- Gratuit pour commencer avec theOovi 1.1, sans clé API
+- Ou avec vos propres clés API : Claude, OpenAI, Gemini, OpenRouter…
+- Vos discussions et fichiers restent sur votre ordinateur
 
 **Description courte :**
 Une équipe de bots IA qui cherchent, écrivent et créent pour vous. Ils
 planifient ensemble, lisent le web avec les sources, créent des fichiers Word
-et Excel et retiennent vos préférences, avec vos propres clés API, sans
-abonnement.
+et Excel et retiennent vos préférences. Gratuit pour commencer avec theOovi,
+ou avec vos propres clés API.
 
 **Mots-clés :** agents IA, assistant IA, Claude, ChatGPT, recherche,
 automatisation, productivité

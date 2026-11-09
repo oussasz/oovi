@@ -2,6 +2,7 @@ import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { bearer } from "better-auth/plugins";
 import { pool } from "./db";
+import { isBlocked } from "./credits";
 import { TERMS_VERSION } from "./legal";
 import { siteUrl } from "./site";
 import { validateImage, MIN_PASSWORD, MAX_PASSWORD } from "./validation";
@@ -45,6 +46,17 @@ export const auth = betterAuth({
     deleteUser: { enabled: true },
   },
   databaseHooks: {
+    session: {
+      create: {
+        // Accounts blocked in the admin console can't sign in (web or app).
+        before: async (session) => {
+          if (await isBlocked(session.userId)) {
+            throw new APIError("FORBIDDEN", { message: "This account has been blocked. Contact contact@conuron.com." });
+          }
+          return { data: session };
+        },
+      },
+    },
     user: {
       create: {
         before: async (user) => {

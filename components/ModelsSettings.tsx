@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { chainOf, enabledRefs, isConnected, priceText, providerModels, refKey, sameRef, type ModelInfo } from "@/lib/model-list";
 import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
 import type { ModelRef, PublicSettings, SettingsPatch } from "@/lib/settings";
+import { useHosted } from "./Credits";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
@@ -13,6 +14,7 @@ type Msg = { ok: boolean; text: string } | null;
 
 export default function ModelsSettings({ s, onSaved, onMsg }: { s: PublicSettings; onSaved: (next: PublicSettings) => void; onMsg: (m: Msg) => void }) {
   const { t } = useI18n();
+  const { status: hosted } = useHosted();
   const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
   const [listErr, setListErr] = useState<Partial<Record<ProviderId, string>>>({});
   const [busy, setBusy] = useState<string | null>(null);
@@ -167,6 +169,36 @@ export default function ModelsSettings({ s, onSaved, onMsg }: { s: PublicSetting
   return (
     <>
       <p className="lead">{t("models.lead")}</p>
+
+      {/* ---- theOovi: the model included with the account ---- */}
+      {hosted && (
+        <div className={`card hosted-card${s.hosted ? " on" : ""}`}>
+          <h3 className="card-h">
+            <Icon name="spark" size={16} /> {hosted.displayName}
+          </h3>
+          <p className="note">{s.hosted ? t("models.hostedOn", { name: hosted.displayName }) : t("models.hostedOff", { name: hosted.displayName })}</p>
+          <div className="row-btns">
+            {s.hosted ? (
+              s.ownModels && (
+                <button
+                  type="button"
+                  className="btn sm"
+                  onClick={() => {
+                    const first = PROVIDER_IDS.find((p) => isConnected(s, p));
+                    if (first) void post({ active: first }).catch((e) => onMsg({ ok: false, text: (e as Error).message }));
+                  }}
+                >
+                  {t("models.useOwn")}
+                </button>
+              )
+            ) : (
+              <button type="button" className="btn primary sm" onClick={() => void post({ active: "oovi" }).catch((e) => onMsg({ ok: false, text: (e as Error).message }))}>
+                {t("models.useHosted", { name: hosted.displayName })}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ---- your models, in order ---- */}
       <div className="card">

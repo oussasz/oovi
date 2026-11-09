@@ -9,6 +9,7 @@ import Face, { FaceStack } from "./Face";
 import { useT } from "./I18n";
 import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
+import { CreditsChip, FeedbackButton, OfflineBanner } from "./Credits";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -57,6 +58,7 @@ export default function Sidebar() {
       </header>
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
 
+      <OfflineBanner />
       <aside className={`sidebar${open ? " open" : ""}`}>
         <Link href="/" className={`side-settings side-home${pathname === "/" ? " active" : ""}`}>
           <Icon name="home" /> {t("side.home")}
@@ -103,9 +105,11 @@ export default function Sidebar() {
           })}
         </nav>
 
+        <CreditsChip />
         <Link href="/library" className={`side-settings side-lib${pathname === "/library" ? " active" : ""}`}>
           <Icon name="library" /> {t("common.skillsTools")}
         </Link>
+        <FeedbackButton />
         <button type="button" className="side-settings" onClick={openSettings}>
           <Icon name="gear" /> {t("common.settings")}
         </button>

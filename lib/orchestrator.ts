@@ -13,12 +13,14 @@
 // and repeated requests nudge the bot to save a new skill.
 
 import { currentUser } from "./account";
-import { complete, type ToolSpec } from "./llm";
+import { complete, HostedError, type ToolSpec } from "./llm";
+import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, recallHistory } from "./context";
+import { hostedMaxInput } from "./hosted";
 import { memoryPrompt } from "./memory";
 import { CORRECTION, lessonsPrompt, mergeLearned, reflect } from "./learning";
 import { mcpToolsFor } from "./mcp";
 import { findMentions } from "./mentions";
-import { loadSettings, type Settings } from "./settings";
+import { loadSettings, usesHosted, type Settings } from "./settings";
 import { listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { getChat, listBots, newId, saveChat } from "./store";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -201,38 +203,54 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   return lines.join("\n");
 }
 
-const COMPACT_AT = 90_000; // characters of conversation before older turns get summarized
-const KEEP_RECENT = 8; // entries always kept word for word
+const KEEP_RECENT = 6; // entries always kept word for word
+const SUMMARY_MAX = 12_000; // characters (about 4K tokens)
+
+/** The request budget (tokens) for these settings: theOovi's limit with a margin, or a cap for own keys. */
+const budgetOf = (s: Settings) => budgetFor(usesHosted(s), hostedMaxInput());
 
 /**
- * Token saver: when a chat gets long, condense everything except the most recent
- * entries into a short summary (one cheap call), so each later model call sends
- * far fewer tokens. The full history stays saved and visible in the app.
+ * Automatic compaction: when the live part of a chat gets big, everything except the
+ * most recent entries is folded into a running summary (one small call), so each
+ * later model call sends far fewer tokens. Nothing is lost: the full history stays
+ * saved and visible, and bots can search it with recall_history.
  */
 async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal) {
   const start = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
   const live = chat.entries.slice(start);
-  const size = JSON.stringify(live).length;
-  if (size < COMPACT_AT || live.length <= KEEP_RECENT) return;
-  const old = live.slice(0, live.length - KEEP_RECENT);
+  if (estimateTokens(live) < compactAtFor(budgetOf(settings)) || live.length <= KEEP_RECENT) return;
+  // Never fold the entry a bot is still writing.
+  let keep = KEEP_RECENT;
+  while (keep < live.length && live[live.length - keep - 1]?.kind === "bot" && (live[live.length - keep - 1] as BotEntry).status === "running") keep++;
+  const old = live.slice(0, live.length - keep);
   const last = old.at(-1);
   if (!last) return;
   const bots = listBots();
   const transcript = old
-    .map((e) => (e.kind === "user" ? `User: ${e.text}` : `${bots.find((b) => b.id === e.botId)?.name ?? "Bot"}: ${e.text || "(worked with tools)"}`))
+    .map((e) =>
+      e.kind === "user"
+        ? `User: ${e.text}`
+        : `${bots.find((b) => b.id === e.botId)?.name ?? "Bot"}: ${e.text || "(worked with tools)"}${activityLine(e)}`,
+    )
     .join("\n")
-    .slice(-60_000);
+    .slice(-150_000);
   try {
     const out = await complete(
       settings,
-      "You condense chat history for an AI assistant team. Keep: the user's goals, decisions, facts, names, numbers, links, open tasks and anything promised. Drop chit-chat. Use short bullet points. Max 400 words.",
-      [{ role: "user", content: `${chat.summary ? `Previous summary:\n${chat.summary.text}\n\n` : ""}Conversation to add:\n${transcript}` }],
+      [
+        "You keep the running memory of a conversation between a user and their team of AI assistants. Merge the previous summary with the new part into ONE updated summary.",
+        "Keep everything that could matter later: the user's goals and preferences, decisions and their reasons, facts, names, numbers, dates, prices, links, file names and where files were saved, what each assistant did and found, promises, open questions and unfinished tasks.",
+        "Drop greetings and repetition. Don't invent anything. Use short headed sections with bullets: Goals, Decisions, Facts & numbers, Files & links, Done so far, Open items.",
+        "Stay under 900 words.",
+      ].join(" "),
+      [{ role: "user", content: `${chat.summary ? `Previous summary:\n${chat.summary.text}\n\n` : ""}New part of the conversation:\n${transcript}` }],
       [],
       signal,
+      { effort: "low" },
     );
-    if (out.text) chat.summary = { upTo: last.id, text: out.text.slice(0, 6000) };
+    if (out.text) chat.summary = { upTo: last.id, text: out.text.slice(0, SUMMARY_MAX) };
   } catch {
-    /* if summarizing fails, just send the full history */
+    /* if summarizing fails, the budget guard still keeps each request small */
   }
 }
 
@@ -242,7 +260,7 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[]): Msg[] {
   const group = chat.kind === "group";
   // Older turns may have been condensed into a summary to save tokens.
   const cut = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
-  if (chat.summary && cut > 0) out.push({ role: "user", content: `[Summary of the earlier conversation]\n${chat.summary.text}` });
+  if (chat.summary && cut > 0) out.push({ role: "user", content: `[Summary of the earlier conversation]\n${chat.summary.text}\n\n(The full conversation is saved; use recall_history for exact details.)` });
   for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") {
       const who = e.via ? `${bots.find((b) => b.id === e.via)?.name ?? "The main assistant"}, on the user's behalf` : "User";
@@ -353,12 +371,14 @@ async function* runBot(
   signal: AbortSignal,
 ): AsyncGenerator<ChatEvent, Outcome> {
   const s = settingsFor(bot, settings);
+  // Keep the conversation small before every turn, including hand-offs between bots.
+  await compactIfLong(chat, s, signal);
   const usesAccounts = !!bot.tools.accounts;
   const sessionId = `${chat.id}_${bot.id}`;
   const mcp = bot.tools.mcp?.length ? await mcpToolsFor(bot.tools.mcp) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...mcp.specs];
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...SKILL_SPECS, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id });
   let steps = 0;
 
@@ -403,6 +423,8 @@ async function* runBot(
               .map((x): PlanItem => ({ text: String(x.text ?? "").slice(0, 200), status: x.status === "done" || x.status === "doing" ? x.status : "pending" }))
               .filter((x) => x.text);
             results.push({ id: c.id, name: c.name, content: `Plan updated (${entry.plan.filter((x) => x.status === "done").length}/${entry.plan.length} done).` });
+          } else if (c.name === "recall_history") {
+            results.push({ id: c.id, name: c.name, content: recallHistory(chat, bots, String(c.input.query ?? "")) });
           } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace));
         }
       }
@@ -423,7 +445,18 @@ async function* runBot(
     yield { type: "status", entryId: entry.id, text: "Thinking…" };
     try {
       const effort: Effort = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : "auto";
-      const out = await complete(s, system, prune(viewFor(bot, chat, bots)), tools, signal, { effort });
+      let budget = budgetOf(s);
+      const view = prune(viewFor(bot, chat, bots));
+      let out;
+      try {
+        out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
+      } catch (e) {
+        // theOovi said the request is still too big: shrink harder and try once more.
+        if (!(e instanceof HostedError && e.code === "context_too_large")) throw e;
+        budget = Math.floor(budget * 0.6);
+        out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
+      }
+      if (typeof out.credits === "number") entry.credits = Math.round(((entry.credits ?? 0) + out.credits) * 100) / 100;
       entry.usage.input += out.usage.input;
       entry.usage.output += out.usage.output;
       entry.model = out.model;
@@ -440,6 +473,7 @@ async function* runBot(
       }
       entry.status = "error";
       entry.error = (e as Error).message || String(e);
+      if (e instanceof HostedError) entry.errorCode = e.code;
       return "error";
     }
   }

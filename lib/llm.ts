@@ -7,14 +7,24 @@
 // can't use tools, or times out, the next one answers instead, and the failing
 // one "cools down" for a while so later calls skip straight past it.
 
+import { appVersion, cloudUrl, sessionToken } from "./account";
+import { noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
 import { costOf, readableError, replacementFor } from "./models";
-import { PROVIDERS, providerName, type ProviderId } from "./providers-meta";
-import { currentModel, markRetired, type ModelRef, type Settings } from "./settings";
+import { HOSTED_NAME, PROVIDERS, providerName, type ProviderId } from "./providers-meta";
+import { currentModel, markRetired, usesHosted, type ModelRef, type Settings } from "./settings";
 import { replaceBotModel } from "./store";
 import type { Msg, ToolCall } from "./types";
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
-type RawCompletion = { text: string; toolCalls: ToolCall[]; usage: { input: number; output: number }; reasoning?: string };
+type RawCompletion = {
+  text: string;
+  toolCalls: ToolCall[];
+  usage: { input: number; output: number };
+  reasoning?: string;
+  /** theOovi only: credits this call used, and the name to show for the model. */
+  credits?: number;
+  hostedName?: string;
+};
 
 /** How hard the model thinks. "auto" = the model's own default. */
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
@@ -30,10 +40,26 @@ class ProviderError extends Error {
     message: string,
     readonly status: number,
     readonly retryAfter?: number,
+    readonly code?: string,
   ) {
     super(message);
   }
 }
+
+/**
+ * A theOovi call that can't go ahead: no credits, today's limit, signed out, offline,
+ * a request too large... `code` lets the app show the right screen (e.g. subscribe).
+ */
+export class HostedError extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+export const HOSTED_REF: ModelRef = { provider: "oovi", model: PROVIDERS.oovi.model };
 
 const g = globalThis as typeof globalThis & { __ooviCooldown?: Map<string, number> };
 const cooldown = (g.__ooviCooldown ??= new Map<string, number>());
@@ -61,6 +87,7 @@ function sleep(ms: number, signal?: AbortSignal) {
 
 /** A provider the user can actually call: it has a key, or needs none and was set up. */
 export function connected(s: Settings, p: ProviderId): boolean {
+  if (p === "oovi") return !!sessionToken();
   const cfg = s.providers[p];
   if (!cfg) return false;
   return PROVIDERS[p].needsKey ? !!cfg.apiKey : !!(cfg.models?.length || cfg.model || cfg.baseUrl);
@@ -85,6 +112,8 @@ export function enabledModels(s: Settings): ModelRef[] {
  * connected model works.
  */
 export function modelChain(s: Settings): ModelRef[] {
+  // theOovi is one white-label model: no chain of the person's own models behind it.
+  if (usesHosted(s)) return [HOSTED_REF];
   const primary: ModelRef = { provider: s.active, model: s.providers[s.active]?.model || PROVIDERS[s.active].model };
   const out: ModelRef[] = [];
   for (const r0 of [primary, ...(s.fallbacks ?? []), ...enabledModels(s)]) {
@@ -128,10 +157,12 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
       try {
         const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto");
         cooldown.delete(keyOf(ref));
+        if (ref.provider === "oovi") return { ...out, model: out.hostedName || HOSTED_NAME, ref, fallback: false, note };
         const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
         return { ...out, model: modelLabel(ref), ref, cost, fallback: keyOf(ref) !== keyOf(chain[0]!), note };
       } catch (e) {
         if (signal?.aborted) throw e;
+        if (ref.provider === "oovi") throw hostedFailure(e);
         const status = e instanceof ProviderError ? e.status : 0;
         const retryAfter = e instanceof ProviderError ? e.retryAfter : undefined;
         const raw = (e as Error).message || String(e);
@@ -186,7 +217,30 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
   );
 }
 
+const HOSTED_STATES = new Set<string>(["no_credits", "daily_limit", "suspended", "paused", "off", "blocked"]);
+
+/** Turns a failed theOovi call into a HostedError with a clear message and code. */
+function hostedFailure(e: unknown): HostedError {
+  if (e instanceof HostedError) return e;
+  const status = e instanceof ProviderError ? e.status : 0;
+  const code = (e instanceof ProviderError && e.code) || (status === 0 ? "offline" : status === 401 ? "signed_out" : "busy");
+  if (HOSTED_STATES.has(code)) noteHostedState(code as HostedState, (e as Error).message);
+  if (code === "offline") noteHostedState("offline", null);
+  const message =
+    code === "offline"
+      ? "You're offline, or the oovi service can't be reached. Check your internet connection and try again."
+      : code === "signed_out"
+        ? "You're signed out. Sign in again to use theOovi."
+        : (e as Error).message || "theOovi couldn't answer. Try again in a minute.";
+  return new HostedError(message, code);
+}
+
 async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort): Promise<RawCompletion> {
+  if (ref.provider === "oovi") {
+    const timeout = AbortSignal.timeout(290_000);
+    const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
+    return hosted({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig });
+  }
   const meta = PROVIDERS[ref.provider];
   const cfg = s.providers[ref.provider] ?? {};
   const baseUrl = (cfg.baseUrl || meta.baseUrl).replace(/\/+$/, "");
@@ -254,7 +308,8 @@ async function post(label: string, url: string, headers: Record<string, string>,
 
 type ABlock = Record<string, unknown>;
 
-async function anthropic(r: Req): Promise<RawCompletion> {
+/** Messages, tools and system prompt in Anthropic's format, with prompt-caching marks. */
+function anthropicParts(r: Req) {
   const msgs: { role: "user" | "assistant"; content: ABlock[] }[] = [];
   // Anthropic wants strictly alternating roles; merge neighbours with the same role.
   const push = (role: "user" | "assistant", blocks: ABlock[]) => {
@@ -278,13 +333,36 @@ async function anthropic(r: Req): Promise<RawCompletion> {
   // so far. In a bot's tool loop each step re-sends the same prefix, which is
   // then billed at the cheap cached-input rate instead of full price.
   const CACHE = { type: "ephemeral" } as const;
-  const lastMsg = msgs.at(-1);
-  const lastBlock = lastMsg?.content.at(-1);
+  const lastBlock = msgs.at(-1)?.content.at(-1);
   if (lastBlock) lastBlock.cache_control = CACHE;
   const tools = r.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }) as Record<string, unknown>);
   const lastTool = tools.at(-1);
   if (lastTool) lastTool.cache_control = CACHE;
+  return { messages: msgs, tools, system: [{ type: "text", text: r.system, cache_control: CACHE }] };
+}
 
+type AnthropicReply = {
+  model?: string;
+  content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
+  usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
+  oovi?: HostedLive & { credits?: number };
+};
+
+function readAnthropic(j: AnthropicReply): RawCompletion {
+  const content = j.content ?? [];
+  const u = j.usage ?? {};
+  return {
+    text: content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim(),
+    toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id || randomId(), name: b.name ?? "", input: b.input ?? {} })),
+    usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0 },
+    // Thinking blocks are kept for the UI only and never replayed: oovi trims old
+    // history to save tokens, and replayed thinking requires an unedited history.
+    reasoning: content.filter((b) => b.type === "thinking" && b.thinking).map((b) => b.thinking).join("\n\n") || undefined,
+  };
+}
+
+async function anthropic(r: Req): Promise<RawCompletion> {
+  const p = anthropicParts(r);
   const j = (await post(
     r.label,
     `${r.baseUrl}/v1/messages`,
@@ -293,25 +371,53 @@ async function anthropic(r: Req): Promise<RawCompletion> {
       model: r.model,
       max_tokens: r.maxOut,
       ...anthropicReasoning(r.model, r.effort, r.maxOut),
-      system: [{ type: "text", text: r.system, cache_control: CACHE }],
-      messages: msgs,
-      ...(tools.length ? { tools } : {}),
+      system: p.system,
+      messages: p.messages,
+      ...(p.tools.length ? { tools: p.tools } : {}),
     },
     r.signal,
-  )) as {
-    content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
-    usage?: { input_tokens?: number; output_tokens?: number };
-  };
+  )) as AnthropicReply;
+  return readAnthropic(j);
+}
 
-  const content = j.content ?? [];
-  return {
-    text: content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim(),
-    toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id || randomId(), name: b.name ?? "", input: b.input ?? {} })),
-    usage: { input: j.usage?.input_tokens ?? 0, output: j.usage?.output_tokens ?? 0 },
-    // Thinking blocks are kept for the UI only and never replayed: oovi trims old
-    // history to save tokens, and replayed thinking requires an unedited history.
-    reasoning: content.filter((b) => b.type === "thinking" && b.thinking).map((b) => b.thinking).join("\n\n") || undefined,
-  };
+// ---------- theOovi (the hosted model, through the oovi account service) ----------
+
+async function hosted(r: Req): Promise<RawCompletion> {
+  const token = sessionToken();
+  if (!token) throw new HostedError("You're signed out. Sign in again to use theOovi.", "signed_out");
+  const p = anthropicParts(r);
+  let res: Response;
+  try {
+    res = await fetch(`${r.baseUrl}/api/v1/ai/messages`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${token}`,
+        "x-oovi-version": appVersion(),
+        "x-oovi-platform": process.platform,
+      },
+      // The server picks the model; the app only says how hard to think.
+      body: JSON.stringify({ system: p.system, messages: p.messages, tools: p.tools, max_tokens: r.maxOut, ...(r.effort !== "auto" ? { effort: r.effort } : {}) }),
+      signal: r.signal,
+    });
+  } catch (e) {
+    if ((e as Error).name === "AbortError") throw e;
+    if ((e as Error).name === "TimeoutError") throw new ProviderError("theOovi took too long to answer. Try again.", 504, undefined, "busy");
+    throw new ProviderError("Can't reach the oovi service.", 0, undefined, "offline");
+  }
+  const text = await res.text();
+  let j: (AnthropicReply & { error?: string; code?: string }) | null = null;
+  try {
+    j = JSON.parse(text);
+  } catch {
+    j = null;
+  }
+  if (!res.ok || !j) {
+    const retry = Number(res.headers.get("retry-after"));
+    throw new ProviderError(j?.error || `The oovi service answered with an error (${res.status}).`, res.status, Number.isFinite(retry) && retry > 0 ? retry : undefined, j?.code);
+  }
+  noteHosted(j.oovi, j.model);
+  return { ...readAnthropic(j), credits: j.oovi?.credits, hostedName: j.model };
 }
 
 // ---------- OpenAI-compatible ----------

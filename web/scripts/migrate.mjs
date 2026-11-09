@@ -99,6 +99,111 @@ await pool.query(`
 `);
 console.log("app_events, usage_daily, catalog_items, user activity columns: ok");
 
+// theOovi: credits, the hosted model, pilot program, feedback and the admin audit log.
+// Credits are stored in millicredits (1 credit = 1000) so small calls add up exactly.
+await pool.query(`
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS oovi_status TEXT NOT NULL DEFAULT 'active';
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS oovi_status_reason TEXT NULL;
+
+  CREATE TABLE IF NOT EXISTS app_config (
+    key         TEXT PRIMARY KEY,
+    value       JSONB NOT NULL,
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_by  TEXT NULL
+  );
+
+  CREATE TABLE IF NOT EXISTS credit_accounts (
+    user_id              TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+    balance_mc           BIGINT NOT NULL DEFAULT 0,
+    plan                 TEXT NOT NULL DEFAULT 'free',
+    plan_until           TIMESTAMPTZ NULL,
+    plan_renews_at       TIMESTAMPTZ NULL,
+    daily_limit_override INT NULL,
+    ai_enabled           BOOLEAN NOT NULL DEFAULT true,
+    day                  DATE NOT NULL DEFAULT (now() AT TIME ZONE 'UTC')::date,
+    day_used_mc          BIGINT NOT NULL DEFAULT 0,
+    held_mc              BIGINT NOT NULL DEFAULT 0,
+    inflight             INT NOT NULL DEFAULT 0,
+    held_at              TIMESTAMPTZ NULL,
+    total_used_mc        BIGINT NOT NULL DEFAULT 0,
+    grant_ip_hash        TEXT NULL,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS credit_accounts_grant_ip_idx ON credit_accounts (grant_ip_hash, created_at);
+  CREATE INDEX IF NOT EXISTS credit_accounts_plan_idx ON credit_accounts (plan);
+
+  CREATE TABLE IF NOT EXISTS credit_ledger (
+    id          BIGSERIAL PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    delta_mc    BIGINT NOT NULL,
+    kind        TEXT NOT NULL,
+    note        TEXT NULL,
+    actor       TEXT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS credit_ledger_user_idx ON credit_ledger (user_id, created_at DESC);
+  CREATE INDEX IF NOT EXISTS credit_ledger_kind_idx ON credit_ledger (kind, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS ai_usage_daily (
+    user_id        TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    day            DATE NOT NULL,
+    calls          INT NOT NULL DEFAULT 0,
+    errors         INT NOT NULL DEFAULT 0,
+    blocked        INT NOT NULL DEFAULT 0,
+    input_tokens   BIGINT NOT NULL DEFAULT 0,
+    output_tokens  BIGINT NOT NULL DEFAULT 0,
+    cache_read     BIGINT NOT NULL DEFAULT 0,
+    cache_write    BIGINT NOT NULL DEFAULT 0,
+    cost_usd       NUMERIC(14, 6) NOT NULL DEFAULT 0,
+    credits_mc     BIGINT NOT NULL DEFAULT 0,
+    latency_ms     BIGINT NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
+  CREATE INDEX IF NOT EXISTS ai_usage_daily_day_idx ON ai_usage_daily (day);
+
+  CREATE TABLE IF NOT EXISTS pilot_requests (
+    id            BIGSERIAL PRIMARY KEY,
+    user_id       TEXT NOT NULL UNIQUE REFERENCES "user"(id) ON DELETE CASCADE,
+    use_case      TEXT NOT NULL,
+    organization  TEXT NULL,
+    role          TEXT NULL,
+    team_size     TEXT NULL,
+    status        TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected')),
+    credits       INT NULL,
+    admin_note    TEXT NULL,
+    reviewed_by   TEXT NULL,
+    reviewed_at   TIMESTAMPTZ NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS pilot_requests_status_idx ON pilot_requests (status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS feedback (
+    id           BIGSERIAL PRIMARY KEY,
+    user_id      TEXT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    kind         TEXT NOT NULL CHECK (kind IN ('problem', 'improvement', 'other')),
+    message      TEXT NOT NULL,
+    source       TEXT NOT NULL DEFAULT 'web',
+    app_version  TEXT NULL,
+    platform     TEXT NULL,
+    status       TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'reviewed', 'done')),
+    admin_note   TEXT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS admin_audit (
+    id          BIGSERIAL PRIMARY KEY,
+    admin_email TEXT NOT NULL,
+    action      TEXT NOT NULL,
+    target      TEXT NULL,
+    detail      JSONB NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS admin_audit_created_idx ON admin_audit (created_at DESC);
+`);
+console.log("theOovi credits, pilot, feedback and audit tables: ok");
+
 const { rows } = await pool.query(
   "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name",
 );

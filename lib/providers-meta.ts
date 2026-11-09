@@ -1,6 +1,7 @@
 // Shared between server and client: no Node imports here.
 
-export type ProviderId = "anthropic" | "openai" | "xai" | "gemini" | "openrouter" | "groq" | "deepseek" | "mistral" | "ollama" | "custom";
+/** "oovi" is theOovi: the hosted model that comes with an oovi account (paid with credits, no API key). */
+export type ProviderId = "oovi" | "anthropic" | "openai" | "xai" | "gemini" | "openrouter" | "groq" | "deepseek" | "mistral" | "ollama" | "custom";
 
 export type ProviderMeta = {
   label: string;
@@ -16,7 +17,11 @@ export type ProviderMeta = {
   free?: boolean;
 };
 
+/** The hosted model's name until the account service sends the one set in the admin console. */
+export const HOSTED_NAME = "theOovi 1.1";
+
 export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
+  oovi: { label: "theOovi", kind: "anthropic", baseUrl: "", model: "theoovi", needsKey: false, note: "Included with your oovi account. Uses credits; no API key needed." },
   anthropic: { label: "Anthropic (Claude)", kind: "anthropic", baseUrl: "https://api.anthropic.com", model: "claude-sonnet-5-5", needsKey: true, keyUrl: "https://console.anthropic.com/settings/keys" },
   openai: { label: "OpenAI", kind: "openai", baseUrl: "https://api.openai.com/v1", model: "gpt-5", needsKey: true, keyUrl: "https://platform.openai.com/api-keys" },
   xai: { label: "xAI (Grok)", kind: "openai", baseUrl: "https://api.x.ai/v1", model: "grok-4", needsKey: true, keyUrl: "https://console.x.ai" },
@@ -29,6 +34,7 @@ export const PROVIDERS: Record<ProviderId, ProviderMeta> = {
   custom: { label: "Custom (OpenAI-compatible)", kind: "openai", baseUrl: "", model: "", needsKey: false, note: "Any server that speaks the OpenAI chat-completions format: LM Studio, vLLM, Together, Cerebras…" },
 };
 
-export const PROVIDER_IDS = Object.keys(PROVIDERS) as ProviderId[];
+/** Providers that use the person's own API key or server (theOovi isn't one of them). */
+export const PROVIDER_IDS: ProviderId[] = (Object.keys(PROVIDERS) as ProviderId[]).filter((p) => p !== "oovi");
 
 export const providerName = (p: ProviderId) => PROVIDERS[p].label.replace(/ \(.*\)$/, "");

@@ -1,8 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
-import { accountDir, baseDir } from "./account";
-import { PROVIDERS, type ProviderId } from "./providers-meta";
+import { accountDir, baseDir, currentSession } from "./account";
+import { PROVIDER_IDS, PROVIDERS, type ProviderId } from "./providers-meta";
 
 /** model: this provider's default model. models: the models the user switched on (bots pick from these). */
 export type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; models?: string[] };
@@ -44,7 +44,14 @@ export type Settings = {
 
 export type PublicProvider = { baseUrl?: string; model?: string; models?: string[]; hasKey: boolean; keyHint?: string };
 export type PublicSearch = { provider: SearchProvider; searxngUrl: string; hasBraveKey: boolean; hasTavilyKey: boolean };
-export type PublicSettings = Omit<Settings, "providers" | "search" | "sandbox"> & { providers: Partial<Record<ProviderId, PublicProvider>>; search: PublicSearch; sandbox: { hasKey: boolean; keyHint?: string } };
+/** hosted: bots run on theOovi (signed in, and theOovi is the main model or no own key is set up). */
+export type PublicSettings = Omit<Settings, "providers" | "search" | "sandbox"> & {
+  providers: Partial<Record<ProviderId, PublicProvider>>;
+  search: PublicSearch;
+  sandbox: { hasKey: boolean; keyHint?: string };
+  hosted: boolean;
+  ownModels: boolean;
+};
 
 export type SettingsPatch = {
   active?: ProviderId;
@@ -191,6 +198,24 @@ export function loadSettings(): Settings {
   return s;
 }
 
+/** The person set up at least one model with their own key (or their own server). */
+export function ownProviderConnected(s: Settings): boolean {
+  return PROVIDER_IDS.some((p) => {
+    const cfg = s.providers[p];
+    if (!cfg) return false;
+    return PROVIDERS[p].needsKey ? !!cfg.apiKey : !!(cfg.models?.length || cfg.model || cfg.baseUrl);
+  });
+}
+
+/**
+ * Bots run on theOovi (the hosted model, paid with credits) when the person is signed
+ * in and either chose it as the main model or hasn't set up a model of their own.
+ * Picking specific models is only for people who bring their own API key.
+ */
+export function usesHosted(s: Settings): boolean {
+  return !!currentSession() && (s.active === "oovi" || !ownProviderConnected(s));
+}
+
 /** Safe to send to the UI: keys replaced by a hint. */
 export function publicSettings(): PublicSettings {
   const s = loadSettings();
@@ -201,7 +226,7 @@ export function publicSettings(): PublicSettings {
   }
   const search: PublicSearch = { provider: s.search.provider, searxngUrl: s.search.searxngUrl, hasBraveKey: !!s.search.braveKey, hasTavilyKey: !!s.search.tavilyKey };
   const key = s.sandbox?.e2bKey;
-  return { ...s, providers, search, sandbox: { hasKey: !!key, keyHint: key ? `…${key.slice(-4)}` : undefined } };
+  return { ...s, providers, search, sandbox: { hasKey: !!key, keyHint: key ? `…${key.slice(-4)}` : undefined }, hosted: usesHosted(s), ownModels: ownProviderConnected(s) };
 }
 
 export function updateSettings(patch: SettingsPatch): void {

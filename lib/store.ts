@@ -214,7 +214,13 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
   if (last?.kind === "user") preview = `You: ${last.text}`;
   else if (last?.kind === "bot") {
     const who = bots.find((b) => b.id === last.botId)?.name ?? "Bot";
-    preview = last.text ? `${c.kind === "group" ? `${who}: ` : ""}${last.text}` : last.status === "waiting" ? `${who} needs your OK` : `${who} is working…`;
+    preview = last.text ? `${c.kind === "group" ? `${who}: ` : ""}${last.text}` : last.status === "waiting"
+        ? `${who} needs your OK`
+        : last.status === "error"
+          ? `${who} couldn't reply`
+          : last.status === "stopped"
+            ? `${who} stopped`
+            : `${who} is working…`;
   }
   const name = c.kind === "direct" ? (bots.find((b) => b.id === c.memberIds[0])?.name ?? "Bot") : c.name;
   return {

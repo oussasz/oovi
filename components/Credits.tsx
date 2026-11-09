@@ -1,0 +1,294 @@
+"use client";
+
+// theOovi in the interface: the credits chip (balance + today's limit with its reset
+// time), the notice under a reply that couldn't run (no credits, limit reached,
+// offline…), the offline banner and the feedback dialog.
+import { useCallback, useEffect, useState } from "react";
+import type { HostedStatus } from "@/lib/hosted";
+import { useI18n } from "./I18n";
+import Icon from "./Icon";
+import { openSettings } from "./SettingsModal";
+
+type Loaded = HostedStatus | null;
+
+const EVENT = "oovi:credits";
+/** Ask every credits view to reload (after a reply finished…). */
+export const refreshCredits = () => window.dispatchEvent(new Event(EVENT));
+
+export function useHosted(): { status: Loaded; reload: (fresh?: boolean) => Promise<void> } {
+  const [status, setStatus] = useState<Loaded>(null);
+  const reload = useCallback(async (fresh = false) => {
+    try {
+      const r = await fetch(`/api/credits${fresh ? "?fresh=1" : ""}`, { cache: "no-store" });
+      const j = (await r.json()) as HostedStatus | { signedIn: false };
+      setStatus("state" in j ? j : null);
+    } catch {
+      /* the local server is restarting; keep what we have */
+    }
+  }, []);
+  useEffect(() => {
+    void reload();
+    const t = setInterval(() => void reload(), 60_000);
+    const on = () => void reload();
+    const fresh = () => void reload(true);
+    window.addEventListener(EVENT, on);
+    window.addEventListener("online", fresh);
+    window.addEventListener("focus", on);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener(EVENT, on);
+      window.removeEventListener("online", fresh);
+      window.removeEventListener("focus", on);
+    };
+  }, [reload]);
+  return { status, reload };
+}
+
+const fmt = (n: number, tag: string) => new Intl.NumberFormat(tag, { maximumFractionDigits: n < 10 ? 1 : 0 }).format(n);
+
+function untilReset(iso: string): { h: number; m: number } {
+  const ms = Math.max(0, new Date(iso).getTime() - Date.now());
+  return { h: Math.floor(ms / 3_600_000), m: Math.floor((ms % 3_600_000) / 60_000) };
+}
+
+/** The credits chip at the bottom of the sidebar, with a details panel. */
+export function CreditsChip() {
+  const { t, tag } = useI18n();
+  const { status, reload } = useHosted();
+  const [open, setOpen] = useState(false);
+  const [, tick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => tick((n) => n + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+  if (!status) return null;
+
+  const limit = status.dailyLimit;
+  const used = limit > 0 ? Math.min(status.dailyUsed, limit) : status.dailyUsed;
+  const pct = limit > 0 ? Math.min(100, Math.round((status.dailyUsed / limit) * 100)) : 0;
+  const reset = untilReset(status.resetsAt);
+  const offline = status.state === "offline";
+  const warn = !offline && (status.state !== "ok" || pct >= 80);
+
+  return (
+    <div className="credits">
+      <button
+        type="button"
+        className={`credits-chip${warn ? " warn" : ""}${offline ? " off" : ""}`}
+        onClick={() => {
+          setOpen(!open);
+          if (!open) void reload(true);
+        }}
+        aria-expanded={open}
+        title={t("credits.title", { name: status.displayName })}
+      >
+        <Icon name="spark" size={15} />
+        <span className="credits-num">{t("credits.balance", { n: fmt(status.balance, tag) })}</span>
+        {limit > 0 && (
+          <span className="credits-bar" aria-hidden>
+            <span style={{ width: `${pct}%` }} />
+          </span>
+        )}
+      </button>
+      {open && (
+        <div className="credits-pop" role="dialog" aria-label={t("credits.title", { name: status.displayName })}>
+          <div className="credits-head">
+            <b>{status.displayName}</b>
+            <span className="tag">{status.plan.name}</span>
+          </div>
+          {offline && <p className="notice small">{t("credits.offline")}</p>}
+          {status.message && !offline && <p className="notice small">{status.message}</p>}
+          <dl className="credits-dl">
+            <dt>{t("credits.balanceLabel")}</dt>
+            <dd>{fmt(status.balance, tag)}</dd>
+            <dt>{t("credits.today")}</dt>
+            <dd>{limit > 0 ? t("credits.todayOf", { used: fmt(used, tag), limit: fmt(limit, tag) }) : t("credits.noDailyLimit")}</dd>
+            <dt>{t("credits.resets")}</dt>
+            <dd>{t("credits.resetsIn", { h: reset.h, m: reset.m })}</dd>
+            {status.planUntil && (
+              <>
+                <dt>{t("credits.planUntil")}</dt>
+                <dd>{new Date(status.planUntil).toLocaleDateString(tag)}</dd>
+              </>
+            )}
+          </dl>
+          {limit > 0 && (
+            <div className="credits-meter" aria-hidden>
+              <span style={{ width: `${pct}%` }} />
+            </div>
+          )}
+          <p className="fine">{t("credits.explain")}</p>
+          <div className="credits-actions">
+            {status.links.subscribe && (
+              <a className="btn primary sm" href={status.links.subscribe} target="_blank" rel="noreferrer">
+                {t("credits.subscribe")}
+              </a>
+            )}
+            {status.pilot.eligible && !status.pilot.status && status.links.pilot && (
+              <a className="btn sm" href={status.links.pilot} target="_blank" rel="noreferrer">
+                {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })}
+              </a>
+            )}
+            {status.pilot.status === "pending" && <span className="fine">{t("credits.pilotPending")}</span>}
+            <button type="button" className="btn sm" onClick={() => openSettings()}>
+              {t("credits.ownKey")}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Shown under a reply theOovi couldn't run, with the way forward. */
+export function HostedNotice({ code, message }: { code: string; message?: string }) {
+  const { t, tag } = useI18n();
+  const { status } = useHosted();
+  const links = status?.links;
+  const reset = status ? untilReset(status.resetsAt) : null;
+  const text =
+    code === "no_credits"
+      ? t("credits.outTitle")
+      : code === "daily_limit"
+        ? t("credits.limitTitle", { h: reset?.h ?? 0, m: reset?.m ?? 0 })
+        : code === "offline"
+          ? t("credits.offlineTitle")
+          : code === "signed_out"
+            ? t("credits.signedOut")
+            : (message ?? "");
+  const paywall = code === "no_credits" || code === "daily_limit";
+  return (
+    <div className={`notice small hosted-notice${paywall ? " strong" : ""}`}>
+      <p>{text}</p>
+      <div className="credits-actions">
+        {paywall && links?.subscribe && (
+          <a className="btn primary sm" href={links.subscribe} target="_blank" rel="noreferrer">
+            {code === "daily_limit" ? t("credits.upgrade") : t("credits.subscribe")}
+          </a>
+        )}
+        {paywall && status?.pilot.eligible && !status.pilot.status && links?.pilot && (
+          <a className="btn sm" href={links.pilot} target="_blank" rel="noreferrer">
+            {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })}
+          </a>
+        )}
+        {code !== "offline" && code !== "signed_out" && (
+          <button type="button" className="btn sm" onClick={() => openSettings()}>
+            {t("credits.ownKey")}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** A thin banner while the computer has no internet connection. */
+export function OfflineBanner() {
+  const { t } = useI18n();
+  const [offline, setOffline] = useState(false);
+  useEffect(() => {
+    const update = () => setOffline(!navigator.onLine);
+    update();
+    window.addEventListener("online", update);
+    window.addEventListener("offline", update);
+    return () => {
+      window.removeEventListener("online", update);
+      window.removeEventListener("offline", update);
+    };
+  }, []);
+  if (!offline) return null;
+  return (
+    <div className="offline-banner" role="status">
+      <Icon name="globe" size={15} /> {t("offline.banner")}
+    </div>
+  );
+}
+
+/** Problem reports and ideas, sent to the oovi team. */
+export function FeedbackButton() {
+  const { t } = useI18n();
+  const [open, setOpen] = useState(false);
+  const [kind, setKind] = useState<"problem" | "improvement" | "other">("problem");
+  const [message, setMessage] = useState("");
+  const [state, setState] = useState<"idle" | "sending" | "sent">("idle");
+  const [error, setError] = useState<string | null>(null);
+
+  async function send() {
+    setState("sending");
+    setError(null);
+    try {
+      const r = await fetch("/api/feedback", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind, message }) });
+      const j = (await r.json().catch(() => ({}))) as { error?: string };
+      if (!r.ok) throw new Error(r.status === 503 ? t("feedback.offline") : j.error || t("feedback.failed"));
+      setState("sent");
+      setMessage("");
+    } catch (e) {
+      setError((e as Error).message);
+      setState("idle");
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        className="side-settings side-feedback"
+        onClick={() => {
+          setOpen(true);
+          setState("idle");
+          setError(null);
+        }}
+      >
+        <Icon name="bulb" /> {t("feedback.button")}
+      </button>
+      {open && (
+        <div className="modal-backdrop" onClick={() => setOpen(false)}>
+          <div className="feedback-window" role="dialog" aria-modal="true" aria-labelledby="fb-title" onClick={(e) => e.stopPropagation()}>
+            <h2 id="fb-title">{t("feedback.title")}</h2>
+            {state === "sent" ? (
+              <>
+                <p>{t("feedback.thanks")}</p>
+                <div className="credits-actions">
+                  <button type="button" className="btn primary sm" onClick={() => setOpen(false)}>
+                    {t("feedback.close")}
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="fine">{t("feedback.sub")}</p>
+                <div className="chip-row" role="radiogroup" aria-label={t("feedback.kind")}>
+                  {(["problem", "improvement", "other"] as const).map((k) => (
+                    <button key={k} type="button" role="radio" aria-checked={kind === k} className={`chip${kind === k ? " on" : ""}`} onClick={() => setKind(k)}>
+                      {t(`feedback.${k}`)}
+                    </button>
+                  ))}
+                </div>
+                <label className="sr-only" htmlFor="fb-msg">
+                  {t("feedback.message")}
+                </label>
+                <textarea
+                  id="fb-msg"
+                  className="input"
+                  rows={6}
+                  maxLength={5000}
+                  value={message}
+                  placeholder={kind === "problem" ? t("feedback.problemHint") : t("feedback.ideaHint")}
+                  onChange={(e) => setMessage(e.target.value)}
+                />
+                {error && <div className="notice error small">{error}</div>}
+                <div className="credits-actions">
+                  <button type="button" className="btn primary sm" disabled={state === "sending" || message.trim().length < 5} onClick={() => void send()}>
+                    {state === "sending" ? t("feedback.sending") : t("feedback.send")}
+                  </button>
+                  <button type="button" className="btn sm" onClick={() => setOpen(false)}>
+                    {t("feedback.cancel")}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}

@@ -31,7 +31,9 @@ export async function POST(req: Request) {
     if (!result.token) return apiError("Could not create a session.", 500);
     return json({ token: result.token, user: toPublicUser(result.user) }, 200);
   } catch (err) {
-    const { status } = describeAuthError(err);
+    const { status, message } = describeAuthError(err);
+    // Accounts blocked in the admin console get a clear reason instead of "wrong password".
+    if (status === 403 && /blocked/i.test(message)) return apiError(message, 403);
     if (status === 401 || status === 400 || status === 403) {
       return apiError("Invalid email or password.", 401);
     }

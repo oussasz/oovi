@@ -15,18 +15,49 @@ export function PageHead({ title, sub, children }: { title: string; sub?: ReactN
   );
 }
 
-/** 7 / 30 / 90 day switch, kept in the URL (?period=). */
-export function PeriodPicker({ period, path, params = {} }: { period: Period; path: string; params?: Record<string, string> }) {
+/** 7 / 30 / 90 day switch (or custom `periods`), kept in the URL (?period=). */
+export function PeriodPicker({
+  period,
+  path,
+  params = {},
+  periods = PERIODS,
+  label = (p) => `${p} days`,
+}: {
+  period: Period | number;
+  path: string;
+  params?: Record<string, string>;
+  periods?: readonly number[];
+  label?: (p: number) => string;
+}) {
   return (
     <nav className="seg adm-seg" aria-label="Time period">
-      {PERIODS.map((p) => {
+      {periods.map((p) => {
         const q = new URLSearchParams({ ...params, period: String(p) });
         return (
           <Link key={p} href={`${path}?${q}`} className={p === period ? "on" : undefined} aria-current={p === period ? "page" : undefined}>
-            {p} days
+            {label(p)}
           </Link>
         );
       })}
+    </nav>
+  );
+}
+
+/** A row of filter links (status, kind…), kept in the URL. */
+export function FilterLinks({
+  label,
+  items,
+}: {
+  label: string;
+  items: { href: string; text: string; on: boolean }[];
+}) {
+  return (
+    <nav className="adm-seg adm-filter" aria-label={label}>
+      {items.map((i) => (
+        <Link key={i.href} href={i.href} className={i.on ? "on" : undefined} aria-current={i.on ? "page" : undefined}>
+          {i.text}
+        </Link>
+      ))}
     </nav>
   );
 }

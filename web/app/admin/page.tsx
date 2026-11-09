@@ -1,11 +1,13 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { getOverview, parsePeriod } from "@/lib/admin-stats";
+import { getAiToday } from "@/lib/ai-stats";
 import { githubDownloadCounts } from "@/lib/releases";
 import { DOWNLOAD_TARGETS } from "@/lib/releases";
 import { BarChart, LineChart, SplitBars, StackedBarChart } from "@/components/admin/Charts";
-import { Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
-import { fmtInt, fmtPct, platformLabel, TARGET_COLORS, TARGET_LABELS } from "@/components/admin/format";
+import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { fmtInt, fmtNumber, fmtPct, fmtUsd, platformLabel, TARGET_COLORS, TARGET_LABELS } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Overview" };
@@ -13,7 +15,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parsePeriod((await searchParams).period);
-  const [o, gh] = await Promise.all([getOverview(period), githubDownloadCounts()]);
+  const [o, gh, ai] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday()]);
 
   const stickiness = o.mau.value ? o.dau.value / o.mau.value : null;
   const prevStickiness = o.mau.previous ? (o.dau.previous ?? 0) / o.mau.previous : null;
@@ -72,6 +74,32 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         )}
         <Kpi label="Crash reports, 7 days" value={fmtInt(o.crashes7.value)} change={o.crashes7} previousLabel="the 7 days before" lowerIsBetter />
       </div>
+
+      <Section
+        title="theOovi today"
+        sub="The hosted model since 00:00 UTC."
+        actions={
+          <Link href="/admin/ai" className="btn btn-ghost btn-sm">
+            Open theOovi
+          </Link>
+        }
+      >
+        {ai ? (
+          <div className="adm-kpis">
+            <Kpi label="Model cost today" value={fmtUsd(ai.costUsd)} hint={<Link href="/admin/ai?period=1">Costs and settings</Link>} />
+            <Kpi label="Credits used today" value={fmtNumber(Math.round(ai.credits * 10) / 10)} />
+            <Kpi label="theOovi users today" value={fmtInt(ai.users)} hint="People with at least one successful call" />
+            <Kpi
+              label="Pending pilot requests"
+              value={fmtInt(ai.pendingPilot)}
+              hint={<Link href="/admin/pilot?status=pending">Review requests</Link>}
+            />
+            <Kpi label="New feedback" value={fmtInt(ai.newFeedback)} hint={<Link href="/admin/feedback?status=new">Read feedback</Link>} />
+          </div>
+        ) : (
+          <Empty>theOovi numbers aren’t available yet. Run the database migration (npm run db:migrate) to create its tables.</Empty>
+        )}
+      </Section>
 
       <div className="adm-grid-2">
         <Section title="Sign-ups">

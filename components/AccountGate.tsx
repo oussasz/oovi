@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, resizeImage } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
-import { PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
+import { HOSTED_NAME, PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import { announceLanguage, useI18n } from "./I18n";
@@ -119,6 +119,8 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
   const [name, setName] = useState(account.user?.name ?? "");
   const [image, setImage] = useState<string | null>(account.user?.image ?? null);
   const [provider, setProvider] = useState<ProviderId>("anthropic");
+  // New accounts start on theOovi; bringing an API key is optional.
+  const [ownKey, setOwnKey] = useState(false);
   const [key, setKey] = useState("");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<string[]>([]);
@@ -155,6 +157,14 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
     run(async () => {
       await api("/api/account", { method: "PATCH", body: JSON.stringify({ name, image }) });
       setStep(2);
+    });
+
+  // theOovi: no key to enter. Creating the credit account happens on the first status check.
+  const startHosted = () =>
+    run(async () => {
+      await api("/api/settings", { method: "POST", body: JSON.stringify({ active: "oovi" }) });
+      await fetch("/api/credits?fresh=1", { cache: "no-store" }).catch(() => null);
+      setStep(3);
     });
 
   const saveAi = (test: boolean) =>
@@ -233,7 +243,26 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
           </div>
         )}
 
-        {step === 2 && (
+        {step === 2 && !ownKey && (
+          <div className="onb">
+            <h1>{t("onb.hostedTitle")}</h1>
+            <p className="muted">{t("onb.hostedSub")}</p>
+            <div className="hosted-start">
+              <Icon name="spark" size={22} />
+              <div>
+                <b>{HOSTED_NAME}</b>
+                <p className="muted">{t("onb.hostedPoints")}</p>
+              </div>
+            </div>
+            {msg && <div className={`notice small${msg.ok ? "" : " error"}`}>{msg.text}</div>}
+            <div className="row-btns">
+              <button className="btn primary" disabled={busy} onClick={() => void startHosted()}>{t("onb.hostedStart")} <Icon name="arrow" size={16} /></button>
+              <button className="btn" disabled={busy} onClick={() => setOwnKey(true)}>{t("onb.useOwnKey")}</button>
+            </div>
+          </div>
+        )}
+
+        {step === 2 && ownKey && (
           <div className="onb">
             <h1>{t("onb.aiTitle")}</h1>
             <p className="muted">{t("onb.aiSub")}</p>
@@ -269,7 +298,7 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
             {msg && <div className={`notice small${msg.ok ? "" : " error"}`}>{msg.text}</div>}
             <div className="row-btns">
               <button className="btn primary" disabled={busy || (meta.needsKey && !key)} onClick={() => void saveAi(true)}>{busy ? t("onb.checking") : t("onb.connectTest")}</button>
-              <button className="btn" disabled={busy} onClick={() => setStep(3)}>{t("onb.skip")}</button>
+              <button className="btn" disabled={busy} onClick={() => setOwnKey(false)}>{t("onb.useHostedInstead")}</button>
             </div>
           </div>
         )}
