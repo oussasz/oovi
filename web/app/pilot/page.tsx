@@ -7,10 +7,15 @@ import { pool } from "@/lib/db";
 import { getServerSession } from "@/lib/session";
 import { PilotForm } from "./PilotForm";
 
-export const metadata: Metadata = {
-  title: "Pilot program",
-  description: "People who join oovi during the pilot can ask for free credits for theOovi in exchange for feedback.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const pilot = await getPilotConfig();
+  return {
+    title: "Pilot program",
+    description: "People who join oovi during the pilot can ask for free credits for theOovi in exchange for feedback.",
+    // Invite-only unless listed publicly in the console: keep it out of search engines.
+    ...(pilot.public ? {} : { robots: { index: false, follow: false } }),
+  };
+}
 export const dynamic = "force-dynamic";
 
 const fmt = (v: number) => new Intl.NumberFormat("en-US").format(v);

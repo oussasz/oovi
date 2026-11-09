@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { getAiConfig, getPlans, type Plan } from "@/lib/ai-config";
+import { getAiConfig, getPilotConfig, getPlans, type Plan } from "@/lib/ai-config";
 
 export const metadata: Metadata = {
   title: "Pricing",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 const fmt = (v: number) => new Intl.NumberFormat("en-US").format(v);
-const dailyText = (v: number) => (v === 0 ? "No daily limit" : `Up to ${fmt(v)} credits a day`);
+const dailyText = (v: number) => (v === 0 ? "No daily limit" : `Daily safety limit: ${fmt(v)} credits`);
 
 function subscribeHref(url: string, plan: Plan): string {
   if (url) return url;
@@ -19,7 +19,7 @@ function subscribeHref(url: string, plan: Plan): string {
 }
 
 export default async function PricingPage() {
-  const [cfg, plans] = await Promise.all([getAiConfig(), getPlans()]);
+  const [cfg, plans, pilot] = await Promise.all([getAiConfig(), getPlans(), getPilotConfig()]);
   const free = plans.find((p) => p.id === "free");
   const paid = plans.filter((p) => p.visible && p.id !== "free");
   const name = cfg.displayName;
@@ -97,10 +97,10 @@ export default async function PricingPage() {
               </p>
             </div>
             <div>
-              <h3>What is the daily limit?</h3>
+              <h3>What is the daily safety limit?</h3>
               <p className="muted">
-                It’s the most credits you can use in one day, so nobody runs out by accident. It resets every day at 00:00 UTC. Plans
-                have a higher daily limit.
+                A generous cap that stops a runaway task from using up your credits. Most people never reach it. It resets every
+                day at 00:00 UTC.
               </p>
             </div>
             <div>
@@ -110,6 +110,7 @@ export default async function PricingPage() {
                 today’s usage on your account page and in the app.
               </p>
             </div>
+            {pilot.public && (
             <div>
               <h3>Is there a pilot program?</h3>
               <p className="muted">
@@ -119,6 +120,7 @@ export default async function PricingPage() {
                 </Link>
               </p>
             </div>
+            )}
           </div>
         </section>
       </main>

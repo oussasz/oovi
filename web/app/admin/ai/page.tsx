@@ -385,12 +385,19 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
           )}
         </Section>
 
-        <Section title="Pilot program" sub="Accounts created between the two dates can ask for free credits on the website’s Pilot page.">
+        <Section title="Pilot program" sub="Accounts created between the two dates can ask for free credits on the Pilot page. It stays private unless you list it below: share the link yourself.">
           <ActionForm action={savePilotSettings} submitLabel="Save pilot settings">
             <label className="check">
               <input type="checkbox" name="enabled" defaultChecked={pilot.enabled} />
               <span>
                 <b>Accept new requests</b>
+              </span>
+            </label>
+            <label className="check">
+              <input type="checkbox" name="public" defaultChecked={pilot.public} />
+              <span>
+                <b>List it publicly</b> — show the pilot in the app, on the pricing page and on account pages. Off: only people you
+                send the link to can find it (<span className="adm-mono">oovi.vercel.app/pilot</span>).
               </span>
             </label>
             <div className="adm-fields">

@@ -254,7 +254,7 @@ export async function savePilotSettings(fd: FormData): Promise<ActionState> {
   if (errors.length) return { errors };
 
   const before = await getPilotConfig();
-  const next: PilotConfig = { enabled: fdBool(fd, "enabled"), startsAt, endsAt, credits: credits!, plan, days: days! };
+  const next: PilotConfig = { enabled: fdBool(fd, "enabled"), public: fdBool(fd, "public"), startsAt, endsAt, credits: credits!, plan, days: days! };
   try {
     await savePilotConfig(next, admin.email);
     const changes = diff(before as unknown as Record<string, unknown>, next as unknown as Record<string, unknown>);

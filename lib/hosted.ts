@@ -18,7 +18,7 @@ export type HostedStatus = {
   planUntil: string | null;
   maxInputTokens: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
-  pilot: { open: boolean; eligible: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
+  pilot: { open: boolean; eligible: boolean; public?: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
   /** When the server last confirmed these numbers (ms). */
   checkedAt: number;
 };

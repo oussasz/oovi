@@ -160,13 +160,14 @@ export type CreditStatus = {
   planUntil: string | null;
   maxInputTokens: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
-  pilot: { open: boolean; eligible: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
+  /** public: the pilot may be advertised. When off, only people given the link find it. */
+  pilot: { open: boolean; eligible: boolean; public: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
 };
 
 const MSG = {
   suspended: (name: string) => `${name} is turned off for your account. Contact contact@conuron.com if you think this is a mistake. Your own API keys still work.`,
   noCredits: "You've used all your credits. Subscribe for more, or add your own API key.",
-  daily: "You've reached today's limit. It resets at midnight UTC. Upgrade for a higher daily limit.",
+  daily: "You've reached today's safety limit, which protects your credits from runaway use. It resets at midnight UTC.",
 };
 
 export async function creditStatus(userId: string, userCreatedAt: Date | string, ip: string | null): Promise<CreditStatus> {
@@ -222,7 +223,7 @@ export async function creditStatus(userId: string, userCreatedAt: Date | string,
       pilot: `${base}/pilot`,
       feedback: `${base}/feedback`,
     },
-    pilot: { open: pilotWin.open, eligible: pilotWin.eligible, status: pr.rows[0]?.status ?? null, credits: pilotCfg.credits },
+    pilot: { open: pilotWin.open, eligible: pilotWin.eligible, public: pilotCfg.public, status: pr.rows[0]?.status ?? null, credits: pilotCfg.credits },
   };
 }
 

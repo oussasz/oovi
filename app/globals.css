@@ -742,26 +742,34 @@ a.tag { text-decoration: none; }
 
 /* ---- theOovi: credits, notices, offline, feedback ---- */
 .credits { position: relative; margin: 8px 10px 0; }
-.credits-chip { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; text-align: left; }
-.credits-chip:hover { border-color: var(--faint); }
+.credits-chip { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--muted); font: inherit; font-size: 13px; cursor: pointer; text-align: left; transition: border-color 0.15s, background 0.15s; }
+.credits-chip:hover { border-color: var(--faint); color: var(--text); }
+.credits-chip b { color: var(--text); font-variant-numeric: tabular-nums; }
 .credits-chip.warn { border-color: var(--warn-border); background: var(--warn-bg); }
-.credits-chip.off { color: var(--muted); }
 .credits-num { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.credits-bar { position: relative; width: 46px; height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; flex: none; }
-.credits-bar > span, .credits-meter > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--primary); }
-.credits-chip.warn .credits-bar > span { background: var(--err); }
-.credits-pop { position: absolute; bottom: calc(100% + 8px); left: 0; right: -60px; z-index: 40; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 16px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.18); font-size: 13px; }
-.credits-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; }
-.credits-dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; }
-.credits-dl dt { color: var(--muted); }
-.credits-dl dd { margin: 0; text-align: right; font-weight: 700; font-variant-numeric: tabular-nums; }
-.credits-meter { position: relative; height: 8px; border-radius: 99px; background: var(--border); overflow: hidden; }
-.credits-pop .fine { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
+.credits-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--faint); flex: none; }
+.credits-scrim { position: fixed; inset: 0; z-index: 39; }
+.credits-pop { position: absolute; bottom: calc(100% + 8px); left: 0; width: 290px; z-index: 40; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--bg); border: 1px solid var(--border); border-radius: 18px; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.16); font-size: 13px; animation: popIn 0.16s cubic-bezier(0.3, 1.4, 0.5, 1); }
+.credits-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--muted); font-weight: 600; }
+.credits-big { display: flex; align-items: baseline; gap: 8px; margin-top: -4px; }
+.credits-big b { font-size: 34px; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.credits-big span { color: var(--muted); }
+.credits-msg { margin: 0; padding: 9px 11px; border-radius: 12px; background: var(--warn-bg); line-height: 1.45; }
+.credits-cap { display: flex; flex-direction: column; gap: 6px; }
+.credits-cap-row { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); }
+.credits-cap-row span:last-child { font-variant-numeric: tabular-nums; }
+.credits-cap.near .credits-cap-row:first-child { color: var(--text); font-weight: 600; }
+.credits-meter { position: relative; height: 6px; border-radius: 99px; background: var(--border); overflow: hidden; }
+.credits-meter > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: var(--text); transition: width 0.3s ease; }
+.credits-cap.near .credits-meter > span { background: var(--err); }
+.credits-pop .fine, .credits-cap .fine { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; }
 .credits-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .credits-actions a.btn { text-decoration: none; }
-.hosted-notice { display: flex; flex-direction: column; gap: 8px; }
+.credits-link { color: var(--muted); font-size: 12px; font-weight: 600; text-decoration: none; }
+.credits-link:hover { color: var(--text); }
+.hosted-notice { display: flex; flex-direction: column; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--side, var(--bg)); font-size: 14px; line-height: 1.5; }
 .hosted-notice p { margin: 0; }
-.hosted-notice.strong { border-color: var(--warn-border); }
+.hosted-notice.strong { border-color: var(--warn-border); background: var(--warn-bg); }
 .offline-banner { position: fixed; top: 0; left: 0; right: 0; z-index: 90; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 14px; background: var(--text); color: var(--bg); font-size: 13px; font-weight: 600; text-align: center; }
 .side-settings.side-feedback { margin-bottom: 0; background: none; border: 0; font: inherit; cursor: pointer; width: calc(100% - 20px); text-align: left; }
 .side-settings.side-feedback:hover { color: var(--text); }

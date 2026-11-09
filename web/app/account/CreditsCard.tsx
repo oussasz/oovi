@@ -7,7 +7,8 @@ const dateFmt = new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long
 /** theOovi credits on the account page (server-rendered from creditStatus). */
 export function CreditsCard({ s }: { s: CreditStatus }) {
   const share = s.dailyLimit > 0 ? Math.min(1, s.dailyUsed / s.dailyLimit) : 0;
-  const canApply = s.pilot.eligible && s.pilot.status === null;
+  // The pilot is invite-only unless it's listed publicly in the console.
+  const canApply = s.pilot.public && s.pilot.eligible && s.pilot.status === null;
   return (
     <section className="card credits-card" aria-labelledby="credits-title">
       <h2 id="credits-title">{s.displayName} credits</h2>
@@ -30,7 +31,7 @@ export function CreditsCard({ s }: { s: CreditStatus }) {
       </div>
       <div className="credits-today">
         <div className="credits-today-head">
-          <span className="credits-label">Used today</span>
+          <span className="credits-label">Daily safety limit</span>
           <span>
             <b>{fmt(s.dailyUsed)}</b> {s.dailyLimit > 0 ? `of ${fmt(s.dailyLimit)} credits` : "credits (no daily limit)"}
           </span>
@@ -47,7 +48,7 @@ export function CreditsCard({ s }: { s: CreditStatus }) {
             <span style={{ width: `${Math.round(share * 100)}%` }} />
           </div>
         )}
-        <span className="fine">The daily limit resets at 00:00 UTC.</span>
+        <span className="fine">A generous cap that protects your credits from a runaway task. Resets at 00:00 UTC.</span>
       </div>
       {s.pilot.status === "pending" && <p className="fine">Your pilot request is being reviewed.</p>}
       {canApply && (

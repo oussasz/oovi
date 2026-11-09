@@ -61,14 +61,22 @@ export function CreditsChip() {
     const id = setInterval(() => tick((n) => n + 1), 60_000);
     return () => clearInterval(id);
   }, []);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    window.addEventListener("keydown", close);
+    return () => window.removeEventListener("keydown", close);
+  }, [open]);
   if (!status) return null;
 
   const limit = status.dailyLimit;
-  const used = limit > 0 ? Math.min(status.dailyUsed, limit) : status.dailyUsed;
   const pct = limit > 0 ? Math.min(100, Math.round((status.dailyUsed / limit) * 100)) : 0;
   const reset = untilReset(status.resetsAt);
   const offline = status.state === "offline";
-  const warn = !offline && (status.state !== "ok" || pct >= 80);
+  // The daily limit is a safety cap: only surface it when someone gets close.
+  const nearCap = limit > 0 && pct >= 80;
+  const warn = !offline && (status.state !== "ok" || nearCap);
+  const showPilot = !!status.pilot.public && status.pilot.eligible && !status.pilot.status && !!status.links.pilot;
 
   return (
     <div className="credits">
@@ -80,61 +88,71 @@ export function CreditsChip() {
           if (!open) void reload(true);
         }}
         aria-expanded={open}
+        aria-haspopup="dialog"
         title={t("credits.title", { name: status.displayName })}
       >
         <Icon name="spark" size={15} />
-        <span className="credits-num">{t("credits.balance", { n: fmt(status.balance, tag) })}</span>
-        {limit > 0 && (
-          <span className="credits-bar" aria-hidden>
-            <span style={{ width: `${pct}%` }} />
-          </span>
-        )}
+        <span className="credits-num">
+          <b>{fmt(status.balance, tag)}</b> {t("credits.unit")}
+        </span>
+        {offline && <span className="credits-dot" aria-hidden />}
       </button>
       {open && (
-        <div className="credits-pop" role="dialog" aria-label={t("credits.title", { name: status.displayName })}>
-          <div className="credits-head">
-            <b>{status.displayName}</b>
-            <span className="tag">{status.plan.name}</span>
-          </div>
-          {offline && <p className="notice small">{t("credits.offline")}</p>}
-          {status.message && !offline && <p className="notice small">{status.message}</p>}
-          <dl className="credits-dl">
-            <dt>{t("credits.balanceLabel")}</dt>
-            <dd>{fmt(status.balance, tag)}</dd>
-            <dt>{t("credits.today")}</dt>
-            <dd>{limit > 0 ? t("credits.todayOf", { used: fmt(used, tag), limit: fmt(limit, tag) }) : t("credits.noDailyLimit")}</dd>
-            <dt>{t("credits.resets")}</dt>
-            <dd>{t("credits.resetsIn", { h: reset.h, m: reset.m })}</dd>
-            {status.planUntil && (
-              <>
-                <dt>{t("credits.planUntil")}</dt>
-                <dd>{new Date(status.planUntil).toLocaleDateString(tag)}</dd>
-              </>
-            )}
-          </dl>
-          {limit > 0 && (
-            <div className="credits-meter" aria-hidden>
-              <span style={{ width: `${pct}%` }} />
+        <>
+          <div className="credits-scrim" onClick={() => setOpen(false)} aria-hidden />
+          <div className="credits-pop" role="dialog" aria-label={t("credits.title", { name: status.displayName })}>
+            <div className="credits-head">
+              <span>{status.displayName}</span>
+              <span className="tag">{status.plan.name}</span>
             </div>
-          )}
-          <p className="fine">{t("credits.explain")}</p>
-          <div className="credits-actions">
-            {status.links.subscribe && (
-              <a className="btn primary sm" href={status.links.subscribe} target="_blank" rel="noreferrer">
-                {t("credits.subscribe")}
+            <div className="credits-big">
+              <b>{fmt(status.balance, tag)}</b>
+              <span>{t("credits.left")}</span>
+            </div>
+            {offline ? (
+              <p className="credits-msg">{t("credits.offline")}</p>
+            ) : (
+              status.message && <p className="credits-msg">{status.message}</p>
+            )}
+            {limit > 0 && (
+              <div className={`credits-cap${nearCap ? " near" : ""}`}>
+                <div className="credits-cap-row">
+                  <span>{t("credits.today")}</span>
+                  <span>{t("credits.todayOf", { used: fmt(Math.min(status.dailyUsed, limit), tag), limit: fmt(limit, tag) })}</span>
+                </div>
+                <div className="credits-meter" aria-hidden>
+                  <span style={{ width: `${Math.max(pct, status.dailyUsed > 0 ? 2 : 0)}%` }} />
+                </div>
+                <div className="credits-cap-row fine">
+                  <span>{t("credits.resetsIn", { h: reset.h, m: reset.m })}</span>
+                </div>
+              </div>
+            )}
+            <p className="fine">{t("credits.explain")}</p>
+            <div className="credits-actions">
+              {status.links.subscribe && (
+                <a className="btn primary sm" href={status.links.subscribe} target="_blank" rel="noreferrer">
+                  {t("credits.subscribe")}
+                </a>
+              )}
+              <button
+                type="button"
+                className="btn sm"
+                onClick={() => {
+                  setOpen(false);
+                  openSettings();
+                }}
+              >
+                {t("credits.ownKey")}
+              </button>
+            </div>
+            {showPilot && (
+              <a className="credits-link" href={status.links.pilot} target="_blank" rel="noreferrer">
+                {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })} →
               </a>
             )}
-            {status.pilot.eligible && !status.pilot.status && status.links.pilot && (
-              <a className="btn sm" href={status.links.pilot} target="_blank" rel="noreferrer">
-                {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })}
-              </a>
-            )}
-            {status.pilot.status === "pending" && <span className="fine">{t("credits.pilotPending")}</span>}
-            <button type="button" className="btn sm" onClick={() => openSettings()}>
-              {t("credits.ownKey")}
-            </button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
@@ -142,7 +160,7 @@ export function CreditsChip() {
 
 /** Shown under a reply theOovi couldn't run, with the way forward. */
 export function HostedNotice({ code, message }: { code: string; message?: string }) {
-  const { t, tag } = useI18n();
+  const { t } = useI18n();
   const { status } = useHosted();
   const links = status?.links;
   const reset = status ? untilReset(status.resetsAt) : null;
@@ -156,27 +174,21 @@ export function HostedNotice({ code, message }: { code: string; message?: string
           : code === "signed_out"
             ? t("credits.signedOut")
             : (message ?? "");
-  const paywall = code === "no_credits" || code === "daily_limit";
   return (
-    <div className={`notice small hosted-notice${paywall ? " strong" : ""}`}>
+    <div className={`hosted-notice${code === "no_credits" ? " strong" : ""}`}>
       <p>{text}</p>
-      <div className="credits-actions">
-        {paywall && links?.subscribe && (
-          <a className="btn primary sm" href={links.subscribe} target="_blank" rel="noreferrer">
-            {code === "daily_limit" ? t("credits.upgrade") : t("credits.subscribe")}
-          </a>
-        )}
-        {paywall && status?.pilot.eligible && !status.pilot.status && links?.pilot && (
-          <a className="btn sm" href={links.pilot} target="_blank" rel="noreferrer">
-            {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })}
-          </a>
-        )}
-        {code !== "offline" && code !== "signed_out" && (
+      {code !== "offline" && code !== "signed_out" && (
+        <div className="credits-actions">
+          {code === "no_credits" && links?.subscribe && (
+            <a className="btn primary sm" href={links.subscribe} target="_blank" rel="noreferrer">
+              {t("credits.subscribe")}
+            </a>
+          )}
           <button type="button" className="btn sm" onClick={() => openSettings()}>
             {t("credits.ownKey")}
           </button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

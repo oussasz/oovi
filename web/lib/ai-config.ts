@@ -66,6 +66,8 @@ export type AiConfig = {
 
 export type PilotConfig = {
   enabled: boolean;
+  /** Shown in the app, on the pricing page and on the account page. Off = only people with the link find it. */
+  public: boolean;
   /** ISO dates. Accounts created inside this window can apply. */
   startsAt: string;
   endsAt: string;
@@ -77,10 +79,11 @@ export type PilotConfig = {
 };
 
 export const DEFAULT_PLANS: Plan[] = [
-  { id: "free", name: "Free", price: "", monthlyCredits: 0, dailyLimit: 200, visible: true },
-  { id: "plus", name: "Plus", price: "$9.99 / month", monthlyCredits: 5000, dailyLimit: 400, visible: true },
-  { id: "pro", name: "Pro", price: "$24.99 / month", monthlyCredits: 12000, dailyLimit: 1000, visible: true },
-  { id: "pilot", name: "Pilot", price: "", monthlyCredits: 0, dailyLimit: 1000, visible: false },
+  // Daily limits are a safety cap against runaway use, not a quota people should feel.
+  { id: "free", name: "Free", price: "", monthlyCredits: 0, dailyLimit: 1000, visible: true },
+  { id: "plus", name: "Plus", price: "$9.99 / month", monthlyCredits: 5000, dailyLimit: 2000, visible: true },
+  { id: "pro", name: "Pro", price: "$24.99 / month", monthlyCredits: 12000, dailyLimit: 5000, visible: true },
+  { id: "pilot", name: "Pilot", price: "", monthlyCredits: 0, dailyLimit: 5000, visible: false },
 ];
 
 export const DEFAULT_AI: AiConfig = {
@@ -105,6 +108,7 @@ export const DEFAULT_AI: AiConfig = {
 
 export const DEFAULT_PILOT: PilotConfig = {
   enabled: true,
+  public: false,
   startsAt: "2026-11-09",
   endsAt: "2027-01-31",
   credits: 10_000,
@@ -185,6 +189,7 @@ export function normalizePilot(raw: unknown): PilotConfig {
   const d = DEFAULT_PILOT;
   return {
     enabled: bool(r.enabled, d.enabled),
+    public: bool(r.public, d.public),
     startsAt: DATE.test(str(r.startsAt, "", 10)) ? str(r.startsAt, "", 10) : d.startsAt,
     endsAt: DATE.test(str(r.endsAt, "", 10)) ? str(r.endsAt, "", 10) : d.endsAt,
     credits: Math.round(num(r.credits, d.credits, 0, 10_000_000)),
