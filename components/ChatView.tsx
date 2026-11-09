@@ -6,6 +6,7 @@ import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar
 import { FACE_COLORS } from "@/lib/faces";
 import { PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
+import "@/lib/desktop";
 import type { Bot, BotEntry, ChatEvent, ChatWithState, ToolCall, ToolResult } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
@@ -53,6 +54,43 @@ const urlOf = (r?: ToolResult) => r?.content.match(/^URL: (.*)$/m)?.[1] ?? "";
 
 // ---------- one bot reply ----------
 
+const FILE_KIND: Record<string, string> = { docx: "Word", doc: "Word", xlsx: "Excel", xls: "Excel", csv: "CSV", pptx: "PowerPoint", pdf: "PDF", md: "Markdown", html: "Web page", txt: "Text" };
+
+/** A file a bot made, with buttons to open it in its normal app or show it in its folder. */
+function FileCard({ file }: { file: NonNullable<ToolResult["file"]> }) {
+  const { t } = useI18n();
+  const [err, setErr] = useState<string | null>(null);
+  const ext = (file.name.split(".").pop() ?? "").toLowerCase();
+  const bridge = typeof window !== "undefined" ? window.oovi : undefined;
+  const size = file.size >= 1048576 ? `${(file.size / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.ceil(file.size / 1024))} KB`;
+  return (
+    <div className={`file-card ext-${ext}`}>
+      <span className="file-badge" aria-hidden>
+        {ext.toUpperCase().slice(0, 4)}
+      </span>
+      <div className="file-main">
+        <b title={file.path}>{file.name}</b>
+        <small>
+          {FILE_KIND[ext] ?? ext.toUpperCase()} · {size}
+        </small>
+        {err && <small className="msg-err">{err}</small>}
+      </div>
+      {bridge?.openFile ? (
+        <div className="file-actions">
+          <button className="btn sm primary" onClick={() => void bridge.openFile!(file.path).then((r) => setErr(r || null))}>
+            {t("chat.openFile")}
+          </button>
+          <button className="btn sm" onClick={() => void bridge.showFile?.(file.path)}>
+            {t("chat.showInFolder")}
+          </button>
+        </div>
+      ) : (
+        <code className="file-path">{file.path}</code>
+      )}
+    </div>
+  );
+}
+
 function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean }) {
   const { e, bot, isLast, status, bots, onShot, isLeader } = props;
   const rows = rowsOf(e);
@@ -61,6 +99,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
   const [open, setOpen] = useState<Set<string>>(new Set());
   const collapsed = !running && rows.length > 3 && !showAll;
   const tokens = e.usage.input + e.usage.output;
+  const files = rows.map((r) => r.result?.file).filter((f): f is NonNullable<ToolResult["file"]> => !!f);
   const { t, tag } = useI18n();
   const name = bot?.name ?? t("chat.deletedBot");
 
@@ -125,6 +164,13 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
           </div>
         )}
 
+        {files.length > 0 && (
+          <div className="file-cards">
+            {files.map((f) => (
+              <FileCard key={f.path} file={f} />
+            ))}
+          </div>
+        )}
         {e.text && (
           <div className="bubble bot-bubble">
             <Rich text={e.text} bots={bots} />

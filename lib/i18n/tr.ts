@@ -322,6 +322,8 @@ const tr: Dict = {
   "chat.aBot": "Bir bot",
   "chat.allow": "İzin ver",
   "chat.deny": "Reddet",
+  "chat.openFile": "Aç",
+  "chat.showInFolder": "Klasörde göster",
   "mk.finishInBrowser": "{name} girişini tarayıcında tamamla. Onaylar onaylamaz oovi bağlanır.",
   "mk.openSignIn": "Giriş sayfasını aç",
   "mk.signInFailed": "{name} girişi başlatılamadı.",

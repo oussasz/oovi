@@ -322,6 +322,8 @@ const de: Dict = {
   "chat.aBot": "Ein Bot",
   "chat.allow": "Erlauben",
   "chat.deny": "Ablehnen",
+  "chat.openFile": "Öffnen",
+  "chat.showInFolder": "Im Ordner zeigen",
   "mk.finishInBrowser": "Schließ die Anmeldung bei {name} im Browser ab. oovi verbindet sich, sobald du zustimmst.",
   "mk.openSignIn": "Anmeldeseite öffnen",
   "mk.signInFailed": "Die Anmeldung bei {name} konnte nicht gestartet werden.",

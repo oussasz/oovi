@@ -6,6 +6,10 @@ contextBridge.exposeInMainWorld("oovi", {
   /** Native "choose folder" dialog. Resolves to the folder's path, or null if cancelled. */
   pickFolder: (current) => ipcRenderer.invoke("oovi:pick-folder", typeof current === "string" ? current : undefined),
 
+  /** Open a file the bots created, with its normal app (Word, Excel…), or show it in its folder. */
+  openFile: (p) => ipcRenderer.invoke("oovi:open-file", String(p ?? "")),
+  showFile: (p) => ipcRenderer.invoke("oovi:show-file", String(p ?? "")),
+
   /** App updates (see electron/updater.cjs). */
   updates: {
     get: () => ipcRenderer.invoke("oovi:update-get"),

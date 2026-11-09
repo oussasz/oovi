@@ -13,6 +13,8 @@ export type ToolResult = {
   isError?: boolean;
   /** URL of a browser screenshot after the action (UI only, never sent to the model). */
   image?: string;
+  /** A file the tool created (UI shows Open / Show in folder). */
+  file?: { path: string; name: string; size: number };
 };
 
 export type Msg =

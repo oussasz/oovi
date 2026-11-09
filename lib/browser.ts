@@ -98,7 +98,7 @@ const channelsFor = (channel: BrowserConfig["channel"]): (string | undefined)[] 
   channel === "auto" ? ["chrome", "msedge", undefined] : [channel === "chromium" ? undefined : channel];
 
 /** "auto" tries installed Chrome, then Edge, then Playwright's own Chromium. */
-async function launchLocal(channel: BrowserConfig["channel"]): Promise<Browser> {
+export async function launchLocal(channel: BrowserConfig["channel"]): Promise<Browser> {
   let lastErr: unknown;
   for (const ch of channelsFor(channel)) {
     try {

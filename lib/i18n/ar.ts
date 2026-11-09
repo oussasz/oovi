@@ -331,6 +331,8 @@ const ar: Dict = {
   "chat.aBot": "بوت",
   "chat.allow": "سماح",
   "chat.deny": "رفض",
+  "chat.openFile": "فتح",
+  "chat.showInFolder": "إظهار في المجلد",
   "mk.finishInBrowser": "أكمل تسجيل الدخول إلى {name} في متصفحك. يتصل oovi فور موافقتك.",
   "mk.openSignIn": "افتح صفحة تسجيل الدخول",
   "mk.signInFailed": "تعذّر بدء تسجيل الدخول إلى {name}.",

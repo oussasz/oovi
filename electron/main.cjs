@@ -110,6 +110,26 @@ ipcMain.handle("oovi:pick-folder", async (event, current) => {
   return r.canceled ? null : (r.filePaths[0] ?? null);
 });
 
+// Open / reveal files the bots created. Documents only: never programs or scripts.
+const OPENABLE = /\.(docx?|xlsx?|pptx?|pdf|csv|tsv|md|txt|html?|json|png|jpe?g|gif|webp|svg)$/i;
+function safeFile(p) {
+  try {
+    const fs = require("node:fs");
+    return typeof p === "string" && path.isAbsolute(p) && OPENABLE.test(p) && fs.statSync(p).isFile();
+  } catch {
+    return false;
+  }
+}
+ipcMain.handle("oovi:open-file", async (event, p) => {
+  if (!isTrusted(event) || !safeFile(p)) return "That file can't be opened.";
+  return shell.openPath(p); // "" when it worked
+});
+ipcMain.handle("oovi:show-file", async (event, p) => {
+  if (!isTrusted(event) || !safeFile(p)) return false;
+  shell.showItemInFolder(p);
+  return true;
+});
+
 app.on("second-instance", () => {
   if (!win) return;
   if (win.isMinimized()) win.restore();

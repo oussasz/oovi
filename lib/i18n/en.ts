@@ -338,6 +338,8 @@ const en = {
   "chat.aBot": "A bot",
   "chat.allow": "Allow",
   "chat.deny": "Deny",
+  "chat.openFile": "Open",
+  "chat.showInFolder": "Show in folder",
   "mk.finishInBrowser": "Finish signing in to {name} in your browser. oovi connects as soon as you approve.",
   "mk.openSignIn": "Open the sign-in page",
   "mk.signInFailed": "Couldn't start signing in to {name}.",

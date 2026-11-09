@@ -24,6 +24,9 @@ export type UpdateState = {
 
 export type DesktopBridge = {
   pickFolder: (current?: string) => Promise<string | null>;
+  /** Resolves to "" when the file opened, or an error message. */
+  openFile?: (path: string) => Promise<string>;
+  showFile?: (path: string) => Promise<boolean>;
   updates?: {
     get: () => Promise<UpdateState | null>;
     check: () => Promise<UpdateState | null>;

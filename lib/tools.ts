@@ -10,6 +10,7 @@ import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
 import type { Settings } from "./settings";
 import { saveShot } from "./store";
 import type { ApprovalItem, BotTools, ToolCall, ToolResult, Workspace } from "./types";
+import { DOC_TOOLS, DOC_WRITE_TOOLS, describeDocCall, runDocTool } from "./files";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -223,6 +224,7 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
 export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false, workspace?: Workspace): Promise<ToolResult> {
   const input = call.input;
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
+  if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
   try {
     if (call.name === "memory") {
       const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);
@@ -317,6 +319,8 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
 export function needsApproval(call: ToolCall, settings: Settings, sessionId: string, usesAccounts = false, workspace?: Workspace): boolean {
   // Project folder: reading never asks; edits ask unless allowed for this folder; deletes and commands always ask.
   if (FILE_TOOLS.has(call.name)) return ALWAYS_ASK_TOOLS.has(call.name) || (EDIT_TOOLS.has(call.name) && !workspace?.autoEdit);
+  // Documents: new files in Downloads/oovi need no OK; writing into a project folder asks like an edit.
+  if (DOC_TOOLS.has(call.name)) return DOC_WRITE_TOOLS.has(call.name) && !!workspace && !workspace.autoEdit;
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
   if (call.name === "use_skill") return false;
@@ -335,6 +339,7 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
 /** What the approval card shows for one call. */
 export function approvalItem(call: ToolCall, sessionId: string, workspace?: Workspace): ApprovalItem {
   if (FILE_TOOLS.has(call.name)) return { call, ...describeFileCall(call, workspace), always: EDIT_TOOLS.has(call.name) };
+  if (DOC_TOOLS.has(call.name)) return { call, ...describeDocCall(call, workspace), always: true };
   return { call, summary: describeCall(call, sessionId) };
 }
 

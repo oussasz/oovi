@@ -160,6 +160,18 @@ textarea { resize: vertical; }
 .model-badge { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: var(--soft); color: var(--muted); }
 .msg-meta .cost { font-weight: 700; }
 .msg-note { font-size: 12.5px; color: var(--muted); margin: 2px 0 6px; }
+.file-cards { display: grid; gap: 6px; margin: 6px 0; max-width: 560px; }
+.file-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+.file-badge { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; font-size: 11px; font-weight: 900; letter-spacing: .02em; color: #fff; background: #6b6b66; }
+.ext-docx .file-badge, .ext-doc .file-badge { background: #2b579a; }
+.ext-xlsx .file-badge, .ext-xls .file-badge, .ext-csv .file-badge { background: #217346; }
+.ext-pptx .file-badge { background: #c43e1c; }
+.ext-pdf .file-badge { background: #d93025; }
+.file-main { flex: 1; min-width: 0; display: grid; }
+.file-main b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-main small { color: var(--muted); }
+.file-actions { display: flex; gap: 6px; flex: none; }
+.file-path { font-size: 11.5px; color: var(--muted); overflow-wrap: anywhere; max-width: 260px; }
 .msg.user.via { flex-direction: column; align-items: flex-end; }
 .via-label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 0 6px 4px; }
 

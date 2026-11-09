@@ -22,6 +22,7 @@ import { listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { getChat, listBots, newId, saveChat } from "./store";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
+import { DOC_SPECS } from "./files";
 import { FILE_SPECS } from "./workspace";
 import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry } from "./types";
 
@@ -104,6 +105,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (!bot.tools.web && !bot.tools.browser) {
     lines.push("", `You can't browse the web.${chat.kind === "group" ? " If you need fresh facts, ask a teammate who can." : " If you need fresh facts, say so."}`);
   }
+  lines.push(
+    "",
+    "You can create real files: create_document (Word .docx, PDF, Markdown, HTML), create_spreadsheet (Excel .xlsx with formulas, or CSV) and create_presentation (PowerPoint .pptx); read_document reads Office files.",
+    `When the user asks for a document, report, table, budget, plan or slides, make the actual file instead of only pasting text. Files go ${chat.workspace ? "into the project folder" : "into the user's Downloads/oovi folder"}; mention the file name in your reply.`,
+    "For Google Docs, Sheets or Slides: create .docx / .xlsx / .pptx (Google opens them). If a Google Drive, Zapier or Pipedream tool is available, you can upload it there when the user asks.",
+  );
   if (tools.some((t) => t.name === "message_group")) {
     lines.push(
       "",
@@ -264,6 +271,10 @@ export function statusText(c: ToolCall): string {
     case "save_skill": return "Saving a skill";
     case "memory": return "Updating memory";
     case "list_groups": return "Checking your groups";
+    case "create_document": return `Writing ${String(i.filename ?? "a document")}`;
+    case "create_spreadsheet": return `Building ${String(i.filename ?? "a spreadsheet")}`;
+    case "create_presentation": return `Making ${String(i.filename ?? "slides")}`;
+    case "read_document": return `Reading ${String(i.path ?? "a document")}`;
     case "read_group": return `Reading ${String(i.group ?? "a group")}`;
     case "message_group": return `Working with ${String(i.group ?? "a group")}`;
     case "list_files": return "Looking at the project files";
@@ -293,7 +304,7 @@ async function* runBot(
   const mcp = bot.tools.mcp?.length ? await mcpToolsFor(bot.tools.mcp) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...SKILL_SPECS, ...mcp.specs];
+  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...SKILL_SPECS, ...mcp.specs];
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id });
   let steps = 0;
 

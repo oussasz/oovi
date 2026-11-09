@@ -273,6 +273,13 @@ export async function runFileTool(call: ToolCall, ws: Workspace | undefined): Pr
   }
 }
 
+/** For other tools that write into the project folder (documents): path inside it, or throws. */
+export function resolveInWorkspace(ws: Workspace, p: string): { abs: string; rel: string } {
+  const r = resolveIn(rootOf(ws), p);
+  guardWrite(r.rel);
+  return r;
+}
+
 function guardWrite(rel: string) {
   if (rel === ".git" || rel.startsWith(".git/")) throw new FolderError("Bots don't change files inside .git. Use git commands with run_command instead.");
 }
