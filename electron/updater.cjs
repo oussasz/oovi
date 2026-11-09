@@ -30,7 +30,7 @@ const path = require("node:path");
 
 const OWNER = "oussasz";
 const REPO = "oovi-downloads";
-const SITE = "https://oovi.vercel.app";
+const SITE = "https://oovi.conuron.com";
 const FIRST_CHECK_MS = 15_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const APP_ID = "app.oovi.desktop"; // package.json build.appId (the shortcuts' AppUserModelID)

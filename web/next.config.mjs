@@ -3,6 +3,18 @@ const nextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
   serverExternalPackages: ["pg"],
+  // The site moved to oovi.conuron.com. Pages on the old address redirect there; /api stays
+  // on both so installed apps that still use the old address keep working.
+  async redirects() {
+    return [
+      {
+        source: "/:path((?!api/).*)",
+        has: [{ type: "host", value: "oovi.vercel.app" }],
+        destination: "https://oovi.conuron.com/:path",
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

@@ -24,6 +24,7 @@ import type { ToolSpec } from "./llm";
 import { dataDir, setComputerFiles, type ComputerFiles, type Settings } from "./settings";
 import type { Chat, ToolCall, ToolResult } from "./types";
 import { systemDirs, within } from "./workspace";
+import { homeDir } from "./home";
 
 const isWin = process.platform === "win32";
 const isMac = process.platform === "darwin";
@@ -137,11 +138,12 @@ function realOf(p: string): string {
   }
 }
 
+
 /** What a bot wrote as a path: quotes, ~, %USERPROFILE%, forward slashes; relative = inside the user folder. */
 function expand(raw: unknown): string | null {
   let p = typeof raw === "string" ? raw.trim().replace(/^["'`]+|["'`]+$/g, "") : "";
   if (!p) return null;
-  const home = os.homedir();
+  const home = homeDir();
   if (p === "~" || p.startsWith("~/") || p.startsWith("~\\")) p = path.join(home, p.slice(1));
   p = p.replace(/%([A-Za-z_][\w()]*)%/g, (m, k: string) => process.env[k] ?? m).replace(/^\$HOME(?=[\\/]|$)/, home);
   if (isWin) p = p.replace(/\//g, "\\");
@@ -168,7 +170,7 @@ let cache: Blockers | null = null;
 
 function blockers(): Blockers {
   if (cache && Date.now() - cache.at < 60_000) return cache;
-  const home = realOf(os.homedir());
+  const home = realOf(homeDir());
   const appData: Blockers["appData"] = [];
   if (isWin) {
     const ad = realOf(path.join(home, "AppData"));
@@ -240,7 +242,7 @@ export function checkAllowedFolder(input: unknown): { path: string } | { error: 
     return { error: "That folder doesn't exist." };
   }
   if (path.dirname(real) === real) return { error: "Choose a folder, not a whole drive." };
-  if (within(real, realOf(os.homedir()))) return { error: "Choose a folder inside your user folder (like Documents), not the whole user folder." };
+  if (within(real, realOf(homeDir()))) return { error: "Choose a folder inside your user folder (like Documents), not the whole user folder." };
   const why = blockReason(real);
   if (why) return { error: `That's ${why}; oovi never opens it.` };
   return { path: real };
@@ -257,7 +259,7 @@ export function allowFolder(dir: string, current: ComputerFiles): string | null 
 
 /** The user's usual folders that exist (OneDrive included; folders inside another one are skipped). */
 export function usualFolders(): string[] {
-  const home = os.homedir();
+  const home = homeDir();
   const cands = ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music", ...(isMac ? ["Movies"] : [])].map((n) => path.join(home, n));
   for (const k of ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]) if (process.env[k]) cands.push(process.env[k]!);
   try {

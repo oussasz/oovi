@@ -9,7 +9,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 /** Where the account website / API lives. */
-export const DEFAULT_CLOUD_URL = "https://oovi.vercel.app";
+export const DEFAULT_CLOUD_URL = "https://oovi.conuron.com";
 export const cloudUrl = () => (process.env.OOVI_CLOUD_URL || DEFAULT_CLOUD_URL).replace(/\/+$/, "");
 
 export type AccountUser = { id: string; email: string; name: string; image: string | null; createdAt?: string };

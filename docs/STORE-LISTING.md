@@ -20,8 +20,8 @@ Package identity: Conuron.oovi (publisher Conuron), set in package.json > build.
 
 - Pricing: Free. Markets: all.
 - Category: Productivity. Subcategory: none.
-- Privacy policy URL: https://oovi.vercel.app/privacy
-- Website: https://oovi.vercel.app
+- Privacy policy URL: https://oovi.conuron.com/privacy
+- Website: https://oovi.conuron.com
 - Support contact: your email.
 - Age ratings: answer the questionnaire. oovi has user-generated text and talks
   to AI services (theOovi or the user's own key); subscriptions are sold on the

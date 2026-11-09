@@ -397,7 +397,7 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
               <input type="checkbox" name="public" defaultChecked={pilot.public} />
               <span>
                 <b>List it publicly</b> — show the pilot in the app, on the pricing page and on account pages. Off: only people you
-                send the link to can find it (<span className="adm-mono">oovi.vercel.app/pilot</span>).
+                send the link to can find it (<span className="adm-mono">oovi.conuron.com/pilot</span>).
               </span>
             </label>
             <div className="adm-fields">

@@ -12,7 +12,8 @@ import { validateImage, MIN_PASSWORD, MAX_PASSWORD } from "./validation";
 export const SESSION_LIFETIME_SECONDS = 60 * 60 * 24 * 60; // 60 days
 
 function trustedOrigins(): string[] {
-  const origins = new Set<string>([siteUrl(), "http://localhost:3200"]);
+  // Both addresses: the site moved to oovi.conuron.com, older links and apps may use the old one.
+  const origins = new Set<string>([siteUrl(), "https://oovi.conuron.com", "https://oovi.vercel.app", "http://localhost:3200"]);
   for (const v of [
     process.env.VERCEL_URL,
     process.env.VERCEL_BRANCH_URL,

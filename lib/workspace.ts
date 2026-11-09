@@ -14,6 +14,7 @@ import path from "node:path";
 import type { ToolSpec } from "./llm";
 import { dataDir } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
+import { homeDir } from "./home";
 
 export const FILE_SPECS: ToolSpec[] = [
   {
@@ -127,7 +128,7 @@ export function checkFolder(input: unknown): { path: string } | { error: string 
     return { error: "That folder doesn't exist." };
   }
   if (path.dirname(real) === real) return { error: "Choose a project folder, not a whole drive." };
-  if (within(real, os.homedir())) return { error: "Choose a project folder, not your whole user folder. Make a folder for the project inside it." };
+  if (within(real, homeDir())) return { error: "Choose a project folder, not your whole user folder. Make a folder for the project inside it." };
   for (const d of systemDirs()) if (within(d, real)) return { error: "That's a system folder. Choose one of your own project folders." };
   const data = process.env.OOVI_DATA;
   if (data && (within(path.resolve(data), real) || within(real, path.resolve(data)))) return { error: "That folder holds oovi's own data. Choose another one." };
@@ -416,7 +417,7 @@ function commandEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, CI: "1", FORCE_COLOR: "0", NO_COLOR: "1", npm_config_yes: "true" };
   // Apps opened from the Dock/Finder get a minimal PATH; add the usual tool folders.
   if (process.platform === "darwin") {
-    const extra = ["/opt/homebrew/bin", "/usr/local/bin", path.join(os.homedir(), ".local/bin")];
+    const extra = ["/opt/homebrew/bin", "/usr/local/bin", path.join(homeDir(), ".local/bin")];
     env.PATH = [...new Set([...(env.PATH ?? "").split(":"), ...extra].filter(Boolean))].join(":");
   }
   // Don't hand the app's own Electron/Next settings to the user's tools.

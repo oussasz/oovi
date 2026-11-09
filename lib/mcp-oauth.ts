@@ -44,7 +44,7 @@ export class OoviOAuthProvider implements OAuthClientProvider {
   get clientMetadata(): OAuthClientMetadata {
     return {
       client_name: "oovi",
-      client_uri: "https://oovi.vercel.app",
+      client_uri: "https://oovi.conuron.com",
       redirect_uris: [this.redirect],
       grant_types: ["authorization_code", "refresh_token"],
       response_types: ["code"],
