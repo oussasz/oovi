@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { api, refreshSidebar } from "@/lib/client";
 import type { Bot, Chat } from "@/lib/types";
-import Face, { FaceStack } from "./Face";
+import Face, { FaceStack, LeadFace } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
@@ -73,7 +73,7 @@ export default function GroupEditor({ id }: { id: string }) {
   return (
     <div className="page narrow">
       <div className="group-hero">
-        <FaceStack faces={members.map((m) => m.face)} size={92} />
+        <FaceStack faces={members.map((m) => m.face)} lead={orchestrate && lead && members.length > 1 ? members.indexOf(lead) : undefined} size={92} />
         <div className="group-hero-text">
           <span className="opt-label">{isNew ? t("common.newGroup") : t("group.edit")}</span>
           <input className="title-input" value={name} maxLength={48} placeholder={t("group.namePh")} onChange={(e) => setName(e.target.value)} aria-label={t("group.nameAria")} autoFocus={isNew} />
@@ -88,7 +88,7 @@ export default function GroupEditor({ id }: { id: string }) {
             const on = memberIds.includes(b.id);
             return (
               <button key={b.id} type="button" className={`member${on ? " on" : ""}`} onClick={() => toggle(b.id)} aria-pressed={on}>
-                <Face face={b.face} size={56} mood={on ? "happy" : "idle"} />
+                {on && orchestrate && lead?.id === b.id && members.length > 1 ? <LeadFace face={b.face} size={56} mood="happy" /> : <Face face={b.face} size={56} mood={on ? "happy" : "idle"} />}
                 <b>{b.name}</b>
                 <span>{b.role || t("common.bot")}</span>
                 {on && (

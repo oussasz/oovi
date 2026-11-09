@@ -2696,3 +2696,13 @@ textarea.input {
     grid-template-columns: 1fr;
   }
 }
+
+/* Overview: operating costs split by who pays */
+.adm-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; margin-bottom: 20px; }
+.adm-split-col { min-width: 0; }
+.adm-split-h { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; font-size: 16px; }
+.adm-split-who { margin-left: auto; padding: 3px 10px; border-radius: 99px; background: var(--surface); border: 1px solid var(--border); color: var(--muted); font-size: 12px; font-weight: 600; }
+.adm-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.adm-kpis.adm-kpis-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.adm-caption { caption-side: top; text-align: left; padding: 0 0 8px; color: var(--muted); font-size: 13px; font-weight: 600; }
+@media (max-width: 860px) { .adm-split { grid-template-columns: minmax(0, 1fr); } }

@@ -543,10 +543,58 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
   );
 }
 
-/** Up to three slimes huddled together, like the oovi logo. */
-export function FaceStack({ faces, size = 40, moods }: { faces: (FaceT | Record<string, unknown>)[]; size?: number; moods?: Mood[] }) {
-  const shown = faces.slice(0, 3);
+/** A small crown: marks the group leader wherever it appears. */
+export function Crown({ size = 12 }: { size?: number }) {
+  return (
+    <svg className="crown" width={size} height={Math.round(size * 0.72)} viewBox="0 0 18 13" aria-hidden>
+      <path d="M1.5 11.5 0.8 3.2l4.6 3.4L9 .8l3.6 5.8 4.6-3.4-.7 8.3z" fill="currentColor" stroke="var(--bg)" strokeWidth="1.2" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+/** The group leader's face: a warm ring and a crown, so it stands out anywhere. */
+export function LeadFace(props: FaceProps) {
+  const size = props.size ?? 40;
+  return (
+    <span className="face-lead" style={{ width: size, height: size }}>
+      <Face {...props} />
+      {/* On small faces the ring alone is clearer than a tiny crown. */}
+      {size >= 34 && (
+        <span className="face-lead-crown">
+          <Crown size={Math.round(size * 0.3)} />
+        </span>
+      )}
+    </span>
+  );
+}
+
+/**
+ * Up to three slimes huddled together, like the oovi logo. With `lead` (an index into
+ * faces), the leader stands in front, bigger and framed, with teammates behind it.
+ */
+export function FaceStack({ faces, size = 40, moods, lead }: { faces: (FaceT | Record<string, unknown>)[]; size?: number; moods?: Mood[]; lead?: number }) {
   const box = { position: "relative" as const, display: "inline-block", flex: "none", width: size, height: size };
+  const hasLead = lead !== undefined && lead >= 0 && lead < faces.length && faces.length > 1;
+  if (hasLead) {
+    const order = [lead!, ...faces.map((_, i) => i).filter((i) => i !== lead)].slice(0, 3);
+    const big = Math.round(size * 0.72);
+    const small = Math.round(size * (order.length === 2 ? 0.52 : 0.46));
+    // Teammates at the back (top corners), the leader in front at the bottom.
+    const back: [number, number][] = order.length === 2 ? [[size - small, 0]] : [[0, 0], [size - small, 0]];
+    return (
+      <span className="face-stack" style={box}>
+        {order.slice(1).map((fi, i) => (
+          <span key={fi} style={{ position: "absolute", left: back[i]?.[0], top: back[i]?.[1], zIndex: 1, opacity: 0.92 }}>
+            <Face face={faces[fi]!} size={small} mood={moods?.[fi]} />
+          </span>
+        ))}
+        <span style={{ position: "absolute", left: order.length === 2 ? 0 : (size - big) / 2, top: size - big, zIndex: 2 }}>
+          <LeadFace face={faces[order[0]!]!} size={big} mood={moods?.[order[0]!]} />
+        </span>
+      </span>
+    );
+  }
+  const shown = faces.slice(0, 3);
   if (shown.length <= 1) return shown[0] ? <Face face={shown[0]} size={size} mood={moods?.[0]} /> : <span className="face-stack" style={box} />;
   const s2 = Math.round(size * (shown.length === 2 ? 0.7 : 0.66));
   // Logo layout: one at the back on top, two in front at the bottom.

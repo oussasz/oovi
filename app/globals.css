@@ -1,5 +1,6 @@
 /* oovi: warm paper, black ink, the logo's three pastels. */
 :root {
+  --lead: #e9a414;
   --bg: #fbfaf7;
   --side: #f4f2ec;
   --panel: #ffffff;
@@ -27,6 +28,7 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
+    --lead: #f3c04a;
     --bg: #131312;
     --side: #181816;
     --panel: #1e1e1c;
@@ -783,3 +785,12 @@ a.tag { text-decoration: none; }
 .hosted-start p { margin: 4px 0 0; font-size: 13px; }
 @media (max-width: 760px) { .credits-pop { right: 0; } }
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* ---- the group leader: framed, crowned, in front ---- */
+.face-lead { position: relative; display: inline-grid; place-items: center; flex: none; }
+.face-lead::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; border: 2.5px solid var(--lead); background: color-mix(in srgb, var(--lead) 10%, transparent); }
+.face-lead > svg { position: relative; }
+.face-lead-crown { position: absolute; top: -6px; right: -4px; display: grid; place-items: center; color: var(--lead); line-height: 0; transform: rotate(14deg); }
+.chip.lead { border-color: color-mix(in srgb, var(--lead) 60%, var(--border)); background: color-mix(in srgb, var(--lead) 9%, var(--bg)); }
+.chip .crown { color: var(--lead); margin-left: 2px; }
+.face-lead-crown .crown path, .chip .crown path { fill: var(--lead); }

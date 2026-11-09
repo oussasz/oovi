@@ -242,7 +242,7 @@ const tr: Dict = {
   "side.botCount_other": "{count} bot",
 
   "home.title": "Ekibin hazır.",
-  "home.sub": "Botlara bir yüz ve bir görev ver, onları gruplara koy ve işi birbirlerine devretmelerine izin ver. Her şey kendi API key'inle, aboneliksiz çalışır.",
+  "home.sub": "Botlara bir yüz ve bir görev ver, onları gruplara koy ve işi birbirlerine devretmelerine izin ver. theOovi ile ücretsiz başla ya da kendi API key'ini kullan.",
   "home.needsKey": "Önce {settings} bölümüne {provider} API key'ini ekle ya da orada başka bir sağlayıcı seç.",
   "home.open": "{name} grubunu aç",
   "home.createGroup": "Grup oluştur",

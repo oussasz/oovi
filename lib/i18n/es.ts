@@ -242,7 +242,7 @@ const es: Dict = {
   "side.botCount_other": "{count} bots",
 
   "home.title": "Tu equipo está listo.",
-  "home.sub": "Dales a los bots una cara y un trabajo, ponlos en grupos y deja que se pasen el trabajo. Todo funciona con tu propia API key, sin suscripción.",
+  "home.sub": "Dales a los bots una cara y un trabajo, ponlos en grupos y deja que se pasen el trabajo. Empieza gratis con theOovi o usa tu propia API key.",
   "home.needsKey": "Primero, añade tu API key de {provider} en {settings} o elige otro proveedor allí.",
   "home.open": "Abrir {name}",
   "home.createGroup": "Crear un grupo",

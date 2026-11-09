@@ -61,7 +61,14 @@ export default function Home() {
         <div className="tiles">
           {groups.map((g) => (
             <Link key={g.id} href={`/c/${g.id}`} className="tile">
-              <FaceStack faces={g.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={64} />
+              <FaceStack
+                faces={g.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)}
+                lead={(() => {
+                  const ids = g.memberIds.filter((id) => face(id));
+                  return ids.length > 1 ? Math.max(0, ids.indexOf(g.leadId ?? ids[0]!)) : undefined;
+                })()}
+                size={64}
+              />
               <b>{g.name}</b>
               <span>{g.preview || g.memberIds.map((id) => bots.find((b) => b.id === id)?.name).filter(Boolean).join(", ")}</span>
             </Link>

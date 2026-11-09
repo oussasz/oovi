@@ -462,7 +462,8 @@ async function* runBot(
       entry.model = out.model;
       entry.fallback = out.fallback;
       if (typeof out.cost === "number") entry.cost = (entry.cost ?? 0) + out.cost;
-      countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
+      // Own-key usage only: theOovi calls are recorded exactly by the oovi server.
+      if (out.ref.provider !== "oovi") countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
       if (out.note) entry.note = out.note;
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, ...(out.reasoning ? { reasoning: out.reasoning.slice(0, 20_000) } : {}) });
       yield { type: "entry", entry };

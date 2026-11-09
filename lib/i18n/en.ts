@@ -257,7 +257,7 @@ const en = {
 
   // ---------- home ----------
   "home.title": "Your crew is ready.",
-  "home.sub": "Give bots a face and a job, put them in groups, and let them pass work to each other. Everything runs on your own API key, with no subscription.",
+  "home.sub": "Give bots a face and a job, put them in groups, and let them pass work to each other. Start free with theOovi, or use your own API key.",
   "home.needsKey": "First, add your {provider} API key in {settings}, or pick another provider there.",
   "home.open": "Open {name}",
   "home.createGroup": "Create a group",

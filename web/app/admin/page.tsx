@@ -3,6 +3,7 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { getOverview, parsePeriod } from "@/lib/admin-stats";
 import { getAiToday } from "@/lib/ai-stats";
+import { getOperatingCosts } from "@/lib/cost-stats";
 import { githubDownloadCounts } from "@/lib/releases";
 import { DOWNLOAD_TARGETS } from "@/lib/releases";
 import { BarChart, LineChart, SplitBars, StackedBarChart } from "@/components/admin/Charts";
@@ -15,7 +16,8 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parsePeriod((await searchParams).period);
-  const [o, gh, ai] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday()]);
+  const [o, gh, ai, costs] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday(), getOperatingCosts(period)]);
+  const perUser = (cost: number, users: number) => (users ? fmtUsd(cost / users) : "–");
 
   const stickiness = o.mau.value ? o.dau.value / o.mau.value : null;
   const prevStickiness = o.mau.previous ? (o.dau.previous ?? 0) / o.mau.previous : null;
@@ -74,6 +76,84 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         )}
         <Kpi label="Crash reports, 7 days" value={fmtInt(o.crashes7.value)} change={o.crashes7} previousLabel="the 7 days before" lowerIsBetter />
       </div>
+
+      <Section
+        title="Operating costs"
+        sub={`What the AI costs over the last ${period} days, split by who pays. theOovi is exact; own keys are reported once a day by the app (people who share usage statistics).`}
+      >
+        {costs ? (
+          <>
+            <div className="adm-split">
+              <div className="adm-split-col">
+                <h3 className="adm-split-h">
+                  <span className="adm-swatch" style={{ background: "var(--blue-ink)" }} aria-hidden /> theOovi · your model
+                  <span className="adm-split-who">You pay</span>
+                </h3>
+                <div className="adm-kpis adm-kpis-2">
+                  <Kpi
+                    label="Model cost"
+                    value={fmtUsd(costs.hosted.costUsd)}
+                    change={{ value: costs.hosted.costUsd, previous: costs.hosted.prevCostUsd }}
+                    previousLabel={`the ${period} days before`}
+                    lowerIsBetter
+                  />
+                  <Kpi label="People using it" value={fmtInt(costs.hosted.users)} change={{ value: costs.hosted.users, previous: costs.hosted.prevUsers }} previousLabel={`the ${period} days before`} />
+                  <Kpi label="Cost per person" value={perUser(costs.hosted.costUsd, costs.hosted.users)} hint={`${fmtInt(costs.hosted.calls)} calls · ${fmtNumber(Math.round(costs.hosted.credits))} credits`} />
+                  <Kpi label="Tokens" value={fmtNumber(costs.hosted.tokensIn + costs.hosted.tokensOut)} hint={`${fmtNumber(costs.hosted.tokensIn)} in · ${fmtNumber(costs.hosted.tokensOut)} out`} />
+                </div>
+              </div>
+              <div className="adm-split-col">
+                <h3 className="adm-split-h">
+                  <span className="adm-swatch" style={{ background: "var(--coral)" }} aria-hidden /> Own API keys · their models
+                  <span className="adm-split-who">They pay</span>
+                </h3>
+                <div className="adm-kpis adm-kpis-2">
+                  <Kpi label="Their AI cost" value={fmtUsd(costs.own.costUsd)} change={{ value: costs.own.costUsd, previous: costs.own.prevCostUsd }} previousLabel={`the ${period} days before`} />
+                  <Kpi label="People using it" value={fmtInt(costs.own.users)} change={{ value: costs.own.users, previous: costs.own.prevUsers }} previousLabel={`the ${period} days before`} />
+                  <Kpi label="Cost per person" value={perUser(costs.own.costUsd, costs.own.users)} hint={`${fmtInt(costs.own.calls)} bot replies`} />
+                  <Kpi label="Tokens" value={fmtNumber(costs.own.tokensIn + costs.own.tokensOut)} hint={`${fmtNumber(costs.own.tokensIn)} in · ${fmtNumber(costs.own.tokensOut)} out`} />
+                </div>
+              </div>
+            </div>
+            <StackedBarChart
+              title={`AI cost per day (USD), last ${period} days`}
+              labels={costs.days}
+              format={fmtUsd}
+              series={[
+                { name: "theOovi (you pay)", color: "var(--blue-ink)", values: costs.hosted.perDay },
+                { name: "Own keys (they pay)", color: "var(--coral)", values: costs.own.perDay },
+              ]}
+            />
+            {costs.topOwn.length > 0 && (
+              <div className="adm-table-wrap" style={{ marginTop: 16 }}>
+                <table className="adm-table">
+                  <caption className="adm-caption">Biggest own-key spenders, last {period} days (theOovi spenders are on the theOovi page)</caption>
+                  <thead>
+                    <tr>
+                      <th>Account</th>
+                      <th className="num">Their AI cost</th>
+                      <th className="num">Bot replies</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {costs.topOwn.map((u) => (
+                      <tr key={u.userId}>
+                        <td>
+                          <Link href={`/admin/users/${encodeURIComponent(u.userId)}`}>{u.email}</Link>
+                        </td>
+                        <td className="num">{fmtUsd(u.costUsd)}</td>
+                        <td className="num">{fmtInt(u.replies)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        ) : (
+          <Empty>Cost numbers aren’t available yet. Run the database migration (npm run db:migrate).</Empty>
+        )}
+      </Section>
 
       <Section
         title="theOovi today"

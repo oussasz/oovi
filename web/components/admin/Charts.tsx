@@ -97,7 +97,7 @@ function Frame({
           {legend.map((s) => (
             <li key={s.name}>
               <span className="chart-swatch" style={{ background: s.color }} aria-hidden />
-              {s.name} <b>{fmtInt(s.total)}</b>
+              {s.name} <b>{format === fmtCompact ? fmtInt(s.total) : format(s.total)}</b>
             </li>
           ))}
         </ul>

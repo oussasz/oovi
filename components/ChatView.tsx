@@ -9,7 +9,7 @@ import { HostedNotice, refreshCredits } from "./Credits";
 import type { PublicSettings } from "@/lib/settings";
 import "@/lib/desktop";
 import type { Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
-import Face, { FaceStack } from "./Face";
+import Face, { Crown, FaceStack, LeadFace } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
@@ -297,7 +297,9 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
 
   return (
     <div className="msg bot">
-      <div className="msg-face">{bot && <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />}</div>
+      <div className="msg-face">
+        {bot && (isLeader ? <LeadFace face={bot.face} mood={entryMood(e, isLast)} size={42} title={name} /> : <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />)}
+      </div>
       <div className="msg-main">
         <div className="msg-meta">
           <b>{name}</b>
@@ -792,7 +794,7 @@ export default function ChatView({ id }: { id: string }) {
       <section className="chat-col">
         <header className="chat-head">
           {isGroup ? (
-            <FaceStack faces={members.map((m) => m.face)} moods={members.map((m) => botMood(chat, m.id))} size={46} />
+            <FaceStack faces={members.map((m) => m.face)} moods={members.map((m) => botMood(chat, m.id))} lead={leaderMode && lead ? members.indexOf(lead) : undefined} size={46} />
           ) : (
             solo && <Face face={solo.face} mood={botMood(chat, solo.id)} size={46} />
           )}
@@ -938,11 +940,15 @@ export default function ChatView({ id }: { id: string }) {
           )}
           {isGroup && members.length > 0 && (
             <div className="mention-bar">
-              {members.map((m) => (
-                <button key={m.id} className="chip" onClick={() => insertMention(m)} title={t("chat.mention", { name: m.name })}>
-                  <Face face={m.face} size={20} mood={botMood(chat, m.id)} /> {m.name}
-                </button>
-              ))}
+              {[...members].sort((a, b) => (leaderMode && a.id === lead?.id ? -1 : leaderMode && b.id === lead?.id ? 1 : 0)).map((m) => {
+                const isLead = leaderMode && m.id === lead?.id;
+                return (
+                  <button key={m.id} className={`chip${isLead ? " lead" : ""}`} onClick={() => insertMention(m)} title={isLead ? `${m.name} · ${t("chat.leader")}` : t("chat.mention", { name: m.name })}>
+                    <Face face={m.face} size={20} mood={botMood(chat, m.id)} /> {m.name}
+                    {isLead && <Crown size={12} />}
+                  </button>
+                );
+              })}
             </div>
           )}
           <form

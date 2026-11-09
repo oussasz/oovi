@@ -46,6 +46,8 @@ export default function Sidebar() {
   useEffect(() => setOpen(false), [pathname]);
 
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
+  /** The leader's position among the members shown (the first member when none is set). */
+  const leadIndex = (ids: string[], leadId?: string) => (ids.length > 1 ? Math.max(0, ids.indexOf(leadId ?? ids[0]!)) : undefined);
   const groups = chats.filter((c) => c.kind === "group");
   const dm = (botId: string) => chats.find((c) => c.id === `dm-${botId}`);
 
@@ -74,7 +76,12 @@ export default function Sidebar() {
           {groups.length === 0 && <p className="side-empty">{t("side.noGroups")}</p>}
           {groups.map((c) => (
             <Link key={c.id} href={`/c/${c.id}`} className={`side-item${pathname === `/c/${c.id}` ? " active" : ""}`}>
-              <FaceStack faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={38} moods={c.running ? ["thinking", "working", "thinking"] : undefined} />
+              <FaceStack
+                faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)}
+                lead={leadIndex(c.memberIds.filter((id) => face(id)), c.leadId)}
+                size={38}
+                moods={c.running ? ["thinking", "working", "thinking"] : undefined}
+              />
               <span className="side-text">
                 <span className="side-name">
                   {c.name}
