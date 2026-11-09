@@ -322,6 +322,7 @@ const es: Dict = {
   "chat.aBot": "Un bot",
   "chat.allow": "Permitir",
   "chat.deny": "Rechazar",
+  "settings.about.usage": "Compartir estadísticas de uso anónimas: recuentos diarios como mensajes, herramientas usadas y tokens, para mejorar oovi. Nunca tus chats, archivos ni claves.",
   "settings.tab.computer": "Ordenador en la nube",
   "settings.tab.computer.hint": "Una máquina virtual para los bots",
   "settings.vm.lead": "Dale a tus bots su propio ordenador en la nube. Allí ejecutan código, analizan datos, instalan herramientas y crean apps, y tu PC sigue rápido y seguro.",

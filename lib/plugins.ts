@@ -4,7 +4,7 @@
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { PLUGINS, SKILLS } from "./catalog";
+import { PLUGINS, SKILLS, type CatalogPlugin, type CatalogSkill } from "./catalog";
 import { NAME_RE } from "./mentions";
 import { dataDir } from "./settings";
 import { listSkills, parseSkill, saveSkill, slugify } from "./skills";
@@ -30,13 +30,13 @@ function writeInstalled(list: Installed[]) {
 }
 
 /** Catalog skill ids already installed (matched by name). */
-export function installedSkillIds(): string[] {
+export function installedSkillIds(list: CatalogSkill[] = SKILLS): string[] {
   const have = new Set(listSkills().map((s) => slugify(s.name)));
-  return SKILLS.filter((s) => have.has(slugify(s.name))).map((s) => s.id);
+  return list.filter((s) => have.has(slugify(s.name))).map((s) => s.id);
 }
 
-export function installSkill(id: string) {
-  const s = SKILLS.find((x) => x.id === id);
+export function installSkill(id: string, list: CatalogSkill[] = SKILLS) {
+  const s = list.find((x) => x.id === id);
   if (!s) throw new Error("Unknown skill.");
   return saveSkill({ name: s.name, description: s.description, body: s.body, source: "oovi" });
 }
@@ -51,8 +51,8 @@ function freeName(base: string, taken: Set<string>): string {
 }
 
 /** Create the team's bots, its group and its skills. */
-export function installPlugin(id: string): { groupId: string; bots: string[] } {
-  const p = PLUGINS.find((x) => x.id === id);
+export function installPlugin(id: string, list: CatalogPlugin[] = PLUGINS, skills: CatalogSkill[] = SKILLS): { groupId: string; bots: string[] } {
+  const p = list.find((x) => x.id === id);
   if (!p) throw new Error("Unknown plugin.");
   // Keep the user's main bot the main bot, even though this adds a new group leader.
   if (!pinnedMainBot()) {
@@ -63,8 +63,8 @@ export function installPlugin(id: string): { groupId: string; bots: string[] } {
   const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, instructions: b.instructions, face: b.face, tools: { ...b.tools, mcp: [] } }));
   const lead = made[p.bots.findIndex((b) => b.lead)] ?? made[0];
   const group = createGroup({ name: p.group, memberIds: made.map((b) => b.id), leadId: lead?.id, orchestrate: true });
-  const have = new Set(installedSkillIds());
-  for (const sid of p.skills) if (!have.has(sid)) installSkill(sid);
+  const have = new Set(installedSkillIds(skills));
+  for (const sid of p.skills) if (!have.has(sid) && skills.some((s) => s.id === sid)) installSkill(sid, skills);
   writeInstalled([...installedPlugins().filter((x) => x.id !== id), { id, botIds: made.map((b) => b.id), groupId: group.id, at: Date.now() }]);
   return { groupId: group.id, bots: made.map((b) => b.name) };
 }

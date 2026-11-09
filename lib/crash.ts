@@ -4,12 +4,11 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { baseDir, cloud, sessionToken } from "./account";
+import { appVersion, baseDir, cloud, sessionToken } from "./account";
 import { loadSettings } from "./settings";
 
 export type CrashInput = { message: string; stack?: string; context?: string; source: "ui" | "server" | "main" };
 
-const appVersion = () => process.env.OOVI_VERSION || process.env.npm_package_version || "dev";
 
 export async function reportCrash(c: CrashInput): Promise<void> {
   const entry = {

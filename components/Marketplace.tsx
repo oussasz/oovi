@@ -3,8 +3,8 @@
 // Marketplace: connectors (MCP), skills and plugins (ready-made bot teams),
 // each with "Yours" and "Discover", plus the bots' shared memory.
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, type CatalogConnector, type CatalogField, type ConnectorCategory } from "@/lib/catalog";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogField, type CatalogPlugin, type CatalogSkill, type ConnectorCategory } from "@/lib/catalog";
 import { api, refreshSidebar } from "@/lib/client";
 import { ANTHROPIC_LOGO, MCP_LOGO, OOVI_LOGO, githubOwnerLogo, logoFor } from "@/lib/logos";
 import "@/lib/desktop";
@@ -37,7 +37,7 @@ type RegItem = {
   install: { transport: "stdio"; command: string; args: string[]; env: RegField[] } | { transport: "http"; url: string; headers: RegField[] };
 };
 type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
-type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean };
+type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean; catalog?: { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[] } };
 type Mem = { user: string; memory: string; limits: { user: number; memory: number } };
 type LessonView = { id: string; text: string; botName?: string; source: "reflection" | "feedback"; score: number; updatedAt: number };
 type SkillDraft = { slug?: string; name: string; description: string; body: string };
@@ -119,6 +119,10 @@ export default function Marketplace() {
     }
   };
 
+  // Built-in catalog plus items published from the oovi admin console.
+  const allConnectors = useMemo(() => mergeById(CONNECTORS, inst.catalog?.connectors ?? []), [inst.catalog]);
+  const allSkills = useMemo(() => mergeById(SKILLS, inst.catalog?.skills ?? []), [inst.catalog]);
+  const allPlugins = useMemo(() => mergeById(PLUGINS, inst.catalog?.plugins ?? []), [inst.catalog]);
   const [lessons, setLessons] = useState<LessonView[] | null>(null);
   const [learning, setLearning] = useState<boolean | null>(null);
 
@@ -192,7 +196,7 @@ export default function Marketplace() {
 
   const addConnector = (c: CatalogConnector, vals: Record<string, string>) =>
     run(`add-${c.id}`, async () => {
-      const fromCatalog = CONNECTORS.some((x) => x.id === c.id);
+      const fromCatalog = allConnectors.some((x) => x.id === c.id);
       const missing = (c.fields ?? []).filter((f) => !f.optional && !vals[f.key]?.trim()).map((f) => f.label);
       if (fromCatalog && missing.length) throw new Error(t("mk.fillIn", { fields: missing.join(", ") }));
       const env: Record<string, string> = {};
@@ -297,7 +301,7 @@ export default function Marketplace() {
 
   // ---------- plugins ----------
   const pluginGroup = (id: string) => inst.plugins.find((p) => p.id === id)?.groupId;
-  const addPlugin = (p: (typeof PLUGINS)[number]) =>
+  const addPlugin = (p: CatalogPlugin) =>
     run(`pl-${p.id}`, async () => {
       const r = await api<{ groupId: string; bots: string[] }>("/api/catalog", { method: "POST", body: JSON.stringify({ kind: "plugin", id: p.id }) });
       refreshSidebar();
@@ -350,8 +354,8 @@ export default function Marketplace() {
           : [];
 
   // ---------- views ----------
-  const shownConnectors = CONNECTORS.filter((c) => (cat === "all" || !!ql || c.category === cat) && match(c.name, c.description, c.by));
-  const zapier = CONNECTORS.find((c) => c.id === "zapier")!;
+  const shownConnectors = allConnectors.filter((c) => (cat === "all" || !!ql || c.category === cat) && match(c.name, c.description, c.by));
+  const zapier = allConnectors.find((c) => c.id === "zapier")!;
   const connectorAction = (c: CatalogConnector) =>
     hasServer(c.name) ? (
       done(t("mk.added"))
@@ -401,7 +405,7 @@ export default function Marketplace() {
         {shownConnectors.map((c) =>
           card(
             c.id,
-            <Logo src={logoFor(c.id)} />,
+            <Logo src={c.logo ?? logoFor(c.id)} />,
             <>
               {c.name} {verified(c.verified)}
             </>,
@@ -443,7 +447,7 @@ export default function Marketplace() {
         .filter((s) => match(s.name))
         .map((s) => (
           <div key={s.id} className="mk-row">
-            <Logo src={logoFor(CONNECTORS.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id ?? "") ?? MCP_LOGO} size={40} />
+            <Logo src={logoFor(allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id ?? "") ?? MCP_LOGO} size={40} />
             <div className="mk-card-main">
               <b>
                 <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} /> {s.name}
@@ -502,7 +506,7 @@ export default function Marketplace() {
     </div>
   );
 
-  const featuredSkill = SKILLS[0]!;
+  const featuredSkill = allSkills[0]!;
   const discoverSkills = (
     <>
       {!ql && (
@@ -524,10 +528,10 @@ export default function Marketplace() {
       )}
       <div className="mk-section-head">
         <h3>{t("mk.ooviSkills")}</h3>
-        <span className="mk-count">{SKILLS.length}</span>
+        <span className="mk-count">{allSkills.length}</span>
       </div>
       <div className="mk-grid">
-        {SKILLS.filter((s) => match(s.name, s.description)).map((s) =>
+        {allSkills.filter((s) => match(s.name, s.description)).map((s) =>
           card(s.id, <Logo src={OOVI_LOGO} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name }))),
         )}
       </div>
@@ -606,7 +610,7 @@ export default function Marketplace() {
     </div>
   );
 
-  const pluginCard = (p: (typeof PLUGINS)[number]) => {
+  const pluginCard = (p: CatalogPlugin) => {
     const gid = pluginGroup(p.id);
     return card(
       p.id,
@@ -638,7 +642,7 @@ export default function Marketplace() {
     );
   };
 
-  const featuredPlugin = PLUGINS[0]!;
+  const featuredPlugin = allPlugins[0]!;
   const discoverPlugins = (
     <>
       {!ql && (
@@ -662,9 +666,9 @@ export default function Marketplace() {
       )}
       <div className="mk-section-head">
         <h3>{t("mk.teams")}</h3>
-        <span className="mk-count">{PLUGINS.length}</span>
+        <span className="mk-count">{allPlugins.length}</span>
       </div>
-      <div className="mk-grid">{PLUGINS.filter((p) => match(p.name, p.description)).map(pluginCard)}</div>
+      <div className="mk-grid">{allPlugins.filter((p) => match(p.name, p.description)).map(pluginCard)}</div>
     </>
   );
 
@@ -672,7 +676,7 @@ export default function Marketplace() {
     <div className="mk-list">
       {inst.plugins.length === 0 && <p className="note">{t("mk.noTeams")}</p>}
       {inst.plugins.map((ip) => {
-        const p = PLUGINS.find((x) => x.id === ip.id);
+        const p = allPlugins.find((x) => x.id === ip.id);
         if (!p) return null;
         return (
           <div key={ip.id} className="mk-row">
@@ -884,7 +888,7 @@ export default function Marketplace() {
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={soonItem.name} onMouseDown={(e) => e.target === e.currentTarget && setSoonItem(null)}>
           <div className="mk-sheet">
             <div className="mk-sheet-head">
-              <Logo src={logoFor(soonItem.id)} />
+              <Logo src={soonItem.logo ?? logoFor(soonItem.id)} />
               <div>
                 <h3>{soonItem.name}</h3>
                 <p className="note">{soonItem.description}</p>
@@ -893,7 +897,7 @@ export default function Marketplace() {
             <p>{soonItem.soon}</p>
             <div className="row-btns">
               {(["zapier", "pipedream"] as const).map((gid) => {
-                const g = CONNECTORS.find((c) => c.id === gid)!;
+                const g = allConnectors.find((c) => c.id === gid)!;
                 return hasServer(g.name) ? (
                   <span key={gid} className="tag ok">
                     {t("mk.alreadyConnected", { name: g.name })}
@@ -925,7 +929,7 @@ export default function Marketplace() {
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={installing.name} onMouseDown={(e) => e.target === e.currentTarget && setInstalling(null)}>
           <div className="mk-sheet">
             <div className="mk-sheet-head">
-              <Logo src={logoFor(installing.id) ?? githubOwnerLogo(installing.docs)} />
+              <Logo src={installing.logo ?? logoFor(installing.id) ?? githubOwnerLogo(installing.docs)} />
               <div>
                 <h3>
                   {installing.name} {verified(installing.verified)}

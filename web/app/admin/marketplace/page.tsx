@@ -28,7 +28,7 @@ export default async function AdminMarketplace({
     <>
       <PageHead
         title="Marketplace"
-        sub="Connectors, skills and plugins the desktop app can show. Published items appear in the app within about 5 minutes."
+        sub="Connectors, skills and plugins the desktop app can show. Published items appear in the app within about 10 minutes."
       >
         <Link href={`/admin/marketplace/edit${kind ? `?kind=${kind}` : ""}`} className="btn btn-dark btn-sm">
           New item
@@ -128,7 +128,7 @@ export default async function AdminMarketplace({
                             <input type="hidden" name="id" value={item.id} />
                             <ConfirmButton
                               className="btn btn-ghost btn-sm"
-                              message={`Delete “${name}” (${item.id})? This can't be undone, and it disappears from the app within about 5 minutes.`}
+                              message={`Delete “${name}” (${item.id})? This can't be undone, and it disappears from the app within about 10 minutes.`}
                             >
                               Delete
                             </ConfirmButton>

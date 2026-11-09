@@ -44,7 +44,15 @@ export type CatalogConnector = {
   oauth?: boolean;
   /** Not available directly yet: why, and what to use meanwhile. */
   soon?: string;
+  /** Logo URL, for items published from the admin console (built-in ones use lib/logos). */
+  logo?: string;
 };
+
+/** Built-in list plus published items (same id: the published one wins). */
+export function mergeById<T extends { id: string }>(base: T[], extra: T[]): T[] {
+  const ids = new Set(extra.map((x) => x.id));
+  return [...base.filter((x) => !ids.has(x.id)), ...extra];
+}
 
 export type ConnectorCategory = "everything" | "google-microsoft" | "productivity" | "files" | "design" | "dev" | "sales" | "finance" | "docs" | "local";
 export const CONNECTOR_CATEGORIES: ConnectorCategory[] = ["everything", "google-microsoft", "productivity", "files", "design", "sales", "finance", "dev", "docs", "local"];

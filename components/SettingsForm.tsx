@@ -160,6 +160,7 @@ export default function SettingsForm() {
         maxTurns: s.maxTurns,
         language: s.language,
         crashReports: s.crashReports,
+        usageStats: s.usageStats,
         ...(e2bKey.trim() ? { sandbox: { e2bKey: e2bKey.trim() } } : {}),
       });
       setSearchKeys({ brave: "", tavily: "" });
@@ -456,6 +457,10 @@ export default function SettingsForm() {
         <label className="check">
           <input type="checkbox" checked={s.crashReports !== false} onChange={(e) => setS({ ...s, crashReports: e.target.checked })} />
           <span>{t("settings.about.crash")}</span>
+        </label>
+        <label className="check">
+          <input type="checkbox" checked={s.usageStats !== false} onChange={(e) => setS({ ...s, usageStats: e.target.checked })} />
+          <span>{t("settings.about.usage")}</span>
         </label>
       </div>
       <div className="card">

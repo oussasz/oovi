@@ -338,6 +338,7 @@ const en = {
   "chat.aBot": "A bot",
   "chat.allow": "Allow",
   "chat.deny": "Deny",
+  "settings.about.usage": "Share anonymous usage statistics: daily counts like messages, tool uses and tokens, to help improve oovi. Never your chats, files or keys.",
   "settings.tab.computer": "Cloud computer",
   "settings.tab.computer.hint": "A virtual machine for the bots",
   "settings.vm.lead": "Give your bots their own computer in the cloud. They run code, analyze data, install tools and build apps there, so your PC stays fast and safe.",

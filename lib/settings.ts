@@ -34,6 +34,8 @@ export type Settings = {
   crashReports: boolean;
   /** Self-learning: review finished work and keep lessons (one small extra model call). */
   learning: boolean;
+  /** Send daily usage counts (no content) so oovi can see what's used. */
+  usageStats: boolean;
   /** Cloud computer for the bots (E2B virtual machines, the user's own key). */
   sandbox?: { e2bKey?: string };
   /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
@@ -56,6 +58,7 @@ export type SettingsPatch = {
   language?: string;
   crashReports?: boolean;
   learning?: boolean;
+  usageStats?: boolean;
   sandbox?: { e2bKey?: string; clearKey?: boolean };
 };
 
@@ -76,6 +79,7 @@ const DEFAULTS: Settings = {
   language: "auto",
   crashReports: true,
   learning: true,
+  usageStats: true,
 };
 
 /** The signed-in account's data folder (falls back to a guest folder when signed out). */
@@ -243,6 +247,7 @@ export function updateSettings(patch: SettingsPatch): void {
   if (typeof patch.language === "string" && /^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(patch.language)) raw.language = patch.language;
   if (typeof patch.crashReports === "boolean") raw.crashReports = patch.crashReports;
   if (typeof patch.learning === "boolean") raw.learning = patch.learning;
+  if (typeof patch.usageStats === "boolean") raw.usageStats = patch.usageStats;
   if (patch.sandbox?.clearKey) delete raw.sandbox;
   else if (typeof patch.sandbox?.e2bKey === "string" && patch.sandbox.e2bKey.trim()) raw.sandbox = { e2bKey: encrypt(patch.sandbox.e2bKey.trim()) };
   if (Array.isArray(patch.fallbacks)) {

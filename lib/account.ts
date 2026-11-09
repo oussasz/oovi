@@ -136,8 +136,12 @@ export class CloudError extends Error {
   }
 }
 
+/** The app version, e.g. "0.7.0" (Electron sets OOVI_VERSION). */
+export const appVersion = () => process.env.OOVI_VERSION || process.env.npm_package_version || "dev";
+
 export async function cloud<T>(route: string, init: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
-  const headers: Record<string, string> = { accept: "application/json" };
+  // The version and OS let the oovi team see which versions are in use (no personal data).
+  const headers: Record<string, string> = { accept: "application/json", "x-oovi-version": appVersion(), "x-oovi-platform": process.platform };
   if (init.body !== undefined) headers["content-type"] = "application/json";
   if (init.auth) {
     const t = sessionToken();

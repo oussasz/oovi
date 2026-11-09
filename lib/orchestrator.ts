@@ -25,6 +25,7 @@ import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./t
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
+import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
 import type { Approval, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem } from "./types";
 
@@ -373,6 +374,7 @@ async function* runBot(
       if (!last.toolCalls.length) {
         entry.text = last.text;
         entry.status = "done";
+        countUsage({ botReplies: 1 });
         return "done";
       }
       const ask = last.toolCalls.filter((c) => needsApproval(c, s, sessionId, usesAccounts, chat.workspace) && decisions[c.id] === undefined);
@@ -405,6 +407,7 @@ async function* runBot(
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
+      countTools(last.toolCalls, results);
       entry.steps.push({ role: "tool", results });
       yield { type: "entry", entry };
       continue;
@@ -426,6 +429,7 @@ async function* runBot(
       entry.model = out.model;
       entry.fallback = out.fallback;
       if (typeof out.cost === "number") entry.cost = (entry.cost ?? 0) + out.cost;
+      countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
       if (out.note) entry.note = out.note;
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, ...(out.reasoning ? { reasoning: out.reasoning.slice(0, 20_000) } : {}) });
       yield { type: "entry", entry };
@@ -465,6 +469,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       ...(input.deep ? { deep: true } : {}),
     };
     chat.entries.push(user);
+    countUsage({ messages: 1 });
     const mentioned = findMentions(input.text, members);
     const first = lead ?? members.find((m) => m.id === chat.leadId) ?? members[0];
     // Learning: how often has the user asked for this kind of thing?

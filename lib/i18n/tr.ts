@@ -322,6 +322,7 @@ const tr: Dict = {
   "chat.aBot": "Bir bot",
   "chat.allow": "İzin ver",
   "chat.deny": "Reddet",
+  "settings.about.usage": "Anonim kullanım istatistiklerini paylaş: mesaj, araç kullanımı ve token gibi günlük sayılar, oovi'yi geliştirmek için. Sohbetlerin, dosyaların veya anahtarların asla paylaşılmaz.",
   "settings.tab.computer": "Bulut bilgisayar",
   "settings.tab.computer.hint": "Botlar için sanal makine",
   "settings.vm.lead": "Botlarına bulutta kendi bilgisayarlarını ver. Orada kod çalıştırır, veri analiz eder, araç kurar ve uygulama geliştirirler; senin bilgisayarın hızlı ve güvende kalır.",

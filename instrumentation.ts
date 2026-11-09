@@ -6,5 +6,8 @@ export async function register() {
     // Telegram: answer messages from the user's paired Telegram while oovi is open.
     const { startTelegram } = await import("./lib/telegram");
     startTelegram();
+    // Anonymous daily usage counts (Settings > About & privacy turns this off).
+    const { startUsageReporter } = await import("./lib/usage");
+    startUsageReporter();
   }
 }
