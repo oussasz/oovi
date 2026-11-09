@@ -11,6 +11,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { ToolSpec } from "./llm";
+import { OoviOAuthProvider, type OAuthData, type OAuthStore } from "./mcp-oauth";
 import { dataDir, decryptSecret, encryptSecret } from "./settings";
 
 export type McpServer = {
@@ -22,12 +23,18 @@ export type McpServer = {
   env?: Record<string, string>;
   url?: string;
   headers?: Record<string, string>;
+  /** "oauth": sign in through the browser (see mcp-oauth.ts). */
+  auth?: "oauth";
+  /** Sign-in data (client registration, tokens), encrypted. Server-side only. */
+  oauth?: string;
   enabled: boolean;
   trusted: boolean;
   createdAt: number;
 };
 
-export type McpPublic = Omit<McpServer, "env" | "headers"> & {
+export type McpPublic = Omit<McpServer, "env" | "headers" | "oauth"> & {
+  /** Sign-in connectors: tokens are saved. */
+  signedIn?: boolean;
   envKeys: string[];
   headerKeys: string[];
   status: "connected" | "error" | "idle";
@@ -77,11 +84,12 @@ export function listServers(): McpServer[] {
 }
 
 export function publicServers(): McpPublic[] {
-  return listServers().map(({ env, headers, ...s }) => {
+  return listServers().map(({ env, headers, oauth, ...s }) => {
     const c = conns.get(s.id);
     const err = errors.get(s.id);
     return {
       ...s,
+      signedIn: s.auth === "oauth" ? !!(oauth && readOAuth(oauth).tokens) : undefined,
       envKeys: Object.keys(env ?? {}),
       headerKeys: Object.keys(headers ?? {}),
       status: c ? "connected" : err ? "error" : "idle",
@@ -113,7 +121,7 @@ export function validateServer(input: unknown): Omit<McpServer, "id" | "createdA
     } catch {
       return "Enter the server's URL.";
     }
-    return { ...base, transport: "http", url, headers: strMap(o.headers) };
+    return { ...base, transport: "http", url, headers: strMap(o.headers), ...(o.auth === "oauth" ? { auth: "oauth" as const } : {}) };
   }
   const command = String(o.command ?? "").trim().slice(0, 300);
   if (!command) return "Enter the command that starts the server (for example npx).";
@@ -146,6 +154,41 @@ export async function removeServer(id: string): Promise<void> {
   writeRaw(readRaw().filter((s) => s.id !== id));
 }
 
+// ---------- sign-in (OAuth) data ----------
+
+function readOAuth(stored: string | undefined): OAuthData {
+  if (!stored) return {};
+  try {
+    return JSON.parse(decryptSecret(stored)) as OAuthData;
+  } catch {
+    return {};
+  }
+}
+
+/** Load/save one connector's sign-in data (encrypted in mcp.json). */
+export function oauthStore(id: string): OAuthStore {
+  return {
+    load: () => readOAuth(readRaw().find((x) => x.id === id)?.oauth),
+    save: (patch, replace) => {
+      const all = readRaw();
+      const s = all.find((x) => x.id === id);
+      if (!s) return;
+      const next = replace ? { ...patch } : { ...readOAuth(s.oauth), ...patch };
+      s.oauth = encryptSecret(JSON.stringify(next));
+      writeRaw(all);
+    },
+  };
+}
+
+export function getServer(id: string): McpServer | undefined {
+  return listServers().find((x) => x.id === id);
+}
+
+/** After signing in: drop the old connection so the next use picks up the new tokens. */
+export async function resetConnection(id: string): Promise<void> {
+  await disconnect(id);
+}
+
 // ---------- connections ----------
 
 async function disconnect(id: string) {
@@ -160,7 +203,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
 }
 
 async function connect(s: McpServer): Promise<Conn> {
-  const key = JSON.stringify(s);
+  // Token refreshes change s.oauth; that alone mustn't force a reconnect.
+  const key = JSON.stringify({ ...s, oauth: undefined });
   const existing = conns.get(s.id);
   if (existing && existing.key === key) return existing;
   if (existing) await disconnect(s.id);
@@ -174,11 +218,17 @@ async function connect(s: McpServer): Promise<Conn> {
   } else {
     const url = new URL(s.url ?? "");
     const requestInit = { headers: s.headers ?? {} };
+    // Sign-in connectors: tokens come from the stored sign-in and refresh by themselves.
+    const authProvider = s.auth === "oauth" ? new OoviOAuthProvider(oauthStore(s.id), undefined) : undefined;
+    if (authProvider && !authProvider.tokens()) throw new Error(`Not signed in to ${s.name} yet. Open Marketplace > Connectors > Yours and press Connect.`);
     try {
-      await withTimeout(client.connect(new StreamableHTTPClientTransport(url, { requestInit })), 30_000, `Connecting to ${s.name}`);
-    } catch {
+      await withTimeout(client.connect(new StreamableHTTPClientTransport(url, { requestInit, authProvider })), 30_000, `Connecting to ${s.name}`);
+    } catch (e) {
+      if (/unauthori[sz]ed|invalid_token|invalid_grant|401/i.test(String((e as Error)?.message ?? e)) && authProvider) {
+        throw new Error(`${s.name} needs you to sign in again. Open Marketplace > Connectors > Yours and press Connect.`);
+      }
       client = new Client({ name: "oovi", version: "0.4.0" });
-      await withTimeout(client.connect(new SSEClientTransport(url, { requestInit })), 30_000, `Connecting to ${s.name}`);
+      await withTimeout(client.connect(new SSEClientTransport(url, { requestInit, authProvider })), 30_000, `Connecting to ${s.name}`);
     }
   }
   const { tools } = await withTimeout(client.listTools(), 30_000, `Listing tools of ${s.name}`);

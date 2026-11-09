@@ -4,7 +4,7 @@
 // each with "Yours" and "Discover", plus the bots' shared memory.
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CONNECTORS, PLUGINS, SKILLS, type CatalogConnector, type CatalogField } from "@/lib/catalog";
+import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, type CatalogConnector, type CatalogField, type ConnectorCategory } from "@/lib/catalog";
 import { api, refreshSidebar } from "@/lib/client";
 import "@/lib/desktop";
 import { FaceStack } from "./Face";
@@ -21,6 +21,9 @@ type Server = {
   enabled: boolean;
   trusted: boolean;
   status: "connected" | "error" | "idle";
+  /** Sign-in connectors. */
+  auth?: "oauth";
+  signedIn?: boolean;
   error?: string;
   tools: { name: string; description?: string }[];
 };
@@ -81,6 +84,9 @@ export default function Marketplace() {
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
+  const [cat, setCat] = useState<ConnectorCategory | "all">("all");
+  const [waiting, setWaiting] = useState<{ id: string; name: string; authUrl: string; since: number } | null>(null);
+  const [soonItem, setSoonItem] = useState<CatalogConnector | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -191,9 +197,54 @@ export default function Marketplace() {
       return t("mk.connectorAdded", { name: c.name, count: r.tools?.length ?? 0 });
     });
 
+  /** Open the service's sign-in page in the browser and wait for it to send the user back. */
+  async function beginSignIn(id: string, name: string): Promise<Omit<Msg, "ok">> {
+    const r = await api<{ authUrl?: string; ok?: boolean; tools?: string[]; error?: string }>(`/api/mcp/${id}/oauth`, { method: "POST" });
+    if (r.authUrl) {
+      window.open(r.authUrl, "_blank", "noopener,noreferrer");
+      setWaiting({ id, name, authUrl: r.authUrl, since: Date.now() });
+      return { text: t("mk.finishInBrowser", { name }), link: { href: r.authUrl, label: t("mk.openSignIn") } };
+    }
+    if (r.ok) return { text: t("mk.connectorAdded", { name, count: r.tools?.length ?? 0 }) };
+    throw new Error(r.error ?? t("mk.signInFailed", { name }));
+  }
+
+  const signIn = (id: string, name: string) => run(`signin-${id}`, () => beginSignIn(id, name));
+
+  const addOAuth = (c: CatalogConnector) =>
+    run(`add-${c.id}`, async () => {
+      let id = servers.find((s) => s.name.toLowerCase() === c.name.toLowerCase())?.id;
+      if (!id) id = (await api<{ id: string }>("/api/mcp", { method: "POST", body: JSON.stringify({ name: c.name, transport: "http", url: c.url, auth: "oauth" }) })).id;
+      return beginSignIn(id, c.name);
+    });
+
+  // While the user signs in in the browser, watch for the connector to come alive.
+  useEffect(() => {
+    if (!waiting) return;
+    const timer = setInterval(() => {
+      if (Date.now() - waiting.since > 10 * 60 * 1000) {
+        setWaiting(null);
+        return;
+      }
+      api<Server[]>("/api/mcp")
+        .then((list) => {
+          setServers(list);
+          const s = list.find((x) => x.id === waiting.id);
+          if (s?.signedIn && s.status === "connected") {
+            setWaiting(null);
+            setMsg({ ok: true, text: t("mk.connectorAdded", { name: waiting.name, count: s.tools.length }) });
+          }
+        })
+        .catch(() => {});
+    }, 2500);
+    return () => clearInterval(timer);
+  }, [waiting, t]);
+
   function startInstall(c: CatalogConnector) {
     setValues({});
-    if (!c.fields?.some((f) => !f.optional) && !(c.needsNode && !inst.node) && !c.fields?.length) void addConnector(c, {});
+    if (c.soon) return setSoonItem(c);
+    if (c.oauth) return void addOAuth(c);
+    if (!c.fields?.length && !(c.needsNode && !inst.node)) void addConnector(c, {});
     else setInstalling(c);
   }
 
@@ -284,8 +335,20 @@ export default function Marketplace() {
           : [];
 
   // ---------- views ----------
-  const shownConnectors = CONNECTORS.filter((c) => match(c.name, c.description, c.by));
-  const github = CONNECTORS[0]!;
+  const shownConnectors = CONNECTORS.filter((c) => (cat === "all" || !!ql || c.category === cat) && match(c.name, c.description, c.by));
+  const zapier = CONNECTORS.find((c) => c.id === "zapier")!;
+  const connectorAction = (c: CatalogConnector) =>
+    hasServer(c.name) ? (
+      done(t("mk.added"))
+    ) : c.soon ? (
+      <button className="mk-soon" onClick={() => setSoonItem(c)}>
+        {t("mk.soon")}
+      </button>
+    ) : (
+      plus(() => startInstall(c), t("mk.addX", { name: c.name }))
+    );
+  const connectorExtra = (c: CatalogConnector) =>
+    c.needsNode && !inst.node ? <span className="mk-warn">{t("mk.needsNode")}</span> : c.oauth ? <span className="mk-hint">{t("mk.oneClick")}</span> : undefined;
 
   const discoverConnectors = (
     <>
@@ -293,17 +356,26 @@ export default function Marketplace() {
         <div className="mk-feature">
           <div>
             <small>{t("mk.featured")}</small>
-            <h3>{github.name}</h3>
-            <p>{t("mk.featureGithub")}</p>
-            {hasServer(github.name) ? (
+            <h3>{t("mk.featureAppsTitle")}</h3>
+            <p>{t("mk.featureApps")}</p>
+            {hasServer(zapier.name) ? (
               done(t("mk.added"))
             ) : (
-              <button className="btn" onClick={() => startInstall(github)}>
-                {t("common.add")}
+              <button className="btn" onClick={() => startInstall(zapier)} disabled={!!busy}>
+                {t("mk.connectWith", { name: zapier.name })}
               </button>
             )}
           </div>
-          <Avatar name={github.name} size={84} />
+          <Avatar name={zapier.name} size={84} />
+        </div>
+      )}
+      {!ql && (
+        <div className="mk-cats" role="tablist">
+          {(["all", ...CONNECTOR_CATEGORIES] as const).map((k) => (
+            <button key={k} role="tab" aria-selected={cat === k} className={cat === k ? "on" : ""} onClick={() => setCat(k)}>
+              {t(`mk.cat.${k}`)}
+            </button>
+          ))}
         </div>
       )}
       <div className="mk-section-head">
@@ -320,8 +392,8 @@ export default function Marketplace() {
             </>,
             c.description,
             c.by,
-            hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })),
-            c.needsNode && !inst.node ? <span className="mk-warn">{t("mk.needsNode")}</span> : undefined,
+            connectorAction(c),
+            connectorExtra(c),
           ),
         )}
       </div>
@@ -361,7 +433,7 @@ export default function Marketplace() {
               <b>
                 <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} /> {s.name}
               </b>
-              <p>{s.status === "error" ? s.error : s.tools.length ? t("mk.toolsCount", { count: s.tools.length }) : t("mk.notStarted")}</p>
+              <p>{s.auth === "oauth" && !s.signedIn ? t("mk.notSignedIn") : s.status === "error" ? s.error : s.tools.length ? t("mk.toolsCount", { count: s.tools.length }) : t("mk.notStarted")}</p>
               <div className="tags">
                 <label className="mini-check">
                   <input type="checkbox" checked={s.enabled} onChange={(e) => void run(`en-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "PUT", body: JSON.stringify({ enabled: e.target.checked }) })))} /> {t("lib.on")}
@@ -380,6 +452,11 @@ export default function Marketplace() {
               </div>
             </div>
             <div className="mk-card-act">
+              {s.auth === "oauth" && (!s.signedIn || s.status === "error") && (
+                <button className="btn sm primary" disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
+                  {s.signedIn ? t("mk.signInAgain") : t("mk.connect")}
+                </button>
+              )}
               <button
                 className="btn sm"
                 disabled={!!busy}
@@ -720,7 +797,60 @@ export default function Marketplace() {
         </div>
       )}
 
+      {waiting && tab === "connectors" && (
+        <div className="notice mk-waiting" role="status">
+          <span className="mk-spin" aria-hidden />
+          <span>{t("mk.waitingFor", { name: waiting.name })}</span>
+          <a className="btn sm" href={waiting.authUrl} target="_blank" rel="noreferrer noopener">
+            {t("mk.openSignIn")}
+          </a>
+          <button className="btn sm" onClick={() => setWaiting(null)}>
+            {t("common.cancel")}
+          </button>
+        </div>
+      )}
+
       {tab === "memory" ? memoryView : views[tab][view]}
+
+      {soonItem && (
+        <div className="mk-modal" role="dialog" aria-modal="true" aria-label={soonItem.name} onMouseDown={(e) => e.target === e.currentTarget && setSoonItem(null)}>
+          <div className="mk-sheet">
+            <div className="mk-sheet-head">
+              <Avatar name={soonItem.name} />
+              <div>
+                <h3>{soonItem.name}</h3>
+                <p className="note">{soonItem.description}</p>
+              </div>
+            </div>
+            <p>{soonItem.soon}</p>
+            <div className="row-btns">
+              {(["zapier", "pipedream"] as const).map((gid) => {
+                const g = CONNECTORS.find((c) => c.id === gid)!;
+                return hasServer(g.name) ? (
+                  <span key={gid} className="tag ok">
+                    {t("mk.alreadyConnected", { name: g.name })}
+                  </span>
+                ) : (
+                  <button
+                    key={gid}
+                    className={`btn${gid === "zapier" ? " primary" : ""}`}
+                    disabled={!!busy}
+                    onClick={() => {
+                      setSoonItem(null);
+                      startInstall(g);
+                    }}
+                  >
+                    {t("mk.connectWith", { name: g.name })}
+                  </button>
+                );
+              })}
+              <button className="btn" onClick={() => setSoonItem(null)}>
+                {t("mk.close")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ---- install a connector ---- */}
       {installing && (
@@ -908,11 +1038,16 @@ export default function Marketplace() {
         <div className={`notice${msg.ok ? "" : " error"} mk-toast`} role="status">
           <span>
             {msg.text}{" "}
-            {msg.link && (
-              <Link href={msg.link.href} className="text-link">
-                {msg.link.label}
-              </Link>
-            )}
+            {msg.link &&
+              (/^https?:/.test(msg.link.href) ? (
+                <a href={msg.link.href} className="text-link" target="_blank" rel="noreferrer noopener">
+                  {msg.link.label}
+                </a>
+              ) : (
+                <Link href={msg.link.href} className="text-link">
+                  {msg.link.label}
+                </Link>
+              ))}
           </span>
           <button className="icon-btn sm" onClick={() => setMsg(null)} aria-label={t("mk.close")}>
             <Icon name="close" size={14} />
