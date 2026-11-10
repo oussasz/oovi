@@ -1,6 +1,8 @@
 // App updates.
 //
-// New versions are published to the public repo oussasz/oovi-downloads.
+// New versions come from the oovi website (https://oovi.conuron.com/updates, which serves
+// latest.yml and hands out the installers), and "What's new" opens https://oovi.conuron.com/changelog.
+// The app never talks to GitHub. (Up to 0.8.8 it read the public repo oussasz/oovi-downloads.)
 // - Windows (installed app): electron-updater downloads the new installer, checks
 //   its SHA-512 against latest.yml and installs it over the old version. The
 //   user's data lives in the app-data folder, which the installer never touches.
@@ -29,14 +31,13 @@ const { app, ipcMain, shell, BrowserWindow } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const OWNER = "oussasz";
-const REPO = "oovi-downloads";
 const SITE = "https://oovi.conuron.com";
+const FEED = `${SITE}/updates`;
 const FIRST_CHECK_MS = 15_000;
 const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
 const APP_ID = "app.oovi.desktop"; // package.json build.appId (the shortcuts' AppUserModelID)
 const SHORTCUT = "oovi.lnk"; // package.json build.nsis.shortcutName
-const releaseUrl = (v) => `https://github.com/${OWNER}/${REPO}/releases/tag/v${String(v).replace(/^v/, "")}`;
+const releaseUrl = (v) => `${SITE}/changelog#v${String(v).replace(/^v/, "")}`;
 
 // Installed from the Microsoft Store: the Store updates the app, so oovi doesn't.
 const fromStore = !!process.windowsStore;
@@ -105,7 +106,7 @@ let state = {
   canInstall: canSelfInstall,
   store: fromStore,
   platform: process.platform,
-  notesUrl: `https://github.com/${OWNER}/${REPO}/releases/latest`,
+  notesUrl: `${SITE}/changelog`,
   checkedAt: null,
   updatedTo: null,
   updatedNotesUrl: null,
@@ -128,7 +129,7 @@ function friendly(err) {
 
 function setupElectronUpdater() {
   const { autoUpdater } = require("electron-updater");
-  autoUpdater.setFeedURL({ provider: "github", owner: OWNER, repo: REPO });
+  autoUpdater.setFeedURL({ provider: "generic", url: FEED });
   autoUpdater.autoDownload = prefs.auto;
   // Only install when the user says so ("Restart now"), never silently on quit or shutdown.
   autoUpdater.autoInstallOnAppQuit = false;
@@ -152,14 +153,14 @@ function setupElectronUpdater() {
   return autoUpdater;
 }
 
-/** Version check only (Mac, or a build that can't install itself). */
+/** Version check only (Mac, or a build that can't install itself): the version in the website's latest*.yml. */
 async function checkLatestRelease() {
-  const res = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/releases/latest`, {
-    headers: { Accept: "application/vnd.github+json", "User-Agent": "oovi-desktop" },
+  const res = await fetch(`${FEED}/${process.platform === "darwin" ? "latest-mac.yml" : "latest.yml"}`, {
+    headers: { "User-Agent": "oovi-desktop" },
+    signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) throw new Error(`GitHub answered ${res.status}`);
-  const j = await res.json();
-  const latest = String(j.tag_name || "").replace(/^v/, "");
+  if (!res.ok) throw new Error(`The update server answered ${res.status}`);
+  const latest = ((await res.text()).match(/^version:\s*["']?([\d.]+)/m) || [])[1] || "";
   if (latest && compare(latest, state.current) > 0) set({ status: "available", version: latest, error: null, notesUrl: releaseUrl(latest) });
   else set({ status: "none", version: null, error: null });
 }

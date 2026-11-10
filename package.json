@@ -1,7 +1,7 @@
 {
   "name": "oovi",
   "productName": "oovi",
-  "version": "0.8.8",
+  "version": "0.8.9",
   "private": true,
   "license": "UNLICENSED",
   "author": "oovi",
@@ -114,10 +114,8 @@
     },
     "publish": [
       {
-        "provider": "github",
-        "owner": "oussasz",
-        "repo": "oovi-downloads",
-        "releaseType": "release"
+        "provider": "generic",
+        "url": "https://oovi.conuron.com/updates"
       }
     ],
     "electronLanguages": [

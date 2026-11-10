@@ -16,6 +16,7 @@ export function SiteFooter() {
           <li><Link href="/terms">Terms</Link></li>
           <li><Link href="/refund">Refunds</Link></li>
           <li><Link href="/download">Download</Link></li>
+          <li><Link href="/changelog">What’s new</Link></li>
         </ul>
       </div>
       <div className="container footer-legal">© {new Date().getFullYear()} oovi. All rights reserved.</div>

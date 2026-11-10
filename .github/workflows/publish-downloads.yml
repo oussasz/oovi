@@ -1,6 +1,7 @@
-# Copies a release's installers from this private repo to the PUBLIC downloads repo
-# (oussasz/oovi-downloads). The website's download buttons and the app's self-update read
-# from there. Only installer and update files are copied; the source code and the Microsoft
+# Copies a release's installers and notes from this private repo to the downloads repo
+# (oussasz/oovi-downloads). Apps up to 0.8.8 update from there; from 0.8.9 on, the app and the
+# website use https://oovi.conuron.com/updates, which reads this private repo when the website has
+# GITHUB_RELEASES_TOKEN (and the downloads repo otherwise). Only installer and update files are copied; the source code and the Microsoft
 # Store package (.appx) stay private.
 #
 # Runs by itself after "Build desktop apps" finishes for a published release.
@@ -57,6 +58,8 @@ jobs:
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir work \
             --pattern "*.dmg" --pattern "*.exe" --pattern "*.exe.blockmap" --pattern "latest*.yml"
           ls -lh work
+          # The real release notes, so the public copy matches what the website shows.
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
           # Every platform must be there, or Mac or Windows users would be left on the old version.
           for want in "*.exe" "*arm64.dmg" "latest.yml" "latest-mac.yml"; do
             compgen -G "work/$want" > /dev/null || { echo "::error::$want is missing from release $TAG (did a build fail?)"; exit 1; }
@@ -66,16 +69,12 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
         run: |
-          NOTES="oovi $TAG for Mac and Windows. Download from https://oovi.conuron.com/download.
-
-          The app isn't code-signed yet:
-          - Mac: right-click oovi in Applications, then Open, then Open.
-          - Windows: More info, then Run anyway."
           if gh release view "$TAG" --repo "$PUBLIC_REPO" > /dev/null 2>&1; then
             echo "Updating the existing release $TAG on $PUBLIC_REPO"
             gh release upload "$TAG" work/* --repo "$PUBLIC_REPO" --clobber
+            gh release edit "$TAG" --repo "$PUBLIC_REPO" --notes-file notes.md
           else
             echo "Creating release $TAG on $PUBLIC_REPO"
-            gh release create "$TAG" work/* --repo "$PUBLIC_REPO" --title "oovi $TAG" --notes "$NOTES" --latest
+            gh release create "$TAG" work/* --repo "$PUBLIC_REPO" --title "oovi $TAG" --notes-file notes.md --latest
           fi
           echo "Done: https://github.com/$PUBLIC_REPO/releases/tag/$TAG"
