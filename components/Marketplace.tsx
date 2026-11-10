@@ -1,7 +1,7 @@
 "use client";
 
 // Marketplace: connectors (MCP), skills and plugins (ready-made bot teams),
-// each with "Yours" and "Discover", plus the bots' shared memory.
+// each with "Yours" and "Discover". (The bots' memory lives in Settings > Memory & soul.)
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogField, type CatalogPlugin, type CatalogSkill, type ConnectorCategory } from "@/lib/catalog";
@@ -14,7 +14,7 @@ import Icon from "./Icon";
 import ConnectorSetup from "./ConnectorSetup";
 import { openSettings } from "./SettingsModal";
 
-type Tab = "connectors" | "skills" | "plugins" | "memory";
+type Tab = "connectors" | "skills" | "plugins";
 type View = "yours" | "discover";
 type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number };
 type Server = {
@@ -42,8 +42,6 @@ type RegItem = {
 };
 type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
 type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean; catalog?: { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[]; hidden?: string[] } };
-type Mem = { user: string; memory: string; limits: { user: number; memory: number } };
-type LessonView = { id: string; text: string; botName?: string; source: "reflection" | "feedback"; score: number; updatedAt: number };
 type SkillDraft = { slug?: string; name: string; description: string; body: string };
 type Custom = { name: string; transport: "stdio" | "http"; command: string; args: string; url: string; secrets: string };
 type Msg = { ok: boolean; text: string; link?: { href: string; label: string } };
@@ -92,7 +90,6 @@ export default function Marketplace() {
   const [editing, setEditing] = useState<SkillDraft | null>(null);
   const [importUrl, setImportUrl] = useState<string | null>(null);
   const [custom, setCustom] = useState<Custom | null>(null);
-  const [mem, setMem] = useState<Mem | null>(null);
   const [menu, setMenu] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<Msg | null>(null);
@@ -107,7 +104,7 @@ export default function Marketplace() {
   useEffect(() => {
     try {
       const saved = JSON.parse(localStorage.getItem("oovi.market") ?? "{}") as { tab?: Tab; view?: View };
-      if (saved.tab) setTab(saved.tab);
+      if (saved.tab === "connectors" || saved.tab === "skills" || saved.tab === "plugins") setTab(saved.tab);
       if (saved.view) setView(saved.view);
     } catch {
       /* storage unavailable */
@@ -119,11 +116,16 @@ export default function Marketplace() {
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
     const t = p.get("tab");
-    if (t !== "connectors" && t !== "skills" && t !== "plugins" && t !== "memory") return;
+    // Memory moved to Settings > Memory & soul: old links open it there.
+    if (t === "memory") {
+      openSettings("memory");
+      return;
+    }
+    if (t !== "connectors" && t !== "skills" && t !== "plugins") return;
     setTab(t);
     setView("discover");
     const id = p.get("item");
-    if (id && t !== "memory") setFocus({ tab: t, id });
+    if (id) setFocus({ tab: t, id });
   }, []);
 
   const pick = (nextTab: Tab, nextView: View = view) => {
@@ -143,8 +145,6 @@ export default function Marketplace() {
   const allConnectors = useMemo(() => mergeById(CONNECTORS, inst.catalog?.connectors ?? [], inst.catalog?.hidden), [inst.catalog]);
   const allSkills = useMemo(() => mergeById(SKILLS, inst.catalog?.skills ?? [], inst.catalog?.hidden), [inst.catalog]);
   const allPlugins = useMemo(() => mergeById(PLUGINS, inst.catalog?.plugins ?? [], inst.catalog?.hidden), [inst.catalog]);
-  const [lessons, setLessons] = useState<LessonView[] | null>(null);
-  const [learning, setLearning] = useState<boolean | null>(null);
   const [loaded, setLoaded] = useState(false);
   const focusDone = useRef(false);
 
@@ -166,16 +166,11 @@ export default function Marketplace() {
   }, [load]);
 
   useEffect(() => {
-    if (tab === "memory" && !mem) api<Mem>("/api/memory").then(setMem).catch(() => {});
-    if (tab === "memory" && !lessons) {
-      api<{ lessons: LessonView[] }>("/api/lessons").then((r) => setLessons(r.lessons)).catch(() => setLessons([]));
-      api<{ learning?: boolean }>("/api/settings").then((s) => setLearning(s.learning !== false)).catch(() => {});
-    }
     if (tab === "skills" && view === "discover" && !remote)
       api<{ skills: RemoteSkill[] }>("/api/catalog?remote=anthropic")
         .then((r) => setRemote(r.skills))
         .catch(() => setRemote([]));
-  }, [tab, view, mem, remote, lessons]);
+  }, [tab, view, remote]);
 
   // Search the official MCP registry as you type (Connectors > Discover).
   useEffect(() => {
@@ -804,98 +799,12 @@ export default function Marketplace() {
     </div>
   );
 
-  const lessonsCard = (
-    <div className="card">
-      <h3>{t("lib.lessons")}</h3>
-      <p className="muted">{t("lib.lessonsIntro")}</p>
-      {learning !== null && (
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={learning}
-            onChange={(e) => {
-              const on = e.target.checked;
-              setLearning(on);
-              api("/api/settings", { method: "POST", body: JSON.stringify({ learning: on }) }).catch((x: Error) => setMsg({ ok: false, text: x.message }));
-            }}
-          />
-          <span>{t("lib.learnToggle")}</span>
-        </label>
-      )}
-      {lessons === null ? (
-        <p className="note">{t("common.loading")}</p>
-      ) : lessons.length === 0 ? (
-        <p className="note">{t("lib.lessonsEmpty")}</p>
-      ) : (
-        <ul className="lessons">
-          {lessons.map((l) => (
-            <li key={l.id}>
-              <div>
-                <span>{l.text}</span>
-                <small>
-                  {[l.botName ? t("lib.byBot", { name: l.botName }) : "", l.source === "feedback" ? t("lib.fromFeedback") : "", new Date(l.updatedAt).toLocaleDateString(tag)].filter(Boolean).join(" · ")}
-                </small>
-              </div>
-              <button
-                className="btn sm"
-                disabled={!!busy}
-                onClick={() =>
-                  void run(`lesson-${l.id}`, async () => {
-                    setLessons((await api<{ lessons: LessonView[] }>(`/api/lessons?id=${encodeURIComponent(l.id)}`, { method: "DELETE" })).lessons);
-                  })
-                }
-              >
-                {t("lib.forget")}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-
-  const memoryView = (
-    <>
-    <div className="card">
-      <p className="muted">{rich("lib.memoryIntro", { about: <b>{t("lib.memoryAbout")}</b>, notes: <b>{t("lib.memoryNotes")}</b>, sep: <code>§</code> })}</p>
-      <button className="btn sm" onClick={() => openSettings("memory")}>{t("mem.openSettings")}</button>
-      {mem ? (
-        <div className="grid">
-          {(["user", "memory"] as const).map((k) => (
-            <label key={k} className="field">
-              {k === "user" ? t("lib.userLabel") : t("lib.memLabel")}
-              <textarea rows={10} className="mono" value={mem[k]} onChange={(e) => setMem({ ...mem, [k]: e.target.value })} placeholder={k === "user" ? t("lib.userPh") : t("lib.memPh")} />
-              <span className={`hint${mem[k].length > mem.limits[k] ? " msg-err" : ""}`}>{t("lib.chars", { n: mem[k].length, max: mem.limits[k] })}</span>
-              <button
-                className="btn sm"
-                style={{ alignSelf: "flex-start" }}
-                disabled={!!busy || mem[k].length > mem.limits[k]}
-                onClick={() =>
-                  void run(`mem-${k}`, async () => {
-                    setMem(await api<Mem>("/api/memory", { method: "PUT", body: JSON.stringify({ target: k, text: mem[k] }) }));
-                    return t("lib.memorySaved");
-                  })
-                }
-              >
-                {t("common.save")}
-              </button>
-            </label>
-          ))}
-        </div>
-      ) : (
-        <p className="note">{t("common.loading")}</p>
-      )}
-    </div>
-    {lessonsCard}
-    </>
-  );
-
-  const views: Record<Exclude<Tab, "memory">, Record<View, React.ReactNode>> = {
+  const views: Record<Tab, Record<View, React.ReactNode>> = {
     connectors: { discover: discoverConnectors, yours: yourConnectors },
     skills: { discover: discoverSkills, yours: yourSkills },
     plugins: { discover: discoverPlugins, yours: yourPlugins },
   };
-  const counts: Record<Exclude<Tab, "memory">, number> = { connectors: servers.length, skills: skills.length, plugins: inst.plugins.length };
+  const counts: Record<Tab, number> = { connectors: servers.length, skills: skills.length, plugins: inst.plugins.length };
 
   return (
     <main className="settings market">
@@ -904,14 +813,13 @@ export default function Marketplace() {
 
       <div className="mk-top">
         <div className="mk-tabs" role="tablist">
-          {(["connectors", "skills", "plugins", "memory"] as Tab[]).map((x) => (
+          {(["connectors", "skills", "plugins"] as Tab[]).map((x) => (
             <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
               {t(`mk.tab.${x}`)}
             </button>
           ))}
         </div>
-        {tab !== "memory" && (
-          <div className="seg-tabs">
+        <div className="seg-tabs">
             <button className={view === "yours" ? "on" : ""} onClick={() => pick(tab, "yours")}>
               {t("mk.yours")}
               {counts[tab] > 0 && <span className="mk-count sm">{counts[tab]}</span>}
@@ -920,11 +828,9 @@ export default function Marketplace() {
               {t("mk.discover")}
             </button>
           </div>
-        )}
       </div>
 
-      {tab !== "memory" && (
-        <div className="mk-bar">
+      <div className="mk-bar">
           <label className="mk-search">
             <Icon name="zoomIn" size={16} />
             <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("mk.search")} aria-label={t("mk.search")} />
@@ -959,7 +865,6 @@ export default function Marketplace() {
             </div>
           )}
         </div>
-      )}
 
       {waiting && tab === "connectors" && (
         <div className="notice mk-waiting" role="status">
@@ -974,7 +879,7 @@ export default function Marketplace() {
         </div>
       )}
 
-      {tab === "memory" ? memoryView : views[tab][view]}
+      {views[tab][view]}
 
       {soonItem && (
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={soonItem.name} onMouseDown={(e) => e.target === e.currentTarget && setSoonItem(null)}>
