@@ -79,6 +79,20 @@ export default function PrivacyPage() {
           organization, role and team size) and any feedback you send us, with the App version and operating system.
         </li>
       </ul>
+      <p>If you buy a plan, we also store:</p>
+      <ul>
+        <li>
+          <b>Billing records from Paddle</b>: your Paddle customer and subscription IDs, the email Paddle has for you,
+          which plan you bought, its status and renewal date, and each payment’s amounts, currency, tax and refunds. We
+          use them to give your plan’s credits, show your billing, and keep our accounts.
+        </li>
+      </ul>
+      <p>
+        Payments are handled by <b>Paddle</b> (Paddle.com), our reseller and Merchant of Record. You enter your card or
+        other payment details in Paddle’s checkout, never on our servers: we never see or store your full card number.
+        Paddle processes your payment and billing details under its own{" "}
+        <a href="https://www.paddle.com/legal/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
+      </p>
       <p>We do <b>not</b> store the content of your chats, prompts, memories, skills or files.</p>
 
       <h2>4. Crash reports and usage statistics</h2>
@@ -122,7 +136,7 @@ export default function PrivacyPage() {
       <h2>7. Who we share it with</h2>
       <p>
         We use a small number of service providers to run oovi, who process data on our behalf: our website and API
-        hosting provider, our database provider and, for theOovi requests only, our AI provider (Anthropic). They may store data in other countries; where required, we rely on
+        hosting provider, our database provider, our reseller Paddle (for purchases, payments, tax and receipts) and, for theOovi requests only, our AI provider (Anthropic). They may store data in other countries; where required, we rely on
         appropriate safeguards for international transfers. We may also disclose data if required by law, or to
         protect the rights and safety of our users or others. If oovi is involved in a merger or acquisition, account
         data may be transferred as part of it, subject to this policy.
@@ -134,6 +148,7 @@ export default function PrivacyPage() {
         <li>Sign-in sessions expire after about 60 days of inactivity, or when you sign out.</li>
         <li>Crash reports are kept only as long as useful for fixing bugs, and no longer than 12 months.</li>
         <li>Credit records, theOovi usage numbers, pilot requests and feedback are kept while your account exists.</li>
+        <li>Billing and payment records are kept as long as tax and accounting laws require, even after you delete your account.</li>
       </ul>
 
       <h2>9. Deleting your account</h2>

@@ -11,10 +11,11 @@ export default function TermsPage() {
       title="Terms of Service"
       summary={
         <p>
-          <b>The short version:</b> oovi is a desktop app that lets you run a team of AI agents with your own AI
-          provider keys. It’s free during the pilot. You’re responsible for what you ask your bots to do. AI can make
-          mistakes, so check important results. The software is provided as is. The rest of this page explains the
-          details.
+          <b>The short version:</b> oovi is a desktop app that lets you run a team of AI agents. The app is free. You
+          can use it with your own AI provider keys, or with theOovi, our built-in model, which uses credits: free
+          credits to start, and paid plans for more. Paid plans are sold by our reseller Paddle. You’re responsible
+          for what you ask your bots to do. AI can make mistakes, so check important results. The rest of this page
+          explains the details.
         </p>
       }
     >
@@ -40,23 +41,40 @@ export default function TermsPage() {
         <li>You can delete your account at any time from your account page.</li>
       </ul>
 
-      <h2>3. Pilot, pricing and changes</h2>
+      <h2>3. Plans, payments and refunds</h2>
       <p>
-        oovi is currently in a pilot phase and is free to use. We may introduce paid plans or paid features in the
-        future (for example, backup and sync across devices). We’ll tell you before any paid plan applies to you, and
-        we will never charge you without your clear agreement.
+        The App is free. theOovi, the AI model built into oovi, uses credits. Every new account gets free welcome
+        credits. For more, you can buy a monthly or yearly plan (Starter, Pro or Advanced) on our{" "}
+        <Link href="/pricing">pricing page</Link>, which shows what each plan includes and its price in your currency.
+        A plan adds its credits to your balance at each payment, and a daily safety limit applies to protect you from
+        runaway use. Unused credits stay in your balance.
       </p>
       <p>
-        Because oovi is in a pilot, features may change, be limited, or be removed, and the Service may sometimes be
-        unavailable. We may update the App from time to time.
+        <b>Our order process is conducted by our online reseller Paddle.com. Paddle.com is the Merchant of Record for
+        all our orders.</b> Paddle provides all customer service inquiries and handles returns. Paddle takes the
+        payment, charges sales tax or VAT where it applies, and sends your receipts and invoices. Your purchase is also
+        covered by <a href="https://www.paddle.com/legal/checkout-buyer-terms" target="_blank" rel="noreferrer">Paddle’s
+        Buyer Terms</a>.
+      </p>
+      <p>
+        Plans renew automatically at the end of each period until you cancel. You can cancel at any time from your
+        account page; you keep your plan until the end of the period you paid for, and you aren’t charged again. You
+        can ask for a full refund within 14 days of any payment, as explained in our{" "}
+        <Link href="/refund">Refund Policy</Link>. If we change a plan’s price, we’ll tell you before it applies to
+        your next payment.
+      </p>
+      <p>
+        We improve oovi often: features may change, and the Service may sometimes be unavailable. We may update the
+        App from time to time.
       </p>
 
-      <h2>4. Your AI provider keys and costs</h2>
+      <h2>4. Your own AI provider keys</h2>
       <p>
-        oovi works with AI models from third-party providers using API keys that <b>you</b> supply (“bring your own
-        key”). You are responsible for having a valid account with those providers, for following their terms and
-        usage policies, and for all fees they charge. You pay providers directly; we don’t resell or mark up AI usage
-        and we aren’t responsible for provider charges, outages, rate limits or changes to their models.
+        Instead of theOovi, you can use AI models from third-party providers with API keys that <b>you</b> supply
+        (“bring your own key”). You are then responsible for having a valid account with those providers, for
+        following their terms and usage policies, and for all fees they charge. You pay those providers directly; we
+        don’t mark up that usage and we aren’t responsible for provider charges, outages, rate limits or changes to
+        their models.
       </p>
       <p>
         Your API keys are stored on your own device, encrypted. Keep them secret, and revoke them with your provider
@@ -114,9 +132,9 @@ export default function TermsPage() {
         components.
       </p>
 
-      <h2>9. Unsigned builds during the pilot</h2>
+      <h2>9. Unsigned builds</h2>
       <p>
-        During the pilot, the App may not be code-signed, so your operating system may show a warning when you first
+        For now, the App downloaded from our website may not be code-signed, so your operating system may show a warning when you first
         open it. Only download oovi from this website.
       </p>
 
