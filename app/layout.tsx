@@ -10,6 +10,7 @@ import "./styles/attachments.css";
 import "./styles/memory.css";
 import "./styles/files.css";
 import "./styles/telegram.css";
+import "./styles/live-browser.css";
 
 const nunito = Nunito({ subsets: ["latin"], display: "swap", variable: "--font-nunito" });
 // Nunito has no Arabic glyphs. This face only covers the Arabic range (unicode-range), so it

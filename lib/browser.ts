@@ -159,6 +159,13 @@ function track(sess: Session, page: Page) {
     sess.page = p;
     sess.elements.clear();
     track(sess, p);
+    // A sign-in pop-up that closes itself (e.g. "Sign in with Google") returns to the page that opened it.
+    p.once("close", () => {
+      if (sess.page === p && !page.isClosed()) {
+        sess.page = page;
+        sess.elements.clear();
+      }
+    });
   });
 }
 

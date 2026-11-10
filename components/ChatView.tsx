@@ -13,6 +13,8 @@ import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import LiveBrowser from "./LiveBrowser";
+import type { LiveSessionInfo } from "@/lib/browser-live";
 import PlanReview from "./PlanReview";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
@@ -41,6 +43,7 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "click": return t("chat.call.click", { element: String(i.element) });
     case "type": return t(i.submit ? "chat.call.typeEnter" : "chat.call.type", { text: String(i.text ?? "") });
     case "go_back": return t("chat.call.back");
+    case "request_user_takeover": return t("chat.call.takeover", { reason: String(i.reason ?? "") });
     case "research": return t("chat.call.research", { query: String(i.question ?? "") });
     case "read_url": return t("chat.call.readUrl", { host: host(i.url) });
     case "create_document":
@@ -891,6 +894,30 @@ export default function ChatView({ id }: { id: string }) {
     return out.slice(-12).reverse();
   }, [chat]);
 
+  // Bot browsers open in this chat (live view + take control). Polled while the window is visible.
+  const [browsers, setBrowsers] = useState<LiveSessionInfo[]>([]);
+  const refreshBrowsers = useCallback(() => {
+    if (document.visibilityState === "hidden") return;
+    api<LiveSessionInfo[]>(`/api/browser/sessions?chat=${encodeURIComponent(id)}`)
+      .then((list) => setBrowsers((old) => (JSON.stringify(old) === JSON.stringify(list) ? old : list)))
+      .catch(() => {});
+  }, [id]);
+  useEffect(() => {
+    setBrowsers([]);
+    refreshBrowsers();
+    const timer = setInterval(refreshBrowsers, 3_000);
+    document.addEventListener("visibilitychange", refreshBrowsers);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshBrowsers);
+    };
+  }, [refreshBrowsers]);
+  // A bot asking the user to take over opens the panel (without changing the saved choice).
+  const askKey = browsers.map((b) => b.request?.at ?? "").join(",");
+  useEffect(() => {
+    if (browsers.some((b) => b.request)) setShowLive(true);
+  }, [askKey]); // only when a request appears or changes
+
   if (missing) {
     return (
       <div className="page center">
@@ -1389,14 +1416,16 @@ export default function ChatView({ id }: { id: string }) {
       </section>
 
       {showLive && (
-        <aside className="live" aria-label={t("chat.live")}>
+        <aside className={`live${browsers.length ? " has-browser" : ""}${browsers.some((b) => b.request || b.controlled) ? " urgent" : ""}`} aria-label={t("chat.live")}>
           <div className="live-head">
             <span>{t("chat.live")}</span>
             <button className="icon-btn sm" onClick={toggleLive} aria-label={t("chat.closeLive")}>
               <Icon name="close" size={16} />
             </button>
           </div>
-          {shot ? (
+          {browsers.length > 0 ? (
+            <LiveBrowser chatId={id} sessions={browsers} bots={members} onChange={refreshBrowsers} />
+          ) : shot ? (
             <div className="live-shot">
               <div className="live-who">
                 {shotBot && <Face face={shotBot.face} size={26} mood={running ? "working" : "idle"} />}

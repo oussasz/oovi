@@ -2,6 +2,7 @@ import type { Page } from "playwright-core";
 import fs from "node:fs";
 import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
+import { cleanText, consumeUserUse, isControlled, MAX_REASON, requestTakeover, waitWhileControlled } from "./browser-live";
 import type { ToolSpec } from "./llm";
 import { callMcpTool, mcpServerOf } from "./mcp";
 import { applyMemory } from "./memory";
@@ -47,6 +48,12 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: "download_file",
     description: "Download a file (PDF, image, document…) from a direct URL into the user's Downloads/oovi folder. The file is saved, never opened.",
     parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+  },
+  {
+    name: "request_user_takeover",
+    description:
+      "Ask the user to take over your browser for something only they should do: signing in, a CAPTCHA or a verification code. Open the page first. The user sees your browser live, takes control, finishes, and hands it back; this call waits until then (up to 15 minutes) and returns the page. Never ask for or type passwords, codes or payment details yourself.",
+    parameters: { type: "object", properties: { reason: { type: "string", description: "One short sentence the user sees, e.g. 'Sign in to LinkedIn' or 'Solve the CAPTCHA'" } }, required: ["reason"] },
   },
 ];
 
@@ -105,7 +112,7 @@ const SNAPSHOT_JS = `(() => {
     n++;
     el.setAttribute("data-oc-id", String(n));
     const tag = el.tagName.toLowerCase();
-    const label = (el.getAttribute("aria-label") || el.placeholder || el.innerText || el.value || el.getAttribute("title") || el.getAttribute("name") || "").replace(/\\s+/g, " ").trim().slice(0, 80);
+    const label = (el.getAttribute("aria-label") || el.placeholder || el.innerText || (el.type === "password" ? "" : el.value) || el.getAttribute("title") || el.getAttribute("name") || "").replace(/\\s+/g, " ").trim().slice(0, 80);
     const role = el.getAttribute("role");
     const kind = tag === "a" ? "link" : tag === "input" ? "input:" + (el.type || "text") : role || tag;
     els.push({ n, kind, label, href: tag === "a" ? el.href : "" });
@@ -129,14 +136,41 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "download_file"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "download_file", "request_user_takeover"];
+
+/** What runTool needs from the run: its stop signal, and where the user is writing from. */
+export type RunCtx = { signal?: AbortSignal; channel?: "telegram" };
+
+/**
+ * Bots never touch the browser while the user has control of it. Returns an error
+ * message if the wait ended without the user handing back, else null.
+ */
+async function pauseForUser(sessionId: string, ctx: RunCtx): Promise<string | null> {
+  const r = await waitWhileControlled(sessionId, ctx.signal);
+  if (r === "ok") return null;
+  if (r === "aborted") return "Stopped by the user.";
+  if (r === "closed") return "The browser was closed.";
+  return "The user is still using the browser. Try again later or ask them in your reply.";
+}
+
+const userNote = (sess: Session) => `The user used the browser; the page may have changed (now at ${sess.page.url()}).`;
 
 /** The tools a bot may use, from its toggles. */
 export function toolsFor(t: BotTools): ToolSpec[] {
   return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? READER_SPECS : [])];
 }
 
-async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean): Promise<ToolResult> {
+async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
+  // If the user took control while this tool ran, wait: nothing they do reaches the model.
+  for (;;) {
+    const paused = await pauseForUser(sessionId, ctx);
+    if (paused) return fail(call, paused);
+    const r = await snapshotResult(call, sess, offset, withElements);
+    if (!isControlled(sessionId)) return r;
+  }
+}
+
+async function snapshotResult(call: ToolCall, sess: Session, offset: number, withElements: boolean): Promise<ToolResult> {
   const page = sess.page;
   const s = (await page.evaluate(SNAPSHOT_JS)) as Snap;
   sess.elements = new Map(s.els.map((e) => [e.n, { kind: e.kind, label: e.label }]));
@@ -224,7 +258,7 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
   return "ERR:Too many redirects.";
 }
 
-export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false, workspace?: Workspace): Promise<ToolResult> {
+export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false, workspace?: Workspace, ctx: RunCtx = {}): Promise<ToolResult> {
   const input = call.input;
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
@@ -261,58 +295,86 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       return { id: call.id, name: call.name, content: `Search results for "${q}" (untrusted web content):\n${body}` };
     }
 
-    const sess = await getSession(sessionId, settings.browser, useAccounts);
-    const page = sess.page;
+    if (call.name === "request_user_takeover") return await takeoverTool(call, sessionId, ctx);
 
-    switch (call.name) {
-      case "open_url": {
-        const url = String(input.url ?? "").trim();
-        const err = checkUrl(url, settings.browser.allowPrivateNetwork);
-        if (err) return fail(call, err);
-        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
-        await settle(page);
-        return pageResult(call, sess, 0, true);
-      }
-      case "read_page":
-        return pageResult(call, sess, Math.max(0, Number(input.offset) || 0), false);
-      case "click": {
-        const n = Number(input.element);
-        const loc = page.locator(`[data-oc-id="${n}"]`);
-        if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. The page may have changed; call open_url or read_page to get a fresh element list.`);
-        await loc.first().click({ timeout: 10_000 });
-        await settle(sess.page);
-        return pageResult(call, sess, 0, true);
-      }
-      case "type": {
-        const n = Number(input.element);
-        const loc = page.locator(`[data-oc-id="${n}"]`);
-        if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. Get a fresh element list first.`);
-        await loc.first().fill(String(input.text ?? ""), { timeout: 10_000 });
-        if (input.submit === true) {
-          await loc.first().press("Enter");
-          await settle(sess.page);
-        }
-        return pageResult(call, sess, 0, true);
-      }
-      case "go_back": {
-        await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 });
-        await settle(page);
-        return pageResult(call, sess, 0, true);
-      }
-      case "download_file": {
-        const url = String(input.url ?? "").trim();
-        const err = checkUrl(url, settings.browser.allowPrivateNetwork);
-        if (err) return fail(call, err);
-        const saved = await fetchToDownloads(sess, url, settings.browser.allowPrivateNetwork);
-        return typeof saved === "string" && saved.startsWith("ERR:")
-          ? fail(call, saved.slice(4))
-          : { id: call.id, name: call.name, content: `Saved to the user's computer (not opened):\n${saved}` };
-      }
-    }
-    return fail(call, `Unknown tool: ${call.name}`);
+    // The user has the browser: wait until they hand it back.
+    const paused = await pauseForUser(sessionId, ctx);
+    if (paused) return fail(call, paused);
+    const sess = await getSession(sessionId, settings.browser, useAccounts);
+    const res = await browserTool(call, sess, settings, sessionId, ctx);
+    if (consumeUserUse(sessionId)) res.content = `${userNote(sess)}\n${res.content}`;
+    return res;
   } catch (e) {
     return fail(call, hint(e, settings));
   }
+}
+
+async function browserTool(call: ToolCall, sess: Session, settings: Settings, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
+  const input = call.input;
+  const page = sess.page;
+  switch (call.name) {
+    case "open_url": {
+      const url = String(input.url ?? "").trim();
+      const err = checkUrl(url, settings.browser.allowPrivateNetwork);
+      if (err) return fail(call, err);
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      await settle(page);
+      return pageResult(call, sess, 0, true, sessionId, ctx);
+    }
+    case "read_page":
+      return pageResult(call, sess, Math.max(0, Number(input.offset) || 0), false, sessionId, ctx);
+    case "click": {
+      const n = Number(input.element);
+      const loc = page.locator(`[data-oc-id="${n}"]`);
+      if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. The page may have changed; call open_url or read_page to get a fresh element list.`);
+      await loc.first().click({ timeout: 10_000 });
+      await settle(sess.page);
+      return pageResult(call, sess, 0, true, sessionId, ctx);
+    }
+    case "type": {
+      const n = Number(input.element);
+      const loc = page.locator(`[data-oc-id="${n}"]`);
+      if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. Get a fresh element list first.`);
+      await loc.first().fill(String(input.text ?? ""), { timeout: 10_000 });
+      if (input.submit === true) {
+        await loc.first().press("Enter");
+        await settle(sess.page);
+      }
+      return pageResult(call, sess, 0, true, sessionId, ctx);
+    }
+    case "go_back": {
+      await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 });
+      await settle(page);
+      return pageResult(call, sess, 0, true, sessionId, ctx);
+    }
+    case "download_file": {
+      const url = String(input.url ?? "").trim();
+      const err = checkUrl(url, settings.browser.allowPrivateNetwork);
+      if (err) return fail(call, err);
+      const saved = await fetchToDownloads(sess, url, settings.browser.allowPrivateNetwork);
+      return typeof saved === "string" && saved.startsWith("ERR:")
+        ? fail(call, saved.slice(4))
+        : { id: call.id, name: call.name, content: `Saved to the user's computer (not opened):\n${saved}` };
+    }
+  }
+  return fail(call, `Unknown tool: ${call.name}`);
+}
+
+/** request_user_takeover: show the request in the live view and wait for the user to finish. */
+async function takeoverTool(call: ToolCall, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
+  if (ctx.channel === "telegram") return fail(call, "The user is on Telegram and can't use the browser. Tell them to open oovi on their computer to sign in.");
+  const sess = peekSession(sessionId);
+  if (!sess || sess.page.isClosed() || sess.page.url() === "about:blank") return fail(call, "Open the page that needs the user first (open_url), then call request_user_takeover.");
+  const r = await requestTakeover(sessionId, cleanText(call.input.reason, MAX_REASON), ctx.signal);
+  if (r === "timeout") return fail(call, "The user didn't take over in time.");
+  if (r === "aborted") return fail(call, "Stopped by the user.");
+  if (r === "closed") return fail(call, "The browser was closed before the user finished.");
+  consumeUserUse(sessionId);
+  const live = peekSession(sessionId) ?? sess;
+  await settle(live.page);
+  const res = await pageResult(call, live, 0, true, sessionId, ctx);
+  if (!res.isError) res.content = `The user finished in the browser and handed it back (now at ${live.page.url()}). Check the page below before you continue.\n${res.content}`;
+  return res;
 }
 
 // ---------- approvals ----------

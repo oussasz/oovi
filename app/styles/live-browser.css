@@ -1,0 +1,61 @@
+/* live-browser: the bot's browser, live, in the chat's side panel, and taking control of it (components/LiveBrowser.tsx) */
+
+.lb-wrap { padding: 0 14px; }
+
+.lb-tabs { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 8px; scrollbar-width: thin; }
+.lb-tab { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 4px 10px 4px 5px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--text); font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer; }
+.lb-tab:hover { border-color: var(--faint); }
+.lb-tab.on { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
+.lb-tab-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--coral); }
+
+.lb-box { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.lb-who { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.lb-who-text { display: flex; flex-direction: column; line-height: 1.25; min-width: 0; flex: 1; }
+.lb-who-text span { color: var(--muted); font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.lb-chip { display: inline-flex; align-items: center; gap: 5px; flex: none; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 800; background: var(--soft); color: var(--muted); }
+.lb-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.lb-chip.ctl { background: var(--yellow); color: #171717; }
+.lb-chip.ctl .lb-chip-dot { background: #171717; }
+
+.lb-url { width: 100%; padding: 5px 9px; border: 1px solid var(--border); border-radius: 10px; background: var(--soft); color: var(--muted); font: 12px/1.4 ui-monospace, "Cascadia Code", Consolas, monospace; text-overflow: ellipsis; }
+.lb-url:focus-visible { color: var(--text); }
+
+.lb-request { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 10px; border: 1px solid var(--warn-border); border-radius: 12px; background: var(--warn-bg); font-size: 13.5px; font-weight: 700; }
+.lb-request > span { flex: 1 1 160px; min-width: 0; overflow-wrap: anywhere; }
+.lb-request > svg { flex: none; }
+
+/* The screen keeps the page's aspect ratio and letterboxes inside the stage. */
+.lb-stage { position: relative; display: flex; align-items: center; justify-content: center; border-radius: 12px; background: #0e0e0d; overflow: hidden; }
+.lb-screen { --lb-ar: 1280 / 800; position: relative; width: 100%; aspect-ratio: var(--lb-ar); user-select: none; -webkit-user-select: none; }
+.lb-screen img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+.lb-screen img.lb-hidden { visibility: hidden; }
+.lb-screen.ctl { cursor: default; touch-action: none; }
+.lb-screen:focus-within { outline: 3px solid var(--blue); outline-offset: -3px; }
+.lb-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; text-align: center; color: #f2f2ee; font-size: 13px; font-weight: 700; background: rgba(14, 14, 13, 0.55); }
+.lb-overlay:empty { display: none; }
+/* Receives keys and IME input; invisible but focusable, near the screen so IME popups appear there. */
+.lb-keys { position: absolute; inset-inline-start: 0; bottom: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; resize: none; overflow: hidden; caret-color: transparent; }
+
+.lb-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.lb-actions .btn { display: inline-flex; align-items: center; gap: 6px; }
+.lb-note { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
+.lb.ctl .lb-note { color: var(--text); }
+
+/* Enlarged: a big overlay so small text and CAPTCHAs are usable. */
+.lb-backdrop { position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.45); }
+.lb.expanded .lb-box { position: fixed; inset: 16px; z-index: 71; padding: 14px; border-radius: var(--radius); background: var(--panel); box-shadow: var(--shadow); }
+.lb.expanded .lb-stage { flex: 1; min-height: 0; container-type: size; }
+.lb.expanded .lb-screen { width: min(100cqw, calc(100cqh * var(--lb-ar))); height: auto; max-height: 100cqh; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .lb-chip-dot { transition: background 0.2s; }
+}
+
+/* Narrow windows hide the side panel; when a bot needs the user (or the user is in control) it slides over the chat instead. */
+@media (max-width: 980px) {
+  .chatview.with-live .live.urgent { display: flex; position: fixed; top: 0; bottom: 0; inset-inline-end: 0; width: min(420px, 100vw); z-index: 60; box-shadow: var(--shadow); }
+}
+
+[dir="rtl"] .lb-tab { padding: 4px 5px 4px 10px; }
+[dir="rtl"] .lb-url { unicode-bidi: isolate; text-align: left; }

@@ -29,6 +29,7 @@ const TEXT: Record<HelpTopic, string> = {
   overview: `oovi is a team of AI bots ("slimes") on the user's computer. Each bot has a name, a role, instructions, a look and abilities. Bots work alone in a 1:1 chat or together in groups.
 - Sidebar: Home, "+ Group" and "+ Bot" buttons, your groups and bots, then Marketplace and Settings at the bottom, plus the credits chip when using theOovi.
 - A chat's header has the project folder button, a pencil (Edit bot / Edit group), Clear conversation and the Live view panel.
+- Live view shows a bot's browser live while it works (one tab per bot). "Take control" lets you click and type in that browser yourself, e.g. to sign in or solve a CAPTCHA; the bot pauses and sees nothing until you press "Done — hand back". Bots ask for this themselves when a page needs a login ("needs you" banner). It works in the oovi app on your computer, not from Telegram.
 - Under the message box: Effort and Deep work. Type @ to mention a bot, / for commands.
 Topics: ${Object.keys(HELP_TOPICS).filter((k) => k !== "overview").join(", ")}.`,
 
