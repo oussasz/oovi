@@ -66,6 +66,7 @@ From a first-time-user test (6 personas, real model) and the owner's requests:
 6. Still pending from before: deploy the website (`cd web && npx vercel@latest --prod --yes`; it was blocked by a permission check on the PC, the owner can run it), live test on the owner's PC (Telegram groups, desktop control), then version 0.8.8 and the release (Microsoft Store + downloads repo) only with the owner's go-ahead.
 
 ## Rules the owner set (keep them)
+- Verify, never assume: never state as fact anything about the owner's app, data or settings without checking it; say what is verified, seen or assumed; review every change as if it ships to millions of users (full rules in `CLAUDE.md`).
 - Confirm before anything outward or hard to undo: pushing to `main`, deploying, publishing, store submissions, sending messages.
 - Never ask the owner to paste passwords or keys into chat; never enter passwords or create accounts; test with stand-ins or a fresh data folder instead.
 - Write for people: plain words, short; Arabic (incl. Algerian Darija), French and English users.
