@@ -18,5 +18,31 @@ exports.default = async function afterPack(context) {
   const to = path.join(resources, "server");
   fs.rmSync(to, { recursive: true, force: true });
   fs.cpSync(from, to, { recursive: true, verbatimSymlinks: true });
-  console.log(`  • copied server  to=${path.relative(packager.projectDir, to)}`);
+  const dropped = dropOutsideLinks(to);
+  console.log(`  • copied server  to=${path.relative(packager.projectDir, to)}${dropped.length ? ` (removed ${dropped.length} link(s) pointing outside it)` : ""}`);
 };
+
+/**
+ * Symbolic links that point outside the server folder (npm writes absolute `.bin` links to the build
+ * machine's paths) are broken on users' computers, and macOS refuses to sign an app that contains them
+ * ("invalid destination for symbolic link in bundle"). They're command shortcuts the app never uses.
+ */
+function dropOutsideLinks(root) {
+  const dropped = [];
+  const walk = (dir) => {
+    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isSymbolicLink()) {
+        const target = path.resolve(dir, fs.readlinkSync(p));
+        const rel = path.relative(root, target);
+        if (rel.startsWith("..") || path.isAbsolute(rel)) {
+          fs.unlinkSync(p);
+          dropped.push(path.relative(root, p));
+        }
+      } else if (e.isDirectory()) walk(p);
+    }
+  };
+  walk(root);
+  return dropped;
+}
+exports.dropOutsideLinks = dropOutsideLinks;
