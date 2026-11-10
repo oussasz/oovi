@@ -318,7 +318,8 @@ a.tag { text-decoration: none; }
 
 /* ---------- app shell ---------- */
 .app { display: grid; grid-template-columns: 284px minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px)); }
-.main { min-width: 0; height: calc(100dvh - var(--bar-h, 0px)); overflow-y: auto; }
+/* position: relative: anything absolutely positioned in a page scrolls with the page, never the window. */
+.main { position: relative; min-width: 0; height: calc(100dvh - var(--bar-h, 0px)); overflow-y: auto; }
 .mobile-bar, .scrim { display: none; }
 
 .sidebar { display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--border); min-height: 0; }
@@ -539,14 +540,17 @@ a.tag { text-decoration: none; }
 .swatch { width: 34px; height: 34px; border-radius: 50%; border: 3px solid var(--panel); box-shadow: 0 0 0 1.5px var(--border); cursor: pointer; }
 .swatch.on { box-shadow: 0 0 0 2.5px var(--primary); }
 
-.toggle { display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; cursor: pointer; }
-.toggle input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+/* position: relative keeps the hidden checkbox inside its switch: otherwise it escapes the page's
+   scroll area and makes the whole window scroll too (a second scrollbar on the bot/group editors). */
+.toggle { position: relative; display: flex; align-items: flex-start; gap: 12px; padding: 10px 0; cursor: pointer; }
+.toggle input { position: absolute; top: 12px; left: 0; opacity: 0; width: 1px; height: 1px; }
 .toggle-ui { flex: none; width: 40px; height: 24px; border-radius: 99px; background: var(--border); position: relative; transition: background 0.15s; margin-top: 1px; }
 .toggle-ui::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform 0.15s; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2); }
 .toggle input:checked + .toggle-ui { background: var(--ok); }
 .toggle input:checked + .toggle-ui::after { transform: translateX(16px); }
 .toggle input:focus-visible + .toggle-ui { outline: 2px solid var(--blue); outline-offset: 2px; }
-.toggle b { display: block; }
+/* The switch's title goes on its own line; bold words inside the hint stay in the sentence. */
+.toggle > span:last-child > b:first-child { display: block; }
 .toggle.disabled { opacity: 0.45; cursor: default; }
 
 /* ---------- group editor ---------- */
