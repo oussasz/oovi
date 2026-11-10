@@ -1257,6 +1257,23 @@ const ar: Dict = {
   "grp.also": "أيضًا:",
   "grp.before": "قبل ذلك:",
   "chief.noBrowser": "{name} لا يستطيع بعد فتح المواقع أو النشر بحساباتك. فعّل المتصفح بالأسفل إذا أردت أن يقوم الرئيس بذلك، وإلا فسيعطي هذه المهام لبوت يستطيع.",
+  "bot.accountsNeedsBrowser": "يحتاج إلى المتصفح: تفعيله يفعّل المتصفح أيضًا.",
+  "admin.abilities": "تفعيل {abilities} لـ {bot}",
+  "admin.why": "السبب: {why}",
+  "admin.webDoes": "{label}: البحث عن المعلومات على الإنترنت.",
+  "admin.browserDoes": "{label}: فتح الصفحات والنقر والكتابة (النقر والكتابة يسألانك أولًا).",
+  "admin.accountsDoes": "{label}: النشر والتعليق وإرسال الرسائل باسمك على المواقع التي سجّلت الدخول إليها (يسألك قبل كل نقرة وكل ضغطة مفتاح، ولا يرى كلمات مرورك أبدًا).",
+  "admin.accountsNext": "بعد ذلك سجّل الدخول إلى الموقع مرة واحدة من {place}.",
+  "admin.team": "إنشاء الفريق «{name}» ({count} بوتات)",
+  "admin.teamLead": "القائد: {name}",
+  "admin.teamExisting": "من بوتاتك: {names}",
+  "admin.teamNew": "بوت جديد: {name}، {role}",
+  "bot.forAll": "لكل البوتات",
+  "bot.forAllHint": "تُفعَّل هذه لكل البوتات معًا، من الإعدادات ← الأمان.",
+  "bot.on": "مفعّل",
+  "bot.off": "متوقف",
+  "bot.notHere": "غير متاح على هذا الكمبيوتر",
+  "bot.change": "تغيير",
 };
 
 export default ar;

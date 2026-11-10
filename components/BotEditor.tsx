@@ -12,6 +12,7 @@ import type { Bot, BotInput } from "@/lib/types";
 import Face from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
+import { openSettings } from "./SettingsModal";
 
 // Role name: bot.preset.<id>; instructions: bot.preset.<id>.text (in the UI language).
 const PRESETS: { id: "assistant" | "researcher" | "writer" | "critic" | "social" | "planner" | "shopper" | "coder"; tools: BotInput["tools"] }[] = [
@@ -42,6 +43,13 @@ export default function BotEditor({ id }: { id: string }) {
   const [isMain, setIsMain] = useState(false);
   const [wasMain, setWasMain] = useState(false);
   const { t, rich } = useI18n();
+  // Computer control: on/off for all bots, and whether this computer supports it at all.
+  const [desk, setDesk] = useState<{ available: boolean; enabled: boolean } | null>(null);
+  useEffect(() => {
+    api<{ platform: boolean; app: boolean; enabled: boolean }>("/api/desktop-control")
+      .then((x) => setDesk({ available: x.platform && x.app, enabled: x.enabled }))
+      .catch(() => setDesk({ available: false, enabled: false }));
+  }, []);
 
   // Prices for the models the user switched on.
   useEffect(() => {
@@ -339,14 +347,36 @@ export default function BotEditor({ id }: { id: string }) {
               <span className="hint">{t("bot.browserHint")}</span>
             </span>
           </label>
-          <label className={`toggle${d.tools.browser ? "" : " disabled"}`}>
-            <input type="checkbox" disabled={!d.tools.browser} checked={!!d.tools.accounts} onChange={(e) => set({ tools: { ...d.tools, accounts: e.target.checked } })} />
+          <label className="toggle">
+            {/* Accounts need the browser: turning them on turns the browser on too (said below before the click). */}
+            <input type="checkbox" checked={!!d.tools.accounts && d.tools.browser} onChange={(e) => set({ tools: { ...d.tools, accounts: e.target.checked, browser: e.target.checked ? true : d.tools.browser } })} />
             <span className="toggle-ui" />
             <span>
               <b>{t("bot.accounts")}</b>
               <span className="hint">{rich("bot.accountsHint", { link: <Link href="/settings">{t("bot.accountsLink")}</Link>, every: <b>{t("bot.every")}</b> })}</span>
+              {!d.tools.browser && <span className="hint">{t("bot.accountsNeedsBrowser")}</span>}
             </span>
           </label>
+
+          {/* Features switched on for all bots at once: shown here too, so it's clear what exists and where to turn it on. */}
+          <div className="opt-label" style={{ marginTop: 14 }}>{t("bot.forAll")}</div>
+          <p className="note">{t("bot.forAllHint")}</p>
+          {[
+            { id: "desk", title: t("desk.title"), status: desk === null ? null : !desk.available ? t("bot.notHere") : desk.enabled ? t("bot.on") : t("bot.off"), on: !!desk?.available && !!desk.enabled, can: !!desk?.available },
+            { id: "files", title: t("files.title"), status: settings ? t(`files.mode.${settings.computerFiles.mode}` as "files.mode.off") : null, on: !!settings && settings.computerFiles.mode !== "off", can: true },
+          ].map((f) => (
+            <div key={f.id} className="for-all-row">
+              <b>{f.title}</b>
+              <span>{f.status && <span className={`tag${f.on ? " on" : ""}`}>{f.status}</span>}</span>
+              {f.can ? (
+                <button type="button" className="btn sm" onClick={() => openSettings("safety")}>
+                  {t("bot.change")}
+                </button>
+              ) : (
+                <span />
+              )}
+            </div>
+          ))}
 
           <div className="opt-label" style={{ marginTop: 14 }}>{t("bot.mcp")}</div>
           {servers.length === 0 ? (

@@ -23,7 +23,7 @@ test("a bot describes its own abilities from its real settings", () => {
 test("the Chief without a browser says how to turn it on and which group can do it now", () => {
   const q = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith }, L));
   assert.match(q, /turn on "Browser" and "Use my signed-in accounts" \(Scout already has the browser, so for Scout only "Use my signed-in accounts" is needed\)/);
-  assert.match(q, /sign in under "Settings → Your accounts"/);
+  assert.match(q, /Then they sign in once under "Settings → Your accounts"/);
   assert.match(q, /Scout can do it now: Scout is in "Studio", so you can give that group the job with message_group/);
 });
 
@@ -57,4 +57,42 @@ test("in a group, the bot @mentions the teammate who can", () => {
 
 test("accounts without a browser never counts (the setting needs the browser)", () => {
   assert.equal(abilitiesOf({ id: "x", name: "X", tools: { web: false, browser: false, accounts: true } }).accounts, false);
+});
+
+test("when the card is available, the bot offers it instead of sending the user through menus", () => {
+  const q = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith, canRequest: true }, L));
+  assert.match(q, /call request_abilities for "Browser" and "Use my signed-in accounts": the user turns it on with one click/);
+  assert.match(q, /if they'd rather do it themselves, they can open your settings/); // the menus stay as a fallback
+  // A routine run (no card): menus only.
+  const r = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith, canRequest: false }, L));
+  assert.doesNotMatch(r, /request_abilities/);
+});
+
+import { botDirectory, DIRECTORY_DESC, DIRECTORY_MAX } from "../../lib/abilities.ts";
+
+test("the Chief sees each bot's description, so a link one bot holds isn't lost (the dashboard case)", () => {
+  const c = { id: "c", name: "c", role: "Business analyst", instructions: "You read the Business OS at https://profiles-x.trycloudflare.com every morning.", tools: { web: true, browser: true } };
+  const m = { id: "m", name: "mouloud", role: "Assistant", instructions: "", tools: { web: false, browser: false }, hidden: true };
+  const d = botDirectory([quill, c, m], "q", (id) => (id === "c" || id === "m" ? ["Business"] : [])).join("\n");
+  assert.match(d, /- c, Business analyst\. Abilities: web search, a browser\. Groups: "Business"\. Description: You read the Business OS at https:\/\/profiles-x\.trycloudflare\.com/);
+  assert.match(d, /- Quill \(you\)\. Abilities: web search\. Groups: none\./);
+  assert.match(d, /mouloud, Assistant \(hidden from the bots list\)\. Abilities: no web access/);
+  assert.match(d, /use that information yourself, or give the job to a group it's in/);
+});
+
+test("the directory stays bounded", () => {
+  const long = { id: "x", name: "X", instructions: "y".repeat(DIRECTORY_DESC + 50), tools: { web: false, browser: false } };
+  assert.match(botDirectory([long], "q", () => []).join("\n"), new RegExp(`y{${DIRECTORY_DESC}}…`));
+  const many = Array.from({ length: DIRECTORY_MAX + 3 }, (_, i) => ({ id: `b${i}`, name: `B${i}`, tools: { web: false, browser: false } }));
+  assert.match(botDirectory(many, "q", () => []).join("\n"), /…and 3 more/);
+});
+
+import { hideSecrets } from "../../lib/abilities.ts";
+
+test("secrets in a bot's description don't reach the Chief, links and facts do", () => {
+  const t = hideSecrets("Dashboard: https://profiles-x.trycloudflare.com/saas. Key sk-ant-api03-abcdefghijklmnopqrstuv, password: hunter2, Telegram 123456789:AAHdqTcvCH1vGWJxfSeofSAs0K5PALDsaw, phone 0772763932");
+  assert.match(t, /https:\/\/profiles-x\.trycloudflare\.com\/saas/);
+  assert.match(t, /0772763932/);
+  assert.doesNotMatch(t, /sk-ant-api03|hunter2|AAHdqTcv/);
+  assert.match(t, /password: \[hidden\]/);
 });

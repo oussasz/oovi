@@ -857,3 +857,8 @@ a.tag { text-decoration: none; }
 .plan.plan-dropped li:not(.plan-note) { opacity: 0.55; text-decoration: line-through; }
 .plan .plan-note { font-size: 12.5px; color: var(--muted); font-style: italic; }
 @media (max-width: 640px) { .plan-edit li { grid-template-columns: 22px 1fr; } .plan-row-actions { grid-column: 2; } }
+
+/* Bot editor: features turned on for all bots (computer control, files on this computer). */
+.for-all-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 10px; padding: 6px 0; }
+.for-all-row b { min-width: 0; }
+.for-all-row .tag.on { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--text); }

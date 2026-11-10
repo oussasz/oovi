@@ -1261,6 +1261,23 @@ const en = {
   "grp.also": "Also:",
   "grp.before": "Before that:",
   "chief.noBrowser": "{name} can't open websites or post with your accounts yet. Turn on Browser below if you want the Chief to do it; otherwise it gives those tasks to a bot that can.",
+  "bot.accountsNeedsBrowser": "Needs the browser: turning this on turns Browser on too.",
+  "admin.abilities": "Turn on {abilities} for {bot}",
+  "admin.why": "Why: {why}",
+  "admin.webDoes": "{label}: look things up on the web.",
+  "admin.browserDoes": "{label}: open pages, click and type (clicks and typing ask you first).",
+  "admin.accountsDoes": "{label}: post, comment and send messages as you on sites you signed in to (asks you before every click and keystroke; never sees your passwords).",
+  "admin.accountsNext": "Then sign in to the site once under {place}.",
+  "admin.team": "Create the team \"{name}\" ({count} bots)",
+  "admin.teamLead": "Leader: {name}",
+  "admin.teamExisting": "From your bots: {names}",
+  "admin.teamNew": "New bot: {name}, {role}",
+  "bot.forAll": "For all bots",
+  "bot.forAllHint": "These are turned on for all bots at once, in Settings → Safety.",
+  "bot.on": "On",
+  "bot.off": "Off",
+  "bot.notHere": "Not available on this computer",
+  "bot.change": "Change",
 } as const;
 
 export type Key = keyof typeof en;

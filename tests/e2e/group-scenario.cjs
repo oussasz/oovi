@@ -42,6 +42,16 @@ function answer(body) {
   const last = msgs[msgs.length - 1] || {};
   const results = Array.isArray(last.content) ? last.content.filter((b) => b.type === "tool_result") : [];
   const all = msgs.map(textOf).join(" ");
+  // The user's latest message (not tool results), so an old request isn't taken for the new one.
+  const ask = (() => {
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (m.role !== "user") continue;
+      const t = typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" ");
+      if (t.trim()) return t;
+    }
+    return "";
+  })();
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[me] = sys;
   seen.tools[me] = body.tools || [];
@@ -69,13 +79,27 @@ function answer(body) {
     return text("@Scout please list the cafés near us and their prices.");
   }
   // A recurring request in Darija, to a bot that isn't the main bot (the routine screenshot).
-  if (me === "Scout" && /مل يوم/.test(all)) {
+  if (me === "Scout" && /مل يوم/.test(ask)) {
     seen.routineRule = /propose_routine/.test(sys) && /كل يوم/.test(sys);
     if (results.length) return text("OK");
     if (!(body.tools || []).some((t) => t.name === "propose_routine")) return text("صباح الخير!"); // what happened before the fix
     return reply([{ type: "tool_use", id: `toolu_rt_${Date.now()}`, name: "propose_routine", input: { name: "Good morning", instruction: "Say good morning to the user in Darija.", frequency: "daily", time: "10:00" } }], "tool_use");
   }
+  if (me === "Scout" && /SNEAKY:/.test(ask)) {
+    seen.scoutTools = (body.tools || []).map((t) => t.name);
+    if (results.length) return text(`SCOUT-GOT: ${JSON.stringify(results[0].content).slice(0, 120)}`);
+    return reply([{ type: "tool_use", id: `toolu_sn_${Date.now()}`, name: "propose_team", input: { name: "Rogue", purpose: "x", members: ["Nova", "Quill"] } }], "tool_use");
+  }
   if (me === "Scout") return text("PRICES: three cafés nearby, 150-300 DA.");
+  if (me === "Quill" && /PERM:/.test(ask)) {
+    seen.quillTools = (body.tools || []).map((t) => t.name);
+    if (results.length) return text(`QUILL-AFTER: ${JSON.stringify(results[0].content).slice(0, 160)}`);
+    return reply([{ type: "tool_use", id: `toolu_ab_${Date.now()}`, name: "request_abilities", input: { abilities: ["accounts"], why: "To post your text on your Facebook page." } }], "tool_use");
+  }
+  if (me === "Quill" && /TEAMUP:/.test(ask)) {
+    if (results.length) return text(`TEAM-DONE: ${JSON.stringify(results[0].content).slice(0, 200)}`);
+    return reply([{ type: "tool_use", id: `toolu_tm_${Date.now()}`, name: "propose_team", input: { name: "Launch", purpose: "Plan and run the launch posts.", members: ["Scout"], new_bots: [{ name: "Lina", role: "Social media copywriter", instructions: "You write short, warm Facebook posts in French and Arabic with a clear call to action." }], leader: "Scout" } }], "tool_use");
+  }
   if (me === "Quill" && /FB:/.test(all)) return text("OK");
   return text("ok");
 }
@@ -147,7 +171,7 @@ const check = (name, ok, detail = "") => {
   log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
 };
 const face = { color: 1, shape: 0, hair: 0, eyes: 0, nose: 0, mouth: 0, cheeks: 0, top: 0, wear: 0 };
-const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructions: `You are ${name}, a helpful teammate for the user's small business.`, face, tools: { web: false, browser: false } });
+const newBot = (name, role, extra = "") => api("POST", "/api/bots", { name, role, instructions: `You are ${name}, a helpful teammate for the user's small business.${extra}`, face, tools: { web: false, browser: false } });
 
 (async () => {
   fs.rmSync(DATA, { recursive: true, force: true });
@@ -157,7 +181,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const chief = bots[0];
   const scout = bots.find((b) => b.name === "Scout");
   await api("POST", "/api/main", { botId: chief.id });
-  const c = await newBot("c", "Business analyst");
+  const c = await newBot("c", "Business analyst", ` The Business OS dashboard is at ${LINK}.`);
   const mouloud = await newBot("mouloud", "Personal assistant");
   const biz = await api("POST", "/api/chats", { name: "Business", memberIds: [c.id, mouloud.id], orchestrate: false });
   log(`chief ${chief.name}; group ${biz.name} (no leader): ${c.name}, ${mouloud.name}`);
@@ -199,6 +223,38 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   check("Quill can hand web tasks to the group that has Scout", /Scout is in "Team"[^\n]*message_group/.test(qs));
   const ss = seen.systems.Scout || "";
   check("Scout (browser, no accounts) is told the one missing setting, not to refuse", /turn on "Use my signed-in accounts"/.test(ss) && /don't just refuse/.test(ss) && !/turn on "Browser"/.test(ss));
+
+  check("the Chief sees the link written in c's description", qs.includes(LINK) && /The user's bots/.test(qs));
+
+  // G: Quill asks to turn on its signed-in accounts; nothing changes until the user clicks.
+  await api("POST", `/api/chats/dm-${quill.id}/run`, { text: "PERM: post my text on Facebook" });
+  let qd = await idle(`dm-${quill.id}`);
+  const abCard = qd.pending?.approval?.items?.[0];
+  const before = (await api("GET", "/api/bots")).find((b) => b.id === quill.id);
+  check("a card asks to turn on Browser + accounts for Quill, with what it allows and why", !!abCard && /Browser \+ Use my signed-in accounts/.test(abCard.summary) && /Why: To post your text/.test(abCard.detail || "") && /every click and keystroke/.test(abCard.detail || ""), abCard?.summary);
+  check("nothing changed before the click", before.tools.browser === false && !before.tools.accounts);
+  await api("POST", `/api/chats/dm-${quill.id}/run`, { decisions: { [abCard.call.id]: true } });
+  qd = await idle(`dm-${quill.id}`);
+  const after = (await api("GET", "/api/bots")).find((b) => b.id === quill.id);
+  check("after the click Quill has the browser and signed-in accounts", after.tools.browser === true && after.tools.accounts === true);
+  check("Quill can use the browser from its very next step", (seen.quillTools || []).includes("open_url"), (seen.quillTools || []).filter((n) => /url|takeover/.test(n)).join(","));
+
+  // H: the Chief builds a team with the user's OK.
+  await api("POST", `/api/chats/dm-${quill.id}/run`, { text: "TEAMUP: make me a team for the launch and run it" });
+  qd = await idle(`dm-${quill.id}`);
+  const tmCard = qd.pending?.approval?.items?.[0];
+  check("a card shows the proposed team (name, leader, members, new bot)", !!tmCard && /Create the team "Launch" \(2 bots\)/.test(tmCard.summary) && /Leader: Scout/.test(tmCard.detail || "") && /New bot: Lina, Social media copywriter/.test(tmCard.detail || ""), tmCard?.summary);
+  check("no team or bot is created before the click", !(await api("GET", "/api/bots")).some((b) => b.name === "Lina"));
+  await api("POST", `/api/chats/dm-${quill.id}/run`, { decisions: { [tmCard.call.id]: true } });
+  await idle(`dm-${quill.id}`);
+  const lina = (await api("GET", "/api/bots")).find((b) => b.name === "Lina");
+  const launch = (await api("GET", "/api/chats")).find((x) => x.name === "Launch");
+  check("after the click the team exists, led by Scout, with the new bot Lina", !!lina && !!launch && launch.memberIds.includes(lina.id) && launch.memberIds.includes(scout.id) && launch.leadId === scout.id && lina.tools.accounts !== true);
+
+  // I: a bot that isn't the Chief can't build teams.
+  await api("POST", `/api/chats/dm-${scout.id}/run`, { text: "SNEAKY: make a team" });
+  const sk = await idle(`dm-${scout.id}`);
+  check("only the Chief is offered propose_team; a call from another bot is refused", !(seen.scoutTools || []).includes("propose_team") && (seen.scoutTools || []).includes("request_abilities") && !sk.pending?.approval && !(await api("GET", "/api/chats")).some((x) => x.name === "Rogue"), sk.entries.at(-1)?.text);
 
   // D: the rules are in the prompts.
   check("group members are told to keep messages short and not repeat", /Group messages are short/.test(seen.systems.c || "") && /without @/.test(seen.systems.c || ""));

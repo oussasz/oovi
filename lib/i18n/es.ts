@@ -1242,6 +1242,23 @@ const es: Dict = {
   "grp.also": "También:",
   "grp.before": "Antes de eso:",
   "chief.noBrowser": "{name} todavía no puede abrir sitios web ni publicar con tus cuentas. Activa Navegador abajo si quieres que el Jefe lo haga; si no, dará esas tareas a un bot que pueda.",
+  "bot.accountsNeedsBrowser": "Necesita el navegador: activarlo también activa Navegador.",
+  "admin.abilities": "Activar {abilities} para {bot}",
+  "admin.why": "Por qué: {why}",
+  "admin.webDoes": "{label}: buscar información en la web.",
+  "admin.browserDoes": "{label}: abrir páginas, hacer clic y escribir (los clics y la escritura te preguntan antes).",
+  "admin.accountsDoes": "{label}: publicar, comentar y enviar mensajes como tú en los sitios donde iniciaste sesión (pregunta antes de cada clic y cada tecla; nunca ve tus contraseñas).",
+  "admin.accountsNext": "Después, inicia sesión una vez en el sitio en {place}.",
+  "admin.team": "Crear el equipo «{name}» ({count} bots)",
+  "admin.teamLead": "Líder: {name}",
+  "admin.teamExisting": "De tus bots: {names}",
+  "admin.teamNew": "Bot nuevo: {name}, {role}",
+  "bot.forAll": "Para todos los bots",
+  "bot.forAllHint": "Se activan para todos los bots a la vez, en Ajustes → Seguridad.",
+  "bot.on": "Activado",
+  "bot.off": "Desactivado",
+  "bot.notHere": "No disponible en este ordenador",
+  "bot.change": "Cambiar",
 };
 
 export default es;

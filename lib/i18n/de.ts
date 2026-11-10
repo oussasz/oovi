@@ -1242,6 +1242,23 @@ const de: Dict = {
   "grp.also": "Außerdem:",
   "grp.before": "Davor:",
   "chief.noBrowser": "{name} kann noch keine Websites öffnen oder mit deinen Konten posten. Schalte unten Browser ein, wenn der Chef das tun soll; sonst gibt er solche Aufgaben an einen Bot, der es kann.",
+  "bot.accountsNeedsBrowser": "Braucht den Browser: Einschalten schaltet auch Browser ein.",
+  "admin.abilities": "{abilities} für {bot} einschalten",
+  "admin.why": "Warum: {why}",
+  "admin.webDoes": "{label}: im Web nachschlagen.",
+  "admin.browserDoes": "{label}: Seiten öffnen, klicken und tippen (Klicks und Tippen fragen dich vorher).",
+  "admin.accountsDoes": "{label}: in deinem Namen posten, kommentieren und Nachrichten senden, auf Websites, bei denen du angemeldet bist (fragt vor jedem Klick und Tastendruck; sieht nie deine Passwörter).",
+  "admin.accountsNext": "Melde dich danach einmal unter {place} bei der Website an.",
+  "admin.team": "Team „{name}“ erstellen ({count} Bots)",
+  "admin.teamLead": "Leitung: {name}",
+  "admin.teamExisting": "Aus deinen Bots: {names}",
+  "admin.teamNew": "Neuer Bot: {name}, {role}",
+  "bot.forAll": "Für alle Bots",
+  "bot.forAllHint": "Diese werden für alle Bots auf einmal eingeschaltet, unter Einstellungen → Sicherheit.",
+  "bot.on": "An",
+  "bot.off": "Aus",
+  "bot.notHere": "Auf diesem Computer nicht verfügbar",
+  "bot.change": "Ändern",
 };
 
 export default de;

@@ -28,7 +28,13 @@ export function abilityWords(a: Abilities): string {
 const list = (xs: string[]) => (xs.length <= 1 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs.at(-1)}`);
 const quoted = (xs: string[]) => list(xs.map((x) => `"${x}"`));
 
-type Where = { kind: "direct" | "group"; isMain: boolean; groupsWith?: (botId: string) => string[] };
+type Where = {
+  kind: "direct" | "group";
+  isMain: boolean;
+  groupsWith?: (botId: string) => string[];
+  /** request_abilities is offered: the bot shows a one-click card instead of explaining menus. */
+  canRequest?: boolean;
+};
 
 export function abilityLines(self: Named, bots: Named[], where: Where, L: AbilityLabels): string[] {
   const me = abilitiesOf(self);
@@ -48,7 +54,12 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   // 2. How to turn an ability on, for this bot or for another one (exact places in the app).
   const settingsOf = (name: string, own: boolean) =>
     own && where.kind === "direct" ? `open your settings (the pencil at the top of this chat)` : `open ${name}'s settings (${name} in the bots list, then the pencil at the top of its chat)`;
-  const turnOn = (name: string, own: boolean, what: string[]) => `${settingsOf(name, own)} and, under "${L.abilities}", turn on ${quoted(what)}`;
+  const viaMenus = (name: string, own: boolean, what: string[]) => `${settingsOf(name, own)} and, under "${L.abilities}", turn on ${quoted(what)}`;
+  /** One complete instruction: offer the one-click card when available, else explain the menus. */
+  const fix = (name: string, own: boolean, what: string[]) =>
+    where.canRequest && (own || where.isMain)
+      ? `call request_abilities for ${quoted(what)}${own ? "" : ` with bot "${name}"`}: the user turns it on with one click on a card (if they'd rather do it themselves, they can ${viaMenus(name, own, what)})`
+      : `tell them they can ${viaMenus(name, own, what)}`;
   /** Who else can do it now, and how the user reaches them from here. */
   const routeTo = (names: string[]) => {
     if (!names.length) return "";
@@ -67,19 +78,19 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   if (!me.accounts) {
     const ready = others.filter((o) => o.a.accounts).map((o) => o.b.name);
     const oneStep = others.filter((o) => o.a.browser && !o.a.accounts).map((o) => o.b.name);
-    const mine = turnOn(self.name, true, me.browser ? [L.accounts] : [L.browser, L.accounts]);
+    const mine = fix(self.name, true, me.browser ? [L.accounts] : [L.browser, L.accounts]);
     const shorter = !me.browser && oneStep.length ? ` (${list(oneStep)} already ${oneStep.length > 1 ? "have" : "has"} the browser, so for ${oneStep.length > 1 ? "them" : oneStep[0]} only "${L.accounts}" is needed)` : "";
     out.push(
-      `To post, comment or send messages on a site as the user (Facebook, Instagram, LinkedIn, X, email…), a bot needs "${L.accounts}", and the user signs in to that site once under "${L.accountsPlace}" (they type their password there themselves; bots never see it; then every click and keystroke asks their OK). If the user asks you for that, don't just refuse. In one or two short sentences: they can ${mine}${shorter}, then sign in under "${L.accountsPlace}".${routeTo(ready)} Meanwhile, prepare what you can, such as the post text or an image.`,
+      `To post, comment or send messages on a site as the user (Facebook, Instagram, LinkedIn, X, email…), a bot needs "${L.accounts}", and the user signs in to that site once under "${L.accountsPlace}" (they type their password there themselves; bots never see it; then every click and keystroke asks their OK). If the user asks you for that, don't just refuse: ${mine}${shorter}. Then they sign in once under "${L.accountsPlace}".${routeTo(ready)} Meanwhile, prepare what you can, such as the post text or an image. Keep it to one or two short sentences.`,
     );
   }
 
   // 4. Opening websites, and reading the web.
   if (!me.browser) {
-    out.push(`If a task needs a website opened (a form, a dashboard, a page that only works in a browser): the user can ${turnOn(self.name, true, [L.browser])} to let you do it.${routeTo(others.filter((o) => o.a.browser).map((o) => o.b.name))}`);
+    out.push(`If a task needs a website opened (a form, a dashboard, a page that only works in a browser): ${fix(self.name, true, [L.browser])}.${routeTo(others.filter((o) => o.a.browser).map((o) => o.b.name))}`);
   }
   if (!me.web && !me.browser) {
-    out.push(`If you need fresh facts from the web: the user can ${turnOn(self.name, true, [L.web])} to let you search.${routeTo(others.filter((o) => o.a.web || o.a.browser).map((o) => o.b.name))}`);
+    out.push(`If you need fresh facts from the web: ${fix(self.name, true, [L.web])}.${routeTo(others.filter((o) => o.a.web || o.a.browser).map((o) => o.b.name))}`);
   }
 
   // 5. How to work with what it has.
@@ -91,4 +102,43 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
     out.push(`Your browser is a fresh, private one: the user's accounts aren't signed in there, and a sign-in there is forgotten when the task ends. Use request_user_takeover only to get past a sign-in for this one task.`);
   }
   return out;
+}
+
+// ---------- the Chief's view of the team ----------
+
+type Described = Named & { role?: string; instructions?: string; hidden?: boolean };
+
+/** How much of each bot's description the Chief sees (links and facts are usually near the start). */
+export const DIRECTORY_DESC = 400;
+export const DIRECTORY_MAX = 40;
+
+/**
+ * Descriptions sometimes hold a key or a password. The Chief may run on another provider than that bot,
+ * so common secret formats are hidden in the directory (the bot itself still has its full description).
+ */
+export function hideSecrets(text: string): string {
+  return text
+    .replace(/\b(sk-(?:ant-|proj-)?[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|pdl_(?:live|sdbx)_[A-Za-z0-9_]{10,}|\d{8,10}:[A-Za-z0-9_-]{30,})\b/g, "[hidden key]")
+    .replace(/\b(password|passwd|mot de passe|كلمة السر|كلمة المرور|token|api[ _-]?key|secret)(\s*[:=]\s*)\S+/gi, "$1$2[hidden]");
+}
+
+/**
+ * Every bot of the user, for the Chief: role, abilities, groups and description. A link or fact that
+ * lives in one bot's description (e.g. a dashboard address) is then visible to the Chief, which can use it
+ * or give the job to that bot's group instead of asking the user.
+ */
+export function botDirectory(bots: Described[], selfId: string, groupsWith: (botId: string) => string[]): string[] {
+  const shown = bots.slice(0, DIRECTORY_MAX);
+  const lines = shown.map((b) => {
+    const desc = hideSecrets((b.instructions ?? "").replace(/\s+/g, " ").trim());
+    const cut = desc.length > DIRECTORY_DESC ? `${desc.slice(0, DIRECTORY_DESC)}…` : desc;
+    const groups = groupsWith(b.id);
+    return `- ${b.name}${b.id === selfId ? " (you)" : ""}${b.role ? `, ${b.role}` : ""}${b.hidden ? " (hidden from the bots list)" : ""}. Abilities: ${abilityWords(abilitiesOf(b))}. Groups: ${groups.length ? groups.map((g) => `"${g}"`).join(", ") : "none"}.${cut ? ` Description: ${cut}` : ""}`;
+  });
+  if (bots.length > shown.length) lines.push(`- …and ${bots.length - shown.length} more (list_groups shows who is in each group).`);
+  return [
+    "The user's bots (their descriptions may hold links, accounts or facts you need: use them before asking the user):",
+    ...lines,
+    "When another bot has what a task needs (a link in its description, an ability you lack), use that information yourself, or give the job to a group it's in with message_group. If it's in no group, propose a team with it (propose_team).",
+  ];
 }

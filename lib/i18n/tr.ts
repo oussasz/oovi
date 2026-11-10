@@ -1242,6 +1242,23 @@ const tr: Dict = {
   "grp.also": "Ayrıca:",
   "grp.before": "Bundan önce:",
   "chief.noBrowser": "{name} henüz web sitelerini açamıyor ve hesaplarınla paylaşım yapamıyor. Şefin bunu yapmasını istiyorsan aşağıdan Tarayıcı'yı aç; yoksa bu işleri yapabilen bir bota verir.",
+  "bot.accountsNeedsBrowser": "Tarayıcı gerekir: bunu açmak Tarayıcı'yı da açar.",
+  "admin.abilities": "{bot} için {abilities} aç",
+  "admin.why": "Neden: {why}",
+  "admin.webDoes": "{label}: web'de bilgi ara.",
+  "admin.browserDoes": "{label}: sayfa aç, tıkla ve yaz (tıklama ve yazma önce sana sorar).",
+  "admin.accountsDoes": "{label}: giriş yaptığın sitelerde senin adına paylaş, yorum yap ve mesaj gönder (her tıklama ve tuştan önce sorar; şifrelerini asla görmez).",
+  "admin.accountsNext": "Sonra {place} bölümünden siteye bir kez giriş yap.",
+  "admin.team": "\"{name}\" ekibini oluştur ({count} bot)",
+  "admin.teamLead": "Lider: {name}",
+  "admin.teamExisting": "Botlarından: {names}",
+  "admin.teamNew": "Yeni bot: {name}, {role}",
+  "bot.forAll": "Tüm botlar için",
+  "bot.forAllHint": "Bunlar tüm botlar için birlikte, Ayarlar → Güvenlik bölümünden açılır.",
+  "bot.on": "Açık",
+  "bot.off": "Kapalı",
+  "bot.notHere": "Bu bilgisayarda kullanılamaz",
+  "bot.change": "Değiştir",
 };
 
 export default tr;

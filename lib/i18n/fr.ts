@@ -1242,6 +1242,23 @@ const fr: Dict = {
   "grp.also": "Aussi :",
   "grp.before": "Avant ça :",
   "chief.noBrowser": "{name} ne peut pas encore ouvrir de sites ni publier avec tes comptes. Active Navigateur ci-dessous si tu veux que le Chef le fasse ; sinon il confie ces tâches à un bot qui peut.",
+  "bot.accountsNeedsBrowser": "Nécessite le navigateur : l'activer active aussi Navigateur.",
+  "admin.abilities": "Activer {abilities} pour {bot}",
+  "admin.why": "Pourquoi : {why}",
+  "admin.webDoes": "{label} : chercher des informations sur le web.",
+  "admin.browserDoes": "{label} : ouvrir des pages, cliquer et écrire (les clics et la saisie te demandent d'abord).",
+  "admin.accountsDoes": "{label} : publier, commenter et envoyer des messages en ton nom sur les sites où tu es connecté (demande avant chaque clic et chaque touche ; ne voit jamais tes mots de passe).",
+  "admin.accountsNext": "Ensuite, connecte-toi une fois au site dans {place}.",
+  "admin.team": "Créer l'équipe « {name} » ({count} bots)",
+  "admin.teamLead": "Chef : {name}",
+  "admin.teamExisting": "Parmi tes bots : {names}",
+  "admin.teamNew": "Nouveau bot : {name}, {role}",
+  "bot.forAll": "Pour tous les bots",
+  "bot.forAllHint": "Ces options s'activent pour tous les bots à la fois, dans Paramètres → Sécurité.",
+  "bot.on": "Activé",
+  "bot.off": "Désactivé",
+  "bot.notHere": "Non disponible sur cet ordinateur",
+  "bot.change": "Modifier",
 };
 
 export default fr;

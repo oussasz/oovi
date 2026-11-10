@@ -193,9 +193,14 @@ export function getChat(id: string): Chat | null {
   return null;
 }
 
+/** Goes up whenever a group may have changed (created, saved, deleted): caches of group lists check it. */
+let groupsRev = 0;
+export const groupsRevision = () => groupsRev;
+
 export function saveChat(chat: Chat): void {
   chat.updatedAt = Date.now();
   writeJson(chatFile(chat.id), chat);
+  if (chat.kind === "group") groupsRev++;
 }
 
 export function listChats(): Chat[] {
@@ -257,12 +262,14 @@ export function createGroup(g: { name: string; memberIds: string[]; leadId?: str
   const now = Date.now();
   const chat: Chat = { id: newId(), kind: "group", ...g, createdAt: now, updatedAt: now, entries: [] };
   writeJson(chatFile(chat.id), chat);
+  groupsRev++;
   return chat;
 }
 
 export function deleteChat(id: string): void {
   if (!ID_RE.test(id)) return;
   fs.rmSync(chatFile(id), { force: true });
+  groupsRev++;
 }
 
 // ---------- screenshots ----------
