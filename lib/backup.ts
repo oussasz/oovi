@@ -6,6 +6,7 @@ import path from "node:path";
 import { listServers } from "./mcp";
 import { readRaw, writeRaw } from "./memory";
 import { importLessons, listLessons } from "./learning";
+import { importRoutines, listRoutines } from "./routines";
 import { dataDir, publicSettings, updateSettings } from "./settings";
 import { listSkills, saveSkill } from "./skills";
 import { listBots, listChats, saveChat } from "./store";
@@ -20,6 +21,7 @@ export type Bundle = {
   skills: { name: string; description: string; body: string; source?: string }[];
   memory: { user: string; memory: string; knowledge?: string };
   lessons?: unknown[];
+  routines?: unknown[];
   mcp: { name: string; transport: string; command?: string; args?: string[]; url?: string; envKeys: string[]; headerKeys: string[] }[];
   settings: Record<string, unknown>;
 };
@@ -35,6 +37,7 @@ export function exportBundle(): Bundle {
     skills: listSkills().map((k) => ({ name: k.name, description: k.description, body: k.body, source: k.source })),
     memory: { user: readRaw("user"), memory: readRaw("memory"), knowledge: readRaw("knowledge") },
     lessons: listLessons(),
+    routines: listRoutines(),
     mcp: listServers().map((m) => ({ name: m.name, transport: m.transport, command: m.command, args: m.args, url: m.url, envKeys: Object.keys(m.env ?? {}), headerKeys: Object.keys(m.headers ?? {}) })),
     settings: { active: s.active, fallbacks: s.fallbacks, search: { provider: s.search.provider, searxngUrl: s.search.searxngUrl }, browser: s.browser, approvals: s.approvals, maxSteps: s.maxSteps, maxTurns: s.maxTurns, language: s.language, crashReports: s.crashReports },
   };
@@ -72,6 +75,8 @@ export function importBundle(raw: unknown): { bots: number; chats: number; skill
     if (typeof b.memory.knowledge === "string") writeRaw("knowledge", b.memory.knowledge);
   }
   if (Array.isArray(b.lessons)) importLessons(b.lessons);
+  // After the chats, so each routine finds its own chat again.
+  if (Array.isArray(b.routines)) importRoutines(b.routines);
   if (b.settings && typeof b.settings === "object") updateSettings(b.settings as Parameters<typeof updateSettings>[0]);
 
   return { bots: bots.length, chats: chats.length, skills };

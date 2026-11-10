@@ -218,6 +218,47 @@ export function updateRoutine(id: string, input: RoutineInput): Routine | null {
   return r;
 }
 
+/**
+ * Restore routines from a backup: same id replaces, others are kept, at most MAX_ROUTINES.
+ * Missed runs aren't caught up (the next run is counted from now), failures start at zero,
+ * and each routine gets its chat back (restored with the chats, or a new empty one).
+ */
+export function importRoutines(raw: unknown[]): number {
+  const now = Date.now();
+  const incoming = raw
+    .filter(sane)
+    .map((r): Routine => {
+      const enabled = r.enabled === true;
+      return {
+        id: r.id,
+        name: cleanName(r.name).slice(0, NAME_MAX) || "Routine",
+        botId: r.botId,
+        prompt: cleanPrompt(r.prompt).slice(0, PROMPT_MAX),
+        schedule: r.schedule,
+        timezone: r.timezone,
+        enabled,
+        notifyTelegram: r.notifyTelegram === true,
+        createdAt: typeof r.createdAt === "number" ? r.createdAt : now,
+        updatedAt: now,
+        chatId: r.chatId,
+        failures: 0,
+        nextRunAt: enabled ? nextRun(r.schedule, r.timezone, now) : null,
+      };
+    })
+    .filter((r) => r.prompt);
+  if (!incoming.length) return 0;
+  const byId = new Map(listRoutines().map((r) => [r.id, r]));
+  let added = 0;
+  for (const r of incoming) {
+    if (!byId.has(r.id) && byId.size >= MAX_ROUTINES) continue;
+    byId.set(r.id, r);
+    added++;
+  }
+  save([...byId.values()]);
+  for (const r of incoming) if (byId.get(r.id) === r) routineChat(r);
+  return added;
+}
+
 /** Deletes the routine and its chat. A run still going is stopped first. */
 export function deleteRoutine(id: string): boolean {
   const all = listRoutines();
