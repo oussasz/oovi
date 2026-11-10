@@ -3,7 +3,8 @@
 // Here we run that server inside the app on a private 127.0.0.1 port and show
 // it in a native window. Nothing is exposed to the network.
 
-const { app, BrowserWindow, Menu, Notification, Tray, desktopCapturer, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, Tray, desktopCapturer, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, screen, session, shell } = require("electron");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
@@ -37,7 +38,7 @@ function reportMainCrash(err) {
     /* ignore */
   }
   if (appUrl) {
-    void fetch(`${appUrl}/api/crash`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message: e.message, stack: e.stack, source: "main" }) }).catch(() => {});
+    void fetch(`${appUrl}/api/crash`, { method: "POST", headers: { "content-type": "application/json", cookie: `${TOKEN_COOKIE}=${LOCAL_TOKEN}` }, body: JSON.stringify({ message: e.message, stack: e.stack, source: "main" }) }).catch(() => {});
   }
 }
 process.on("uncaughtException", reportMainCrash);
@@ -46,6 +47,13 @@ process.on("unhandledRejection", reportMainCrash);
 let win = null;
 let server = null;
 let appUrl = null;
+/**
+ * A secret for this launch only. The server (in this process) requires it as an HttpOnly cookie on
+ * its API, so only oovi's own window can call it: not other programs on this computer, and not a
+ * web page (or a bot's browser) pointed at 127.0.0.1.
+ */
+const LOCAL_TOKEN = crypto.randomBytes(32).toString("hex");
+const TOKEN_COOKIE = "oovi_t";
 /** True once oovi is really quitting (tray Quit, updater, shutdown): closing the window then closes it. */
 let quitting = false;
 let tray = null;
@@ -137,12 +145,14 @@ function destroyTray() {
 
 const liveNotifications = new Set();
 // Desktop control (Beta): screenshots, mouse and keyboard, used by the server's lib/desktop-control.ts.
-const desktopControl = createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor });
+const desktopControl = createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage });
 
 // The app's own server runs in this process: it reaches these through globalThis.
 // Set before the server starts; `npm run web` has no such bridge, and the server skips it.
 globalThis.__ooviDesktop = {
   desktop: desktopControl.bridge,
+  /** The launch secret the API requires (kept out of the environment, so programs oovi starts can't read it). */
+  localToken: LOCAL_TOKEN,
   /** A native notification; clicking it opens oovi on that chat. */
   notify(title, body, chatId) {
     try {
@@ -339,6 +349,8 @@ app.whenReady().then(async () => {
   if (!DEV_URL) createWindow();
   try {
     appUrl = DEV_URL || (await startServer());
+    // The window's session carries the launch secret to the API (see LOCAL_TOKEN).
+    if (!DEV_URL) await session.defaultSession.cookies.set({ url: appUrl, name: TOKEN_COOKIE, value: LOCAL_TOKEN, httpOnly: true, sameSite: "strict" });
     if (win) void win.loadURL(appUrl);
     else createWindow();
     require("./updater.cjs").setupUpdates(isTrusted);

@@ -109,12 +109,14 @@ Problems:
 - "Remove key" turns it off. Without it, bots can still run commands in a chat's project folder on this PC (you approve each one).`,
 
   desktop: `Desktop control (Beta): bots can see your screen and use the mouse and keyboard to work in desktop apps (Windows only for now; coming to Mac once oovi is signed by Apple).
-- Turn it on: Settings > Safety > "Control this computer (Beta)". Read the risks, tick the box to confirm, then switch on "Let bots control this computer". It's off by default.
+- Giving a bot your mouse and keyboard is like letting it use your computer as you; oovi's protections are best effort.
+- Turn it on: Settings > Safety > "Control this computer (Beta)". Read the risks, tick the box to confirm, switch on "Let bots control this computer", then confirm in the dialog oovi opens. It's off by default.
 - It works with theOovi, or your own Anthropic key with Claude Haiku 5.5, Sonnet 5.5 or Opus 5.5 as the bot's model. Other models: "Not available with this model".
 - Every task asks first: "Let <bot> use your mouse and keyboard for this task?" > "Allow for this task" or Deny (on Telegram: /yes or /no). "Ask before every action" (on by default) also asks before every click, key press and typed text; only screenshots don't ask.
 - While it works, a banner at the top of the screen says "oovi is controlling your computer" with a Stop button. Moving the mouse yourself also stops it at once, and so do locking the screen and 20 minutes without activity.
-- Never use it for banking, payments or passwords. oovi refuses password managers (1Password, Bitwarden, KeePass, LastPass, Dashlane, Keeper…), Windows security prompts and banking or payment windows, and bots never type passwords. Windows running as administrator, User Account Control prompts and the lock screen can't be controlled.
-- Screenshots are sent to the AI model while it works, show in the chat like browser screenshots, and stay on this computer for 30 days.`,
+- Never use it for banking, payments or passwords. oovi refuses password managers (1Password, Bitwarden, KeePass, LastPass, Dashlane, Keeper…), Windows security prompts, banking or payment windows, and anything that can run programs or change the system (terminals, Run, Settings, Task Manager, the taskbar, Start and Search), and never sends the Windows key, Alt+Tab or Ctrl+Esc. Bots never type passwords. Windows running as administrator, User Account Control prompts and the lock screen can't be controlled.
+- The approval card shows the window an action will reach (its name comes from the window) and the full text to type; if another window would get it, the action is refused.
+- Screenshots black out oovi's own windows and private windows, are sent to the AI model while it works, show in the chat like browser screenshots, and stay on this computer for 24 hours.`,
 
   telegram: `Telegram: Settings > Telegram. Talk to your main bot from your phone.
 1. In Telegram, open @BotFather, send /newbot, choose a name and a username ending in "bot". BotFather replies with a token.

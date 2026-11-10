@@ -1,10 +1,11 @@
-// Desktop control (Beta), the Electron side: screenshots of the primary display, the mouse
-// and keyboard (through @nut-tree-fork/libnut-win32, an N-API module), the active window,
-// and the "oovi is controlling your computer — Stop" banner.
+// Desktop control (Beta), the Electron side: screenshots of the primary display (with private
+// windows blacked out), the mouse and keyboard (through @nut-tree-fork/libnut-win32, an N-API
+// module), facts about windows (through koffi and user32: electron/win32-windows.cjs), the
+// "oovi is controlling your computer — Stop" banner, and the native consent dialog.
 //
 // The app's server (same process) reaches this through globalThis.__ooviDesktop.desktop;
 // it decides what is allowed (lib/desktop-control.ts). Nothing here acts on its own.
-// The native module is only loaded here, so Next.js never bundles or traces it.
+// The native modules are only loaded here, so Next.js never bundles or traces them.
 // Windows only for now: unsigned macOS builds lose Screen Recording and Accessibility
 // permissions on every update.
 
@@ -17,7 +18,58 @@ const OVERLAY_TEXT = {
   tr: { busy: "oovi bilgisayarını kontrol ediyor", stop: "Durdur" },
 };
 
-/** HWND from Electron's native handle buffer, as the number the input library uses. */
+const CONSENT_TEXT = {
+  en: {
+    title: "Let bots control this computer?",
+    message: "Bots will see your screen and use your mouse and keyboard, like using your computer as you.",
+    detail:
+      "Each task asks you first, and you can stop it any time with the Stop banner or by moving the mouse. oovi refuses password managers, banking windows, terminals and system settings, but these protections are best effort. Never use this for banking, payments or passwords.",
+    ok: "Turn on",
+    cancel: "Cancel",
+  },
+  fr: {
+    title: "Laisser les bots contrôler cet ordinateur ?",
+    message: "Les bots verront votre écran et utiliseront votre souris et votre clavier, comme s'ils utilisaient votre ordinateur à votre place.",
+    detail:
+      "Chaque tâche vous demande d'abord, et vous pouvez l'arrêter à tout moment avec le bandeau Arrêter ou en bougeant la souris. oovi refuse les gestionnaires de mots de passe, les fenêtres bancaires, les terminaux et les paramètres système, mais ces protections ne sont pas infaillibles. Ne l'utilisez jamais pour la banque, les paiements ou les mots de passe.",
+    ok: "Activer",
+    cancel: "Annuler",
+  },
+  ar: {
+    title: "هل تسمح للبوتات بالتحكم في هذا الحاسوب؟",
+    message: "سترى البوتات شاشتك وتستخدم الفأرة ولوحة المفاتيح، كأنها تستخدم حاسوبك باسمك.",
+    detail:
+      "كل مهمة تطلب إذنك أولًا، ويمكنك إيقافها في أي وقت بشريط الإيقاف أو بتحريك الفأرة. يرفض oovi مديري كلمات المرور والنوافذ المصرفية والطرفيات وإعدادات النظام، لكن هذه الحماية ليست مضمونة تمامًا. لا تستخدمه أبدًا للخدمات المصرفية أو المدفوعات أو كلمات المرور.",
+    ok: "تفعيل",
+    cancel: "إلغاء",
+  },
+  es: {
+    title: "¿Dejar que los bots controlen este ordenador?",
+    message: "Los bots verán tu pantalla y usarán tu ratón y teclado, como si usaran tu ordenador en tu lugar.",
+    detail:
+      "Cada tarea te pregunta primero, y puedes pararla cuando quieras con el aviso Detener o moviendo el ratón. oovi rechaza gestores de contraseñas, ventanas bancarias, terminales y la configuración del sistema, pero estas protecciones no son infalibles. Nunca lo uses para banca, pagos o contraseñas.",
+    ok: "Activar",
+    cancel: "Cancelar",
+  },
+  de: {
+    title: "Bots diesen Computer steuern lassen?",
+    message: "Bots sehen deinen Bildschirm und nutzen Maus und Tastatur, als würden sie deinen Computer als du benutzen.",
+    detail:
+      "Jede Aufgabe fragt dich zuerst, und du kannst sie jederzeit mit dem Stopp-Banner oder durch Bewegen der Maus anhalten. oovi verweigert Passwortmanager, Banking-Fenster, Terminals und Systemeinstellungen, aber dieser Schutz ist nicht lückenlos. Nutze es nie für Banking, Zahlungen oder Passwörter.",
+    ok: "Einschalten",
+    cancel: "Abbrechen",
+  },
+  tr: {
+    title: "Botların bu bilgisayarı kontrol etmesine izin verilsin mi?",
+    message: "Botlar ekranını görecek ve fareni ve klavyeni kullanacak; bilgisayarını senin yerine kullanmak gibi.",
+    detail:
+      "Her görev önce sana sorar ve Durdur bandıyla ya da fareyi oynatarak istediğin an durdurabilirsin. oovi şifre yöneticilerini, bankacılık pencerelerini, terminalleri ve sistem ayarlarını reddeder, ama bu korumalar kusursuz değildir. Bankacılık, ödemeler veya şifreler için asla kullanma.",
+    ok: "Aç",
+    cancel: "İptal",
+  },
+};
+
+/** HWND from Electron's native handle buffer, as a number. */
 function hwndOf(win) {
   try {
     const b = win.getNativeWindowHandle();
@@ -27,8 +79,11 @@ function hwndOf(win) {
   }
 }
 
-function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor }) {
+const langOf = (app, lang) => String(lang && lang !== "auto" ? lang : app.getLocale() || "en").slice(0, 2).toLowerCase();
+
+function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage }) {
   let nut = null;
+  let win32 = null;
   let loadError = null;
   let locked = false;
   let overlay = null;
@@ -36,23 +91,29 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   const lockListeners = new Set();
 
   function native() {
-    if (nut || loadError) return nut;
+    if ((nut && win32) || loadError) return nut && win32 ? nut : null;
     if (process.platform !== "win32") {
       loadError = "Desktop control is only available on Windows for now.";
       return null;
     }
     try {
       nut = require("@nut-tree-fork/libnut-win32");
+      win32 = require("./win32-windows.cjs").load(require("koffi"));
     } catch (e) {
-      loadError = `The mouse and keyboard module couldn't load: ${(e && e.message) || e}`;
+      loadError = `The mouse and keyboard modules couldn't load: ${(e && e.message) || e}`;
       nut = null;
+      win32 = null;
     }
-    return nut;
+    return nut && win32 ? nut : null;
   }
   const need = () => {
     const n = native();
     if (!n) throw new Error(loadError || "Desktop control isn't available.");
     return n;
+  };
+  const windows = () => {
+    need();
+    return win32;
   };
 
   /** Called once the app is ready (powerMonitor needs it). */
@@ -76,7 +137,12 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     }
   }
 
-  const ownWindows = () => BrowserWindow.getAllWindows().filter((w) => !w.isDestroyed());
+  /** Marks the banner, so it's never treated as a window to hide or to avoid. */
+  const tag = (w) => {
+    if (!w) return null;
+    const ov = overlay && !overlay.isDestroyed() ? hwndOf(overlay) : -2;
+    return w.handle === ov ? { ...w, overlay: true } : w;
+  };
 
   const bridge = {
     /** { ok } or { ok: false, reason } — reason is shown to the user. */
@@ -97,16 +163,34 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     },
     /**
      * A JPEG of the primary display. out: exact output size (screenshots) or the box to fit (zoom).
-     * crop: part of the screen as fractions 0-1 (zoom). Throws "unavailable" when the screen can't be
-     * captured (locked, a UAC prompt or another secure screen shows black).
+     * mask: rectangles (real pixels) painted black before anything else. crop: part of the screen as
+     * fractions 0-1 (zoom). Throws "unavailable" when the screen can't be captured (locked, a UAC
+     * prompt or another secure screen shows black).
      */
-    async capture({ real, out, fit = false, crop = null, quality = 70 }) {
+    async capture({ real, out, fit = false, crop = null, mask = [], quality = 70 }) {
       const d = screen.getPrimaryDisplay();
       const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
       const src = sources.find((s) => s.display_id === String(d.id)) ?? (sources.length === 1 ? sources[0] : null);
       if (!src || src.thumbnail.isEmpty()) throw new Error("unavailable");
       let img = src.thumbnail;
       const full = img.getSize();
+      if (mask.length) {
+        const kx = full.width / real.width;
+        const ky = full.height / real.height;
+        const bmp = Buffer.from(img.toBitmap());
+        for (const r of mask) {
+          const x0 = Math.max(0, Math.floor(r.x * kx));
+          const y0 = Math.max(0, Math.floor(r.y * ky));
+          const x1 = Math.min(full.width, Math.ceil((r.x + r.width) * kx));
+          const y1 = Math.min(full.height, Math.ceil((r.y + r.height) * ky));
+          for (let y = y0; y < y1; y++) {
+            const row = y * full.width * 4;
+            bmp.fill(0, row + x0 * 4, row + x1 * 4);
+            for (let x = x0; x < x1; x++) bmp[row + x * 4 + 3] = 255;
+          }
+        }
+        img = nativeImage.createFromBitmap(bmp, { width: full.width, height: full.height });
+      }
       if (crop) {
         const rect = {
           x: Math.max(0, Math.round(crop.x * full.width)),
@@ -126,10 +210,12 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       }
       const small = size.width === cur.width && size.height === cur.height ? img : img.resize({ width: size.width, height: size.height, quality: "good" });
       // A secure screen (lock screen, UAC) captures as solid black.
-      const bmp = small.toBitmap();
-      let lit = 0;
-      for (let i = 0; i < bmp.length; i += 4 * 97) if (bmp[i] > 8 || bmp[i + 1] > 8 || bmp[i + 2] > 8) lit++;
-      if (!crop && lit === 0) throw new Error("unavailable");
+      if (!crop && !mask.length) {
+        const bmp = small.toBitmap();
+        let lit = 0;
+        for (let i = 0; i < bmp.length; i += 4 * 97) if (bmp[i] > 8 || bmp[i + 1] > 8 || bmp[i + 2] > 8) lit++;
+        if (lit === 0) throw new Error("unavailable");
+      }
       const s = small.getSize();
       return { jpeg: small.toJPEG(quality), width: s.width, height: s.height };
     },
@@ -137,31 +223,17 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     cursor() {
       return need().getMousePos();
     },
-    /** The window that has the keyboard: its title, and whether it's one of oovi's own windows. */
-    activeWindow() {
-      const n = need();
-      const h = n.getActiveWindow();
-      let title = "";
-      try {
-        title = n.getWindowTitle(h) || "";
-      } catch {
-        title = "";
-      }
-      return { title, own: ownWindows().some((w) => hwndOf(w) === h) };
+    /** The window that has the keyboard: { handle, title, className, exe, own, elevated, rect }. */
+    foreground() {
+      return tag(windows().foreground());
     },
-    /** Is this physical-pixel point on one of oovi's own visible windows? */
-    ownWindowAt(x, y) {
-      for (const w of ownWindows()) {
-        if (!w.isVisible() || w.isMinimized()) continue;
-        let r = w.getBounds();
-        try {
-          if (screen.dipToScreenRect) r = screen.dipToScreenRect(w, r);
-        } catch {
-          /* fall back to DIPs */
-        }
-        if (x >= r.x && y >= r.y && x < r.x + r.width && y < r.y + r.height) return true;
-      }
-      return false;
+    /** The top-level window a click at this physical-pixel point lands on. */
+    windowAt(x, y) {
+      return tag(windows().windowAt(x, y));
+    },
+    /** Visible windows, top of the z-order first (the banner is marked overlay: true). */
+    visibleWindows() {
+      return windows().visibleWindows().map(tag);
     },
     move(x, y) {
       need().moveMouse(Math.round(x), Math.round(y));
@@ -196,47 +268,65 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     setStopHandler(fn) {
       stopHandler = typeof fn === "function" ? fn : null;
     },
-    /** Shows the always-on-top banner. lang: the app's language ("auto" = the system's). */
+    /** The native "turn on desktop control?" dialog over oovi's window. Resolves true only on "Turn on". */
+    async confirmConsent(lang) {
+      if (!app.isReady()) return false;
+      const t = CONSENT_TEXT[langOf(app, lang)] || CONSENT_TEXT.en;
+      const parent = BrowserWindow.getAllWindows().find((w) => !w.isDestroyed() && w.isVisible() && w !== overlay) || null;
+      const opts = { type: "warning", title: "oovi", message: t.title, detail: `${t.message}\n\n${t.detail}`, buttons: [t.cancel, t.ok], defaultId: 0, cancelId: 0, noLink: true };
+      const r = parent ? await dialog.showMessageBox(parent, opts) : await dialog.showMessageBox(opts);
+      return r.response === 1;
+    },
+    /**
+     * Shows the always-on-top banner. lang: the app's language ("auto" = the system's).
+     * Resolves true once it's on screen, false if it couldn't be shown (in 5 seconds).
+     */
     showOverlay(lang) {
-      if (!app.isReady()) return;
-      if (overlay && !overlay.isDestroyed()) return;
-      const code = String(lang && lang !== "auto" ? lang : app.getLocale() || "en").slice(0, 2).toLowerCase();
+      if (!app.isReady()) return Promise.resolve(false);
+      if (overlay && !overlay.isDestroyed()) return Promise.resolve(overlay.isVisible());
+      const code = langOf(app, lang);
       const text = OVERLAY_TEXT[code] || OVERLAY_TEXT.en;
       const rtl = code === "ar";
       const d = screen.getPrimaryDisplay();
       const W = 440;
       const H = 48;
-      overlay = new BrowserWindow({
-        width: W,
-        height: H,
-        x: d.workArea.x + Math.round((d.workArea.width - W) / 2),
-        y: d.workArea.y + 10,
-        frame: false,
-        transparent: true,
-        resizable: false,
-        movable: false,
-        minimizable: false,
-        maximizable: false,
-        fullscreenable: false,
-        skipTaskbar: true,
-        alwaysOnTop: true,
-        focusable: false,
-        hasShadow: false,
-        show: false,
-        title: "oovi",
-        webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: false },
-      });
-      overlay.setAlwaysOnTop(true, "screen-saver");
+      let win;
+      try {
+        win = new BrowserWindow({
+          width: W,
+          height: H,
+          x: d.workArea.x + Math.round((d.workArea.width - W) / 2),
+          y: d.workArea.y + 10,
+          frame: false,
+          transparent: true,
+          resizable: false,
+          movable: false,
+          minimizable: false,
+          maximizable: false,
+          fullscreenable: false,
+          skipTaskbar: true,
+          alwaysOnTop: true,
+          focusable: false,
+          hasShadow: false,
+          show: false,
+          title: "oovi",
+          webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: false },
+        });
+      } catch {
+        return Promise.resolve(false);
+      }
+      overlay = win;
+      win.setAlwaysOnTop(true, "screen-saver");
       // Keep the banner out of the bot's screenshots, so it never tries to click it.
       try {
-        overlay.setContentProtection(true);
+        win.setContentProtection(true);
       } catch {
         /* older Windows: the banner shows in screenshots */
       }
-      overlay.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
-      overlay.webContents.on("will-navigate", (e) => e.preventDefault());
+      win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+      win.webContents.on("will-navigate", (e) => e.preventDefault());
       // The Stop button sets the page title (works without a preload or any Node access in the page).
-      overlay.on("page-title-updated", (e, title) => {
+      win.on("page-title-updated", (e, title) => {
         e.preventDefault();
         if (title !== "oovi:stop") return;
         try {
@@ -246,8 +336,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
         }
         bridge.hideOverlay();
       });
-      overlay.on("closed", () => {
-        overlay = null;
+      win.on("closed", () => {
+        if (overlay === win) overlay = null;
       });
       const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
       const html = `<!doctype html><html dir="${rtl ? "rtl" : "ltr"}"><head><meta charset="utf-8"><title>oovi</title><style>
@@ -260,8 +350,28 @@ button{font:inherit;border:0;border-radius:16px;padding:7px 16px;background:#ef4
 button:hover{background:#dc2626}
 @keyframes p{50%{opacity:.35}}@media (prefers-reduced-motion:reduce){.d{animation:none}}
 </style></head><body><div class="b" role="status"><span class="d"></span><span class="t">${esc(text.busy)}</span><button onclick="document.title='oovi:stop'">${esc(text.stop)}</button></div></body></html>`;
-      overlay.once("ready-to-show", () => overlay?.showInactive());
-      void overlay.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`);
+      return new Promise((resolve) => {
+        let done = false;
+        const finish = (ok) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          if (!ok && overlay === win && !win.isDestroyed()) win.destroy();
+          resolve(ok);
+        };
+        const timer = setTimeout(() => finish(false), 5000);
+        win.once("ready-to-show", () => {
+          try {
+            win.showInactive();
+            finish(win.isVisible());
+          } catch {
+            finish(false);
+          }
+        });
+        win.webContents.once("did-fail-load", () => finish(false));
+        win.once("closed", () => finish(false));
+        win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => finish(false));
+      });
     },
     hideOverlay() {
       if (overlay && !overlay.isDestroyed()) overlay.destroy();

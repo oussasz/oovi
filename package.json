@@ -19,7 +19,8 @@
   },
   "dependencies": {
     "@nut-tree-fork/libnut-win32": "2.7.5",
-    "electron-updater": "6.8.11"
+    "electron-updater": "6.8.11",
+    "koffi": "3.3.4"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "1.32.2",
@@ -53,7 +54,8 @@
     },
     "asar": true,
     "asarUnpack": [
-      "node_modules/@nut-tree-fork/libnut-win32/build/Release/*.node"
+      "node_modules/@nut-tree-fork/libnut-win32/build/Release/*.node",
+      "node_modules/@koromix/koffi-*/**/*.node"
     ],
     "files": [
       "electron/**",

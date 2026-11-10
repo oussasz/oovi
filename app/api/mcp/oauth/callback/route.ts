@@ -20,7 +20,8 @@ h1{font-size:22px;margin:0 0 8px}p{margin:0;opacity:.75}</style></head>
 
 /** The service sends the browser back here after you approve (or decline) the connection. */
 export async function GET(req: Request) {
-  const denied = guard(req);
+  // Opened by the user's normal browser (no launch cookie there): the OAuth state protects it.
+  const denied = guard(req, { token: false });
   if (denied) return denied;
   const q = new URL(req.url).searchParams;
   const error = q.get("error");

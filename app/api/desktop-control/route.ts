@@ -1,4 +1,4 @@
-import { desktopState, revokeAllDesktop } from "@/lib/desktop-control";
+import { confirmDesktopConsent, desktopState, revokeAllDesktop } from "@/lib/desktop-control";
 import { guard } from "@/lib/guard";
 import { hostedStatus } from "@/lib/hosted";
 import { loadSettings, setDesktopControl, usesHosted } from "@/lib/settings";
@@ -20,7 +20,10 @@ export async function GET(req: Request) {
   return Response.json(await state());
 }
 
-/** {enabled: true, consent: true} | {enabled: false} | {askEvery: boolean} */
+/**
+ * {enabled: true, consent: true} | {enabled: false} | {askEvery: boolean}
+ * Turning it on also needs "Turn on" in the app's own native dialog: no web request alone can.
+ */
 export async function POST(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
@@ -29,6 +32,7 @@ export async function POST(req: Request) {
   if (body?.enabled === true) {
     if (process.platform !== "win32") return Response.json({ error: "Desktop control is only available on Windows for now." }, { status: 400 });
     if (body.consent !== true) return Response.json({ error: "Tick the box to confirm you understand the risks first." }, { status: 400 });
+    if (!(await confirmDesktopConsent(loadSettings().language))) return Response.json({ ...(await state()), cancelled: true });
     setDesktopControl({ ...cur, enabled: true, consentAt: Date.now() });
   } else if (body?.enabled === false) {
     setDesktopControl({ ...cur, enabled: false });

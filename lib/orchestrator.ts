@@ -38,7 +38,7 @@ import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerF
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
-import { DESKTOP_PROMPT, DESKTOP_SPEC, desktopApprovalSummary, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, runDesktopCall } from "./desktop-control";
+import { DESKTOP_PROMPT, DESKTOP_SPEC, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /**
@@ -544,8 +544,11 @@ async function* runBot(
   settings: Settings,
   decisions: Record<string, boolean>,
   signal: AbortSignal,
+  /** The approval card the user just answered (desktop decisions are checked against it). */
+  answered?: Approval,
 ): AsyncGenerator<ChatEvent, Outcome> {
   const s = settingsFor(bot, settings);
+  decisions = { ...decisions };
   // Keep the conversation small before every turn, including hand-offs between bots.
   await compactIfLong(chat, s, signal);
   const usesAccounts = !!bot.tools.accounts;
@@ -603,6 +606,8 @@ async function* runBot(
       const taskId = lastUser(chat)?.id;
       const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
       const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
+      // A desktop OK counts only from a card shown for exactly that call less than 20 minutes ago; otherwise ask again.
+      for (const c of last.toolCalls) if (isDesktopName(c.name) && decisions[c.id] === true && !validDesktopDecision(c.id, answered)) delete decisions[c.id];
       const firstDesk = last.toolCalls.find((c) => isDesktopName(c.name))?.id;
       const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery: s.desktopControl.askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
@@ -617,9 +622,9 @@ async function* runBot(
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
-          return kind ? { call: c, summary: desktopApprovalSummary(c, kind, bot.name), desktop: kind } : approvalItem(c, sessionId, chat.workspace);
+          return kind ? desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery) : approvalItem(c, sessionId, chat.workspace);
         };
-        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf) };
+        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf), at: Date.now() };
         entry.status = "waiting";
         chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), approval };
         yield { type: "entry", entry };
@@ -641,9 +646,11 @@ async function* runBot(
           else if (deskHalted) r = { id: c.id, name: c.name, content: NOT_EXECUTED, isError: true };
           else if (decisions[c.id] === false) r = { id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true };
           else {
-            if (decisions[c.id] === true && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
+            const item = decisions[c.id] === true ? validDesktopDecision(c.id, answered) : null;
+            // Only the task's own card ("Allow for this task") grants the task.
+            if (grantsTask(item) && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             yield { type: "status", entryId: entry.id, text: statusText(c) };
-            r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal });
+            r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal, approved: item });
           }
           if (r.isError) deskHalted = true;
           results.push(r);
@@ -757,7 +764,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   if (!members.length) throw new Error("This chat has no bots yet. Add some in the group settings.");
   const lead = leaderOf(chat, members);
 
-  let resume: { entry: BotEntry; decisions: Record<string, boolean> } | null = null;
+  let resume: { entry: BotEntry; decisions: Record<string, boolean>; answered?: Approval } | null = null;
 
   if (typeof input.text === "string") {
     // Writing while a plan waits for review asks for changes: stay in plan mode.
@@ -870,14 +877,15 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       return;
     }
   } else if (input.decisions && chat.pending?.approval) {
-    const e = chat.entries.find((x) => x.id === chat.pending?.approval?.entryId);
+    const answered = chat.pending.approval;
+    const e = chat.entries.find((x) => x.id === answered.entryId);
     chat.pending.approval = undefined;
     if (input.channel) chat.pending.channel = input.channel;
     else delete chat.pending.channel;
     if (input.channel && input.telegramChatId !== undefined) chat.pending.telegramChatId = input.telegramChatId;
     else delete chat.pending.telegramChatId;
     if (input.alwaysEdit && chat.workspace) chat.workspace.autoEdit = true;
-    if (e?.kind === "bot") resume = { entry: e, decisions: input.decisions };
+    if (e?.kind === "bot") resume = { entry: e, decisions: input.decisions, answered };
   } else {
     return;
   }
@@ -885,9 +893,11 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   for (;;) {
     let entry: BotEntry;
     let decisions: Record<string, boolean> = {};
+    let answered: Approval | undefined;
     if (resume) {
       entry = resume.entry;
       decisions = resume.decisions;
+      answered = resume.answered;
       entry.status = "running";
       resume = null;
     } else {
@@ -910,7 +920,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
 
     saveChat(chat);
     yield { type: "entry", entry };
-    const outcome = yield* runBot(chat, entry, bot, bots, members, settings, decisions, signal);
+    const outcome = yield* runBot(chat, entry, bot, bots, members, settings, decisions, signal, answered);
     if (outcome === "waiting") {
       saveChat(chat);
       return;

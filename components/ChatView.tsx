@@ -8,6 +8,7 @@ import { HOSTED_NAME, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import { HostedNotice, refreshCredits } from "./Credits";
 import type { PublicSettings } from "@/lib/settings";
 import "@/lib/desktop";
+import { markWhitespace } from "@/lib/desktop-core";
 import type { Attachment, Bot, BotEntry, ChatEvent, ChatWithState, Effort, ToolCall, ToolResult } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
@@ -57,8 +58,9 @@ function desktopLabel(c: ToolCall, t: TFn): string {
       return t(d === "up" ? "chat.call.desk.scrollUp" : d === "left" ? "chat.call.desk.scrollLeft" : d === "right" ? "chat.call.desk.scrollRight" : "chat.call.desk.scrollDown");
     }
     case "type": {
-      const text = String(i.text ?? "").replace(/\s+/g, " ");
-      return t("chat.call.desk.type", { text: text.length > 60 ? `${text.slice(0, 60)}…` : text });
+      // New lines and tabs stay visible (⏎ ⇥); the full text was on the approval card.
+      const text = markWhitespace(String(i.text ?? "")).replace(/[\n\t]/g, "");
+      return t("chat.call.desk.type", { text: text.length > 80 ? `${text.slice(0, 80)}…` : text });
     }
     case "key": return t("chat.call.desk.key", { keys: String(i.text ?? "") });
     case "hold_key": return t("chat.call.desk.hold", { keys: String(i.text ?? "") });
@@ -1303,7 +1305,18 @@ export default function ChatView({ id }: { id: string }) {
                     {approval.items.map((it) => (
                       <li key={it.call.id}>
                         {it.summary}
-                        {it.detail && (
+                        {it.desktop === "grant" && <span className="dc-grant-note">{t(it.askEvery ? "desk.grant.asks" : "desk.grant.noAsk")}</span>}
+                        {it.desktop && it.window && (
+                          <span className="dc-window" title={t("desk.windowHint")}>
+                            {t("desk.window")} “{it.window.title}”
+                          </span>
+                        )}
+                        {it.desktop && it.text !== undefined && (
+                          <pre className="dc-typed" aria-label={t("desk.typed")}>
+                            {markWhitespace(it.text)}
+                          </pre>
+                        )}
+                        {!it.desktop && it.detail && (
                           <details className="approval-detail" open={it.call.name === "run_command" || it.detail.length < 600}>
                             <summary>{t("chat.details")}</summary>
                             <pre>{it.detail}</pre>

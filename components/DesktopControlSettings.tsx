@@ -1,7 +1,8 @@
 "use client";
 
 // Settings > Safety > "Control this computer (Beta)": what it does, the risks, an explicit
-// consent box before the switch can be turned on, and "Ask before every action".
+// consent box before the switch can be turned on (the app then asks once more in a native
+// dialog, so no web request alone can turn it on), and "Ask before every action".
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { useI18n } from "./I18n";
@@ -42,6 +43,9 @@ export default function DesktopControlSettings() {
       </h3>
       <p className="note dc-intro">{t("desk.intro")}</p>
       <ul className="dc-risks">
+        <li className="dc-warn">
+          <Icon name="info" size={16} /> {t("desk.risk.asYou")}
+        </li>
         <li>
           <Icon name="panel" size={16} /> {t("desk.risk.screen")}
         </li>

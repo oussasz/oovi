@@ -59,6 +59,12 @@ export type ApprovalItem = {
   folder?: string;
   /** Desktop control: "grant" = the first action of a task (allows the mouse and keyboard for the task); "action" = one more action ("Ask before every action"). */
   desktop?: "grant" | "action";
+  /** Desktop control: the window the action will reach (its title comes from that window: untrusted). Checked again when it runs. */
+  window?: { handle: number; title: string };
+  /** Desktop control: the full text a "type" action will type. */
+  text?: string;
+  /** Desktop control: "Ask before every action" was on when this was asked. */
+  askEvery?: boolean;
 };
 
 /** The one folder on the user's computer that bots in a chat may work in. */
@@ -146,7 +152,8 @@ export type BotEntry = {
 
 export type Entry = UserEntry | BotEntry;
 
-export type Approval = { entryId: string; botId: string; items: ApprovalItem[] };
+/** at: when it was asked (desktop actions approved more than 20 minutes later are asked again). */
+export type Approval = { entryId: string; botId: string; items: ApprovalItem[]; at?: number };
 
 export type Pending = {
   queue: string[];

@@ -9,3 +9,8 @@
 .dc-risks li.dc-warn { font-weight: 700; }
 .dc-risks li.dc-warn > svg { color: var(--err); }
 .dc-consent { padding: 10px 12px; border-radius: 12px; background: var(--soft); }
+
+/* Approval cards for desktop actions (components/ChatView.tsx) */
+.approval .dc-grant-note { display: block; margin-top: 4px; font-size: 13px; font-weight: 700; }
+.approval .dc-window { display: block; margin-top: 4px; font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.approval .dc-typed { margin: 6px 0 0; max-height: 220px; overflow: auto; padding: 8px 10px; border-radius: 10px; background: var(--soft); border: 1px solid var(--border); font: 13px/1.45 ui-monospace, "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
