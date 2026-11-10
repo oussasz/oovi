@@ -34,9 +34,16 @@ From a first-time-user test (6 personas, real model) and the owner's requests:
 - End-to-end with stand-in servers (no network): `tests/e2e/phase1-scenario.cjs` (Telegram delivery: approval answered with "نعم", a >2-minute job with failed sends, kill + restart) passed 11/11 before this branch's changes. `tests/e2e/spec-scenario.cjs` (specialist flow: card, Create, hidden, joins group, same-run hand-off, duplicate refused, Not now, from the Chief's chat) was written for this branch; its first run was still going when this hand-off was written. Both need `npm run build` first (they start `.next/standalone/server.js` via `tests/e2e/server.cjs`; stand-ins use ports 3399/3398, servers 3301/3303).
 - Sample documents were checked by unzipping (no Office installed): open one .xlsx with charts and one .pptx in real Excel/PowerPoint.
 
+## Done in the cloud session (2026-11-10, Linux)
+- `npm run build` passes; `spec-scenario.cjs` 14/14, `phase1-scenario.cjs` 11/11, unit tests 48/48.
+- Screens checked in a browser, light and dark, with a local stand-in for the website (no real account): sign-in (opens on Create account, language picker), onboarding last step (talk to the Chief + Connect my phone), Home message box and ideas, hidden bots toggle, specialist card (Create / Not now), Arabic reply (lines right-to-left, list numbers on the right, bold heading), credits panel (estimate + pricing link), "Whole task: n credits (2 bots)".
+- Fixed: Arabic chat previews in the sidebar and Home tiles showed the end of the message instead of the start (`dir="auto"`).
+- Security re-read: `create_image` paths stay in the project folder or Downloads/oovi; `renderHtml` blocks every request except data:/about:; card text is escaped and colors are hex-checked; specialists get web search only (no browser, accounts or MCP) and Create reuses the exact card the user saw. Nothing to change.
+- Tip: `tests/e2e/server.cjs` with `OOVI_TEST_DATA=... OOVI_CLOUD_URL=<local stand-in>` gives a signed-in app without a real account (without the stand-in, the page's session check reaches the real website, gets 401 and signs out).
+
 ## What's left (in order)
-1. Run `npm run build`, then `node tests/e2e/spec-scenario.cjs` and `node tests/e2e/phase1-scenario.cjs`; fix anything that fails.
-2. Look at the new screens in a browser (run the built server on a fresh data folder: `OOVI_DATA=/tmp/x PORT=3302 node .next/standalone/server.js`): sign-in (language picker, opens on Create account), onboarding last step, Home message box and ideas, an Arabic bot reply (right-to-left lines), the specialist card, hidden bots toggle, credits panel, team task total. Light and dark.
+1. (done) build + both e2e scenarios.
+2. (done) screens.
 3. A short real-model check (it costs credits; keep it to a few messages): the leader delegates a bigger task and proposes a specialist when one is missing; an English message after French ones is answered in English.
 4. Review the diff once more (security: `create_image` paths, `render.ts` network blocking, specialist creation), then commit, merge to `main` only with the owner's OK.
 5. Not built (need the owner's accounts/decisions): local payment in Algeria (Edahabia/CIB via a gateway such as Chargily or SATIM; needs a merchant account), WhatsApp access (needs a Meta WhatsApp Business account and a public webhook, e.g. via the website), true AI image generation on theOovi (server cost decision).
