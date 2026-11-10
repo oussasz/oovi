@@ -58,8 +58,11 @@ jobs:
           ls -la release
 
       - name: Install and open each build like a downloaded app
+        timeout-minutes: 20
         run: |
           set +e
+          # Anything that can wait for a click (a Gatekeeper dialog, a permission prompt) gets a time limit.
+          t() { local s="$1"; shift; perl -e 'alarm shift; exec @ARGV' "$s" "$@"; local rc=$?; [ $rc -eq 142 ] && echo "(timed out after ${s}s: $*)"; return $rc; }
           check() {
             local name="$1" dmg="$2"
             local dir="$OUT/$name"; mkdir -p "$dir"
@@ -67,34 +70,36 @@ jobs:
             # Downloaded with a browser: the file carries the quarantine flag.
             xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Safari;$(uuidgen)" "$dmg"
             # 1. Opening the .dmg: Finder shows the install window.
-            open "$dmg"; sleep 12
-            screencapture -x "$dir/1-dmg-window.png"
+            t 30 open "$dmg"; sleep 12
+            t 20 screencapture -x "$dir/1-dmg-window.png"
             local vol; vol=$(ls -d /Volumes/oovi* | head -1)
             echo "mounted: $vol" | tee -a "$dir/log.txt"
             # 2. Dragging oovi to Applications (copying keeps the quarantine flag, like Finder).
             sudo rm -rf /Applications/oovi.app
             ditto "$vol/oovi.app" /Applications/oovi.app
             xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Safari;$(uuidgen)" /Applications/oovi.app
-            hdiutil detach "$vol" -quiet; sleep 2
+            t 30 hdiutil detach "$vol" -quiet; sleep 2
             echo "--- codesign" | tee -a "$dir/log.txt"
-            codesign -dv --verbose=2 /Applications/oovi.app >> "$dir/log.txt" 2>&1
-            codesign --verify --deep --strict --verbose=2 /Applications/oovi.app >> "$dir/log.txt" 2>&1
+            t 60 codesign -dv --verbose=2 /Applications/oovi.app 2>&1 | tee -a "$dir/log.txt"
+            t 120 codesign --verify --deep --strict --verbose=1 /Applications/oovi.app 2>&1 | tail -3 | tee -a "$dir/log.txt"
             echo "--- Gatekeeper verdict (spctl)" | tee -a "$dir/log.txt"
-            spctl --assess --type execute -vv /Applications/oovi.app >> "$dir/log.txt" 2>&1
+            t 90 spctl --assess --type execute -vv /Applications/oovi.app 2>&1 | tee -a "$dir/log.txt"
             # 3. Opening oovi for the first time: the window macOS shows.
-            open /Applications/oovi.app; sleep 10
-            screencapture -x "$dir/2-first-open.png"
+            # "open" waits while macOS shows its dialog: start it in the background.
+            (open /Applications/oovi.app >/dev/null 2>&1 &) ; sleep 12
+            t 20 screencapture -x "$dir/2-first-open.png"
+            t 10 osascript -e 'tell application "System Events" to get name of every window of every process whose visible is true' 2>&1 | tee -a "$dir/log.txt"
             pgrep -lf "oovi.app/Contents/MacOS/oovi" >> "$dir/log.txt" 2>&1 && echo "oovi IS RUNNING" | tee -a "$dir/log.txt" || echo "oovi is not running" | tee -a "$dir/log.txt"
             # Close the dialog (Done / Move to Trash would delete it: press Escape), then System Settings.
-            osascript -e 'tell application "System Events" to key code 53' >/dev/null 2>&1; sleep 2
-            open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"; sleep 8
-            screencapture -x "$dir/3-privacy-security.png"
+            t 10 osascript -e 'tell application "System Events" to key code 53' >/dev/null 2>&1; sleep 2
+            (open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension" >/dev/null 2>&1 &) ; sleep 10
+            t 20 screencapture -x "$dir/3-privacy-security.png"
             # Scroll to the Security section, where "Open Anyway" appears.
-            osascript -e 'tell application "System Settings" to activate' -e 'delay 1' -e 'tell application "System Events" to repeat 25 times' -e 'key code 125' -e 'end repeat' >/dev/null 2>&1
-            osascript -e 'tell application "System Events" to tell process "System Settings" to get name of every button of every group of every scroll area of every group of every splitter group of every group of window 1' >> "$dir/log.txt" 2>&1
+            t 15 osascript -e 'tell application "System Settings" to activate' -e 'delay 1' -e 'tell application "System Events" to repeat 25 times' -e 'key code 125' -e 'end repeat' >/dev/null 2>&1
+            t 15 osascript -e 'tell application "System Events" to tell process "System Settings" to get name of every button of every group of every scroll area of every group of every splitter group of every group of window 1' 2>&1 | tee -a "$dir/log.txt"
             sleep 2
-            screencapture -x "$dir/4-privacy-security-scrolled.png"
-            osascript -e 'quit app "System Settings"' >/dev/null 2>&1
+            t 20 screencapture -x "$dir/4-privacy-security-scrolled.png"
+            t 10 osascript -e 'quit app "System Settings"' >/dev/null 2>&1
             pkill -f "oovi.app/Contents/MacOS/oovi" 2>/dev/null; sleep 2
           }
           check "published-${{ inputs.release }}" "$(ls release/*-arm64.dmg | head -1)"
