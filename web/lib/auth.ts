@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
 import { bearer } from "better-auth/plugins";
+import { checkSignup } from "./signup-guard";
 import { pool } from "./db";
 import { isBlocked } from "./credits";
 import { sendInBackground } from "./mail";
@@ -84,8 +85,11 @@ export const auth = betterAuth({
     },
     user: {
       create: {
-        before: async (user) => {
+        before: async (user, ctx) => {
           const u = user as typeof user & { termsVersion?: string | null };
+          // Fake and mass sign-ups (lib/signup-guard.ts).
+          const verdict = await checkSignup(String(user.email ?? ""), ctx?.headers ?? ctx?.request?.headers);
+          if (!verdict.ok) throw new APIError("BAD_REQUEST", { message: verdict.message });
           if (u.termsVersion !== TERMS_VERSION) {
             throw new APIError("BAD_REQUEST", {
               message: "You must accept the Terms of Service and Privacy Policy.",

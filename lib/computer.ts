@@ -406,6 +406,9 @@ function findFiles(call: ToolCall, s?: Settings): ToolResult {
   const started = Date.now();
   let seen = 0;
   let cut = false;
+  /** Folders the computer wouldn't let oovi read (macOS privacy, permissions): the file may be there. */
+  const unreadable: string[] = [];
+  let tooDeep = false;
   for (let qi = 0; qi < queue.length; qi++) {
     if (hits.length >= FIND_COLLECT || seen >= FIND_MAX_ENTRIES || Date.now() - started > FIND_MAX_MS) {
       cut = true;
@@ -416,6 +419,7 @@ function findFiles(call: ToolCall, s?: Settings): ToolResult {
     try {
       items = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
+      unreadable.push(dir);
       continue;
     }
     for (const it of items) {
@@ -426,6 +430,7 @@ function findFiles(call: ToolCall, s?: Settings): ToolResult {
         if (SKIP_DIRS.has(it.name.toLowerCase()) || blockReason(full)) continue;
         if (match(it.name)) hits.push({ full, size: 0, mtime: 0, dir: true });
         if (depth + 1 < FIND_DEPTH) queue.push({ dir: full, depth: depth + 1 });
+        else tooDeep = true;
       } else if (it.isFile() && match(it.name) && !SECRET_FILES.some((re) => re.test(it.name))) {
         try {
           const st = fs.statSync(full);
@@ -437,8 +442,16 @@ function findFiles(call: ToolCall, s?: Settings): ToolResult {
     }
   }
   const where = roots.map((r) => path.basename(r) || r).join(", ");
+  // Say what wasn't searched, so "not found" isn't taken for "doesn't exist".
+  const notSearched = [
+    unreadable.length
+      ? `oovi wasn't allowed to look inside ${unreadable.slice(0, 5).map((d) => path.basename(d) || d).join(", ")}${unreadable.length > 5 ? ` and ${unreadable.length - 5} more folders` : ""} (the computer's privacy settings), so the file may still be there`
+      : "",
+    tooDeep ? "folders nested very deep weren't searched" : "",
+    cut ? "the search stopped early because there are many files (give a folder to search)" : "",
+  ].filter(Boolean);
   if (!hits.length) {
-    return ok(call, `No files with "${q}" in the name in ${where}${cut ? " (the search stopped early: there are many files; give a folder to search)" : ""}. Try fewer or other words, part of the name, a pattern like *.pdf, or a specific folder.`);
+    return ok(call, `No files with "${q}" in the name were found in ${where}.${notSearched.length ? ` Not a proof it doesn't exist: ${notSearched.join("; ")}.` : ""} Try fewer or other words, part of the name, a pattern like *.pdf, or a specific folder.`);
   }
   hits.sort((a, b) => Number(a.dir) - Number(b.dir) || b.mtime - a.mtime);
   const shown = hits.slice(0, FIND_SHOWN);

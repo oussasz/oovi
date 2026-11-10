@@ -7,7 +7,8 @@
 // next tick picks up the result. The decisions themselves are pure (routines-schedule.ts).
 
 import { currentSession } from "./account";
-import { intlTag, resolveLocale, translate, type TKey, type Vars } from "./i18n";
+import type { TKey, Vars } from "./i18n";
+import { translateFor } from "./i18n-server";
 import { getRoutine, listRoutines, mutateRoutine, routineChat } from "./routines";
 import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, type ChatState, type RunResult } from "./routines-schedule";
 import { isRunning, startRun, subscribe } from "./runner";
@@ -17,7 +18,8 @@ import { sendToMainChat } from "./telegram";
 import type { Chat, Routine } from "./types";
 
 const TICK_MS = 30_000;
-const TELEGRAM_MAX = 3500;
+/** Telegram gets the whole result (long text is sent in several messages); past this, the rest stays in oovi. */
+const TELEGRAM_MAX = 12_000;
 const DESKTOP_MAX = 240;
 
 type Active = { chatId: string; startedAt: number; entryId?: string };
@@ -213,23 +215,6 @@ function finish(id: string, res: RunResult, entryId?: string) {
 
 // ---------- telling the user ----------
 
-/** Notifications use the app's UI language (Settings > Language, "auto" = this computer's). */
-function translateFor(key: TKey, vars: Vars): string {
-  let system: string[] = [];
-  try {
-    system = [Intl.DateTimeFormat().resolvedOptions().locale];
-  } catch {
-    system = [];
-  }
-  let setting = "auto";
-  try {
-    setting = loadSettings().language || "auto";
-  } catch {
-    setting = "auto";
-  }
-  const locale = resolveLocale(setting, system);
-  return translate(locale, key, vars, intlTag(locale, system));
-}
 
 function desktop(title: string, body: string, chatId?: string) {
   try {
@@ -241,14 +226,14 @@ function desktop(title: string, body: string, chatId?: string) {
 
 function telegram(r: Routine, text: string) {
   if (!r.notifyTelegram) return;
-  void sendToMainChat(text.slice(0, TELEGRAM_MAX + 200)).catch(() => false);
+  void sendToMainChat(text.slice(0, TELEGRAM_MAX + 400)).catch(() => false);
 }
 
 /** A run's reply (or error, already worded). */
 function notifyResult(r: Routine, text: string, isError = false) {
   const body = text || translateFor("routines.n.empty", { name: r.name });
   desktop(`⏰ ${r.name}`, body, r.chatId);
-  const tg = body.length > TELEGRAM_MAX ? `${body.slice(0, TELEGRAM_MAX)}…` : body;
+  const tg = body.length > TELEGRAM_MAX ? `${body.slice(0, TELEGRAM_MAX)}…\n(The full result is in oovi.)` : body;
   telegram(r, isError ? tg : `⏰ ${r.name}:\n${tg}`);
 }
 

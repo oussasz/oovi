@@ -9,8 +9,24 @@ const chat = (entries: unknown[], pending?: unknown) => ({ id: "g1", kind: "grou
 
 test("final answer is the last bot message of the task", () => {
   const c = chat([u("old"), b("x", "a", "done", "old answer"), u("t1"), b("e1", "a", "done", "@B do it"), b("e2", "b", "done", "did it"), b("e3", "a", "done", "Final: all good")]);
-  assert.deepEqual(groupTaskState(c, "t1", false), { kind: "done", botId: "a", text: "Final: all good" });
+  assert.deepEqual(groupTaskState(c, "t1", false), {
+    kind: "done",
+    botId: "a",
+    text: "Final: all good",
+    earlier: [{ botId: "a", text: "@B do it" }, { botId: "b", text: "did it" }],
+  });
   assert.deepEqual(groupTaskState(c, "t1", true), { kind: "running" });
+});
+
+test("what an earlier message found (a link) still reaches the main bot when another bot speaks last", () => {
+  // The real case: c sends the link, then c and mouloud agree with each other; mouloud speaks last.
+  const c = chat([u("t1", "@c send the dashboard link"), b("e1", "c", "done", "Voici le lien : https://x.trycloudflare.com"), b("e2", "m", "done", "Le dashboard ne répond pas."), b("e3", "c", "done", "@m a raison."), b("e4", "m", "done", "Je confirme.")]);
+  const s = groupTaskState(c, "t1", false) as { kind: string; botId: string; earlier?: { text: string }[] };
+  assert.equal(s.kind, "done");
+  assert.equal(s.botId, "m");
+  assert.ok(s.earlier?.some((m) => m.text.includes("trycloudflare.com")));
+  // Only one message: nothing earlier to add.
+  assert.deepEqual(groupTaskState(chat([u("t1"), b("e1", "a", "done", "ok")]), "t1", false), { kind: "done", botId: "a", text: "ok" });
 });
 
 test("a pause for the user's OK is reported as such, with a stable key", () => {

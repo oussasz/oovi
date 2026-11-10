@@ -51,7 +51,8 @@ export async function POST(req: Request, { params }: Ctx) {
   }
   entry.feedback = { rating, ...(note ? { note } : {}), at: Date.now() };
   if (rating === "up" && before !== "up") rateLessons(entry.id, +1);
-  if (rating === "down" && before === "up") rateLessons(entry.id, -1);
+  // A reply the user didn't like: what was learned from it stops being recalled (score 0).
+  if (rating === "down" && before !== "down") rateLessons(entry.id, before === "up" ? -2 : -1);
   saveChat(chat);
 
   const settings = loadSettings();

@@ -1226,6 +1226,21 @@ const es: Dict = {
   "chat.teamCostTitle": "El trabajo en equipo cuesta más: cada respuesta de un compañero usa créditos (unos 4 cada una).",
   "credits.worth": "Suficiente para unas {quick} tareas rápidas o {team} tareas en equipo.",
   "credits.pricing": "Cuánto cuestan los créditos",
+  "grp.done": "**{group}** terminó. {bot}:",
+  "grp.error": "**{group}** no pudo terminar: {bot} tuvo un problema: {error}",
+  "grp.stopped": "**{group}** se detuvo antes de terminar.",
+  "grp.empty": "**{group}** no respondió.",
+  "grp.soFar": "Lo que tenía hasta ahora:",
+  "grp.needsOk": "{bot} en «{group}» necesita tu aprobación:",
+  "grp.okHowTg": "Responde /yes para permitir o /no para rechazar, aquí o en el grupo en oovi.",
+  "grp.okHowApp": "Abre el grupo «{group}» en oovi para permitir o rechazar (o responde /yes o /no en Telegram).",
+  "grp.plan": "{bot} en «{group}» propone un plan:",
+  "grp.planHowTg": "Responde /yes para ejecutarlo o /no para cancelarlo. Para cambiarlo, abre el grupo «{group}» en oovi.",
+  "grp.planHowApp": "Abre el grupo «{group}» en oovi para revisarlo (o responde /yes o /no en Telegram).",
+  "grp.problem": "{bot} tuvo un problema: {error}",
+  "grp.noReply": "«{group}» no respondió.",
+  "grp.also": "También:",
+  "grp.before": "Antes de eso:",
 };
 
 export default es;

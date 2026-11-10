@@ -35,7 +35,10 @@ export type SpecialistProposal = { name: string; role: string; instructions: str
 /** The group a specialist proposed from this chat joins: the chat itself, or (from a direct chat) the named or led group. */
 function targetGroup(chat: Chat, self: Bot, groupName: unknown): Chat | undefined {
   if (chat.kind === "group") return chat;
-  const groups = listChats().filter((c) => c.kind === "group");
+  // Most recently used first: with several groups, the specialist joins the one the user works in.
+  const groups = listChats()
+    .filter((c) => c.kind === "group")
+    .sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0));
   const q = String(groupName ?? "").trim().toLowerCase();
   if (q) return groups.find((g) => g.name.toLowerCase() === q) ?? groups.find((g) => g.name.toLowerCase().includes(q));
   return groups.find((g) => g.leadId === self.id) ?? groups.find((g) => g.memberIds.includes(self.id));

@@ -16,3 +16,29 @@ export function findMentions(text: string, members: Named[]): string[] {
   }
   return out;
 }
+
+/**
+ * The teammates a bot's message actually hands the turn to. A plain @mention isn't enough:
+ * "@mouloud a raison", "Merci @c" or "as @Scout wrote" only refer to someone. A mention hands off when
+ * - it addresses them: it starts its sentence ("@Lina, write the post", "@A and @B, please check"), or
+ * - its sentence is a question ("Can you check the link, @c?").
+ * A teammate who already replied to this request gets the turn back only for a question, so two bots
+ * can't bounce agreement back and forth.
+ */
+export function handoffMentions(text: string, members: Named[], replied: ReadonlySet<string> = new Set()): string[] {
+  const out: string[] = [];
+  // Sentences end at . ! ? … ؟ or a line break; the end mark stays with its sentence.
+  const sentences = text.match(/[^.!?…؟\n]+[.!?…؟]*/gu) ?? [];
+  for (const sentence of sentences) {
+    const question = /[?؟]\s*$/u.test(sentence);
+    for (const m of sentence.matchAll(MENTION_RE)) {
+      const before = sentence.slice(0, m.index).replace(/^[\s>*_\-•\d.)]+/u, "");
+      const addressed = /^(?:\s|,|&|@[\p{L}\p{N}_-]+|and|et|ou|or|y|و)*$/iu.test(before);
+      for (const id of findMentions(m[0], members)) {
+        if (out.includes(id)) continue;
+        if (question || (addressed && !replied.has(id))) out.push(id);
+      }
+    }
+  }
+  return out;
+}

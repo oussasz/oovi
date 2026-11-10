@@ -22,7 +22,7 @@ export const TEAM_SPECS: ToolSpec[] = [
   {
     name: "message_group",
     description:
-      "Give one of the user's groups a task, on the user's behalf. The group works on it and you get its final answer back (for long jobs, the group's answer is posted to the user when it finishes). Write a complete, self-contained task.",
+      "Give one of the user's groups a task, on the user's behalf. The group works on it and you get its final answer back, with what its members said before it (for long jobs, the group's answer is posted to the user when it finishes). Write a complete, self-contained task, short, in the language of the user's latest message (the group answers in the language you write in).",
     parameters: {
       type: "object",
       properties: { group: { type: "string", description: "Group name" }, message: { type: "string" } },
@@ -131,9 +131,19 @@ export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}):
 
   if (call.name === "read_group") {
     const n = Math.min(30, Math.max(1, Number(call.input.last) || 10));
-    const items = group.entries.filter((e) => e.kind === "user" || e.text).slice(-n);
+    // Members that hit a problem are listed too, so nobody is reported as "didn't answer" by mistake.
+    const items = group.entries.filter((e) => e.kind === "user" || e.text || (e.kind === "bot" && e.status === "error")).slice(-n);
     if (!items.length) return ok(`"${group.name}" has no messages yet.`);
-    return ok(items.map((e) => `[${e.kind === "user" ? (e.via ? `${nameOf(bots, e.via)} for the user` : "User") : nameOf(bots, e.botId)}]: ${e.text.slice(0, 1500)}`).join("\n\n"));
+    const body = (t: string) => (t.length > 1500 ? `${t.slice(0, 1500)}… [${t.length - 1500} more characters]` : t);
+    return ok(
+      items
+        .map((e) =>
+          e.kind === "user"
+            ? `[${e.via ? `${nameOf(bots, e.via)} for the user` : "User"}]: ${body(e.text)}`
+            : `[${nameOf(bots, e.botId)}]: ${e.text ? body(e.text) : ""}${e.status === "error" ? `${e.text ? "\n" : ""}(hit a problem: ${e.error ?? "unknown error"})` : ""}`,
+        )
+        .join("\n\n"),
+    );
   }
 
   if (call.name === "message_group") {

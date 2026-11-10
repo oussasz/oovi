@@ -13,6 +13,7 @@
 // approvals for that work are asked there, and files bots send go there. Only the main chat
 // and linked chats are answered; the routing rules live in telegram-links.ts.
 
+import { translateFor } from "./i18n-server";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -449,10 +450,17 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
     if (last?.text) return deliver(chatId, plainText(last.text));
     return deliver(chatId, `${name} didn't reply.`);
   }
-  if (last?.status === "error") return deliver(chatId, `${who(last.botId)} hit a problem: ${last.error ?? "unknown error"}`);
-  if (last?.text) return deliver(chatId, `${who(last.botId)}:\n${plainText(last.text)}`);
-  return deliver(chatId, `"${name}" didn't reply.`);
+  // The final message in full, and what the others said in short: a link or a figure is often there.
+  const others = fresh.filter((e) => e !== last && e.status === "done" && e.text.trim()).slice(-4);
+  const also = others.length
+    ? `\n\n${translateFor(last?.status === "error" ? "grp.before" : "grp.also")}\n${others.map((e) => `${who(e.botId)}: ${clipText(plainText(e.text), 500)}`).join("\n\n")}`
+    : "";
+  if (last?.status === "error") return deliver(chatId, `${translateFor("grp.problem", { bot: who(last.botId), error: last.error ?? "unknown error" })}${also}`);
+  if (last?.text) return deliver(chatId, `${who(last.botId)}:\n${plainText(last.text)}${also}`);
+  return deliver(chatId, translateFor("grp.noReply", { group: name }));
 }
+
+const clipText = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
 /** A run started elsewhere (the app, a routine) gets this long to finish before a Telegram message gives up. */
 const BUSY_WAIT_MS = 30 * 60 * 1000;

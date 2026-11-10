@@ -827,7 +827,7 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
       if (ws) abs = resolveInWorkspace(ws, p).abs;
       else {
         const found = resolveInDownloads(p);
-        if (!found) return fail("Without a project folder, bots can only read files in Downloads/oovi.");
+        if (!found) return fail(`There's no file called ${path.basename(p.replace(/\\/g, "/"))} in Downloads/oovi (without a project folder, bots read files only from there). Check the name, or ask the user to attach the file.`);
         abs = found;
       }
       if (!fs.existsSync(abs)) return fail(`${p} doesn't exist.`);

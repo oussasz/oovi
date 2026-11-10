@@ -1226,6 +1226,21 @@ const fr: Dict = {
   "chat.teamCostTitle": "Le travail d'équipe coûte plus : chaque réponse d'un coéquipier utilise des crédits (environ 4 chacune).",
   "credits.worth": "De quoi faire environ {quick} tâches rapides ou {team} tâches d'équipe.",
   "credits.pricing": "Combien coûtent les crédits",
+  "grp.done": "**{group}** a terminé. {bot} :",
+  "grp.error": "**{group}** n'a pas pu terminer : {bot} a rencontré un problème : {error}",
+  "grp.stopped": "**{group}** s'est arrêté avant la fin.",
+  "grp.empty": "**{group}** n'a pas répondu.",
+  "grp.soFar": "Ce qui était déjà fait :",
+  "grp.needsOk": "{bot} dans « {group} » a besoin de ton accord :",
+  "grp.okHowTg": "Réponds /yes pour autoriser ou /no pour refuser, ici ou dans le groupe dans oovi.",
+  "grp.okHowApp": "Ouvre le groupe « {group} » dans oovi pour autoriser ou refuser (ou réponds /yes ou /no dans Telegram).",
+  "grp.plan": "{bot} dans « {group} » propose un plan :",
+  "grp.planHowTg": "Réponds /yes pour le lancer ou /no pour l'annuler. Pour le modifier, ouvre le groupe « {group} » dans oovi.",
+  "grp.planHowApp": "Ouvre le groupe « {group} » dans oovi pour le voir (ou réponds /yes ou /no dans Telegram).",
+  "grp.problem": "{bot} a rencontré un problème : {error}",
+  "grp.noReply": "« {group} » n'a pas répondu.",
+  "grp.also": "Aussi :",
+  "grp.before": "Avant ça :",
 };
 
 export default fr;

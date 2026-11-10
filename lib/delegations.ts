@@ -9,7 +9,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { groupTaskState, healInterrupted, plainText, type GroupTaskState } from "./delegations-core";
+import { groupTaskState, healInterrupted, plainText, type Earlier, type GroupTaskState } from "./delegations-core";
+import { translateFor } from "./i18n-server";
 import { isRunning, onRunEnd } from "./runner";
 import { dataDir } from "./settings";
 import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
@@ -33,6 +34,8 @@ export type Delegation = {
   notifiedAt?: number;
   /** A result already sent to Telegram, waiting for the main bot's chat to be free. */
   report?: string;
+  /** The same result as the main bot sees it (with the other members' messages). */
+  reportForModel?: string;
 };
 
 const MAX_AGE = 48 * 60 * 60 * 1000;
@@ -106,12 +109,14 @@ function forward(text: string) {
  * Add a message from the main bot to its own chat (no model call). Returns false while a run
  * holds that chat (it would overwrite the message); true once written, or when there's no chat.
  */
-function appendToMain(botId: string, text: string): boolean {
+function appendToMain(botId: string, text: string, forModel?: string): boolean {
   const id = dmId(botId);
   if (isRunning(id)) return false;
   const chat = getChat(id);
   if (!chat) return true;
-  const entry: BotEntry = { id: newId(), kind: "bot", botId, at: Date.now(), steps: [], text, status: "done", usage: { input: 0, output: 0 } };
+  // The user sees `text`; the main bot also "remembers" the other members' messages (forModel).
+  const steps: BotEntry["steps"] = forModel && forModel !== text ? [{ role: "assistant", text: forModel, toolCalls: [] }] : [];
+  const entry: BotEntry = { id: newId(), kind: "bot", botId, at: Date.now(), steps, text, status: "done", usage: { input: 0, output: 0 } };
   chat.entries.push(entry);
   saveChat(chat);
   return true;
@@ -122,27 +127,37 @@ function appendToMain(botId: string, text: string): boolean {
 const nameOf = (bots: Bot[], id?: string) => bots.find((b) => b.id === id)?.name ?? "A bot";
 const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);
 
+/** The other members' messages, for the main bot or the user (links and figures are often in them). */
+function earlierBlock(state: { earlier?: Earlier[]; omitted?: number }, bots: Bot[], forModel: boolean): string {
+  if (!state.earlier?.length) return "";
+  const head = forModel
+    ? "Earlier messages in the group (use anything useful from them, such as links or figures; they are part of the group's answer):"
+    : "Also in the group:";
+  const more = state.omitted ? `\n(${state.omitted} older message${state.omitted > 1 ? "s" : ""} not shown; read_group shows them.)` : "";
+  return `\n\n${head}\n${state.earlier.map((m) => `[${nameOf(bots, m.botId)}]: ${clip(m.text, forModel ? 1500 : 700)}`).join("\n\n")}${more}`;
+}
+
 /** What the user is told about a group's task (in the main bot's chat and on Telegram). */
 export function reportText(state: GroupTaskState, group: string, bots: Bot[], fromTelegram: boolean): string | null {
   switch (state.kind) {
     case "approval": {
       const items = state.items.map((x, i) => `${i + 1}. ${x.summary}${x.detail ? `\n${clip(x.detail, 600)}` : ""}`).join("\n");
-      const how = fromTelegram ? "Reply /yes to allow or /no to deny, here or in the group in oovi." : `Open the group "${group}" in oovi to allow or deny (or reply /yes or /no in Telegram).`;
-      return `${nameOf(bots, state.botId)} in "${group}" needs your OK:\n${items}\n\n${how}`;
+      const how = fromTelegram ? translateFor("grp.okHowTg") : translateFor("grp.okHowApp", { group });
+      return `${translateFor("grp.needsOk", { bot: nameOf(bots, state.botId), group })}\n${items}\n\n${how}`;
     }
     case "plan": {
       const steps = state.steps.map((s, i) => `${i + 1}. ${s}`).join("\n");
-      const how = fromTelegram ? `Reply /yes to run it or /no to cancel. To change it, open the group "${group}" in oovi.` : `Open the group "${group}" in oovi to review it (or reply /yes or /no in Telegram).`;
-      return `${nameOf(bots, state.botId)} in "${group}" proposes a plan:${state.goal ? `\n${state.goal}` : ""}\n${steps}\n\n${how}`;
+      const how = fromTelegram ? translateFor("grp.planHowTg", { group }) : translateFor("grp.planHowApp", { group });
+      return `${translateFor("grp.plan", { bot: nameOf(bots, state.botId), group })}${state.goal ? `\n${state.goal}` : ""}\n${steps}\n\n${how}`;
     }
     case "done":
-      return `**${group}** finished. ${nameOf(bots, state.botId)}:\n\n${clip(state.text, 8000)}`;
+      return `${translateFor("grp.done", { group, bot: nameOf(bots, state.botId) })}\n\n${clip(state.text, 8000)}`;
     case "error":
-      return `**${group}** couldn't finish: ${nameOf(bots, state.botId)} hit a problem: ${state.error}${state.partial ? `\n\nWhat it had so far:\n${clip(state.partial, 6000)}` : ""}`;
+      return `${translateFor("grp.error", { group, bot: nameOf(bots, state.botId), error: state.error })}${state.partial ? `\n\n${translateFor("grp.soFar")}\n${clip(state.partial, 6000)}` : ""}`;
     case "stopped":
-      return `**${group}** stopped before finishing.${state.partial ? `\n\nWhat it had so far:\n${clip(state.partial, 6000)}` : ""}`;
+      return `${translateFor("grp.stopped", { group })}${state.partial ? `\n\n${translateFor("grp.soFar")}\n${clip(state.partial, 6000)}` : ""}`;
     case "empty":
-      return `**${group}** didn't answer.`;
+      return translateFor("grp.empty", { group });
     default:
       return null; // running, cancelled, superseded, gone: nothing to tell
   }
@@ -156,11 +171,11 @@ export function toolText(state: GroupTaskState, group: string, bots: Bot[], from
     case "plan":
       return `The group "${group}" proposes a plan and waits for the user: ${state.goal ? `${state.goal}. ` : ""}Steps: ${state.steps.join("; ")}. Tell the user the plan in short. ${fromTelegram ? "They can reply /yes to run it or /no to cancel, right here in Telegram." : `They review it in the group "${group}" in oovi.`} Its final answer will be posted automatically when it's done.`;
     case "done":
-      return `Final answer from ${nameOf(bots, state.botId)} in "${group}":\n${clip(state.text, 8000)}`;
+      return `Final answer from ${nameOf(bots, state.botId)} in "${group}":\n${clip(state.text, 8000)}${earlierBlock(state, bots, true)}`;
     case "error":
-      return `${nameOf(bots, state.botId)} in "${group}" hit a problem: ${state.error}${state.partial ? `\nWhat the group had so far:\n${clip(state.partial, 6000)}` : ""}`;
+      return `${nameOf(bots, state.botId)} in "${group}" hit a problem: ${state.error}${state.partial ? `\nWhat the group had so far:\n${clip(state.partial, 6000)}` : ""}${earlierBlock(state, bots, true)}`;
     case "stopped":
-      return `"${group}" stopped before finishing.${state.partial ? `\nWhat it had so far:\n${clip(state.partial, 6000)}` : ""}`;
+      return `"${group}" stopped before finishing.${state.partial ? `\nWhat it had so far:\n${clip(state.partial, 6000)}` : ""}${earlierBlock(state, bots, true)}`;
     case "cancelled":
       return `The user cancelled "${group}"'s plan.`;
     case "superseded":
@@ -196,7 +211,7 @@ export function checkDelegations(): void {
       }
       // Finished, already sent to Telegram: waiting for the main bot's chat to be free.
       if (d.report !== undefined) {
-        if (appendToMain(d.mainBotId, d.report)) changed = true;
+        if (appendToMain(d.mainBotId, d.report, d.reportForModel)) changed = true;
         else keep.push(d);
         continue;
       }
@@ -235,7 +250,10 @@ export function checkDelegations(): void {
       changed = true;
       if (!text) continue; // cancelled, superseded, gone: done, nothing to say
       forward(text);
-      if (!appendToMain(d.mainBotId, text)) keep.push({ ...d, report: text });
+      // The main bot's own copy carries what the other members said (a link, a figure), so it can answer follow-ups.
+      const extra = "earlier" in state ? earlierBlock(state, bots, true) : "";
+      const forModel = extra ? `${text}${extra}` : undefined;
+      if (!appendToMain(d.mainBotId, text, forModel)) keep.push({ ...d, report: text, ...(forModel ? { reportForModel: forModel } : {}) });
     }
     if (changed) writeAll(keep);
   } catch (e) {

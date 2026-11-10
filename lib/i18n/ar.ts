@@ -1241,6 +1241,21 @@ const ar: Dict = {
   "chat.teamCostTitle": "عمل الفريق يكلّف أكثر: كل رد من زميل يستهلك رصيدًا (حوالي 4 لكل رد).",
   "credits.worth": "يكفي لحوالي {quick} مهمة سريعة أو {team} مهمة جماعية.",
   "credits.pricing": "كم تكلف الأرصدة",
+  "grp.done": "**{group}** أنهى العمل. {bot}:",
+  "grp.error": "**{group}** لم يكمل: واجه {bot} مشكلة: {error}",
+  "grp.stopped": "**{group}** توقف قبل الانتهاء.",
+  "grp.empty": "**{group}** لم يرد.",
+  "grp.soFar": "ما تم إنجازه حتى الآن:",
+  "grp.needsOk": "{bot} في «{group}» يحتاج موافقتك:",
+  "grp.okHowTg": "أرسل /yes للموافقة أو /no للرفض، هنا أو في المجموعة داخل oovi.",
+  "grp.okHowApp": "افتح المجموعة «{group}» في oovi للموافقة أو الرفض (أو أرسل /yes أو /no في تيليغرام).",
+  "grp.plan": "{bot} في «{group}» يقترح خطة:",
+  "grp.planHowTg": "أرسل /yes لتنفيذها أو /no لإلغائها. لتعديلها افتح المجموعة «{group}» في oovi.",
+  "grp.planHowApp": "افتح المجموعة «{group}» في oovi لمراجعتها (أو أرسل /yes أو /no في تيليغرام).",
+  "grp.problem": "واجه {bot} مشكلة: {error}",
+  "grp.noReply": "«{group}» لم يرد.",
+  "grp.also": "أيضًا:",
+  "grp.before": "قبل ذلك:",
 };
 
 export default ar;

@@ -1245,6 +1245,21 @@ const en = {
   "chat.teamCostTitle": "Team tasks cost more: each teammate's reply uses credits (about 4 each).",
   "credits.worth": "Enough for about {quick} quick tasks or {team} team tasks.",
   "credits.pricing": "What credits cost",
+  "grp.done": "**{group}** finished. {bot}:",
+  "grp.error": "**{group}** couldn't finish: {bot} hit a problem: {error}",
+  "grp.stopped": "**{group}** stopped before finishing.",
+  "grp.empty": "**{group}** didn't answer.",
+  "grp.soFar": "What it had so far:",
+  "grp.needsOk": "{bot} in \"{group}\" needs your OK:",
+  "grp.okHowTg": "Reply /yes to allow or /no to deny, here or in the group in oovi.",
+  "grp.okHowApp": "Open the group \"{group}\" in oovi to allow or deny (or reply /yes or /no in Telegram).",
+  "grp.plan": "{bot} in \"{group}\" proposes a plan:",
+  "grp.planHowTg": "Reply /yes to run it or /no to cancel. To change it, open the group \"{group}\" in oovi.",
+  "grp.planHowApp": "Open the group \"{group}\" in oovi to review it (or reply /yes or /no in Telegram).",
+  "grp.problem": "{bot} hit a problem: {error}",
+  "grp.noReply": "\"{group}\" didn't reply.",
+  "grp.also": "Also:",
+  "grp.before": "Before that:",
 } as const;
 
 export type Key = keyof typeof en;

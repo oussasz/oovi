@@ -166,7 +166,11 @@ export async function readArticle(url: string, s: Settings, signal?: AbortSignal
   // Pages that need JavaScript, block plain downloads, or are PDFs: Exa's reader handles them.
   const viaExa = await exaFetch(url).catch(() => null);
   if (viaExa && viaExa.text.length > 200) return viaExa;
-  throw new Error(`Couldn't read ${url}: ${plainError}. Try open_url to load it in the browser.`);
+  throw new Error(
+    plainError === "the page needs JavaScript"
+      ? `${url} is an app page that only shows its content in a browser (this doesn't mean it's down). Open it with open_url, which waits for slow pages to load.`
+      : `Couldn't read ${url}: ${plainError}. Try open_url to load it in the browser.`,
+  );
 }
 
 // ---------- research ----------
@@ -246,7 +250,13 @@ async function research(s: Settings, question: string, queries: string[], count:
     if (sources.length >= count) break;
     if (!sources.some((x) => x.hit === h) && h.snippet) sources.push({ hit: h });
   }
-  if (!sources.length) throw new Error("Found results but couldn't read any of them.");
+  if (!sources.length) {
+    throw new Error(
+      candidates.length
+        ? "Found results but couldn't read any of them (they may block automated reading); try open_url on the most promising one."
+        : "The searches returned nothing usable. That can be a search problem, not proof that it doesn't exist: try other words.",
+    );
+  }
   const budget = Math.floor(16_000 / sources.length);
   const out = [
     `Research for: ${question}`,

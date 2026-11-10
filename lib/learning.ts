@@ -18,6 +18,8 @@ import { SUSPICIOUS, applyMemory } from "./memory";
 import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
+import { WRONG_LESSON } from "./lesson-rules";
+export { WRONG_LESSON };
 
 export type Lesson = {
   id: string;
@@ -36,10 +38,14 @@ export type Lesson = {
 const MAX_LESSONS = 400;
 const file = () => path.join(dataDir(), "memory", "lessons.json");
 
+
 export function listLessons(): Lesson[] {
   try {
     const j = JSON.parse(fs.readFileSync(file(), "utf8")) as { lessons?: Lesson[] };
-    return Array.isArray(j.lessons) ? j.lessons : [];
+    const all = Array.isArray(j.lessons) ? j.lessons : [];
+    const kept = all.filter((l) => !WRONG_LESSON.test(l.text));
+    if (kept.length !== all.length) writeLessons(kept);
+    return kept;
   } catch {
     return [];
   }
@@ -79,7 +85,7 @@ const clean = (s: string) => s.replace(/\s+/g, " ").trim().slice(0, 300);
 /** Save a lesson. Learning the same thing again updates it and raises its score. */
 export function addLesson(text: string, meta: { botId?: string; source: Lesson["source"]; entryId?: string }): Lesson | null {
   const t = clean(text);
-  if (t.length < 12 || SUSPICIOUS.test(t)) return null;
+  if (t.length < 12 || SUSPICIOUS.test(t) || WRONG_LESSON.test(t)) return null;
   const lessons = listLessons();
   const tk = tokens(t);
   const same = lessons.find((l) => similarity(tokens(l.text), tk) >= 0.6);
@@ -184,7 +190,8 @@ Return ONLY a JSON object, no other text:
 {"lessons": string[], "user": string[], "skill": null | {"name": string, "description": string, "steps": string[]}}
 
 lessons: 0-3 short, specific, reusable lessons (max 200 characters each) that would make similar future tasks faster or better. Good: "For flight prices, Google Flights pages need the browser; read_url returns no prices." "The user's company files are in the Reports folder; check there first." Bad: generic advice ("be thorough", "double-check work"), facts that only matter for this one task, anything secret.
-If the user corrected the bots or gave feedback, the most important lesson is what to do differently.
+If the user corrected the bots or gave feedback, the most important lesson is what to do differently. When the user contradicts the bots (for example "it works, it just takes time to load"), the user is right: never save the bots' mistaken conclusion.
+Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying or skip checking.
 user: 0-2 durable facts about the user's preferences shown here (format, tone, tools, recurring projects, the business or people they work with). Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Empty arrays are normal. Never invent lessons.`;
@@ -244,7 +251,9 @@ export async function reflect(
     .filter((l): l is Lesson => !!l)
     .map((l) => l.text);
   const user: string[] = [];
-  for (const fact of strings(j.user, 2)) if (/^(Saved|Already)/.test(applyMemory("add", "user", fact))) user.push(fact);
+  // Facts "about the user" only when the user wrote the request (not another person in a shared Telegram group).
+  const fromSomeoneElse = /^\[[^\]]{1,60} on Telegram\]/.test(input.request.trim());
+  if (!fromSomeoneElse) for (const fact of strings(j.user, 2)) if (/^(Saved|Already)/.test(applyMemory("add", "user", fact))) user.push(fact);
 
   let skill: LearnedNote["skill"];
   const sk = j.skill as { name?: unknown; description?: unknown; steps?: unknown } | null;

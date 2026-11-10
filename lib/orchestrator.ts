@@ -17,12 +17,12 @@ import { complete, HostedError, type ToolSpec } from "./llm";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, recallHistory } from "./context";
 import { hostedMaxInput, hostedStatus } from "./hosted";
 import { memoryPrompt } from "./memory";
-import { CORRECTION, lessonsPrompt, mergeLearned, reflect } from "./learning";
+import { CORRECTION, lessonsPrompt, mergeLearned, rateLessons, reflect } from "./learning";
 import { capabilitiesPrompt } from "./capabilities";
 import { catalogCached } from "./catalog-remote";
 import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
 import { listServers, mcpToolsFor } from "./mcp";
-import { findMentions } from "./mentions";
+import { findMentions, handoffMentions } from "./mentions";
 import { loadSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
@@ -154,7 +154,7 @@ const LEADER = `You are the team leader and the user's main assistant. You lead 
 3. Anything bigger (research, a document, a post or campaign, a plan, slides, a comparison, anything that gains from a specialist or a second pair of eyes): before you start, look at your team and decide who does what. Give each part to the teammate whose role fits best: @mention them with one clear, self-contained task (several at once is fine). Do a part yourself only when nobody on the team fits it.
 4. If the job needs a skill nobody on the team has (for example social media copywriting, translation, legal review, data analysis, design), propose that specialist with propose_specialist (name, role, instructions, why) before you start. The user creates it with one click; then hand it its part. When the user asks to improve work that a specialist would do better than the team you have, propose that specialist too. Never propose a role the team already has, and never for simple things.
 5. When your teammates have replied, the turn comes back to you automatically with their results. Check them, ask for a fix only if something is clearly wrong, then give the user ONE clear final answer.
-6. Your final answer ends the conversation: no @mentions in it. Keep it readable: the answer first, then the key details in short bullets.
+6. Your final answer ends the conversation: no @mentions in it. Keep it short: the answer first, then only the key details in a few bullets.
 Don't redo a teammate's work and don't go back and forth: one round of delegation is usually enough. Files your teammates made are already saved; refer to them by name instead of making them again.`;
 
 /** Replies follow the language the user writes in now (users switch between languages). */
@@ -221,6 +221,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (bot.instructions) lines.push("", bot.instructions);
   const me = currentUser();
   if (me?.name) lines.push("", `The user's name is ${me.name}. Address them by name naturally (not in every message).`);
+  lines.push(`A message that starts with "[Name on Telegram]" comes from another person in a shared Telegram group, not from the user: address that person by their own name, and never save their wishes or details as the user's.`);
   const mem = memoryPrompt();
   lines.push(
     "",
@@ -241,8 +242,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       'Messages from others appear as "[Name]: text". Write only your own reply, without prefixing your name. Never @mention yourself.',
     );
     if (lead?.id === bot.id) lines.push("", LEADER);
-    else if (lead) lines.push(`@${lead.name} leads this team. Do the part you were asked to do and reply with your result; ${lead.name} gets it automatically. Keep it compact: the result itself, in bullets or short paragraphs, without greetings or repeating the task. Don't ask the user questions; if something is missing, make a sensible assumption and say which. @mention another teammate only if you truly need their help.`);
-    else lines.push("To involve a teammate, @mention them and say exactly what you need; they reply right after you. Hand off only when it helps; don't @mention someone just to thank them.");
+    else if (lead) lines.push(`@${lead.name} leads this team. Do the part you were asked to do and reply with your result; ${lead.name} gets it automatically. Keep it compact: the result itself, in at most a few short lines or bullets, without greetings, without repeating the task or anything already said in this chat. Don't ask the user questions; if something is missing, make a sensible assumption and say which. @mention another teammate only to ask them for something you truly need; to agree with or refer to someone, write their name without @.`);
+    else
+      lines.push(
+        "To involve a teammate, start a sentence with their @name and say exactly what you need; they reply right after you. Only @mention someone to ask them for something: to agree with, thank or refer to a teammate, write their name without @ (an @mention makes them answer again).",
+        "Group messages are short: a few lines with only what's new. Never repeat what someone already wrote in this chat (the plan, the next steps, the numbers). If you agree and have nothing to add, say it in one line.",
+      );
   }
 
   const builtIn = tools.filter((t) => !t.name.startsWith("mcp_") && t.name !== "use_skill" && t.name !== "save_skill" && t.name !== DESKTOP_MARKER);
@@ -289,7 +294,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       "You run the user's groups: you're the admin of every group, and the user talks only to you.",
       "- list_groups shows the groups, who's in them and what they're doing. read_group catches you up on one.",
       "- message_group gives a group a task on the user's behalf and brings back its final answer. Write a complete task; don't ask the user to talk to the group themselves.",
-      "- When a group answers, tell the user the result in your own words: short, with the key points. If a group needs the user's approval, say which group and what it wants.",
+      "- When a group answers, tell the user the result in your own words: short, with the key points. Look through the group's earlier messages too: a link, file or figure a member gave is part of the answer, so never say a member didn't answer when they did. If a group needs the user's approval, say which group and what it wants.",
       "- Handle simple things yourself. For bigger jobs, work as a team: give the job to the group whose members fit it (message_group).",
       "- If the user asks you to improve something a specialist would do better (e.g. a social media post, a translation, a legal text), or a job needs a skill none of the bots have, propose that specialist with propose_specialist: it joins the group you lead (or the one you name), then give that group the work. Never propose a role a bot already has.",
     );
@@ -346,8 +351,9 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   }
   if (lastUser(chat)?.routine) lines.push("", ROUTINE_RUN);
   if (chat.pending?.planMode) lines.push("", PLAN_MODE);
-  else if (chat.pending?.deep) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
-  lines.push("", chat.pending?.deep ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be concise and practical. Use short paragraphs or lists. Write so a person can read your message in under a minute.", LANGUAGE, "", SAFETY);
+  // Deep work's planning and longer final summary are for the bot that answers the user; teammates stay compact.
+  else if (chat.pending?.deep && answersUser) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
+  lines.push("", chat.pending?.deep && answersUser ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be short and practical: the answer first, in a few lines, then at most 5 short bullets if needed. Don't repeat the request or what the user already knows, and don't add sections like 'Critical issues' or 'Questions' unless asked. Ask at most one question, and only when you can't go on without the answer. Long messages only for a requested document or an emergency.", LANGUAGE, "", SAFETY);
   return lines.join("\n");
 }
 
@@ -402,6 +408,17 @@ async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal
   }
 }
 
+/** Bots that already answered the current user message (before `entry`). */
+function repliedSinceUser(chat: Chat, entry: BotEntry): Set<string> {
+  const out = new Set<string>();
+  for (let i = chat.entries.length - 1; i >= 0; i--) {
+    const e = chat.entries[i]!;
+    if (e.kind === "user") break;
+    if (e.kind === "bot" && e.id !== entry.id && e.status === "done") out.add(e.botId);
+  }
+  return out;
+}
+
 /** User messages whose files are sent in full; older ones get a one-line mention (read_attachment brings them back). */
 const FULL_FILE_MESSAGES = 3;
 
@@ -429,10 +446,19 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
         : undefined;
       out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}` : text, ...(attachments ? { attachments } : {}) });
     }
-    else if (e.botId === bot.id) out.push(...e.steps);
+    // A bot's own message: its steps, or just its text when it was written without a model call
+    // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
+    else if (e.botId === bot.id) out.push(...(e.steps.length ? e.steps : e.text ? [{ role: "assistant" as const, text: e.text, toolCalls: [] }] : []));
     else if (e.text) out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"}]: ${e.text}` });
   }
   return out;
+}
+
+/** What a group said is an answer, not raw tool output: it stays (almost) whole. */
+const KEEP_LONGER = new Set(["message_group", "read_group"]);
+function cutOld(r: ToolResult): string {
+  const max = KEEP_LONGER.has(r.name) ? 6000 : 800;
+  return r.content.length > max ? `${r.content.slice(0, max)}\n[older result shortened: ${r.content.length - max} more characters not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]` : r.content;
 }
 
 /** Older tool outputs are cut down; the latest few stay whole. Only the newest desktop screenshots stay. */
@@ -441,7 +467,7 @@ function prune(history: Msg[]): Msg[] {
   const keep = new Set(toolIdx.slice(-3));
   return pruneDesktopShots(history).map((m, i) =>
     m.role === "tool" && !keep.has(i)
-      ? { role: "tool", results: m.results.map((r) => ({ ...r, content: r.content.length > 800 ? `${r.content.slice(0, 800)}\n[older result truncated]` : r.content })) }
+      ? { role: "tool", results: m.results.map((r) => ({ ...r, content: cutOld(r) })) }
       : m,
   );
 }
@@ -977,7 +1003,16 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       p.queue = [];
       p.awaitingLead = false;
     } else if (outcome === "done") {
-      const handoff = findMentions(entry.text, members).filter((id) => id !== bot.id);
+      // The leader's @mentions hand out work. Anyone else's must address or ask the teammate:
+      // "@mouloud a raison" or "Merci @c" don't pass the turn (see handoffMentions).
+      const replied = repliedSinceUser(chat, entry);
+      const handoff = (
+        lead && bot.id === lead.id
+          ? // The leader: any mention of a teammate who hasn't worked on this yet hands out work. A teammate
+            // who already replied is sent back only by a real request or question ("Great work @Scout!" isn't one).
+            ((asked) => findMentions(entry.text, members).filter((id) => !replied.has(id) || asked.includes(id)))(handoffMentions(entry.text, members))
+          : handoffMentions(entry.text, members, replied)
+      ).filter((id) => id !== bot.id);
       if (handoff.length) {
         if (p.turnsLeft > 0) {
           p.turnsLeft--;
@@ -1066,6 +1101,8 @@ async function learnFromRun(chat: Chat, bots: Bot[], settings: Settings, signal:
   // The bots' answer just before this message, when the user is correcting it.
   const prev = chat.entries.slice(0, u).reverse().find((e): e is BotEntry => e.kind === "bot" && !!e.text);
   const correcting = !!prev && CORRECTION.test(user.text.trim());
+  // The user says the previous answer was wrong: lessons drawn from it stop being recalled.
+  if (correcting && prev) rateLessons(prev.id, -1);
   if (toolCalls < 3 && !user.deep && !correcting) return null;
   const withBots = work.map((entry) => ({ entry, bot: bots.find((b) => b.id === entry.botId) })).filter((x): x is { entry: BotEntry; bot: Bot } => !!x.bot);
   try {

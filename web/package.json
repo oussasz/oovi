@@ -13,6 +13,7 @@
     "@paddle/paddle-js": "^1.6.6",
     "@paddle/paddle-node-sdk": "^3.11.1",
     "better-auth": "1.7.12",
+    "botid": "1.5.11",
     "next": "15.5.29",
     "nodemailer": "10.2.1",
     "pg": "8.23.1",

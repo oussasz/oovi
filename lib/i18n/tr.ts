@@ -1226,6 +1226,21 @@ const tr: Dict = {
   "chat.teamCostTitle": "Ekip işi daha pahalıdır: her ekip arkadaşının yanıtı kredi kullanır (her biri yaklaşık 4).",
   "credits.worth": "Yaklaşık {quick} hızlı görev ya da {team} ekip görevi için yeter.",
   "credits.pricing": "Kredilerin fiyatı",
+  "grp.done": "**{group}** bitirdi. {bot}:",
+  "grp.error": "**{group}** bitiremedi: {bot} bir sorunla karşılaştı: {error}",
+  "grp.stopped": "**{group}** bitirmeden durdu.",
+  "grp.empty": "**{group}** yanıt vermedi.",
+  "grp.soFar": "O ana kadar yapılanlar:",
+  "grp.needsOk": "\"{group}\" grubundaki {bot} onayını bekliyor:",
+  "grp.okHowTg": "İzin vermek için /yes, reddetmek için /no yaz; burada ya da oovi'deki grupta.",
+  "grp.okHowApp": "İzin vermek ya da reddetmek için oovi'de \"{group}\" grubunu aç (ya da Telegram'da /yes veya /no yaz).",
+  "grp.plan": "\"{group}\" grubundaki {bot} bir plan öneriyor:",
+  "grp.planHowTg": "Çalıştırmak için /yes, iptal için /no yaz. Değiştirmek için oovi'de \"{group}\" grubunu aç.",
+  "grp.planHowApp": "İncelemek için oovi'de \"{group}\" grubunu aç (ya da Telegram'da /yes veya /no yaz).",
+  "grp.problem": "{bot} bir sorunla karşılaştı: {error}",
+  "grp.noReply": "\"{group}\" yanıt vermedi.",
+  "grp.also": "Ayrıca:",
+  "grp.before": "Bundan önce:",
 };
 
 export default tr;

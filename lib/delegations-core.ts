@@ -3,15 +3,18 @@
 
 import type { BotEntry, Chat } from "./types";
 
+/** A finished message from a group member, sent along with the group's answer. */
+export type Earlier = { botId: string; text: string };
+
 export type GroupTaskState =
   | { kind: "running" }
   | { kind: "gone" } // the task's message was removed (chat cleared or deleted)
   | { kind: "superseded" } // the user wrote in the group before it finished: the task is theirs now
   | { kind: "approval"; key: string; botId: string; items: { summary: string; detail?: string }[] }
   | { kind: "plan"; key: string; botId: string; goal: string; steps: string[] }
-  | { kind: "done"; botId: string; text: string }
-  | { kind: "error"; botId?: string; error: string; partial?: string }
-  | { kind: "stopped"; botId?: string; partial?: string }
+  | { kind: "done"; botId: string; text: string; earlier?: Earlier[]; omitted?: number }
+  | { kind: "error"; botId?: string; error: string; partial?: string; earlier?: Earlier[]; omitted?: number }
+  | { kind: "stopped"; botId?: string; partial?: string; earlier?: Earlier[]; omitted?: number }
   | { kind: "cancelled" } // the user cancelled the group's proposed plan
   | { kind: "empty" };
 
@@ -50,13 +53,24 @@ export function groupTaskState(chat: Chat, sentId: string, running: boolean): Gr
   if (!last) return { kind: "empty" };
   // The last finished message before the end, for a stop or failure part-way.
   const lastDone = [...work].reverse().find((e) => e.text && e.status === "done");
-  if (last.status === "running" || last.status === "waiting") return { kind: "error", botId: last.botId, error: INTERRUPTED, partial: lastDone?.text };
-  if (last.status === "error") return { kind: "error", botId: last.botId, error: last.error ?? "unknown error", partial: lastDone?.text };
-  if (last.status === "stopped") return { kind: "stopped", botId: last.botId, partial: last.text || lastDone?.text };
+  /** What the other members said too: the useful part (a link, a figure) is often not in the last message. */
+  const others = (skip: BotEntry | undefined) => {
+    const all = work.filter((e) => e !== skip && e !== last && e.status === "done" && e.text.trim());
+    const earlier = all.slice(-EARLIER_MAX).map((e) => ({ botId: e.botId, text: e.text }));
+    const omitted = all.length - earlier.length;
+    return { ...(earlier.length ? { earlier } : {}), ...(omitted > 0 ? { omitted } : {}) };
+  };
+  if (last.status === "running" || last.status === "waiting") return { kind: "error", botId: last.botId, error: INTERRUPTED, partial: lastDone?.text, ...others(lastDone) };
+  if (last.status === "error") return { kind: "error", botId: last.botId, error: last.error ?? "unknown error", partial: lastDone?.text, ...others(lastDone) };
+  if (last.status === "stopped") return { kind: "stopped", botId: last.botId, partial: last.text || lastDone?.text, ...others(last.text ? undefined : lastDone) };
   if (last.planReview === "cancelled") return { kind: "cancelled" };
-  if (last.text) return { kind: "done", botId: last.botId, text: last.text };
-  return lastDone ? { kind: "done", botId: lastDone.botId, text: lastDone.text } : { kind: "empty" };
+  const final = last.text ? last : lastDone;
+  if (!final) return { kind: "empty" };
+  return { kind: "done", botId: final.botId, text: final.text, ...others(final) };
 }
+
+/** At most this many earlier group messages go back to the main bot with the final answer. */
+export const EARLIER_MAX = 8;
 
 /**
  * Bot entries a run left as "running" or "waiting" with nothing to resume them (the app closed

@@ -128,6 +128,40 @@ async function settle(page: Page) {
   await page.waitForLoadState("networkidle", { timeout: 3_000 }).catch(() => {});
 }
 
+/** How long a blank page (or one showing only "Loading…") gets to fill in before it's read. */
+const SLOW_PAGE_MS = 25_000;
+/** Page text that means the page is still loading, not that it's empty. */
+const LOADING_ONLY = /^(loading|chargement|cargando|carregando|laden|yükleniyor|جار[ٍي]? التحميل|يتم التحميل|please wait|veuillez patienter)[\s.…]*$/i;
+const pageText = (page: Page) => page.evaluate(() => (document.body ? document.body.innerText : "").trim()).catch(() => "");
+
+/**
+ * Apps and dashboards (often behind a tunnel) can take many seconds to show anything. Wait while the
+ * page is blank or only says "Loading…", so a slow page isn't mistaken for a broken one.
+ * Returns whether the page was still blank at the end.
+ */
+async function waitForContent(page: Page): Promise<boolean> {
+  const started = Date.now();
+  for (;;) {
+    const text = await pageText(page);
+    if (text && !LOADING_ONLY.test(text)) return false;
+    if (Date.now() - started > SLOW_PAGE_MS) return true;
+    await page.waitForTimeout(1_000);
+  }
+}
+
+/** Adds what the bot must know about a slow page, so it doesn't conclude the site is down. */
+function withSlowNote(r: ToolResult, blank: boolean, slowStart: boolean): ToolResult {
+  if (r.isError || (!blank && !slowStart)) return r;
+  const notes = [
+    slowStart ? "--- The page took more than 30 seconds to start loading; this is what had loaded by then. A slow server is not a broken one. ---" : "",
+    blank ? STILL_BLANK : "",
+  ].filter(Boolean);
+  return { ...r, content: `${r.content}\n${notes.join("\n")}` };
+}
+
+const STILL_BLANK =
+  "--- The page is still blank (or only says it's loading) after 25 seconds. That usually means a slow page, not a broken one. Call read_page once more before concluding anything; only say it's down if it shows an error message. Don't save this as a lesson. ---";
+
 async function screenshot(page: Page): Promise<string | undefined> {
   try {
     return saveShot(await page.screenshot({ type: "jpeg", quality: 50, timeout: 5_000 }));
@@ -290,7 +324,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       const q = String(input.query ?? "").trim();
       if (!q) return fail(call, "query is required");
       const hits = await webSearch(settings, q);
-      if (!hits.length) return fail(call, `No results for "${q}". Try different words.`);
+      if (!hits.length) return fail(call, `The search for "${q}" returned nothing usable. That can be a search problem, not proof that it doesn't exist: try other words, or the research tool.`);
       const body = hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet.slice(0, 300)}`).join("\n");
       return { id: call.id, name: call.name, content: `Search results for "${q}" (untrusted web content):\n${body}` };
     }
@@ -317,19 +351,33 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       const url = String(input.url ?? "").trim();
       const err = checkUrl(url, settings.browser.allowPrivateNetwork);
       if (err) return fail(call, err);
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      // A slow server isn't a dead one: on a timeout, read whatever has loaded instead of failing.
+      let slowStart = false;
+      try {
+        await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+      } catch (e) {
+        if (!/timeout/i.test(e instanceof Error ? e.message : String(e))) throw e;
+        slowStart = true;
+      }
       await settle(page);
-      return pageResult(call, sess, 0, true, sessionId, ctx);
+      const blank = await waitForContent(page);
+      return withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, slowStart);
     }
-    case "read_page":
-      return pageResult(call, sess, Math.max(0, Number(input.offset) || 0), false, sessionId, ctx);
+    case "read_page": {
+      const offset = Math.max(0, Number(input.offset) || 0);
+      const blank = offset === 0 ? await waitForContent(sess.page) : false;
+      return withSlowNote(await pageResult(call, sess, offset, false, sessionId, ctx), blank, false);
+    }
     case "click": {
       const n = Number(input.element);
       const loc = page.locator(`[data-oc-id="${n}"]`);
       if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. The page may have changed; call open_url or read_page to get a fresh element list.`);
       await loc.first().click({ timeout: 10_000 });
       await settle(sess.page);
-      return pageResult(call, sess, 0, true, sessionId, ctx);
+      {
+        const blank = await waitForContent(sess.page);
+        return withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
+      }
     }
     case "type": {
       const n = Number(input.element);
@@ -339,13 +387,20 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       if (input.submit === true) {
         await loc.first().press("Enter");
         await settle(sess.page);
+        {
+        const blank = await waitForContent(sess.page);
+        return withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
+      }
       }
       return pageResult(call, sess, 0, true, sessionId, ctx);
     }
     case "go_back": {
       await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 });
       await settle(page);
-      return pageResult(call, sess, 0, true, sessionId, ctx);
+      {
+        const blank = await waitForContent(page);
+        return withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
+      }
     }
     case "download_file": {
       const url = String(input.url ?? "").trim();

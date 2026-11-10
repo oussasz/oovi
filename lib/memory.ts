@@ -10,6 +10,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./settings";
+import { WRONG_LESSON } from "./lesson-rules";
 
 // KNOWLEDGE.md is different: reference notes the user writes in Settings > Memory & soul
 // (company facts, product details, writing style). Bots read it but the memory tool can't change it.
@@ -27,7 +28,8 @@ export function readEntries(t: MemoryTarget): string[] {
       .readFileSync(file(t), "utf8")
       .split(/\r?\n§\r?\n/)
       .map((e) => e.trim())
-      .filter(Boolean);
+      // Drop wrong "blank page = site down" rules an older version may have saved (lib/lesson-rules.ts).
+      .filter((e) => e && !WRONG_LESSON.test(e));
   } catch {
     return [];
   }
@@ -73,6 +75,7 @@ export function applyMemory(action: string, target: string, content?: string, ol
   if (action === "add") {
     if (!text) return "Nothing to add.";
     if (SUSPICIOUS.test(text)) return "Not saved: memory can't store instructions or secrets.";
+    if (WRONG_LESSON.test(text)) return "Not saved: a blank or slow page doesn't prove a site is down, so this can't be remembered as a rule.";
     if (entries.some((e) => e.toLowerCase() === text.toLowerCase())) return "Already remembered.";
     const next = [...entries, text];
     if (size(next) > LIMITS[t]) {
@@ -95,6 +98,7 @@ export function applyMemory(action: string, target: string, content?: string, ol
   if (action === "replace") {
     if (!text) return "content is required for replace.";
     if (SUSPICIOUS.test(text)) return "Not saved: memory can't store instructions or secrets.";
+    if (WRONG_LESSON.test(text)) return "Not saved: a blank or slow page doesn't prove a site is down, so this can't be remembered as a rule.";
     const next = [...entries];
     next[i] = text;
     if (size(next) > LIMITS[t]) return `Not saved: that would exceed ${LIMITS[t]} chars. Shorten it.`;
