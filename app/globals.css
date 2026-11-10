@@ -807,3 +807,19 @@ a.tag { text-decoration: none; }
 .logo-pulse { animation: logo-pulse 1.6s ease-in-out infinite; }
 @keyframes logo-pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(0.94); opacity: 0.75; } }
 @media (prefers-reduced-motion: reduce) { .logo-pulse { animation: none; } }
+
+/* Plan mode: the proposed plan, editable before it runs */
+.plan-review { margin: 6px 0; padding: 12px 14px; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); max-width: 620px; }
+.plan-review-title { margin: 0; display: flex; align-items: center; gap: 6px; font-weight: 800; font-size: 14px; }
+.plan-edit { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.plan-edit li { display: grid; grid-template-columns: 22px 1fr auto; align-items: start; gap: 6px; }
+.plan-num { font-weight: 800; font-size: 13px; color: var(--muted); padding-top: 8px; text-align: center; }
+.plan-edit textarea { width: 100%; min-height: 34px; resize: none; field-sizing: content; padding: 7px 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); color: var(--text); font: inherit; font-size: 13.5px; line-height: 1.4; }
+.plan-edit textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.plan-row-actions { display: flex; gap: 2px; }
+.plan-add { justify-self: start; display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.plan-hint { margin: 0; font-size: 12.5px; }
+.plan-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.plan.plan-dropped li:not(.plan-note) { opacity: 0.55; text-decoration: line-through; }
+.plan .plan-note { font-size: 12.5px; color: var(--muted); font-style: italic; }
+@media (max-width: 640px) { .plan-edit li { grid-template-columns: 22px 1fr; } .plan-row-actions { grid-column: 2; } }

@@ -44,7 +44,22 @@ import type { Approval, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCal
  * attachments: files sent with text (already saved in the chat). channel: the user writes from Telegram
  * (telegramChatId: which Telegram chat, so files go back there).
  */
-export type RunInput = { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; via?: string; effort?: Effort; deep?: boolean; attachments?: Attachment[]; channel?: "telegram"; telegramChatId?: number };
+export type RunInput = {
+  text?: string;
+  decisions?: Record<string, boolean>;
+  alwaysEdit?: boolean;
+  alwaysFolders?: boolean;
+  via?: string;
+  effort?: Effort;
+  deep?: boolean;
+  /** Plan mode: the bot proposes a plan first; nothing changes until the user approves it. */
+  plan?: boolean;
+  /** The user's answer to a proposed plan: run it (with their edited steps) or cancel it. */
+  planDecision?: { approve: boolean; items: string[] };
+  attachments?: Attachment[];
+  channel?: "telegram";
+  telegramChatId?: number;
+};
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
 const PLAN_SPEC: ToolSpec = {
@@ -61,6 +76,55 @@ const PLAN_SPEC: ToolSpec = {
     required: ["items"],
   },
 };
+
+/** Plan mode: the bot proposes the plan; the user edits and approves it before any work. */
+const PROPOSE_PLAN_SPEC: ToolSpec = {
+  name: "propose_plan",
+  description: "Plan mode: propose your step-by-step plan for this request. The user reviews, edits and approves it before you do anything. Call it once, when the plan is ready.",
+  parameters: {
+    type: "object",
+    properties: {
+      goal: { type: "string", description: "One sentence: what the finished result will be." },
+      steps: { type: "array", items: { type: "string" }, description: "3 to 10 concrete steps, in order, each one short and specific." },
+    },
+    required: ["steps"],
+  },
+};
+
+/** Tools that only look (never change anything): allowed while a plan is being drafted. */
+const PLAN_MODE_TOOLS = new Set([
+  "web_search", "research", "read_url", "open_url", "read_page", "go_back",
+  "list_files", "read_file", "search_files", "read_attachment", "read_document",
+  "find_files", "list_folder", "read_computer_file", "list_groups", "read_group",
+  "recall_history", "oovi_help", "use_skill",
+]);
+
+const PLAN_MODE = `PLAN MODE is on for this request: don't do the task yet.
+1. If you need facts to plan well, look them up with the read-only tools you have (a few calls at most).
+2. Then call propose_plan once with a one-sentence goal and 3-10 concrete, ordered steps. Make each step something the user can check off.
+3. Don't ask questions unless you truly can't plan without the answer. The user will edit the plan and approve it, or ask for changes.`;
+
+const DEEP_WORK_APPROVED = `DEEP WORK MODE: the user approved the plan you proposed (they may have edited it).
+1. Follow their plan, in their order. Keep update_plan current with those steps and the same wording; add a step only if it's truly needed, and say why.
+2. Don't stop to ask unless you are truly blocked; make sensible assumptions and note them.
+3. Go deep: research facts with primary sources, create real files when they're part of the result.
+4. Verify before you finish: re-read files you created, check numbers and sources, run tests when there's code.
+5. Finish with a clear summary: what you did, the result (with file names and sources), and anything left open.`;
+
+const PLAN_STEP_MAX = 200;
+const PLAN_STEPS_MAX = 20;
+/** The user's edited plan, cleaned: non-empty steps, at most 20, each at most 200 characters. */
+export const cleanPlanSteps = (items: unknown): string[] =>
+  (Array.isArray(items) ? items : [])
+    .map((x) => String(x ?? "").replace(/\s+/g, " ").trim().slice(0, PLAN_STEP_MAX))
+    .filter(Boolean)
+    .slice(0, PLAN_STEPS_MAX);
+
+function planDecisionText(entry: BotEntry, approved: boolean): string {
+  if (!approved) return "The user cancelled this plan. Don't do the task. Reply with one short sentence.";
+  const steps = (entry.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
+  return `The user approved this plan (they may have edited it):\n${steps}\nDo the work now, step by step, keeping update_plan current. When it's done, give the final summary.`;
+}
 
 const DEEP_WORK = `DEEP WORK MODE is on for this request: the user wants a complete, high-quality result, not a quick answer.
 1. Plan: call update_plan with 3-8 concrete steps before you start.
@@ -251,7 +315,8 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (extra.wrapUp) {
     lines.push("", "WRAP UP NOW: the team has used its hand-offs for this request. Write the final answer for the user from what the team found, in short paragraphs or bullets. Don't @mention anyone and don't start new work. If something is still open, say what and suggest one next step.");
   }
-  if (chat.pending?.deep) lines.push("", DEEP_WORK);
+  if (chat.pending?.planMode) lines.push("", PLAN_MODE);
+  else if (chat.pending?.deep) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
   lines.push("", chat.pending?.deep ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be concise and practical. Use short paragraphs or lists. Write so a person can read your message in under a minute.", "", SAFETY);
   return lines.join("\n");
 }
@@ -367,11 +432,19 @@ function closeDangling(entry: BotEntry, reason: string) {
 }
 
 function cancelApproval(chat: Chat) {
-  const id = chat.pending?.approval?.entryId;
+  const plan = chat.pending?.planReview;
+  const id = chat.pending?.approval?.entryId ?? plan?.entryId;
   const e = id ? chat.entries.find((x) => x.id === id) : undefined;
   if (e?.kind === "bot") {
-    closeDangling(e, "Cancelled: the user sent a new message instead.");
-    e.status = "stopped";
+    if (plan) {
+      // A message while a plan waits = changes requested: the bot writes a new plan from it.
+      closeDangling(e, "The user asked for changes to this plan in their next message.");
+      e.planReview = "cancelled";
+      e.status = "done";
+    } else {
+      closeDangling(e, "Cancelled: the user sent a new message instead.");
+      e.status = "stopped";
+    }
   }
   chat.pending = undefined;
 }
@@ -461,7 +534,9 @@ async function* runBot(
   const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const tools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
+  const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: computerFilesPrompt(settings, chat.pending?.channel === "telegram") });
   let steps = 0;
 
@@ -480,6 +555,22 @@ async function* runBot(
         countUsage({ botReplies: 1 });
         return "done";
       }
+      // Plan mode: a proposed plan waits for the user to edit and approve (or cancel) it.
+      const proposal = last.toolCalls.find((c) => c.name === "propose_plan");
+      if (proposal && decisions[proposal.id] === undefined) {
+        const steps = cleanPlanSteps(proposal.input.steps);
+        if (!steps.length) {
+          entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: c.id === proposal.id ? "The plan had no steps. Call propose_plan again with 3-10 concrete steps." : "Not run: waiting for the plan.", isError: true })) });
+          continue;
+        }
+        entry.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
+        entry.planReview = "waiting";
+        if (typeof proposal.input.goal === "string" && proposal.input.goal.trim()) entry.text = proposal.input.goal.trim().slice(0, 300);
+        entry.status = "waiting";
+        chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), planReview: { entryId: entry.id, botId: bot.id } };
+        yield { type: "entry", entry };
+        return "waiting";
+      }
       const ask = last.toolCalls.filter((c) => needsApproval(c, s, sessionId, usesAccounts, chat.workspace) && decisions[c.id] === undefined);
       if (ask.length) {
         const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map((c) => approvalItem(c, sessionId, chat.workspace)) };
@@ -492,6 +583,10 @@ async function* runBot(
       const results: ToolResult[] = [];
       for (const c of last.toolCalls) {
         if (signal.aborted) break;
+        if (c.name === "propose_plan") {
+          results.push({ id: c.id, name: c.name, content: planDecisionText(entry, decisions[c.id] === true) });
+          continue;
+        }
         if (!tools.some((t) => t.name === c.name)) {
           results.push({ id: c.id, name: c.name, content: `The ${c.name} tool isn't enabled for ${bot.name}.`, isError: true });
         } else if (decisions[c.id] === false) {
@@ -524,7 +619,7 @@ async function* runBot(
       continue;
     }
 
-    const stepLimit = chat.pending?.deep ? Math.min(150, settings.maxSteps * 4) : settings.maxSteps;
+    const stepLimit = chat.pending?.planMode ? Math.min(settings.maxSteps, 10) : chat.pending?.deep ? Math.min(150, settings.maxSteps * 4) : settings.maxSteps;
     if (steps >= stepLimit) {
       entry.status = "error";
       entry.error = `Stopped after ${stepLimit} steps (limit set in Settings). Send a message to continue.`;
@@ -586,12 +681,15 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
   let resume: { entry: BotEntry; decisions: Record<string, boolean> } | null = null;
 
   if (typeof input.text === "string") {
+    // Writing while a plan waits for review asks for changes: stay in plan mode.
+    const revising = !!chat.pending?.planReview;
     cancelApproval(chat);
     await compactIfLong(chat, settings, signal);
     // A slash command typed by the user (never one written by a bot on their behalf).
     let text = input.text;
     let effort = input.effort;
     let deep = input.deep;
+    let plan = !!input.plan || revising;
     let command: string | undefined;
     let slash: Omit<SlashUse, "for"> | undefined;
     if (!input.via) {
@@ -606,6 +704,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
         command = c.cmd;
         text = parsed.rest;
         if (c.kind === "deep") deep = true;
+        else if (c.kind === "plan") plan = true;
         else if (c.kind === "effort") effort = c.level;
         else if (c.kind === "help") slash = { kind: "help", cmd: c.cmd };
         else if (c.kind === "skill") slash = { kind: "skill", cmd: c.cmd, id: c.id, name: c.name };
@@ -619,7 +718,8 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       at: Date.now(),
       ...(input.via ? { via: input.via } : {}),
       ...(effort && effort !== "auto" ? { effort } : {}),
-      ...(deep ? { deep: true } : {}),
+      ...(deep && !plan ? { deep: true } : {}),
+      ...(plan ? { plan: true } : {}),
       ...(command ? { command } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
     };
@@ -650,7 +750,9 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       turnsLeft: deep ? settings.maxTurns * 2 : settings.maxTurns,
       // A /help question gets a quick, cheap answer unless the user chose otherwise.
       effort: slash?.kind === "help" && (!effort || effort === "auto") ? "low" : effort,
-      deep,
+      // Plan mode first drafts a plan; deep work starts once the user approves it.
+      deep: plan ? false : deep,
+      ...(plan ? { planMode: true } : {}),
       learn: similar >= 2 && relevantSkills(text).length === 0 ? similar : 0,
       ...(slash ? { slash: { ...slash, for: [...queue] } } : {}),
       ...(input.channel ? { channel: input.channel } : {}),
@@ -658,6 +760,33 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
     };
     saveChat(chat);
     yield { type: "entry", entry: user };
+  } else if (input.planDecision && chat.pending?.planReview) {
+    const review = chat.pending.planReview;
+    const e = chat.entries.find((x) => x.id === review.entryId);
+    const steps = cleanPlanSteps(input.planDecision.items);
+    const approve = input.planDecision.approve && steps.length > 0;
+    chat.pending.planReview = undefined;
+    chat.pending.planMode = false;
+    if (input.channel) chat.pending.channel = input.channel;
+    else delete chat.pending.channel;
+    if (input.channel && input.telegramChatId !== undefined) chat.pending.telegramChatId = input.telegramChatId;
+    else delete chat.pending.telegramChatId;
+    if (e?.kind === "bot") {
+      const call = [...e.steps].reverse().find((m): m is Extract<typeof m, { role: "assistant" }> => m.role === "assistant")?.toolCalls.find((c) => c.name === "propose_plan");
+      e.planReview = approve ? "approved" : "cancelled";
+      if (approve) {
+        e.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
+        chat.pending.deep = true;
+        chat.pending.planApproved = true;
+        chat.pending.turnsLeft = settings.maxTurns * 2;
+      }
+      if (call) resume = { entry: e, decisions: { [call.id]: approve } };
+    }
+    if (!resume) {
+      chat.pending = undefined;
+      saveChat(chat);
+      return;
+    }
   } else if (input.decisions && chat.pending?.approval) {
     const e = chat.entries.find((x) => x.id === chat.pending?.approval?.entryId);
     chat.pending.approval = undefined;

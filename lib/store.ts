@@ -236,7 +236,7 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
       .replace(/\s+/g, " ")
       .slice(0, 90),
     running,
-    waiting: !!c.pending?.approval,
+    waiting: !!(c.pending?.approval || c.pending?.planReview),
   };
 }
 

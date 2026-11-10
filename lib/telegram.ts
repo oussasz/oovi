@@ -22,7 +22,7 @@ import { dmId, getChat, listBots, listChats } from "./store";
 import { mainBot, onReport } from "./team";
 import { approvalCommand, canApprove, cleanLabel, parseChatId, routeUpdate, type TgDetected, type TgLink, type TgMessage, type TgUpdate } from "./telegram-links";
 import { telegramUploadRequest } from "./telegram-upload";
-import type { BotEntry } from "./types";
+import type { BotEntry, Chat } from "./types";
 
 type Stored = {
   token?: string;
@@ -281,7 +281,7 @@ function waitDone(chatId: string): Promise<void> {
 type Target = { tgChatId: number; ooviChatId: string; name: string; group: boolean; tgGroup: boolean; ownerName?: string };
 
 /** Run the main bot (or a linked group) on a message (or approval) and send back what it said. */
-async function relay(tok: string, target: Target, input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean }) {
+async function relay(tok: string, target: Target, input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; planDecision?: { approve: boolean; items: string[] } }) {
   const { tgChatId: chatId, ooviChatId: id, name } = target;
   if (!target.group) getChat(id); // create the main bot's chat if needed
   if (isRunning(id)) {
@@ -316,6 +316,13 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
     const onlyOwner = target.tgGroup ? `\n(Only ${target.ownerName ?? "the owner of this oovi"} can answer.)` : "";
     return say(tok, chatId, `${who(a.botId)}${target.group ? ` (${name})` : ""} needs your OK:\n${items}\n\nReply /yes to allow once or /no to deny.${always}${onlyOwner}`);
   }
+  if (chat.pending?.planReview) {
+    const review = chat.pending.planReview;
+    const e = chat.entries.find((x): x is BotEntry => x.kind === "bot" && x.id === review.entryId);
+    const steps = (e?.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
+    const onlyOwner = target.tgGroup ? `\n(Only ${target.ownerName ?? "the owner of this oovi"} can answer.)` : "";
+    return say(tok, chatId, `${who(review.botId)}${target.group ? ` (${name})` : ""} proposes this plan:${e?.text ? `\n${e.text}` : ""}\n${steps}\n\nReply /yes to run it, /no to cancel, or write what to change.${onlyOwner}`);
+  }
   if (!target.group) {
     if (last?.status === "error") return say(tok, chatId, `${name} hit a problem: ${last.error ?? "unknown error"}`);
     if (last?.text) return say(tok, chatId, last.text);
@@ -324,6 +331,14 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   if (last?.status === "error") return say(tok, chatId, `${who(last.botId)} hit a problem: ${last.error ?? "unknown error"}`);
   if (last?.text) return say(tok, chatId, `${who(last.botId)}:\n${last.text}`);
   return say(tok, chatId, `"${name}" didn't reply.`);
+}
+
+/** "/yes" or "/no" while a proposed plan waits: run it as proposed, or cancel it. Other text asks for changes. */
+function planCommand(text: string, chat: Chat | null | undefined): { approve: boolean; items: string[] } | null {
+  const review = chat?.pending?.planReview;
+  if (!chat || !review || !/^\/(yes|no)\b/i.test(text)) return null;
+  const e = chat.entries.find((x) => x.id === review.entryId);
+  return { approve: /^\/yes/i.test(text), items: e?.kind === "bot" ? (e.plan ?? []).map((p) => p.text) : [] };
 }
 
 /** Today's behaviour: pairing, then the main chat talks to the main bot. */
@@ -353,6 +368,8 @@ async function handleMain(tok: string, s: Stored, m: TgMessage) {
   const bot = mainBot();
   if (!bot) return say(tok, m.chat.id, "You have no bots yet. Create one in oovi first.");
   const target: Target = { tgChatId: m.chat.id, ooviChatId: dmId(bot.id), name: bot.name, group: false, tgGroup: false };
+  const plan = planCommand(text, getChat(dmId(bot.id)));
+  if (plan) return relay(tok, target, { planDecision: plan });
   const ac = approvalCommand(text, getChat(dmId(bot.id))?.pending?.approval);
   if (ac.kind === "nothing-pending") return say(tok, m.chat.id, "Nothing is waiting for your OK right now.");
   if (ac.kind === "decide") return relay(tok, target, ac.input);
@@ -370,6 +387,13 @@ async function handleLinked(tok: string, s: Stored, m: TgMessage, link: TgLink, 
     return say(tok, cid, `This chat is linked to the oovi group "${group.name}".${tgGroup ? ` Mention @${s.botUsername ?? "me"} or reply to my messages to talk to it.` : " Send a message to talk to it."}`);
   }
   const target: Target = { tgChatId: cid, ooviChatId: group.id, name: group.name, group: true, tgGroup, ownerName: s.userName };
+  const plan = planCommand(text, group);
+  if (plan) {
+    if (!canApprove(m, link, s.chatId)) {
+      return say(tok, cid, s.chatId ? `Only ${s.userName ?? "the owner of this oovi"} can answer plans here.` : "Plans here need the owner's own Telegram: pair it first in oovi > Settings > Telegram.");
+    }
+    return relay(tok, target, { planDecision: plan });
+  }
   const ac = approvalCommand(text, group.pending?.approval);
   if (ac.kind === "nothing-pending") return say(tok, cid, "Nothing is waiting for an OK right now.");
   if (ac.kind === "decide") {

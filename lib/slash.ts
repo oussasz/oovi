@@ -1,11 +1,11 @@
-// Slash commands typed at the start of a message: /help, /deep, /effort <level>,
+// Slash commands typed at the start of a message: /help, /deep, /plan, /effort <level>,
 // /<skill> and /<connector>. Shared by the composer (menu, badge) and the server
 // (which parses the command when the message is sent). No Node imports here.
 
 export const EFFORT_LEVELS = ["low", "medium", "high", "max"] as const;
 export type EffortLevel = (typeof EFFORT_LEVELS)[number];
 
-export type SlashKind = "help" | "deep" | "effort" | "skill" | "connector";
+export type SlashKind = "help" | "deep" | "plan" | "effort" | "skill" | "connector";
 
 /** A command found at the start of a message. `cmd` is what the badge shows. */
 export type SlashCommand = { kind: SlashKind; cmd: string; id?: string; name?: string; level?: EffortLevel; installed?: boolean };
@@ -42,6 +42,7 @@ export function parseSlash(text: string, ctx: SlashContext): { command: SlashCom
   let rest = t.slice(m[0].length).trim();
   if (tok === "help") return { command: { kind: "help", cmd: "/help" }, rest };
   if (tok === "deep") return { command: { kind: "deep", cmd: "/deep" }, rest };
+  if (tok === "plan") return { command: { kind: "plan", cmd: "/plan" }, rest };
   if (tok === "effort") {
     const lv = rest.match(/^(\S+)/)?.[1]?.toLowerCase();
     if (!lv || !(EFFORT_LEVELS as readonly string[]).includes(lv)) return null;

@@ -13,6 +13,7 @@ import Face, { FaceStack } from "./Face";
 import type { TKey, Vars } from "@/lib/i18n";
 import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import PlanReview from "./PlanReview";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { EFFORT_LEVELS } from "@/lib/slash";
@@ -376,8 +377,22 @@ function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; on
   );
 }
 
-function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: string; bots: Bot[]; allBots: Bot[]; onShot: (s: Shot) => void; isLeader?: boolean; chatId: string; onUpdate: (e: BotEntry) => void }) {
-  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate } = props;
+function BotMessage(props: {
+  e: BotEntry;
+  bot?: Bot;
+  isLast: boolean;
+  status?: string;
+  bots: Bot[];
+  allBots: Bot[];
+  onShot: (s: Shot) => void;
+  isLeader?: boolean;
+  chatId: string;
+  onUpdate: (e: BotEntry) => void;
+  /** Set only for the reply whose proposed plan waits for review. */
+  onPlanDecision?: (approve: boolean, items: string[]) => void;
+  planBusy?: boolean;
+}) {
+  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -431,8 +446,10 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
         </div>
 
         {e.note && <div className="msg-note">{e.note}</div>}
-        {e.plan && e.plan.length > 0 && (
-          <ol className="plan" aria-label={t("chat.plan")}>
+        {e.planReview === "waiting" && onPlanDecision && e.plan ? (
+          <PlanReview key={e.plan.map((p) => p.text).join("\n")} steps={e.plan.map((p) => p.text)} busy={!!planBusy} onDecide={onPlanDecision} />
+        ) : e.plan && e.plan.length > 0 && (
+          <ol className={`plan${e.planReview === "cancelled" ? " plan-dropped" : ""}`} aria-label={t("chat.plan")}>
             {e.plan.map((p, i) => (
               <li key={i} className={p.status}>
                 <span className="plan-box" aria-hidden>
@@ -441,6 +458,7 @@ function BotMessage(props: { e: BotEntry; bot?: Bot; isLast: boolean; status?: s
                 {p.text}
               </li>
             ))}
+            {e.planReview === "cancelled" && <li className="plan-note">{t("plan.cancelled")}</li>}
           </ol>
         )}
         {thinking && (
@@ -592,11 +610,13 @@ export default function ChatView({ id }: { id: string }) {
   const [running, setRunning] = useState(false);
   const [effort, setEffort] = useState<Effort>("auto");
   const [deep, setDeep] = useState(false);
+  const [planMode, setPlanMode] = useState(false);
   useEffect(() => {
     try {
       const e = localStorage.getItem("oovi.effort") as Effort | null;
       if (e && EFFORTS.includes(e)) setEffort(e);
       setDeep(localStorage.getItem(`oovi.deep.${id}`) === "1");
+      setPlanMode(localStorage.getItem(`oovi.plan.${id}`) === "1");
     } catch {
       /* storage unavailable */
     }
@@ -613,6 +633,14 @@ export default function ChatView({ id }: { id: string }) {
     setDeep(on);
     try {
       localStorage.setItem(`oovi.deep.${id}`, on ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  };
+  const pickPlan = (on: boolean) => {
+    setPlanMode(on);
+    try {
+      localStorage.setItem(`oovi.plan.${id}`, on ? "1" : "0");
     } catch {
       /* storage unavailable */
     }
@@ -834,6 +862,7 @@ export default function ChatView({ id }: { id: string }) {
   const slashItems = useMemo<SlashItem[]>(
     () => [
       { cmd: "/help", label: t("slash.help"), kind: "command", icon: "info" },
+      { cmd: "/plan", label: t("slash.plan"), kind: "command", icon: "check" },
       { cmd: "/deep", label: t("slash.deep"), kind: "command", icon: "spark" },
       ...EFFORT_LEVELS.map((l): SlashItem => ({ cmd: `/effort ${l}`, label: t("slash.effort", { level: t(`chat.effort.${l}`) }), kind: "command", icon: "cpu" })),
       ...serverList.filter((s) => s.enabled).map((s): SlashItem => ({ cmd: `/${s.id}`, label: t("slash.useConnector", { name: s.name }), kind: "connector", icon: "server" })),
@@ -921,10 +950,11 @@ export default function ChatView({ id }: { id: string }) {
       setFileErr(tr("attach.wait"));
       return;
     }
-    // A bare /deep or /effort <level> just sets the chip under the message box.
+    // A bare /deep, /plan or /effort <level> just sets the chip under the message box.
     const lv = t.match(/^\/effort\s+(\S+)$/i)?.[1]?.toLowerCase();
-    if (!readyFiles.length && (/^\/deep$/i.test(t) || (lv && (EFFORT_LEVELS as readonly string[]).includes(lv)))) {
+    if (!readyFiles.length && (/^\/(deep|plan)$/i.test(t) || (lv && (EFFORT_LEVELS as readonly string[]).includes(lv)))) {
       if (lv) pickEffort(lv as Effort);
+      else if (/^\/plan$/i.test(t)) pickPlan(true);
       else pickDeep(true);
       setInput("");
       setSlashQ(null);
@@ -940,7 +970,14 @@ export default function ChatView({ id }: { id: string }) {
     for (const u of uploads) if (u.preview) URL.revokeObjectURL(u.preview);
     setUploads([]);
     setFileErr(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, ...(attachments.length ? { attachments } : {}) }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, plan: planMode, ...(attachments.length ? { attachments } : {}) }) });
+  }
+
+  /** Plan mode: run the proposed plan with the user's edited steps, or cancel it. */
+  function decidePlan(approve: boolean, items: string[]) {
+    if (!chat?.pending?.planReview || running) return;
+    setError(null);
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ planDecision: { approve, items } }) });
   }
 
   /** always: "edits" also allows file edits in this chat's project folder from now on; "folders" lets bots read and send from these files' folders without asking. */
@@ -1181,12 +1218,13 @@ export default function ChatView({ id }: { id: string }) {
                         </span>
                       )}
                       {e.deep && e.command !== "/deep" && <span>{t("chat.deep")}</span>}
+                      {e.plan && e.command !== "/plan" && <span>{t("chat.planMode")}</span>}
                       {e.effort && e.effort !== "auto" && !e.command?.startsWith("/effort") && <span>{t(`chat.effort.${e.effort}`)}</span>}
                     </div>
                   )}
                 </div>
               ) : (
-                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} />
+                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} />
               ),
             )}
 
@@ -1340,6 +1378,9 @@ export default function ChatView({ id }: { id: string }) {
           </form>
           <div className="composer-tools">
             <EffortMenu value={effort} onChange={pickEffort} />
+            <button type="button" className={`chip deep-chip${planMode ? " on" : ""}`} aria-pressed={planMode} onClick={() => pickPlan(!planMode)} title={t("chat.planModeHint")}>
+              <Icon name="check" size={14} /> {t("chat.planMode")}
+            </button>
             <button type="button" className={`chip deep-chip${deep ? " on" : ""}`} aria-pressed={deep} onClick={() => pickDeep(!deep)} title={t("chat.deepHint")}>
               <Icon name="spark" size={14} /> {t("chat.deep")}
             </button>

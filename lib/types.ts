@@ -86,7 +86,8 @@ export type Usage = { input: number; output: number };
 /** via: sent by the user's main bot on the user's behalf (its bot id). */
 /** effort: how hard the bots think for this message. deep: Deep work mode (plan, work longer, verify). */
 /** command: the slash command the message started with ("/zapier", "/effort high"); text is the rest. */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; command?: string; attachments?: Attachment[] };
+/** plan: sent in Plan mode (the bot proposes a plan the user edits and approves before any work). */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[] };
 /** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
 export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
@@ -120,6 +121,8 @@ export type BotEntry = {
   fallback?: boolean;
   /** Deep work checklist the bot keeps up to date. */
   plan?: PlanItem[];
+  /** Plan mode: the plan this reply proposed is waiting for the user, or was approved / cancelled. */
+  planReview?: "waiting" | "approved" | "cancelled";
   /** What the bots learned from this reply (self-learning). */
   learned?: LearnedNote;
   /** The user's thumbs up/down on this reply. */
@@ -147,6 +150,12 @@ export type Pending = {
   /** Settings of the message being worked on. */
   effort?: Effort;
   deep?: boolean;
+  /** Plan mode: the bot is drafting a plan (read-only tools + propose_plan) and must not act yet. */
+  planMode?: boolean;
+  /** Plan mode: this proposed plan waits for the user to edit and approve (or cancel) it. */
+  planReview?: { entryId: string; botId: string };
+  /** Plan mode: the user approved the plan, so deep work follows their steps. */
+  planApproved?: boolean;
   /** A slash command used in the message being worked on. */
   slash?: SlashUse;
   /** Where the user is talking from right now (files bots send go there too). */
