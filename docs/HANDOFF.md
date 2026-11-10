@@ -1,4 +1,15 @@
-# Hand-off: oovi next version (branch `next-version`)
+# Hand-off: oovi 0.8.8 (released 2026-11-10)
+
+## Status after the release (read this first)
+- 0.8.8 is on `main`, released on GitHub (oussasz/oovi v0.8.8), copied to oussasz/oovi-downloads (website Mac buttons + in-app updates), and submitted to the Microsoft Store (in certification; the website's Windows button opens the Store).
+- Website deployed to Vercel (project `oovi`, deployed from `web/`): Terms and Privacy now describe the paid plans and name Paddle as reseller / Merchant of Record (needed for Paddle's domain review).
+- Paddle: checkout, webhook, credits per payment, refunds and plans (starter/pro/advanced) are live and checked with `web/scripts/test-paddle-webhook.cjs` (17 simulated signed events, local DB). Waiting on Paddle's own verification of the owner's account and domain approval (owner's dashboard).
+- Releases now copy installers to the downloads repo by themselves (`.github/workflows/publish-downloads.yml`, secret DOWNLOADS_TOKEN = fine-grained token, oovi-downloads only, Contents read/write). To redo one by hand: Actions > Publish to downloads > tag.
+- Cloud sessions can push code and run workflows but cannot create GitHub releases: the owner clicks Publish on a prefilled release page. The Store upload is done by the owner in Partner Center (download `oovi-Store-<version>.appx` from the release).
+
+---
+
+# Earlier hand-off: oovi next version (branch `next-version`)
 
 Written 2026-11-10 by the Claude Code session that did this work on the owner's Windows PC, for the session that continues it. Read this first; it is self-contained.
 
