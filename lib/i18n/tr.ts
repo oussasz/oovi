@@ -1241,6 +1241,7 @@ const tr: Dict = {
   "grp.noReply": "\"{group}\" yanıt vermedi.",
   "grp.also": "Ayrıca:",
   "grp.before": "Bundan önce:",
+  "chief.noBrowser": "{name} henüz web sitelerini açamıyor ve hesaplarınla paylaşım yapamıyor. Şefin bunu yapmasını istiyorsan aşağıdan Tarayıcı'yı aç; yoksa bu işleri yapabilen bir bota verir.",
 };
 
 export default tr;

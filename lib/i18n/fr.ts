@@ -1241,6 +1241,7 @@ const fr: Dict = {
   "grp.noReply": "« {group} » n'a pas répondu.",
   "grp.also": "Aussi :",
   "grp.before": "Avant ça :",
+  "chief.noBrowser": "{name} ne peut pas encore ouvrir de sites ni publier avec tes comptes. Active Navigateur ci-dessous si tu veux que le Chef le fasse ; sinon il confie ces tâches à un bot qui peut.",
 };
 
 export default fr;

@@ -23,10 +23,12 @@ import { catalogCached } from "./catalog-remote";
 import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
 import { listServers, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
+import { abilitiesOf, abilityLines, abilityWords } from "./abilities";
+import { translateFor } from "./i18n-server";
 import { loadSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
-import { getChat, listBots, newId, saveChat } from "./store";
+import { getChat, listBots, listChats, newId, saveChat } from "./store";
 import { healInterrupted } from "./delegations-core";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -237,7 +239,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     lines.push(
       "",
       `You are in the group chat "${chat.name}" with the user and these teammates:`,
-      ...mates.map((m) => `- @${m.name}${m.role ? `, ${m.role}` : ""}${lead?.id === m.id ? " (team leader)" : ""}${m.tools.web || m.tools.browser ? " (can use the web)" : ""}`),
+      ...mates.map((m) => `- @${m.name}${m.role ? `, ${m.role}` : ""}${lead?.id === m.id ? " (team leader)" : ""}: ${abilityWords(abilitiesOf(m))}`),
       "",
       'Messages from others appear as "[Name]: text". Write only your own reply, without prefixing your name. Never @mention yourself.',
     );
@@ -255,7 +257,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     lines.push("", `Your tools: ${builtIn.map((t) => t.name).join(", ")}.`);
     if (bot.tools.web || bot.tools.browser) {
       lines.push(
-        "For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser). Use open_url only when you must click, type, sign in or see the page.",
+        `For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser).${bot.tools.browser ? " Use open_url only when you must click, type, sign in or see the page." : ""}`,
         "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
       );
     }
@@ -273,8 +275,20 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       );
     }
   }
-  if (!bot.tools.web && !bot.tools.browser) {
-    lines.push("", `You can't browse the web.${chat.kind === "group" ? " If you need fresh facts, ask a teammate who can." : " If you need fresh facts, say so."}`);
+  // What this bot can and can't do on the web, from its real settings, and who or what can (lib/abilities.ts).
+  if (!lastUser(chat)?.routine) {
+    // Read from disk only if needed (the main bot missing an ability), and once.
+    let groups: Chat[] | null = null;
+    const groupsOnce = () => (groups ??= listChats().filter((c) => c.kind === "group"));
+    lines.push(
+      "",
+      ...abilityLines(
+        bot,
+        extra.bots,
+        { kind: chat.kind === "group" ? "group" : "direct", isMain: tools.some((t) => t.name === "message_group"), groupsWith: (id) => groupsOnce().filter((g) => g.memberIds.includes(id)).map((g) => g.name) },
+        { abilities: translateFor("bot.abilities"), web: translateFor("bot.web"), browser: translateFor("bot.browser"), accounts: translateFor("bot.accounts"), accountsPlace: translateFor("bot.accountsLink") },
+      ),
+    );
   }
   lines.push(
     "",

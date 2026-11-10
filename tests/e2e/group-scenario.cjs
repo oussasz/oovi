@@ -32,7 +32,7 @@ const status = { state: "ok", message: null, displayName: "theOovi", balance: 99
 const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content, stop_reason: stop, usage: { input_tokens: 100, output_tokens: 20 }, oovi: live() });
 const text = (t) => reply([{ type: "text", text: t }], "end_turn");
 const textOf = (m) => (Array.isArray(m.content) ? m.content.map((b) => (b.type === "text" ? b.text : b.type === "tool_result" ? JSON.stringify(b.content) : "")).join(" ") : String(m.content || ""));
-const systemOf = (b) => (typeof b.system === "string" ? b.system : JSON.stringify(b.system || ""));
+const systemOf = (b) => (typeof b.system === "string" ? b.system : Array.isArray(b.system) ? b.system.map((x) => x.text || "").join("\n") : "");
 
 const seen = { systems: {}, tools: {}, chiefResult: "", turns: {} };
 
@@ -76,6 +76,7 @@ function answer(body) {
     return reply([{ type: "tool_use", id: `toolu_rt_${Date.now()}`, name: "propose_routine", input: { name: "Good morning", instruction: "Say good morning to the user in Darija.", frequency: "daily", time: "10:00" } }], "tool_use");
   }
   if (me === "Scout") return text("PRICES: three cafés nearby, 150-300 DA.");
+  if (me === "Quill" && /FB:/.test(all)) return text("OK");
   return text("ok");
 }
 
@@ -185,6 +186,19 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const card = sd.pending?.approval?.items?.[0];
   check("a recurring request becomes a routine proposal, from any bot's own chat", !!card && /Good morning/.test(card.summary || ""), card?.summary || sd.entries.at(-1)?.text);
   check("bots are told that 'every day at…' (in Darija too) means a routine", seen.routineRule === true);
+
+  // F: the owner's setup in the screenshots: Quill is the Chief with web search only; Scout has the browser.
+  const quill = bots.find((b) => b.name === "Quill");
+  await api("PUT", `/api/bots/${quill.id}`, { ...quill, tools: { web: true, browser: false } });
+  await api("PUT", "/api/main", { botId: quill.id });
+  await api("POST", `/api/chats/dm-${quill.id}/run`, { text: "FB: can you post on my Facebook? I can log in for you" });
+  await idle(`dm-${quill.id}`);
+  const qs = seen.systems.Quill || "";
+  check("Quill knows its real abilities (web search, no browser) and doesn't claim others", /from your settings right now: web search\./.test(qs) && /can't open websites/.test(qs), (qs.match(/Your abilities[^\n]*/) || [""])[0].slice(0, 160));
+  check("Quill gives the exact steps to turn on posting", /turn on "Browser" and "Use my signed-in accounts"/.test(qs) && /Settings → Your accounts/.test(qs));
+  check("Quill can hand web tasks to the group that has Scout", /Scout is in "Team"[^\n]*message_group/.test(qs));
+  const ss = seen.systems.Scout || "";
+  check("Scout (browser, no accounts) is told the one missing setting, not to refuse", /turn on "Use my signed-in accounts"/.test(ss) && /don't just refuse/.test(ss) && !/turn on "Browser"/.test(ss));
 
   // D: the rules are in the prompts.
   check("group members are told to keep messages short and not repeat", /Group messages are short/.test(seen.systems.c || "") && /without @/.test(seen.systems.c || ""));

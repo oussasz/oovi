@@ -10,6 +10,7 @@
 ## 0.9.0 (2026-11-10): team conversations and sign-up protection
 - From a real conversation (Chief said a teammate "didn't answer" though it had posted the link; two bots bounced agreement 5 times): group results carry every member's messages; only addressing/asking @mentions pass the turn (lib/mentions.ts handoffMentions); short-message rules; slow pages waited for (lib/tools.ts waitForContent); wrong "blank page = site down" lessons blocked (lib/lesson-rules.ts); language and Telegram identity fixes; 15 more same-type issues from an audit fixed.
 - Tests: `tests/e2e/group-scenario.cjs` replays that conversation (fails 0/7 on the old code, 7/7 now). Run it with spec-scenario and phase1-scenario before every release.
+- Bots know their real abilities (lib/abilities.ts, from each bot's own Web search / Browser / "Use my signed-in accounts" settings): they never claim or deny abilities wrongly, give the exact steps to turn one on (with the app's labels in the user's language), and name the user's bot or group that can do it now. The bot editor warns when the Chief has no browser. Tests: tests/unit/abilities.test.mts, group-scenario checks F.
 - Website sign-up: Vercel BotID on the form (instrumentation-client.ts + app/api/auth/[...all]/route.ts), per-network limits in the database (lib/signup-guard.ts: 5/hour, 15/day), throwaway email services refused.
 
 ---

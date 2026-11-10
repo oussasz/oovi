@@ -1260,6 +1260,7 @@ const en = {
   "grp.noReply": "\"{group}\" didn't reply.",
   "grp.also": "Also:",
   "grp.before": "Before that:",
+  "chief.noBrowser": "{name} can't open websites or post with your accounts yet. Turn on Browser below if you want the Chief to do it; otherwise it gives those tasks to a bot that can.",
 } as const;
 
 export type Key = keyof typeof en;
