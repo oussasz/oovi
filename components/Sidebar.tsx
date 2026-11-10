@@ -122,7 +122,7 @@ export default function Sidebar() {
                   {c.running && <span className="live-dot" title={t("side.working")} />}
                   {c.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
                 </span>
-                <span className="side-preview">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
+                <span className="side-preview" dir="auto">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
               </span>
             </Link>
           ))}
@@ -140,7 +140,7 @@ export default function Sidebar() {
                     {c?.running && <span className="live-dot" title={t("side.working")} />}
                     {c?.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
                   </span>
-                  <span className="side-preview">{c?.preview || b.role || t("common.bot")}</span>
+                  <span className="side-preview" dir="auto">{c?.preview || b.role || t("common.bot")}</span>
                 </span>
               </Link>
             );

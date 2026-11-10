@@ -141,7 +141,7 @@ export default function Home() {
             <Link key={g.id} href={`/c/${g.id}`} className="tile">
               <FaceStack faces={g.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={64} />
               <b>{g.name}</b>
-              <span>{g.preview || g.memberIds.map((id) => bots.find((b) => b.id === id)?.name).filter(Boolean).join(", ")}</span>
+              <span dir="auto">{g.preview || g.memberIds.map((id) => bots.find((b) => b.id === id)?.name).filter(Boolean).join(", ")}</span>
             </Link>
           ))}
           <Link href="/groups/new" className="tile add">
