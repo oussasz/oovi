@@ -21,6 +21,7 @@ import { aiPhoto, aiPhotoProvider, findPhoto, loadLocalPicture, pictureDataUri, 
 import type { BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { resolveInWorkspace } from "./workspace";
+import { translateFor, type Tr } from "./i18n-server";
 
 const CHART_INLINE = {
   type: "object",
@@ -891,11 +892,11 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
 }
 
 /** What the approval card shows when a bot creates a file inside a project folder. */
-export function describeDocCall(call: ToolCall, ws: Workspace | undefined): { summary: string; detail?: string } {
+export function describeDocCall(call: ToolCall, ws: Workspace | undefined, tr: Tr = translateFor): { summary: string; detail?: string } {
   const name = String(call.input.filename ?? "file");
   const where = ws ? path.basename(ws.path) : "Downloads/oovi";
-  if (call.name === "create_document") return { summary: `Create ${name} in ${where}`, detail: String(call.input.content ?? "").slice(0, 4000) };
-  if (call.name === "create_spreadsheet") return { summary: `Create the spreadsheet ${name} in ${where}` };
-  if (call.name === "create_image") return { summary: `Create the image ${name} in ${where}`, detail: String(call.input.headline ?? "").slice(0, 400) };
-  return { summary: `Create the presentation ${name} in ${where}` };
+  if (call.name === "create_document") return { summary: tr("ok.docCreate", { name, where }), detail: String(call.input.content ?? "").slice(0, 4000) };
+  if (call.name === "create_spreadsheet") return { summary: tr("ok.sheetCreate", { name, where }) };
+  if (call.name === "create_image") return { summary: tr("ok.imageCreate", { name, where }), detail: String(call.input.headline ?? "").slice(0, 400) };
+  return { summary: tr("ok.slidesCreate", { name, where }) };
 }

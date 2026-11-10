@@ -13,7 +13,7 @@
 // approvals for that work are asked there, and files bots send go there. Only the main chat
 // and linked chats are answered; the routing rules live in telegram-links.ts.
 
-import { translateFor } from "./i18n-server";
+import { translateFor, translatorFor } from "./i18n-server";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -403,17 +403,22 @@ type Target = { tgChatId: number; ooviChatId: string; name: string; group: boole
 async function relay(tok: string, target: Target, input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; planDecision?: { approve: boolean; items: string[] } }) {
   const { tgChatId: chatId, ooviChatId: id, name } = target;
   if (!target.group) getChat(id); // create the main bot's chat if needed
+  // oovi's own words here follow the user's language: this message's, else their latest one (a bare /yes says nothing).
+  const tr = translatorFor(input.text?.trim() && !input.text.trim().startsWith("/") ? input.text : lastUserText(getChat(id)));
   if (isRunning(id)) {
     // Busy with something started elsewhere (the app, a routine): this message goes next.
-    await say(tok, chatId, target.group ? `"${name}" is finishing something else. Your message is next.` : `${name} is finishing something else. Your message is next.`);
+    await say(tok, chatId, tr("tg.busyNext", { name: target.group ? `"${name}"` : name }));
     const free = await whenIdle(id, BUSY_WAIT_MS);
-    if (!free || isRunning(id)) return deliver(chatId, `${target.group ? `"${name}"` : name} is still busy after 30 minutes, so your message wasn't sent. Send it again later.`);
+    if (!free || isRunning(id)) return deliver(chatId, tr("tg.busyLong", { name: target.group ? `"${name}"` : name }));
   }
-  const before = new Set(getChat(id)?.entries.map((e) => e.id) ?? []);
+  // What each message looked like before this run: a bot that was waiting for an OK continues its OWN message
+  // after /yes, so "new" isn't enough; a message that changed counts too (otherwise: "didn't reply").
+  const sig = (e: { kind: string; text?: string; status?: string; steps?: unknown[] }) => `${e.kind === "bot" ? e.status : ""}|${e.text?.length ?? 0}|${e.steps?.length ?? 0}`;
+  const before = new Map((getChat(id)?.entries ?? []).map((e) => [e.id, sig(e)]));
   const typing = setInterval(() => void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}), 4500);
   void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
   try {
-    if (!startRun(id, { ...input, channel: "telegram", telegramChatId: chatId })) return say(tok, chatId, target.group ? `"${name}" is busy. Try again in a moment.` : `${name} is busy. Try again in a moment.`);
+    if (!startRun(id, { ...input, channel: "telegram", telegramChatId: chatId })) return say(tok, chatId, tr("tg.busy", { name: target.group ? `"${name}"` : name }));
     await waitDone(id);
   } finally {
     clearInterval(typing);
@@ -424,40 +429,47 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   if (!chat) return;
   const bots = target.group ? listBots() : [];
   const who = (botId: string) => (target.group ? (bots.find((b) => b.id === botId)?.name ?? "A bot") : name);
-  const fresh = chat.entries.filter((e): e is BotEntry => e.kind === "bot" && (!before.has(e.id) || e.id === chat.pending?.approval?.entryId));
+  const fresh = chat.entries.filter((e): e is BotEntry => e.kind === "bot" && (before.get(e.id) !== sig(e) || e.id === chat.pending?.approval?.entryId));
   const last = [...fresh].reverse().find((e) => e.text || e.error);
   if (chat.pending?.approval) {
     const a = chat.pending.approval;
     const items = a.items.map((x, i) => `${i + 1}. ${x.summary}${x.detail ? `\n${x.detail.slice(0, 600)}` : ""}`).join("\n");
     const folders = [...new Set(a.items.map((x) => x.folder).filter((f): f is string => !!f))];
     const always = folders.length
-      ? `\n/yes always: allow, and let bots read and send files from ${folders.length === 1 ? folders[0] : "these folders"} without asking from now on.`
+      ? `\n${tr("tg.alwaysFolders", { folders: folders.length === 1 ? folders[0]! : tr("tg.theseFolders") })}`
       : a.items.some((x) => x.always)
-        ? "\n/yes always: allow, and allow edits in this project folder from now on."
+        ? `\n${tr("tg.alwaysEdit")}`
         : "";
-    const onlyOwner = target.tgGroup ? `\n(Only ${target.ownerName ?? "the owner of this oovi"} can answer.)` : "";
-    return deliver(chatId, `${who(a.botId)}${target.group ? ` (${name})` : ""} needs your OK:\n${items}\n\nReply /yes to allow once or /no to deny.${always}${onlyOwner}`);
+    const onlyOwner = target.tgGroup ? `\n${tr("tg.onlyOwner", { name: target.ownerName ?? tr("tg.owner") })}` : "";
+    const head = target.group ? tr("tg.needsOkIn", { bot: who(a.botId), group: name }) : tr("tg.needsOk", { bot: who(a.botId) });
+    return deliver(chatId, `${head}\n${items}\n\n${tr("tg.okHow")}${always}${onlyOwner}`);
   }
   if (chat.pending?.planReview) {
     const review = chat.pending.planReview;
     const e = chat.entries.find((x): x is BotEntry => x.kind === "bot" && x.id === review.entryId);
     const steps = (e?.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
-    const onlyOwner = target.tgGroup ? `\n(Only ${target.ownerName ?? "the owner of this oovi"} can answer.)` : "";
-    return deliver(chatId, `${who(review.botId)}${target.group ? ` (${name})` : ""} proposes this plan:${e?.text ? `\n${e.text}` : ""}\n${steps}\n\nReply /yes to run it, /no to cancel, or write what to change.${onlyOwner}`);
+    const onlyOwner = target.tgGroup ? `\n${tr("tg.onlyOwner", { name: target.ownerName ?? tr("tg.owner") })}` : "";
+    const head = target.group ? tr("tg.planIn", { bot: who(review.botId), group: name }) : tr("tg.plan", { bot: who(review.botId) });
+    return deliver(chatId, `${head}${e?.text ? `\n${e.text}` : ""}\n${steps}\n\n${tr("tg.planHow")}${onlyOwner}`);
   }
   if (!target.group) {
-    if (last?.status === "error") return deliver(chatId, `${name} hit a problem: ${last.error ?? "unknown error"}`);
+    if (last?.status === "error") return deliver(chatId, tr("grp.problem", { bot: name, error: last.error ?? "unknown error" }));
     if (last?.text) return deliver(chatId, plainText(last.text));
-    return deliver(chatId, `${name} didn't reply.`);
+    return deliver(chatId, tr("tg.noReply", { name }));
   }
   // The final message in full, and what the others said in short: a link or a figure is often there.
   const others = fresh.filter((e) => e !== last && e.status === "done" && e.text.trim()).slice(-4);
   const also = others.length
-    ? `\n\n${translateFor(last?.status === "error" ? "grp.before" : "grp.also")}\n${others.map((e) => `${who(e.botId)}: ${clipText(plainText(e.text), 500)}`).join("\n\n")}`
+    ? `\n\n${tr(last?.status === "error" ? "grp.before" : "grp.also")}\n${others.map((e) => `${who(e.botId)}: ${clipText(plainText(e.text), 500)}`).join("\n\n")}`
     : "";
-  if (last?.status === "error") return deliver(chatId, `${translateFor("grp.problem", { bot: who(last.botId), error: last.error ?? "unknown error" })}${also}`);
+  if (last?.status === "error") return deliver(chatId, `${tr("grp.problem", { bot: who(last.botId), error: last.error ?? "unknown error" })}${also}`);
   if (last?.text) return deliver(chatId, `${who(last.botId)}:\n${plainText(last.text)}${also}`);
-  return deliver(chatId, translateFor("grp.noReply", { group: name }));
+  return deliver(chatId, tr("grp.noReply", { group: name }));
+}
+
+/** The user's latest message in a chat (what oovi's own words should match). */
+function lastUserText(chat: Chat | null | undefined): string | undefined {
+  return chat ? [...chat.entries].reverse().find((e) => e.kind === "user" && e.text.trim() && !e.text.trim().startsWith("/"))?.text : undefined;
 }
 
 const clipText = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s);

@@ -25,7 +25,7 @@ import { listServers, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
 import { ADMIN_TOOLS, PROPOSE_TEAM_SPEC, REQUEST_ABILITIES_SPEC, adminItem, adminValid, runAdminTool } from "./team-admin";
-import { translateFor } from "./i18n-server";
+import { translateFor, translatorFor } from "./i18n-server";
 import { loadSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
@@ -39,7 +39,7 @@ import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, runComputerTool } from "./computer";
+import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
@@ -237,7 +237,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.instructions) lines.push("", bot.instructions);
   const me = currentUser();
-  if (me?.name) lines.push("", `The user's name is ${me.name}. Address them by name naturally (not in every message).`);
+  if (me?.name) {
+    lines.push(
+      "",
+      `The user's name is ${me.name}. Address them by name naturally (not in every message). Write it exactly as written here, even inside Arabic or other text: never translate it, transliterate it or guess another name (if you're not sure how to write it, don't use it).`,
+    );
+  }
   lines.push(`A message that starts with "[Name on Telegram]" comes from another person in a shared Telegram group, not from the user: address that person by their own name, and never save their wishes or details as the user's.`);
   const mem = memoryPrompt();
   lines.push(
@@ -702,7 +707,8 @@ async function* runBot(
               ? tools.some((t) => t.name === c.name) && specialistValid(c, chat, bot)
               : ADMIN_TOOLS.has(c.name)
                 ? tools.some((t) => t.name === c.name) && adminValid(c, bot, isMain)
-                : needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
+                : // A folder the user already allowed for this task isn't asked about again.
+                  !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) && needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
       const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined);
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
@@ -710,7 +716,8 @@ async function* runBot(
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
-          return kind ? desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery) : approvalItem(c, sessionId, chat.workspace);
+          // The card speaks the user's language: their latest message's, else the app's.
+          return kind ? desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery) : approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
         };
         const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf), at: Date.now() };
         entry.status = "waiting";
@@ -766,6 +773,7 @@ async function* runBot(
           } else if (ATTACH_TOOLS.has(c.name)) {
             results.push(await runAttachmentTool(c, chat));
           } else if (COMPUTER_TOOLS.has(c.name)) {
+            if (decisions[c.id] === true && taskId) grantFolderNames(`${chat.id}|${taskId}`, c);
             results.push(await runComputerTool(c, chat, s));
           } else if (ROUTINE_TOOLS.has(c.name)) {
             results.push(runRoutineTool(c, bot));

@@ -15,6 +15,7 @@ import type { ToolSpec } from "./llm";
 import { dataDir } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { homeDir } from "./home";
+import { translateFor, type Tr } from "./i18n-server";
 
 export const FILE_SPECS: ToolSpec[] = [
   {
@@ -186,10 +187,10 @@ function clip(s: string, n: number): string {
 // ---------- approval text ----------
 
 /** One-line summary and an optional preview for the approval card. */
-export function describeFileCall(call: ToolCall, ws: Workspace | undefined): { summary: string; detail?: string } {
+export function describeFileCall(call: ToolCall, ws: Workspace | undefined, tr: Tr = translateFor): { summary: string; detail?: string } {
   const i = call.input;
   const p = String(i.path ?? "").trim() || ".";
-  const folder = ws ? path.basename(ws.path) : "the project folder";
+  const folder = ws ? path.basename(ws.path) : tr("ok.projectFolder");
   switch (call.name) {
     case "write_file": {
       let exists = false;
@@ -199,17 +200,17 @@ export function describeFileCall(call: ToolCall, ws: Workspace | undefined): { s
         /* described anyway; running it reports the problem */
       }
       const content = String(i.content ?? "");
-      return { summary: `${exists ? "Replace" : "Create"} ${p} in ${folder} (${size(Buffer.byteLength(content))})`, detail: clip(content, 4000) };
+      return { summary: tr(exists ? "ok.fileReplace" : "ok.fileCreate", { path: p, folder, size: size(Buffer.byteLength(content)) }), detail: clip(content, 4000) };
     }
     case "edit_file": {
       const minus = String(i.old_text ?? "").split("\n").map((l) => `- ${l}`).join("\n");
       const plus = String(i.new_text ?? "").split("\n").map((l) => `+ ${l}`).join("\n");
-      return { summary: `Edit ${p} in ${folder}${i.replace_all === true ? " (every match)" : ""}`, detail: clip(`${minus}\n${plus}`, 4000) };
+      return { summary: tr(i.replace_all === true ? "ok.fileEditAll" : "ok.fileEdit", { path: p, folder }), detail: clip(`${minus}\n${plus}`, 4000) };
     }
     case "delete_file":
-      return { summary: `Delete ${p} from ${folder} (moved to oovi's trash)` };
+      return { summary: tr("ok.fileDelete", { path: p, folder }) };
     case "run_command":
-      return { summary: `Run a command in ${folder}`, detail: String(i.command ?? "") };
+      return { summary: tr("ok.runCommand", { folder }), detail: String(i.command ?? "") };
     default:
       return { summary: call.name };
   }

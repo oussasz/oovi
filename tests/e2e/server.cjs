@@ -18,7 +18,7 @@ if (!fs.existsSync(sessionFile)) {
   const c = crypto.createCipheriv("aes-256-gcm", key, iv);
   const ct = Buffer.concat([c.update("fake-local-test-token", "utf8"), c.final()]);
   const token = ["v1", iv.toString("base64"), c.getAuthTag().toString("base64"), ct.toString("base64")].join(":");
-  const user = { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null };
+  const user = { id: "p1test", email: "tester@example.test", name: process.env.OOVI_TEST_USER_NAME || "Phase Tester", image: null };
   fs.writeFileSync(sessionFile, JSON.stringify({ token, user, onboarded: true, savedAt: Date.now() }, null, 1));
 }
 

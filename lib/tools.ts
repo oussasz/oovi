@@ -16,6 +16,7 @@ import { READER_SPECS, READER_TOOLS, runReaderTool } from "./reader";
 import { VM_TOOLS, runVmTool } from "./sandbox";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 import { COMPUTER_TOOLS, computerNeedsApproval, describeComputerCall } from "./computer";
+import { translateFor, type Tr } from "./i18n-server";
 
 export const TOOL_SPECS: ToolSpec[] = [
   {
@@ -466,32 +467,33 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
 }
 
 /** What the approval card shows for one call. */
-export function approvalItem(call: ToolCall, sessionId: string, workspace?: Workspace): ApprovalItem {
-  if (FILE_TOOLS.has(call.name)) return { call, ...describeFileCall(call, workspace), always: EDIT_TOOLS.has(call.name) };
-  if (COMPUTER_TOOLS.has(call.name)) return { call, ...describeComputerCall(call) };
-  if (DOC_TOOLS.has(call.name)) return { call, ...describeDocCall(call, workspace), always: true };
-  if (VM_TOOLS.has(call.name)) return { call, summary: `Save ${String(call.input.filename ?? call.input.path ?? "a file")} from the cloud computer into the project folder`, always: true };
-  return { call, summary: describeCall(call, sessionId) };
+/** What the approval card shows for one call, in the language `tr` writes (the user's latest message's, else the app's). */
+export function approvalItem(call: ToolCall, sessionId: string, workspace?: Workspace, tr: Tr = translateFor): ApprovalItem {
+  if (FILE_TOOLS.has(call.name)) return { call, ...describeFileCall(call, workspace, tr), always: EDIT_TOOLS.has(call.name) };
+  if (COMPUTER_TOOLS.has(call.name)) return { call, ...describeComputerCall(call, tr) };
+  if (DOC_TOOLS.has(call.name)) return { call, ...describeDocCall(call, workspace, tr), always: true };
+  if (VM_TOOLS.has(call.name)) return { call, summary: tr("ok.vmSave", { file: String(call.input.filename ?? call.input.path ?? "") }), always: true };
+  return { call, summary: describeCall(call, sessionId, tr) };
 }
 
-export function describeCall(call: ToolCall, sessionId: string): string {
+export function describeCall(call: ToolCall, sessionId: string, tr: Tr = translateFor): string {
   const sess = peekSession(sessionId);
   let where = "";
   try {
-    if (sess) where = ` on ${new URL(sess.page.url()).host}`;
+    if (sess) where = tr("ok.on", { host: new URL(sess.page.url()).host });
   } catch {
     where = "";
   }
   const el = sess?.elements.get(Number(call.input.element));
   const target = el ? `${el.kind} "${el.label}"` : `element ${String(call.input.element)}`;
-  if (call.name === "click") return `Click ${target}${where}`;
-  if (call.name === "type") return `Type "${String(call.input.text ?? "")}" into ${target}${where}${call.input.submit ? ", then press Enter" : ""}`;
-  if (call.name === "download_file") return `Download ${String(call.input.url ?? "a file")} to your Downloads/oovi folder`;
-  if (call.name === "save_skill") return `Save a new skill "${String(call.input.name ?? "")}": ${String(call.input.description ?? "")}`;
+  if (call.name === "click") return tr("ok.click", { target, where });
+  if (call.name === "type") return `${tr("ok.type", { text: String(call.input.text ?? ""), target, where })}${call.input.submit ? tr("ok.typeEnter") : ""}`;
+  if (call.name === "download_file") return tr("ok.download", { url: String(call.input.url ?? "") });
+  if (call.name === "save_skill") return tr("ok.saveSkill", { name: String(call.input.name ?? ""), description: String(call.input.description ?? "") });
   if (call.name.startsWith("mcp_")) {
     const server = mcpServerOf(call.name);
     const args = JSON.stringify(call.input);
-    return `Use the "${call.name.replace(/^mcp_[a-z0-9_]*?_/i, "")}" tool of ${server?.name ?? "an MCP server"} with ${args.length > 160 ? `${args.slice(0, 160)}…` : args}`;
+    return tr("ok.mcp", { tool: call.name.replace(/^mcp_[a-z0-9_]*?_/i, ""), server: server?.name ?? "MCP", args: args.length > 160 ? `${args.slice(0, 160)}…` : args });
   }
   return call.name;
 }

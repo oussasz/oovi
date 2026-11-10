@@ -25,6 +25,7 @@ import { dataDir, setComputerFiles, type ComputerFiles, type Settings } from "./
 import type { Chat, ToolCall, ToolResult } from "./types";
 import { systemDirs, within } from "./workspace";
 import { homeDir } from "./home";
+import { translateFor, type Tr } from "./i18n-server";
 
 const isWin = process.platform === "win32";
 const isMac = process.platform === "darwin";
@@ -286,6 +287,44 @@ export function usualFolders(): string[] {
  * Looking in a folder, searching, reading, copying and sending ask unless the folder is allowed
  * (or it's a file oovi made): a folder's contents are private too.
  */
+// ---------- one OK per folder per task ----------
+// After the user allows listing or searching a folder, listing and searching that folder (and below it)
+// don't ask again for the rest of the same task (the same user message). Reading or sending a file's
+// contents still asks. Forgotten after an hour, and at most 200 tasks are kept.
+const NAME_TOOLS = new Set(["list_folder", "find_files"]);
+const nameGrants = new Map<string, { at: number; dirs: string[] }>();
+const GRANT_MS = 60 * 60 * 1000;
+
+/** The folder a list_folder / find_files call looks in, or null (no folder given, or blocked). */
+function nameFolder(call: ToolCall): string | null {
+  if (!NAME_TOOLS.has(call.name)) return null;
+  const raw = call.name === "list_folder" ? call.input.path : call.input.folder;
+  if (raw === undefined || !String(raw).trim()) return null;
+  const t = target(raw);
+  return "error" in t ? null : t.real;
+}
+
+/** Remember that the user allowed names in this folder for this task. */
+export function grantFolderNames(taskKey: string, call: ToolCall): void {
+  const dir = nameFolder(call);
+  if (!dir) return;
+  const now = Date.now();
+  for (const [k, g] of nameGrants) if (now - g.at > GRANT_MS) nameGrants.delete(k);
+  const g = nameGrants.get(taskKey) ?? { at: now, dirs: [] };
+  if (!g.dirs.includes(dir)) g.dirs.push(dir);
+  g.at = now;
+  nameGrants.set(taskKey, g);
+  if (nameGrants.size > 200) nameGrants.delete(nameGrants.keys().next().value!);
+}
+
+/** Whether names in this call's folder were already allowed for this task. */
+export function folderNamesGranted(taskKey: string, call: ToolCall): boolean {
+  const dir = nameFolder(call);
+  const g = nameGrants.get(taskKey);
+  if (!dir || !g || Date.now() - g.at > GRANT_MS) return false;
+  return g.dirs.some((d) => within(d, dir));
+}
+
 export function computerNeedsApproval(call: ToolCall, s: Settings): boolean {
   if (!computerFilesOn(s)) return false;
   if (call.name === "list_folder") {
@@ -315,33 +354,33 @@ const when = (ms: number) => {
 };
 
 /** What the approval card says. `folder`: the folder "Always allow this folder" would add. */
-export function describeComputerCall(call: ToolCall): { summary: string; detail?: string; folder?: string } {
+export function describeComputerCall(call: ToolCall, tr: Tr = translateFor): { summary: string; detail?: string; folder?: string } {
   if (call.name === "find_files" || call.name === "list_folder") {
     const where = call.name === "find_files" ? call.input.folder : call.input.path;
     const q = String(call.input.query ?? "").slice(0, 80);
     if (where === undefined || !String(where).trim()) {
-      return { summary: `Look for files named “${q}” in your usual folders (Desktop, Documents, Downloads…)`, detail: "Only file names are searched, never their contents. To skip this question next time, allow a folder." };
+      return { summary: tr("ok.findUsual", { q }), detail: tr("ok.findUsualDetail") };
     }
     const w = target(where);
     const shown = "error" in w ? String(where) : w.abs;
-    const summary = call.name === "find_files" ? `Look for files named “${q}” in ${shown}` : `See what's in ${shown} (file names, sizes, dates)`;
+    const summary = call.name === "find_files" ? tr("ok.find", { q, where: shown }) : tr("ok.list", { where: shown });
     return { summary, ...("error" in w || "error" in checkAllowedFolder(w.real) ? {} : { folder: w.real }) };
   }
   const t = target(call.input.path);
   const shown = "error" in t ? String(call.input.path ?? "a file") : t.abs;
   const summary =
     call.name === "send_file_to_user"
-      ? `Send ${shown} to you`
+      ? tr("ok.send", { file: shown })
       : call.name === "copy_file_to_downloads"
-        ? `Copy ${shown} to your Downloads/oovi folder`
+        ? tr("ok.copy", { file: shown })
         : call.name === "edit_copy_of_file"
-          ? `Make an edited copy of ${shown} (the original isn't changed)`
-          : `Read ${shown}`;
+          ? tr("ok.editCopy", { file: shown })
+          : tr("ok.read", { file: shown });
   if ("error" in t) return { summary };
   let detail: string | undefined;
   try {
     const st = fs.statSync(t.real);
-    detail = `${sizeLabel(st.size)}, modified ${when(st.mtimeMs)}`;
+    detail = tr("ok.fileInfo", { size: sizeLabel(st.size), when: when(st.mtimeMs) });
   } catch {
     /* described anyway; running it reports the problem */
   }
