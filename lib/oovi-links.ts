@@ -31,6 +31,7 @@ export function ooviTarget(url: string, bots: { id: string; name: string }[] = [
     if (!a) return { kind: "settings" };
     return SETTINGS.includes(a.toLowerCase()) ? { kind: "settings", tab: a.toLowerCase() } : null;
   }
+  if (area === "routines" && !a) return { kind: "path", href: "/routines" };
   if (area === "bot" && a && !b) {
     const bot = bots.find((x) => x.name.toLowerCase() === a.toLowerCase());
     return bot ? { kind: "path", href: `/bots/${encodeURIComponent(bot.id)}#abilities` } : null;

@@ -87,7 +87,8 @@ export type Usage = { input: number; output: number };
 /** effort: how hard the bots think for this message. deep: Deep work mode (plan, work longer, verify). */
 /** command: the slash command the message started with ("/zapier", "/effort high"); text is the rest. */
 /** plan: sent in Plan mode (the bot proposes a plan the user edits and approves before any work). */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[] };
+/** routine: sent by a scheduled routine (its id), never by the user or the HTTP API. */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string };
 /** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
 export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
@@ -181,6 +182,8 @@ export type Chat = {
   summary?: { upTo: string; text: string };
   /** Project folder the bots in this chat can work in. */
   workspace?: Workspace;
+  /** This chat belongs to a scheduled routine (its id): every run of the routine happens here. */
+  routine?: string;
 };
 
 export type ChatWithState = Chat & { running: boolean };
@@ -196,6 +199,63 @@ export type ChatSummary = {
   running: boolean;
   waiting: boolean;
 };
+
+// ---------- routines (scheduled tasks) ----------
+
+/** "HH:MM", 24-hour clock, in the routine's own time zone. */
+export type RoutineTime = string;
+/** Weekdays: 0 = Sunday … 6 = Saturday. hourly: every N hours (1-24), counted from `from` each day. */
+export type RoutineSchedule =
+  | { kind: "daily"; time: RoutineTime }
+  | { kind: "weekly"; time: RoutineTime; days: number[] }
+  | { kind: "hourly"; every: number; from: RoutineTime };
+
+/**
+ * ok: the bot answered. error: the run failed. skipped: the chat was busy, a run happened less than
+ * 15 minutes before, or it was stopped. missed: oovi was closed (or asleep) for more than 12 hours
+ * past the time. waiting: a tool needs the user's OK.
+ */
+export type RoutineRunStatus = "ok" | "error" | "skipped" | "missed" | "waiting";
+
+export type RoutineRun = {
+  at: number;
+  status: RoutineRunStatus;
+  /** Short reason (error message, "busy", "missed"…). Never shown as HTML. */
+  note?: string;
+  /** The user entry the run started with, in the routine's chat. */
+  entryId?: string;
+  /** theOovi's error code when it couldn't run (no_credits, daily_limit…). */
+  code?: string;
+};
+
+export type Routine = {
+  id: string;
+  name: string;
+  /** The bot that runs it. */
+  botId: string;
+  prompt: string;
+  schedule: RoutineSchedule;
+  /** IANA time zone the schedule is read in (the user's machine when it was created). */
+  timezone: string;
+  enabled: boolean;
+  notifyTelegram: boolean;
+  createdAt: number;
+  updatedAt: number;
+  /** Its own chat: every run happens there, so history stays small and runs are comparable. */
+  chatId: string;
+  lastRun?: RoutineRun;
+  /** When the last run started (scheduled or Run now), for the 15-minute floor. */
+  lastStartedAt?: number;
+  /** Consecutive failed runs; 3 pauses the routine. */
+  failures: number;
+  /** Next scheduled time (ms), or null when paused. */
+  nextRunAt: number | null;
+  /** Why the routine was paused automatically ("failures", "bot"). Cleared when it's switched back on. */
+  pausedReason?: string;
+};
+
+/** A routine as the Routines page sees it. */
+export type RoutineView = Routine & { running: boolean };
 
 export type ChatEvent =
   | { type: "entry"; entry: Entry }

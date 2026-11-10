@@ -395,6 +395,8 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
   if (VM_TOOLS.has(call.name)) return call.name === "vm_download" && !!workspace && !workspace.autoEdit;
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
+  // Creating a routine sets up unattended runs: always ask (the orchestrator words the card).
+  if (call.name === "propose_routine") return true;
   if (call.name === "use_skill") return false;
   // MCP servers can do anything; ask unless the user marked the server as trusted.
   if (call.name.startsWith("mcp_")) return !mcpServerOf(call.name)?.trusted;

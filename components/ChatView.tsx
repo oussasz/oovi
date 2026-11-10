@@ -1160,18 +1160,18 @@ export default function ChatView({ id }: { id: string }) {
             solo && <Face face={solo.face} mood={botMood(chat, solo.id)} size={46} />
           )}
           <div className="chat-title">
-            <h1>{isGroup ? chat.name : (solo?.name ?? t("common.bot"))}</h1>
+            <h1>{isGroup || chat.routine ? chat.name : (solo?.name ?? t("common.bot"))}</h1>
             <p>
               {isGroup
                 ? lead
                   ? t(leaderMode ? "chat.subLedBy" : "chat.subFirst", { members: members.map((m) => m.name).join(", "), name: lead.name })
                   : members.map((m) => m.name).join(", ") || t("chat.noBots")
-                : solo && [solo.role, modelLabel(solo)].filter(Boolean).join(" · ")}
+                : solo && [chat.routine ? t("chat.routineSub", { name: solo.name }) : solo.role, modelLabel(solo)].filter(Boolean).join(" · ")}
             </p>
           </div>
           <div className="head-actions">
             <ProjectFolder chat={chat} running={running} onChange={(c) => setChat(c)} />
-            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : t("chat.editBot")} aria-label={t("common.edit")}>
+            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : chat.routine ? "/routines" : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")} aria-label={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")}>
               <Icon name="edit" />
             </Link>
             <button className="icon-btn" onClick={clear} disabled={running || !chat.entries.length} title={t("chat.clear")} aria-label={t("chat.clear")}>
@@ -1229,7 +1229,7 @@ export default function ChatView({ id }: { id: string }) {
 
             {chat.entries.map((e, i) =>
               e.kind === "user" ? (
-                <div key={e.id} className={`msg user${e.via || e.deep || e.command || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
+                <div key={e.id} className={`msg user${e.via || e.deep || e.command || e.routine || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
                   {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
                   {e.attachments && e.attachments.length > 0 && <SentFiles chatId={id} files={e.attachments} />}
                   {e.text && (
@@ -1237,8 +1237,13 @@ export default function ChatView({ id }: { id: string }) {
                       <Rich text={e.text} bots={members} />
                     </div>
                   )}
-                  {(e.command || e.deep || (e.effort && e.effort !== "auto")) && (
+                  {(e.command || e.deep || e.routine || (e.effort && e.effort !== "auto")) && (
                     <div className="msg-mode">
+                      {e.routine && (
+                        <span className="routine-badge" title={t("chat.routineTitle")}>
+                          <Icon name="clock" size={12} /> {t("chat.routine")}
+                        </span>
+                      )}
                       {e.command && (
                         <span className="slash-badge" title={t("slash.badge")}>
                           {e.command}

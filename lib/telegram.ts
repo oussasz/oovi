@@ -170,6 +170,25 @@ export async function sendTest(): Promise<void> {
   await tg(tok, "sendMessage", { chat_id: s.chatId, text: `Hi! This is ${bot?.name ?? "oovi"}. Send me a message here any time oovi is open on your computer.` });
 }
 
+/** Is a Telegram chat paired (so oovi can send the user messages)? */
+export function telegramConnected(): boolean {
+  const s = read();
+  return !!s.chatId && !!token(s);
+}
+
+/** Send a text to the user's paired main chat (e.g. a routine's result). Resolves false when not connected or not sent. */
+export async function sendToMainChat(text: string): Promise<boolean> {
+  const s = read();
+  const tok = token(s);
+  if (!tok || !s.chatId) return false;
+  try {
+    await say(tok, s.chatId, text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // ---------- advanced: chats linked to groups ----------
 
 /** Link a Telegram chat to an oovi group, or change a link (previousChatId: the link being edited). */

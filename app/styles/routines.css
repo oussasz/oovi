@@ -1,0 +1,74 @@
+/* routines: the Routines page (components/Routines.tsx) and the Routine badge in chats. Logical properties, so RTL just works. */
+
+.routines-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+.routines-head h1 { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+.routines-head p { margin: 0; max-width: 52ch; }
+.routines-bg-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.routines-bg-notice p { margin: 0; flex: 1 1 260px; }
+.routines-open-hint { margin: 0 0 14px; }
+
+.routine-form fieldset { border: none; margin: 14px 0 0; padding: 0; min-width: 0; }
+.routine-form legend { font-size: 13px; font-weight: 700; color: var(--muted); padding: 0; margin-bottom: 6px; }
+.routine-form textarea { min-height: 96px; }
+.routine-form .hint { margin: 6px 0 0; }
+.routine-form .hint a { color: inherit; text-decoration: underline; }
+.routine-form .toggle { margin-top: 10px; }
+.routine-form-actions { margin-top: 14px; align-items: center; gap: 10px; display: flex; }
+
+/* Radio and checkbox chips: the real input stays focusable, the chip shows its state. */
+.routine-kind, .routine-day { position: relative; cursor: pointer; user-select: none; }
+.routine-kind input, .routine-day input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; width: 100%; height: 100%; }
+.routine-kind:has(input:focus-visible), .routine-day:has(input:focus-visible) { outline: 2px solid var(--blue); outline-offset: 2px; }
+.routine-days { display: flex; flex-wrap: wrap; gap: 6px; }
+.routine-days legend { width: 100%; }
+.routine-day { min-width: 48px; justify-content: center; }
+
+.routine-time-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.routine-time-row .field { flex: 0 1 180px; }
+.routine-every { display: flex; align-items: center; gap: 8px; color: var(--text); font-weight: 600; }
+.routine-every input { width: 84px; }
+
+.routines-empty .routines-examples { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.routines-examples .idea { display: grid; gap: 4px; text-align: start; }
+.routines-examples .idea span { color: var(--muted); font-size: 13px; font-weight: 500; }
+
+.routine-list { list-style: none; margin: 0; padding: 0; }
+.routine-card.off { opacity: 0.78; }
+.routine-top { display: flex; align-items: center; gap: 12px; }
+.routine-title { flex: 1; min-width: 0; }
+.routine-title h2 { margin: 0; overflow-wrap: anywhere; }
+.routine-title p { margin: 2px 0 0; font-size: 13.5px; overflow-wrap: anywhere; }
+.routine-zone { font-size: 12.5px; }
+.routine-switch { flex: none; align-items: center; padding: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+.routine-switch input { top: 4px; }
+
+.routine-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px 18px; margin: 14px 0 0; }
+.routine-meta div { min-width: 0; }
+.routine-meta dt { font-size: 11.5px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.routine-meta dd { margin: 3px 0 0; font-size: 14px; overflow-wrap: anywhere; }
+.routine-prompt { margin: 12px 0 0; padding: 8px 12px; border-radius: 12px; background: var(--soft); font-size: 13.5px; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.routine-actions { margin-top: 12px; display: flex; gap: 8px; }
+.routine-actions .btn { display: inline-flex; align-items: center; gap: 6px; text-decoration: none; }
+.routine-card .msg-err { margin: 8px 0 0; }
+
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 99px; padding: 2px 10px; font-size: 13px; font-weight: 700; background: var(--soft); color: var(--muted); }
+.pill.ok { background: color-mix(in srgb, var(--ok) 16%, transparent); color: var(--ok); }
+.pill.error { background: var(--err-bg); color: var(--err); }
+.pill.waiting { background: var(--yellow); color: #171717; }
+.pill.run { color: var(--text); }
+
+.routines-bg { margin-top: 20px; }
+.routines-bg .toggle { padding: 0; }
+
+.routine-dialog { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); color: var(--text); padding: 20px 22px; max-width: min(440px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+.routine-dialog::backdrop { background: rgba(0, 0, 0, 0.35); }
+.routine-dialog h2 { margin: 0 0 6px; font-size: 18px; overflow-wrap: anywhere; }
+.routine-dialog p { margin: 0 0 16px; }
+.routine-dialog .row { display: flex; gap: 10px; justify-content: flex-end; }
+
+/* In a routine's chat: the message it sends on each run. */
+.msg-mode .routine-badge { display: inline-flex; align-items: center; gap: 4px; }
+
+@media (max-width: 640px) {
+  .routine-top { flex-wrap: wrap; }
+}

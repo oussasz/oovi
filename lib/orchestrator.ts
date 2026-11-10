@@ -29,6 +29,7 @@ import { parseSlash } from "./slash";
 import { getChat, listBots, newId, saveChat } from "./store";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
+import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, proposalOf, runRoutineTool } from "./routines-tools";
 import { DOC_SPECS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
@@ -59,6 +60,8 @@ export type RunInput = {
   attachments?: Attachment[];
   channel?: "telegram";
   telegramChatId?: number;
+  /** Set by the routines scheduler only (never from the HTTP API): the routine (id) this message comes from. */
+  routine?: string;
 };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
@@ -96,7 +99,7 @@ const PLAN_MODE_TOOLS = new Set([
   "web_search", "research", "read_url", "open_url", "read_page", "go_back",
   "list_files", "read_file", "search_files", "read_attachment", "read_document",
   "find_files", "list_folder", "read_computer_file", "list_groups", "read_group",
-  "recall_history", "oovi_help", "use_skill",
+  "recall_history", "oovi_help", "use_skill", "list_routines",
 ]);
 
 const PLAN_MODE = `PLAN MODE is on for this request: don't do the task yet.
@@ -150,6 +153,17 @@ Don't redo work a teammate is better suited for, don't delegate trivial things, 
 export function leaderOf(chat: Chat, members: Bot[]): Bot | undefined {
   if (chat.kind !== "group" || chat.orchestrate === false || members.length < 2) return undefined;
   return members.find((m) => m.id === chat.leadId) ?? members[0];
+}
+
+/** A scheduled routine sent the message being worked on: nobody is watching the chat. */
+const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Give the result itself, short and readable: the user gets it as a notification. Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills.`;
+
+function lastUser(chat: Chat): UserEntry | undefined {
+  for (let i = chat.entries.length - 1; i >= 0; i--) {
+    const e = chat.entries[i];
+    if (e?.kind === "user") return e;
+  }
+  return undefined;
 }
 
 function lastUserText(chat: Chat): string {
@@ -315,6 +329,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (extra.wrapUp) {
     lines.push("", "WRAP UP NOW: the team has used its hand-offs for this request. Write the final answer for the user from what the team found, in short paragraphs or bullets. Don't @mention anyone and don't start new work. If something is still open, say what and suggest one next step.");
   }
+  if (lastUser(chat)?.routine) lines.push("", ROUTINE_RUN);
   if (chat.pending?.planMode) lines.push("", PLAN_MODE);
   else if (chat.pending?.deep) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
   lines.push("", chat.pending?.deep ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be concise and practical. Use short paragraphs or lists. Write so a person can read your message in under a minute.", "", SAFETY);
@@ -473,6 +488,8 @@ export function statusText(c: ToolCall): string {
     case "save_skill": return "Saving a skill";
     case "memory": return "Updating memory";
     case "list_groups": return "Checking your groups";
+    case "list_routines": return "Checking your routines";
+    case "propose_routine": return `Setting up the routine “${String(i.name ?? "")}”`;
     case "update_plan": return "Updating the plan";
     case "oovi_help": return "Checking how oovi works";
     case "vm_run":
@@ -535,7 +552,9 @@ async function* runBot(
   const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  // Routine runs can look at routines but never propose new ones.
+  const routineSpecs = isMain ? (chat.routine ? [LIST_ROUTINES_SPEC] : ROUTINE_SPECS) : [];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
   const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: computerFilesPrompt(settings, chat.pending?.channel === "telegram") });
@@ -572,9 +591,11 @@ async function* runBot(
         yield { type: "entry", entry };
         return "waiting";
       }
-      const ask = last.toolCalls.filter((c) => needsApproval(c, s, sessionId, usesAccounts, chat.workspace) && decisions[c.id] === undefined);
+      // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
+      const asks = (c: ToolCall) => (c.name === "propose_routine" ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string" : needsApproval(c, s, sessionId, usesAccounts, chat.workspace));
+      const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined);
       if (ask.length) {
-        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map((c) => approvalItem(c, sessionId, chat.workspace)) };
+        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map((c) => (c.name === "propose_routine" ? { call: c, ...describeProposal(c, bot) } : approvalItem(c, sessionId, chat.workspace))) };
         entry.status = "waiting";
         chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), approval };
         yield { type: "entry", entry };
@@ -610,6 +631,8 @@ async function* runBot(
             results.push(await runAttachmentTool(c, chat));
           } else if (COMPUTER_TOOLS.has(c.name)) {
             results.push(await runComputerTool(c, chat, s));
+          } else if (ROUTINE_TOOLS.has(c.name)) {
+            results.push(runRoutineTool(c, bot));
           } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
         }
       }
@@ -690,7 +713,8 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
     let text = input.text;
     let effort = input.effort;
     let deep = input.deep;
-    let plan = !!input.plan || revising;
+    // Routines never use Plan mode.
+    let plan = !input.routine && (!!input.plan || revising);
     let command: string | undefined;
     let slash: Omit<SlashUse, "for"> | undefined;
     if (!input.via) {
@@ -705,7 +729,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
         command = c.cmd;
         text = parsed.rest;
         if (c.kind === "deep") deep = true;
-        else if (c.kind === "plan") plan = true;
+        else if (c.kind === "plan") plan = !input.routine;
         else if (c.kind === "effort") effort = c.level;
         else if (c.kind === "help") slash = { kind: "help", cmd: c.cmd };
         else if (c.kind === "skill") slash = { kind: "skill", cmd: c.cmd, id: c.id, name: c.name };
@@ -718,6 +742,7 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
       text,
       at: Date.now(),
       ...(input.via ? { via: input.via } : {}),
+      ...(input.routine ? { routine: input.routine } : {}),
       ...(effort && effort !== "auto" ? { effort } : {}),
       ...(deep && !plan ? { deep: true } : {}),
       ...(plan ? { plan: true } : {}),
@@ -745,7 +770,8 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
     }
 
     // Learning: how often has the user asked for this kind of thing?
-    const similar = text ? recordCommand(text) : 0;
+    // (A routine repeats the same request by design: that's not a reason to suggest a skill.)
+    const similar = text && !input.routine ? recordCommand(text) : 0;
     chat.pending = {
       queue,
       turnsLeft: deep ? settings.maxTurns * 2 : settings.maxTurns,
@@ -886,7 +912,8 @@ export async function* orchestrate(chatId: string, input: RunInput, signal: Abor
   saveChat(chat);
 
   // Self-learning: review real work and keep what's worth remembering.
-  if (!signal.aborted && settings.learning !== false && !chat.pending) {
+  // (Not after a routine's unattended run: the same task every day would only repeat the same lessons.)
+  if (!signal.aborted && settings.learning !== false && !chat.pending && !input.routine) {
     const learned = await learnFromRun(chat, bots, settings, signal);
     if (learned) {
       saveChat(chat);

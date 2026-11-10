@@ -18,6 +18,7 @@ export const HELP_TOPICS = {
   folders: "Project folders and approvals",
   computer: "The cloud computer",
   telegram: "Using your main bot from Telegram",
+  routines: "Routines: tasks a bot runs on a schedule (every morning, every Monday, every few hours), notifications, running in the background",
   memory: "Memory, lessons and self-learning",
   settings: "Where every setting lives, and links into the app",
   commands: "Slash commands in the message box",
@@ -27,7 +28,7 @@ export type HelpTopic = keyof typeof HELP_TOPICS;
 
 const TEXT: Record<HelpTopic, string> = {
   overview: `oovi is a team of AI bots ("slimes") on the user's computer. Each bot has a name, a role, instructions, a look and abilities. Bots work alone in a 1:1 chat or together in groups.
-- Sidebar: Home, "+ Group" and "+ Bot" buttons, your groups and bots, then Marketplace and Settings at the bottom, plus the credits chip when using theOovi.
+- Sidebar: Home, "+ Group" and "+ Bot" buttons, your groups and bots, then Routines, Marketplace and Settings at the bottom, plus the credits chip when using theOovi.
 - A chat's header has the project folder button, a pencil (Edit bot / Edit group), Clear conversation and the Live view panel.
 - Live view shows a bot's browser live while it works (one tab per bot). "Take control" lets you click and type in that browser yourself, e.g. to sign in or solve a CAPTCHA; the bot pauses and sees nothing until you press "Done — hand back". Bots ask for this themselves when a page needs a login ("needs you" banner). It works in the oovi app on your computer, not from Telegram.
 - Under the message box: Effort and Deep work. Type @ to mention a bot, / for commands.
@@ -113,6 +114,15 @@ Problems:
 Then: write to it like in oovi; when a bot needs your OK you get the details there (reply /yes, /no, or /yes always to also allow that folder or those edits from now on); results of long group jobs arrive there too. Ask for a file from your computer ("send me the report.pdf from my Documents") and it arrives in Telegram (up to 50 MB). oovi must stay open on this computer. The main bot is chosen in Edit bot > Abilities > "Main bot".
 Advanced (optional, Settings > Telegram > Advanced, collapsed): link another Telegram chat, usually a Telegram group, to one oovi group. Add the bot to the Telegram group; oovi lists it under "Waiting to be linked" with its chat ID (groups are negative, e.g. -1001234567890); press "Link to group…". Messages there go to that group (its leader answers), approvals and files come back to the same chat, and only the paired owner can answer approvals in a group. In a Telegram group the bot answers replies to its messages, /ask@botname question, /yes and /no; to answer @mentions too, make the bot a group admin, or in @BotFather use /setprivacy > Disable and re-add the bot. Unlinked chats are ignored.`,
 
+  routines: `Routines (sidebar, above Marketplace): a bot does a task on its own on a schedule, e.g. "every morning at 8, summarize my unread email".
+- Add: Routines > "New routine": a name, the bot that runs it, what it should do (a complete request: nobody answers questions during a run), and how often: every day at a time, some days of the week at a time, or every N hours (1-24) from a start time. Times use this computer's time zone. Or ask the main bot in chat ("every Monday at 9, plan my week"): it proposes the routine and you click Allow to create it.
+- Each routine runs in its own chat (Open chat), so runs are easy to compare. Messages it sends show a "Routine" badge.
+- Results: a desktop notification (click it to open the chat), and on Telegram too if "Send results to Telegram" is on (pair Telegram first: topic "telegram").
+- Safety: routines never approve anything themselves. If a step needs your OK (a connector action, a click on a web page…), the run waits, you're notified, and "Answer in chat" opens it. Plan mode is never used.
+- Each routine has an on/off switch, Run now, Edit and Delete (deleting also deletes its chat). After 3 failed runs in a row a routine pauses itself and tells you; switch it back on once fixed. At most one run every 15 minutes.
+- Routines need oovi open. If oovi was closed or the computer asleep at the scheduled time, the latest missed run happens when oovi is back within 12 hours; older ones are skipped ("Missed"). On Windows, closing the window quits oovi unless "Keep oovi running in the background (system tray)" is on (bottom of the Routines page); then quit from the tray icon. On a Mac, oovi keeps running when the window closes.
+- Routines use the bot's own connectors: to read email or a calendar, connect Gmail, Outlook or Google Calendar (e.g. through Zapier) and turn it on for that bot (topic "marketplace").`,
+
   memory: `Memory: Settings > Memory & soul. All bots share two small notebooks they update on their own: "About you (USER.md)" (your name, role, preferences, projects, people) and "Notes (MEMORY.md)" (lessons and facts). You can edit both there and Save; separate entries with a line containing only §.
 - Lessons learned (same tab): bots write them after real work and when you rate a reply. Each request only brings in matching lessons. "Forget" removes one. "Learn from my chats" turns self-learning on or off (one small extra model call after bigger tasks).
 - Under each reply: thumbs up / thumbs down; with thumbs down you can say what should be better and the bots learn from it.
@@ -120,7 +130,7 @@ Advanced (optional, Settings > Telegram > Advanced, collapsed): link another Tel
 
   settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs, Files on this computer), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
 Elsewhere: per-bot settings in Edit bot (pencil in a bot's chat header): About, Look, Brain (model), Abilities (Main bot, Web search, Browser, signed-in accounts, Tools from MCP servers). Group settings: pencil in a group's header. Connectors, skills, plugins and memory: Marketplace.
-Links into the app, written by bots, show as buttons in chat: \`[Label](oovi://marketplace/connector/ID)\`, \`oovi://marketplace/skill/ID\`, \`oovi://marketplace/plugin/ID\`, \`oovi://settings/TAB\` (profile, models, memory, telegram, accounts, search, browser, computer, safety, language, data, about), \`oovi://bot/BOTNAME\` (opens that bot's Abilities).`,
+Links into the app, written by bots, show as buttons in chat: \`[Label](oovi://marketplace/connector/ID)\`, \`oovi://marketplace/skill/ID\`, \`oovi://marketplace/plugin/ID\`, \`oovi://settings/TAB\` (profile, models, memory, telegram, accounts, search, browser, computer, safety, language, data, about), \`oovi://bot/BOTNAME\` (opens that bot's Abilities), \`oovi://routines\` (the Routines page).`,
 
   commands: `Type / at the start of a message to open the command menu (filter by typing; Enter or click to insert):
 - /help: how to use oovi. /help TOPIC (e.g. /help marketplace) shows one topic.

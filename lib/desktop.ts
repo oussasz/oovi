@@ -30,8 +30,17 @@ export type UpdateState = {
   updatedNotesUrl?: string | null;
 };
 
+/** "Keep oovi running in the background (system tray)". supported: false on macOS (it already keeps running). */
+export type BackgroundState = { supported: boolean; on: boolean };
+
 export type DesktopBridge = {
   pickFolder: (current?: string) => Promise<string | null>;
+  background?: {
+    get: () => Promise<BackgroundState | null>;
+    set: (on: boolean) => Promise<BackgroundState | null>;
+  };
+  /** The desktop app asks the page to open an in-app path (/c/<id> or /routines). */
+  onNavigate?: (cb: (path: string) => void) => () => void;
   /** Resolves to "" when the file opened, or an error message. */
   openFile?: (path: string) => Promise<string>;
   showFile?: (path: string) => Promise<boolean>;

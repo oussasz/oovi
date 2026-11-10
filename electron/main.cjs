@@ -3,7 +3,7 @@
 // Here we run that server inside the app on a private 127.0.0.1 port and show
 // it in a native window. Nothing is exposed to the network.
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeTheme, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, shell } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
@@ -45,6 +45,118 @@ process.on("unhandledRejection", reportMainCrash);
 let win = null;
 let server = null;
 let appUrl = null;
+/** True once oovi is really quitting (tray Quit, updater, shutdown): closing the window then closes it. */
+let quitting = false;
+let tray = null;
+
+// ---------- desktop preferences (read before the window exists) ----------
+// Kept outside the account data: it's about this computer, and main.cjs reads it at startup.
+
+const prefsFile = () => path.join(app.getPath("userData"), "desktop-prefs.json");
+function readPrefs() {
+  try {
+    const p = JSON.parse(fs.readFileSync(prefsFile(), "utf8"));
+    return p && typeof p === "object" ? p : {};
+  } catch {
+    return {};
+  }
+}
+function writePrefs(patch) {
+  const next = { ...readPrefs(), ...patch };
+  try {
+    fs.mkdirSync(path.dirname(prefsFile()), { recursive: true });
+    const tmp = `${prefsFile()}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next));
+    fs.renameSync(tmp, prefsFile());
+  } catch {
+    /* the choice just won't survive a restart */
+  }
+  return next;
+}
+/** macOS already keeps running when its window closes; elsewhere it's the user's choice (off by default). */
+const backgroundSupported = () => process.platform !== "darwin";
+const backgroundOn = () => backgroundSupported() && readPrefs().background === true;
+
+// The tray menu speaks the system language (the page's language isn't known here).
+const TRAY_TEXT = {
+  en: { open: "Open oovi", quit: "Quit oovi", hint: "oovi is still running in the background, so your routines keep running. Quit it from the oovi icon in the taskbar tray." },
+  fr: { open: "Ouvrir oovi", quit: "Quitter oovi", hint: "oovi tourne toujours en arrière-plan, vos routines continuent. Quittez-le depuis l'icône oovi de la zone de notification." },
+  ar: { open: "فتح oovi", quit: "إنهاء oovi", hint: "ما زال oovi يعمل في الخلفية، لذا تستمر مهامك المجدولة. أنهِه من أيقونة oovi في منطقة الإشعارات." },
+  es: { open: "Abrir oovi", quit: "Salir de oovi", hint: "oovi sigue funcionando en segundo plano, así que tus rutinas siguen activas. Ciérralo desde el icono de oovi en la bandeja del sistema." },
+  de: { open: "oovi öffnen", quit: "oovi beenden", hint: "oovi läuft im Hintergrund weiter, deine Routinen laufen also weiter. Beende es über das oovi-Symbol im Infobereich." },
+  tr: { open: "oovi'yi aç", quit: "oovi'den çık", hint: "oovi arka planda çalışmaya devam ediyor, rutinlerin çalışmayı sürdürüyor. Sistem tepsisindeki oovi simgesinden çıkabilirsin." },
+};
+const trayText = () => TRAY_TEXT[String(app.getLocale() || "en").slice(0, 2).toLowerCase()] || TRAY_TEXT.en;
+
+/** Bring the window back (creating it if needed), optionally on an in-app page like /c/<id>. */
+function showWindow(target) {
+  const safe = typeof target === "string" && /^\/(c\/[\w-]{1,80}|routines)$/.test(target) ? target : null;
+  if (!win) {
+    createWindow(safe);
+    return;
+  }
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+  if (safe) win.webContents.send("oovi:navigate", safe);
+}
+
+function setupTray() {
+  if (tray || !backgroundOn()) return;
+  try {
+    let img = nativeImage.createFromPath(path.join(ROOT, "build", "icon.png"));
+    if (process.platform !== "darwin") img = img.resize({ width: 16, height: 16 });
+    tray = new Tray(img);
+    tray.setToolTip("oovi");
+    const text = trayText();
+    tray.setContextMenu(
+      Menu.buildFromTemplate([
+        { label: text.open, click: () => showWindow() },
+        { type: "separator" },
+        {
+          label: text.quit,
+          click: () => {
+            quitting = true;
+            app.quit();
+          },
+        },
+      ]),
+    );
+    tray.on("click", () => showWindow());
+  } catch {
+    tray = null;
+  }
+}
+
+function destroyTray() {
+  if (!tray) return;
+  tray.destroy();
+  tray = null;
+}
+
+const liveNotifications = new Set();
+
+// The app's own server runs in this process: it reaches these through globalThis.
+// Set before the server starts; `npm run web` has no such bridge, and the server skips it.
+globalThis.__ooviDesktop = {
+  /** A native notification; clicking it opens oovi on that chat. */
+  notify(title, body, chatId) {
+    try {
+      if (!app.isReady() || !Notification.isSupported()) return;
+      const n = new Notification({ title: String(title || "oovi").slice(0, 120), body: String(body || "").slice(0, 300), icon: path.join(ROOT, "build", "icon.png") });
+      // Keep a reference until it's gone, or Windows may drop the click handler.
+      liveNotifications.add(n);
+      n.on("click", () => {
+        liveNotifications.delete(n);
+        showWindow(typeof chatId === "string" ? `/c/${chatId}` : undefined);
+      });
+      n.on("close", () => liveNotifications.delete(n));
+      n.show();
+    } catch {
+      /* notifications are a bonus */
+    }
+  },
+};
 
 /** Start the Next.js production server in this process. Returns its URL. */
 async function startServer() {
@@ -97,7 +209,8 @@ body{display:grid;place-items:center}.w{display:grid;justify-items:center;gap:18
   return `data:text/html;charset=utf-8,${encodeURIComponent(html)}`;
 }
 
-function createWindow() {
+/** target: an in-app page to open on (from showWindow, already checked). */
+function createWindow(target) {
   const dark = nativeTheme.shouldUseDarkColors;
   win = new BrowserWindow({
     width: 1320,
@@ -124,10 +237,26 @@ function createWindow() {
     if (/^https?:\/\//i.test(target)) void shell.openExternal(target);
   });
 
+  // "Keep oovi running in the background": closing hides the window to the tray, so
+  // routines keep running. Quitting (tray menu, updater, shutdown) really closes it.
+  win.on("close", (event) => {
+    if (quitting || !backgroundOn()) return;
+    event.preventDefault();
+    win?.hide();
+    setupTray();
+    if (!readPrefs().backgroundHintShown) {
+      writePrefs({ backgroundHintShown: true });
+      globalThis.__ooviDesktop.notify("oovi", trayText().hint);
+    }
+  });
+  // Windows is signing out or shutting down: don't hold it up.
+  win.on("session-end", () => {
+    quitting = true;
+  });
   win.on("closed", () => {
     win = null;
   });
-  if (appUrl) void win.loadURL(appUrl);
+  if (appUrl) void win.loadURL(target ? `${appUrl}${target}` : appUrl);
   else void win.loadURL(loadingPage(dark));
 }
 
@@ -167,14 +296,38 @@ ipcMain.handle("oovi:show-file", async (event, p) => {
   return true;
 });
 
+// "Keep oovi running in the background (system tray)": read and change the choice.
+const backgroundState = () => ({ supported: backgroundSupported(), on: backgroundOn() });
+ipcMain.handle("oovi:background-get", (event) => (isTrusted(event) ? backgroundState() : null));
+ipcMain.handle("oovi:background-set", (event, on) => {
+  if (!isTrusted(event) || !backgroundSupported()) return null;
+  writePrefs({ background: on === true });
+  if (on === true) setupTray();
+  else destroyTray();
+  return backgroundState();
+});
+
 app.on("second-instance", () => {
-  if (!win) return;
-  if (win.isMinimized()) win.restore();
-  win.focus();
+  if (!appUrl && !win) return;
+  showWindow();
 });
 
 app.whenReady().then(async () => {
   if (process.platform !== "darwin") Menu.setApplicationMenu(null);
+  // Windows notifications need the app's identity (the Store build already has one from its package).
+  if (process.platform === "win32" && !process.windowsStore) app.setAppUserModelId(app.isPackaged ? "app.oovi.desktop" : process.execPath);
+  setupTray();
+  // After sleep, the server looks for routines that came due meanwhile.
+  powerMonitor.on("resume", () => {
+    try {
+      globalThis.__ooviRoutinesWake?.();
+    } catch {
+      /* the next tick catches up anyway */
+    }
+  });
+  powerMonitor.on("shutdown", () => {
+    quitting = true;
+  });
   // The window (with a loading screen) appears at once; the server starts meanwhile.
   if (!DEV_URL) createWindow();
   try {
@@ -189,7 +342,8 @@ app.whenReady().then(async () => {
 });
 
 // macOS: closing the window keeps oovi (and any bots still working) running;
-// clicking the Dock icon opens the window again. Windows/Linux: closing quits.
+// clicking the Dock icon opens the window again. Windows/Linux: closing quits, unless
+// "Keep oovi running in the background" is on (then the window only hides, see createWindow).
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
@@ -197,5 +351,7 @@ app.on("activate", () => {
   if (!win && appUrl) createWindow();
 });
 app.on("before-quit", () => {
+  quitting = true;
   if (server) server.close();
 });
+app.on("will-quit", () => destroyTray());

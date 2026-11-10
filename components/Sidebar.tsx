@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
+import { desktop } from "@/lib/desktop";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import { useT } from "./I18n";
@@ -13,6 +14,7 @@ import { CreditsChip, FeedbackButton, OfflineBanner } from "./Credits";
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [bots, setBots] = useState<Bot[]>([]);
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chiefId, setChiefId] = useState<string | null>(null);
@@ -49,6 +51,15 @@ export default function Sidebar() {
   }, [busy, load]);
 
   useEffect(() => setOpen(false), [pathname]);
+
+  // The desktop app opens a chat when its notification is clicked (e.g. a routine's result).
+  useEffect(
+    () =>
+      desktop()?.onNavigate?.((p) => {
+        if (/^\/(c\/[\w-]{1,80}|routines)$/.test(p)) router.push(p);
+      }),
+    [router],
+  );
 
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
   const groups = chats.filter((c) => c.kind === "group");
@@ -114,6 +125,9 @@ export default function Sidebar() {
         </nav>
 
         <CreditsChip />
+        <Link href="/routines" className={`side-settings side-lib${pathname === "/routines" ? " active" : ""}`}>
+          <Icon name="clock" /> {t("side.routines")}
+        </Link>
         <Link href="/library" className={`side-settings side-lib${pathname === "/library" ? " active" : ""}`}>
           <Icon name="library" /> {t("common.skillsTools")}
         </Link>

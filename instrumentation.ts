@@ -9,5 +9,8 @@ export async function register() {
     // Anonymous daily usage counts (Settings > About & privacy turns this off).
     const { startUsageReporter } = await import("./lib/usage");
     startUsageReporter();
+    // Routines: scheduled tasks run while oovi is open (or in the background, when the user allows it).
+    const { startRoutines } = await import("./lib/routines-scheduler");
+    startRoutines();
   }
 }

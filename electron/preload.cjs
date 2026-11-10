@@ -10,6 +10,21 @@ contextBridge.exposeInMainWorld("oovi", {
   openFile: (p) => ipcRenderer.invoke("oovi:open-file", String(p ?? "")),
   showFile: (p) => ipcRenderer.invoke("oovi:show-file", String(p ?? "")),
 
+  /** "Keep oovi running in the background (system tray)". Resolves to {supported, on}. */
+  background: {
+    get: () => ipcRenderer.invoke("oovi:background-get"),
+    set: (on) => ipcRenderer.invoke("oovi:background-set", on === true),
+  },
+
+  /** The desktop app asks the page to open an in-app path (e.g. after a notification click). Returns an unsubscribe function. */
+  onNavigate: (cb) => {
+    const fn = (_e, p) => {
+      if (typeof p === "string") cb(p);
+    };
+    ipcRenderer.on("oovi:navigate", fn);
+    return () => ipcRenderer.removeListener("oovi:navigate", fn);
+  },
+
   /** App updates (see electron/updater.cjs). */
   updates: {
     get: () => ipcRenderer.invoke("oovi:update-get"),
