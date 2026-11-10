@@ -75,3 +75,14 @@ jobs:
           files=(dist/*.dmg dist/*.exe dist/*.appx dist/latest*.yml dist/*.exe.blockmap)
           echo "Uploading ${files[*]} to $TAG"
           gh release upload "$TAG" "${files[@]}" --clobber
+
+  # After both machines have attached their installers, copy them to the public downloads
+  # repo (website download buttons + the app's self-update). See publish-downloads.yml.
+  downloads:
+    needs: build
+    if: github.event_name == 'release' || inputs.tag != ''
+    uses: ./.github/workflows/publish-downloads.yml
+    with:
+      tag: ${{ github.event.release.tag_name || inputs.tag }}
+    secrets:
+      DOWNLOADS_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
