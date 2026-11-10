@@ -156,7 +156,8 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
     let maxOut = effort === "auto" ? MAX_OUTPUT : OUTPUT_FOR[effort];
     let reasoning = effort !== "auto";
     let noMedia = false;
-    for (let attempt = 0; attempt < 5; attempt++) {
+    let blips = 0;
+    for (let attempt = 0; attempt < 7; attempt++) {
       try {
         const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto", noMedia);
         cooldown.delete(keyOf(ref));
@@ -171,6 +172,15 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
         // This model can't take images/PDFs, or the request got too big with them: send the files as text notes instead.
         if (!noMedia && hasMedia(messages) && (status === 413 || (status === 400 && MEDIA_REJECTED.test(raw)))) {
           noMedia = true;
+          continue;
+        }
+        // A blip (network drop, a busy or restarting server): wait a moment and try the same model
+        // again, twice. theOovi has no other model behind it; with own keys, only when no other
+        // model is left to fall back to. Never for a timeout (it would only wait as long again)
+        // or a definite answer (credits, limits, signed out).
+        if (blips < 2 && isBlip(e, status) && (ref.provider === "oovi" || qi === queue.length - 1)) {
+          blips++;
+          await sleep(retryAfter && retryAfter <= 20 ? retryAfter * 1000 : blips === 1 ? 2000 : 6000, signal);
           continue;
         }
         if (ref.provider === "oovi") throw hostedFailure(e);
@@ -228,6 +238,18 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
 const HOSTED_STATES = new Set<string>(["verify_email", "no_credits", "daily_limit", "suspended", "paused", "off", "blocked"]);
 
 /** Turns a failed theOovi call into a HostedError with a clear message and code. */
+/** A failure worth one quick retry: the connection dropped, or the server was briefly busy or down. */
+export function isBlip(e: unknown, status: number): boolean {
+  const name = (e as Error)?.name ?? "";
+  const raw = (e as Error)?.message ?? "";
+  if (e instanceof HostedError) return false; // already a definite theOovi answer
+  if (name === "TimeoutError" || name === "AbortError" || /timed? ?out|timeout/i.test(raw)) return false;
+  const code = e instanceof ProviderError ? e.code : undefined;
+  if (code && code !== "busy" && code !== "unavailable") return false; // a definite answer: credits, limits, paused…
+  // Not 500: the server may have done (and charged for) the work before failing.
+  return status === 0 || status === 408 || status === 429 || status === 502 || status === 503 || status === 504 || status === 529;
+}
+
 function hostedFailure(e: unknown): HostedError {
   if (e instanceof HostedError) return e;
   const status = e instanceof ProviderError ? e.status : 0;

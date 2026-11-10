@@ -27,6 +27,7 @@ import { loadSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
 import { getChat, listBots, newId, saveChat } from "./store";
+import { healInterrupted } from "./delegations-core";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, proposalOf, runRoutineTool } from "./routines-tools";
@@ -64,6 +65,8 @@ export type RunInput = {
   telegramChatId?: number;
   /** Set by the routines scheduler only (never from the HTTP API): the routine (id) this message comes from. */
   routine?: string;
+  /** Set by the main bot only (never from the HTTP API): the id the new message gets, so it can follow that task. */
+  entryId?: string;
 };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
@@ -680,12 +683,13 @@ async function* runBot(
             results.push(await runComputerTool(c, chat, s));
           } else if (ROUTINE_TOOLS.has(c.name)) {
             results.push(runRoutineTool(c, bot));
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
       countTools(last.toolCalls, results);
       entry.steps.push({ role: "tool", results });
+      saveProgress(chat);
       yield { type: "entry", entry };
       continue;
     }
@@ -721,6 +725,7 @@ async function* runBot(
       if (out.ref.provider !== "oovi") countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
       if (out.note) entry.note = out.note;
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, ...(out.reasoning ? { reasoning: out.reasoning.slice(0, 20_000) } : {}) });
+      saveProgress(chat);
       yield { type: "entry", entry };
     } catch (e) {
       if (signal.aborted) {
@@ -759,6 +764,8 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   const settings = loadSettings();
   const chat = getChat(chatId);
   if (!chat) throw new Error("Chat not found.");
+  // A reply left "working…" when the app closed mid-run (this run is the only one holding the chat now).
+  if (typeof input.text === "string" && healInterrupted(chat)) saveChat(chat);
   const bots = listBots();
   const members = chat.memberIds.map((id) => bots.find((b) => b.id === id)).filter((b): b is Bot => !!b);
   if (!members.length) throw new Error("This chat has no bots yet. Add some in the group settings.");
@@ -799,7 +806,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       }
     }
     const user: UserEntry = {
-      id: newId(),
+      id: input.entryId && /^[\w-]{1,40}$/.test(input.entryId) && !chat.entries.some((e) => e.id === input.entryId) ? input.entryId : newId(),
       kind: "user",
       text,
       at: Date.now(),
@@ -985,15 +992,46 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   if (chat.pending && !chat.pending.approval) chat.pending = undefined;
   saveChat(chat);
 
-  // Self-learning: review real work and keep what's worth remembering.
+  // Self-learning: review real work and keep what's worth remembering, after the reply has
+  // gone out (Telegram, the group's report, a routine's result don't wait for it).
   // (Not after a routine's unattended run: the same task every day would only repeat the same lessons.)
   if (!signal.aborted && settings.learning !== false && !chat.pending && !input.routine) {
-    const learned = await learnFromRun(chat, bots, settings, signal);
-    if (learned) {
-      saveChat(chat);
-      yield { type: "entry", entry: learned };
-    }
+    learnLater(chat.id, bots, settings, [...chat.entries].reverse().find((e) => e.kind === "bot")?.id);
   }
+}
+
+/** Save the chat while a bot works, at most every few seconds, so a crash or restart keeps the work so far. */
+const lastSave = new Map<string, number>();
+function saveProgress(chat: Chat) {
+  const now = Date.now();
+  if (now - (lastSave.get(chat.id) ?? 0) < 3000) return;
+  lastSave.set(chat.id, now);
+  if (lastSave.size > 200) lastSave.clear();
+  saveChat(chat);
+}
+
+/** Whether a run holds the chat (runner.ts's map; read directly, since runner.ts imports this file). */
+const isRunning = (chatId: string) => !!(globalThis as typeof globalThis & { __ooviRuns?: Map<string, unknown> }).__ooviRuns?.has(chatId);
+
+/** Run the learning review once the run has ended; write the note only if no newer run holds the chat. */
+function learnLater(chatId: string, bots: Bot[], settings: Settings, lastEntryId: string | undefined) {
+  const lastBotId = (c: Chat) => [...c.entries].reverse().find((e) => e.kind === "bot")?.id;
+  setTimeout(() => {
+    void (async () => {
+      if (isRunning(chatId) || !lastEntryId) return;
+      const chat = getChat(chatId);
+      // Something was added since (a report, a new message): this run's work is no longer the latest.
+      if (!chat || lastBotId(chat) !== lastEntryId) return;
+      const learned = await learnFromRun(chat, bots, settings, AbortSignal.timeout(90_000));
+      if (!learned || isRunning(chatId)) return;
+      // Re-read: the chat may have changed while the review ran (a report, a cleared chat).
+      const fresh = getChat(chatId);
+      const target = fresh?.entries.find((e): e is BotEntry => e.kind === "bot" && e.id === learned.id);
+      if (!fresh || !target || learned.id !== lastEntryId) return;
+      target.learned = learned.learned;
+      saveChat(fresh);
+    })().catch((e) => console.error("[learning]", (e as Error).message));
+  }, 300); // after the run has let go of the chat
 }
 
 /** Run a reflection on the work since the user's last message, when it's worth it. */

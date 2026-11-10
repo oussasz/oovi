@@ -8,11 +8,21 @@ import type { ChatEvent } from "./types";
 
 type Listener = (e: ChatEvent) => void;
 type Run = { ctrl: AbortController; listeners: Set<Listener> };
+type EndHook = (chatId: string) => void;
 
-const g = globalThis as typeof globalThis & { __ooviRuns?: Map<string, Run> };
+const g = globalThis as typeof globalThis & { __ooviRuns?: Map<string, Run>; __ooviRunEnd?: Set<EndHook> };
 const runs = (g.__ooviRuns ??= new Map<string, Run>());
+const endHooks = (g.__ooviRunEnd ??= new Set<EndHook>());
 
 export const isRunning = (chatId: string) => runs.has(chatId);
+
+/** Be told whenever a run ends (any chat), after it has let go of the chat. Returns an unsubscribe function. */
+export function onRunEnd(fn: EndHook): () => void {
+  endHooks.add(fn);
+  return () => {
+    endHooks.delete(fn);
+  };
+}
 
 /** Starts a run. Returns false if this chat is already running. */
 export function startRun(chatId: string, input: RunInput): boolean {
@@ -36,9 +46,41 @@ export function startRun(chatId: string, input: RunInput): boolean {
     } finally {
       runs.delete(chatId);
       emit({ type: "done" });
+      // After the listeners, and outside this run's stack: a hook may start another run.
+      for (const h of endHooks) {
+        setTimeout(() => {
+          try {
+            h(chatId);
+          } catch (e) {
+            console.error("[runner] end hook:", (e as Error).message);
+          }
+        }, 0);
+      }
     }
   })();
   return true;
+}
+
+/** Resolves when the chat's current run has ended (at once if none), or after `ms`. True when it ended. */
+export function whenIdle(chatId: string, ms = 60_000): Promise<boolean> {
+  return new Promise((resolve) => {
+    let unsub: (() => void) | null = null;
+    const t = setTimeout(() => {
+      unsub?.();
+      resolve(false);
+    }, ms);
+    unsub = subscribe(chatId, (e) => {
+      if (e.type === "done") {
+        clearTimeout(t);
+        unsub?.();
+        resolve(true);
+      }
+    });
+    if (!unsub) {
+      clearTimeout(t);
+      resolve(true);
+    }
+  });
 }
 
 /** Listen to a running chat. Returns an unsubscribe function, or null if nothing is running. */

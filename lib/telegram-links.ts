@@ -122,11 +122,43 @@ export function routeUpdate(u: TgUpdate, ctx: RouteContext): Route {
 export type ApprovalItemLike = { call: { id: string }; folder?: string; always?: boolean };
 export type ApprovalInput = { decisions: Record<string, boolean>; alwaysFolders?: boolean; alwaysEdit?: boolean };
 
-/** "/yes", "/no", "/yes always" → the decisions for a pending approval. */
-export function approvalCommand(text: string, pending?: { items: ApprovalItemLike[] }): { kind: "none" } | { kind: "nothing-pending" } | { kind: "decide"; input: ApprovalInput } {
-  if (!/^\/(yes|no)\b/i.test(text)) return { kind: "none" };
+// A whole message that is just "yes" or "no", in the languages oovi speaks (and Algerian
+// Arabic). Only used while something waits for the user's answer, so "ok" in a normal
+// conversation stays a normal message. Words that mean yes in one dialect and no in
+// another (e.g. "ماشي") are left out.
+const YES_WORDS = new Set(["yes", "y", "yep", "yeah", "ok", "okay", "sure", "allow", "approve", "oui", "ouais", "d'accord", "daccord", "sí", "si", "vale", "ja", "evet", "tamam", "نعم", "ايه", "إيه", "اي", "أي", "واه", "موافق", "اوكي", "أوكي"]);
+const NO_WORDS = new Set(["no", "n", "nope", "deny", "cancel", "non", "nein", "hayır", "hayir", "لا", "لالا", "بلاش"]);
+
+/** true for a plain yes, false for a plain no, null for anything else. */
+export function yesNo(text: string): boolean | null {
+  const w = text
+    .trim()
+    .toLowerCase()
+    .replace(/[\s.!؟?،,]+$/u, "")
+    .replace(/^[\s.!¡¿]+/u, "");
+  if (!w || w.length > 12) return null;
+  if (YES_WORDS.has(w) || w === "👍") return true;
+  if (NO_WORDS.has(w) || w === "👎") return false;
+  return null;
+}
+
+/** An answer to a waiting plan: "/yes", "/no", or (words: shown in this chat) a plain yes/no word. null: anything else (asks for changes). */
+export function planAnswer(text: string, words = false): boolean | null {
+  if (/^\/(yes|no)\b/i.test(text)) return /^\/yes/i.test(text);
+  return words ? yesNo(text) : null;
+}
+
+/**
+ * "/yes", "/no", "/yes always" → the decisions for a pending approval. words: also a plain
+ * yes/no word, allowed only when the request was shown in this Telegram chat (so "ok" never
+ * approves something the user didn't see here).
+ */
+export function approvalCommand(text: string, pending?: { items: ApprovalItemLike[] }, words = false): { kind: "none" } | { kind: "nothing-pending" } | { kind: "decide"; input: ApprovalInput; word?: true } {
+  const command = /^\/(yes|no)\b/i.test(text);
+  const word = command || !words ? null : yesNo(text);
+  if (!command && (word === null || !pending)) return { kind: "none" };
   if (!pending) return { kind: "nothing-pending" };
-  const ok = /^\/yes/i.test(text);
+  const ok = command ? /^\/yes/i.test(text) : word === true;
   // "/yes always": also remember the folder (files on this computer) or allow edits (project folder).
   const always = ok && /^\/yes\s+always\b/i.test(text);
   return {
@@ -135,6 +167,7 @@ export function approvalCommand(text: string, pending?: { items: ApprovalItemLik
       decisions: Object.fromEntries(pending.items.map((i) => [i.call.id, ok])),
       ...(always ? { alwaysFolders: pending.items.some((i) => !!i.folder), alwaysEdit: pending.items.some((i) => !!i.always) } : {}),
     },
+    ...(command ? {} : { word: true as const }),
   };
 }
 

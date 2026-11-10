@@ -262,7 +262,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   const input = call.input;
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
-  if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings);
+  if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings, ctx.signal);
   // One cloud computer per chat (sessionId is "<chatId>_<botId>").
   if (VM_TOOLS.has(call.name)) return runVmTool(call, settings, sessionId.split("_")[0] ?? sessionId, workspace);
   try {

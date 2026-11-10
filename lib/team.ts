@@ -3,11 +3,15 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { groupTaskState } from "./delegations-core";
+import { addDelegation, removeDelegation, toolText, updateDelegation } from "./delegations";
 import type { ToolSpec } from "./llm";
-import { isRunning, startRun, subscribe } from "./runner";
+import { isRunning, startRun, stopRun, whenIdle } from "./runner";
 import { dataDir } from "./settings";
-import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
-import type { Bot, BotEntry, Chat, ToolCall, ToolResult } from "./types";
+import { getChat, listBots, listChats, newId } from "./store";
+import type { Bot, Chat, ToolCall, ToolResult } from "./types";
+
+export { onReport } from "./delegations";
 
 export const TEAM_SPECS: ToolSpec[] = [
   {
@@ -38,7 +42,8 @@ export const TEAM_SPECS: ToolSpec[] = [
 
 export const TEAM_TOOLS: ReadonlySet<string> = new Set(TEAM_SPECS.map((s) => s.name));
 
-const WAIT_MS = 4 * 60 * 1000;
+/** How long message_group waits for a quick answer before the task is followed in the background (delegations.ts). */
+const WAIT_MS = 2 * 60 * 1000;
 const LEADERISH = /lead|assistant|chef|leader|boss|قائد|مساعد/i;
 
 const pinFile = () => path.join(dataDir(), "main.json");
@@ -81,80 +86,26 @@ function findGroup(name: unknown): Chat | string {
 
 const nameOf = (bots: Bot[], id: string) => bots.find((b) => b.id === id)?.name ?? "a bot";
 
-/** Final answer of the run that started at `fromEntry`, or a status line. */
-function outcome(chat: Chat, fromEntry: string, bots: Bot[]): string {
-  const i = chat.entries.findIndex((e) => e.id === fromEntry);
-  const after = chat.entries.slice(i + 1).filter((e): e is BotEntry => e.kind === "bot");
-  if (chat.pending?.approval) {
-    const who = nameOf(bots, chat.pending.approval.botId);
-    return `The group "${chat.name}" is waiting for the user's approval: ${who} wants to ${chat.pending.approval.items.map((x) => x.summary).join("; ")}. Tell the user to open the group "${chat.name}" to approve or deny.`;
-  }
-  const last = [...after].reverse().find((e) => e.text || e.error);
-  if (!last) return `The group "${chat.name}" didn't answer.`;
-  if (last.status === "error") return `${nameOf(bots, last.botId)} in "${chat.name}" hit a problem: ${last.error ?? "unknown error"}`;
-  return `Final answer from ${nameOf(bots, last.botId)} in "${chat.name}":\n${last.text.slice(0, 8000)}`;
-}
-
-/** Wait for a group's run to end (or the time limit). Resolves true when it ended. */
-function waitForRun(chatId: string, ms: number): Promise<boolean> {
+/** Wait for a group's run to end, the time limit, or a stop. Resolves true when the run ended. */
+function waitForGroup(chatId: string, ms: number, signal?: AbortSignal): Promise<boolean> {
+  if (!signal) return whenIdle(chatId, ms);
+  if (signal.aborted) return Promise.resolve(false);
   return new Promise((resolve) => {
-    let unsub: (() => void) | null = null;
-    const t = setTimeout(() => {
-      unsub?.();
-      resolve(false);
-    }, ms);
-    unsub = subscribe(chatId, (e) => {
-      if (e.type === "done") {
-        clearTimeout(t);
-        unsub?.();
-        resolve(true);
-      }
+    const onAbort = () => resolve(false);
+    signal.addEventListener("abort", onAbort, { once: true });
+    void whenIdle(chatId, ms).then((ended) => {
+      signal.removeEventListener("abort", onAbort);
+      resolve(ended);
     });
-    if (!unsub) {
-      clearTimeout(t);
-      resolve(true);
-    }
   });
-}
-
-// ---------- reports to the user ----------
-
-type ReportSink = (text: string) => void;
-const g = globalThis as typeof globalThis & { __ooviReportSinks?: Set<ReportSink> };
-const sinks = (g.__ooviReportSinks ??= new Set<ReportSink>());
-
-/** Also send the main bot's reports somewhere else (e.g. Telegram). */
-export function onReport(fn: ReportSink): () => void {
-  sinks.add(fn);
-  return () => {
-    sinks.delete(fn);
-  };
-}
-
-/** Post a message from the main bot into its own chat (no model call), and forward it. */
-export async function postReport(text: string): Promise<void> {
-  const bot = mainBot();
-  if (!bot) return;
-  const id = dmId(bot.id);
-  // Don't write into the chat while a run there holds it in memory.
-  for (let i = 0; i < 300 && isRunning(id); i++) await new Promise((r) => setTimeout(r, 2000));
-  const chat = getChat(id);
-  if (!chat) return;
-  const entry: BotEntry = { id: newId(), kind: "bot", botId: bot.id, at: Date.now(), steps: [], text, status: "done", usage: { input: 0, output: 0 } };
-  chat.entries.push(entry);
-  saveChat(chat);
-  for (const s of sinks) {
-    try {
-      s(text);
-    } catch {
-      /* a sink must not break reporting */
-    }
-  }
 }
 
 // ---------- tools ----------
 
-export async function runTeamTool(call: ToolCall, self: Bot): Promise<ToolResult> {
+/** Where the main bot's own turn came from: the group's run inherits it (files and approvals go back there). */
+export type TeamCtx = { signal?: AbortSignal; channel?: "telegram"; telegramChatId?: number };
+
+export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}): Promise<ToolResult> {
   const ok = (content: string): ToolResult => ({ id: call.id, name: call.name, content });
   const bad = (content: string): ToolResult => ({ id: call.id, name: call.name, content, isError: true });
   const bots = listBots();
@@ -189,20 +140,43 @@ export async function runTeamTool(call: ToolCall, self: Bot): Promise<ToolResult
     const message = String(call.input.message ?? "").trim();
     if (!message) return bad("message is required");
     if (isRunning(group.id)) return bad(`"${group.name}" is still working on something. Check it with read_group, or try again in a minute.`);
-    const known = new Set(group.entries.map((e) => e.id));
-    if (!startRun(group.id, { text: message, via: self.id })) return bad(`"${group.name}" is busy right now.`);
-    const finished = await waitForRun(group.id, WAIT_MS);
+    // A new message would cancel what the group is waiting for the user to answer.
+    if (group.pending?.approval || group.pending?.planReview) {
+      const what = group.pending.approval ? `its OK for: ${group.pending.approval.items.map((x) => x.summary).join("; ")}` : "their review of its plan";
+      return bad(`"${group.name}" is waiting for the user's answer on its last task (${what}). Tell the user; send it a new task only after they've answered.`);
+    }
+    const telegram = ctx.channel === "telegram" && typeof ctx.telegramChatId === "number" ? { channel: "telegram" as const, telegramChatId: ctx.telegramChatId } : undefined;
+    const sentEntryId = newId();
+    if (!startRun(group.id, { text: message, via: self.id, entryId: sentEntryId, ...(telegram ?? {}) })) return bad(`"${group.name}" is busy right now.`);
+    // On disk from the start: if this turn ends early (stop, crash, restart), the result still reaches the user.
+    const task = addDelegation({ groupId: group.id, groupName: group.name, sentEntryId, mainBotId: self.id, ...(telegram ? { origin: telegram } : {}), startedAt: Date.now(), inline: true });
+    await waitForGroup(group.id, WAIT_MS, ctx.signal);
+    if (ctx.signal?.aborted) {
+      stopRun(group.id);
+      removeDelegation(task.id);
+      return bad("Stopped by the user.");
+    }
     const after = getChat(group.id);
-    if (!after) return bad("The group was deleted.");
-    const sent = after.entries.find((e) => !known.has(e.id) && e.kind === "user" && e.via === self.id);
-    if (!sent) return bad("The message couldn't be delivered.");
-    if (finished) return ok(outcome(after, sent.id, bots));
-    // Long job: report to the user when the group is done.
-    void waitForRun(group.id, 60 * 60 * 1000).then(() => {
-      const done = getChat(group.id);
-      if (done) void postReport(`**${group.name}** finished.\n\n${outcome(done, sent.id, listBots()).replace(/^Final answer from [^\n]*\n/, "")}`);
-    });
-    return ok(`"${group.name}" is still working on it. Its answer will be posted to the user automatically when it's done. Tell the user that.`);
+    if (!after) {
+      removeDelegation(task.id);
+      return bad("The group was deleted.");
+    }
+    const state = groupTaskState(after, sentEntryId, isRunning(group.id));
+    const text = toolText(state, group.name, listBots(), !!telegram);
+    if (state.kind === "running") {
+      // Long job: followed in the background; its answer is posted when it's done.
+      updateDelegation(task.id, (d) => (d.inline = false));
+    } else if (state.kind === "approval" || state.kind === "plan") {
+      // This turn tells the user what the group needs; the final answer comes later.
+      updateDelegation(task.id, (d) => {
+        d.inline = false;
+        d.notified = state.key;
+        d.notifiedAt = Date.now();
+      });
+    } else {
+      removeDelegation(task.id);
+    }
+    return state.kind === "gone" || state.kind === "empty" ? bad(text) : ok(text);
   }
 
   return bad(`Unknown tool: ${call.name}`);

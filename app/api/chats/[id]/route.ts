@@ -1,7 +1,7 @@
 import { closeSession } from "@/lib/browser";
 import { guard } from "@/lib/guard";
 import { stopVm } from "@/lib/sandbox";
-import { isRunning, stopRun } from "@/lib/runner";
+import { isRunning, stopRun, whenIdle } from "@/lib/runner";
 import { deleteChat, getChat, saveChat, validateGroup } from "@/lib/store";
 import type { ChatWithState } from "@/lib/types";
 import { validateWorkspace } from "@/lib/workspace";
@@ -56,6 +56,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const chat = getChat((await params).id);
   if (!chat) return notFound();
   stopRun(chat.id);
+  // Let the stopped run finish first: its last save would otherwise bring the chat back.
+  await whenIdle(chat.id, 15_000);
   await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
   await stopVm(chat.id);
   deleteChat(chat.id);
