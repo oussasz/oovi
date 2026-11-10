@@ -5,10 +5,12 @@
 //   - checks the account (blocked, paused for the user, credits, today's limit, concurrency)
 //   - checks the global daily budget (a kill switch for runaway spend)
 //   - keeps only the fields it expects, caps sizes, and picks the model itself
+//     (desktop control: only a model that has Anthropic's computer toolset)
 //   - calls the provider with the key from the console (never sent to anyone)
 //   - charges what the call really cost and records it for the console's KPIs
 import { clientIp, getRequestSession, json, rateLimit } from "@/lib/api";
 import { EFFORTS, getAiConfig, getProviderKey, type AiConfig, type Effort } from "@/lib/ai-config";
+import { COMPUTER_TOOLSET_TOKENS, cleanCache, cleanTools, hasComputerToolset, supportsComputerToolset } from "@/lib/ai-tools";
 import {
   bumpSpend,
   costUsd,
@@ -33,8 +35,13 @@ export const maxDuration = 300;
 // Attachments (images and PDFs, base64) make requests much larger than text alone.
 const MAX_BODY = 30 * 1024 * 1024;
 const MAX_MESSAGES = 600;
-const MAX_TOOLS = 128;
 const UPSTREAM_TIMEOUT = 270_000;
+/**
+ * Anthropic API version. 2026-10-21 only removes things this route never forwards
+ * (temperature/top_p/top_k, documents in assistant turns, citations on user text: both
+ * refused or stripped below); everything else, including the computer toolset, works the same.
+ */
+const ANTHROPIC_VERSION = "2026-10-21";
 // Server-side setting only (tests point it at a local mock). Never taken from a request.
 const UPSTREAM = (process.env.OOVI_AI_UPSTREAM || "https://api.anthropic.com").replace(/\/+$/, "");
 const BLOCK_TYPES = new Set(["text", "tool_use", "tool_result", "image", "document"]);
@@ -92,6 +99,16 @@ function cleanBlock(b: Block): Block | null {
   return cleanCache(b);
 }
 
+/** The API refuses cited text sent back as user input: drop citations from user text (also inside tool results). */
+function noCitations(b: Block): Block {
+  if (b.type === "text" && "citations" in b) {
+    const { citations: _c, ...rest } = b;
+    return rest;
+  }
+  if (b.type === "tool_result" && Array.isArray(b.content)) return { ...b, content: (b.content as Block[]).map(noCitations) };
+  return b;
+}
+
 /** Pages in a base64 PDF (counts page objects; a size-based guess when they're compressed away). */
 function pdfPages(data: string): number {
   const bin = Buffer.from(data, "base64").toString("latin1");
@@ -118,17 +135,9 @@ function requestTokens(system: unknown, messages: Message[], tools: unknown): nu
     return b;
   };
   const light = messages.map((m) => (typeof m.content === "string" ? m : { ...m, content: m.content.map(strip) }));
-  return estimateTokens(JSON.stringify(system).length + JSON.stringify(light).length + JSON.stringify(tools).length) + media;
-}
-
-function cleanCache(b: Block): Block {
-  const out = { ...b };
-  if ("cache_control" in out) {
-    const cc = out.cache_control as { type?: unknown } | null;
-    if (cc && typeof cc === "object" && cc.type === "ephemeral") out.cache_control = { type: "ephemeral" };
-    else delete out.cache_control;
-  }
-  return out;
+  // The computer toolset is sent by name only but costs ~4.5K tokens of definitions.
+  const toolset = Array.isArray(tools) && hasComputerToolset(tools as Block[]) ? COMPUTER_TOOLSET_TOKENS : 0;
+  return estimateTokens(JSON.stringify(system).length + JSON.stringify(light).length + JSON.stringify(tools).length) + media + toolset;
 }
 
 /** Keeps only valid roles and block types; null when the shape is wrong. */
@@ -151,7 +160,7 @@ function cleanMessages(raw: unknown): Message[] | null {
     for (const b of kept) {
       const c = cleanBlock(b);
       if (!c) return null; // a URL source, a wrong media type or broken data: refuse the request
-      blocks.push(c);
+      blocks.push(role === "user" ? noCitations(c) : c);
     }
     if (!blocks.length) return null;
     out.push({ role, content: blocks });
@@ -166,20 +175,6 @@ function cleanSystem(raw: unknown): string | Block[] | null {
   return raw.filter((b): b is Block => !!b && typeof b === "object" && (b as Block).type === "text" && typeof (b as Block).text === "string").map(cleanCache);
 }
 
-function cleanTools(raw: unknown): Block[] | null {
-  if (raw === undefined || raw === null) return [];
-  if (!Array.isArray(raw) || raw.length > MAX_TOOLS) return null;
-  const out: Block[] = [];
-  for (const t of raw) {
-    if (!t || typeof t !== "object") return null;
-    const { name, description, input_schema, cache_control } = t as Block;
-    if (typeof name !== "string" || !/^[a-zA-Z0-9_-]{1,128}$/.test(name)) return null;
-    if (!input_schema || typeof input_schema !== "object") return null;
-    out.push(cleanCache({ name, description: typeof description === "string" ? description : "", input_schema, ...(cache_control ? { cache_control } : {}) }));
-  }
-  return out;
-}
-
 function effortOf(raw: unknown, cfg: AiConfig): Effort | null {
   if (typeof raw !== "string" || !(EFFORTS as readonly string[]).includes(raw)) return null;
   return EFFORTS[Math.min(EFFORTS.indexOf(raw as Effort), EFFORTS.indexOf(cfg.maxEffort))]!;
@@ -191,7 +186,7 @@ async function callAnthropic(key: string, body: Record<string, unknown>, signal:
   try {
     const res = await fetch(`${UPSTREAM}/v1/messages`, {
       method: "POST",
-      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
+      headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
       body: JSON.stringify(body),
       signal,
     });
@@ -260,6 +255,10 @@ export async function POST(req: Request) {
   const requestedOut = typeof raw.max_tokens === "number" && raw.max_tokens > 0 ? Math.floor(raw.max_tokens) : 8192;
   const maxOut = Math.min(requestedOut, cfg.maxOutputTokens);
   const effort = effortOf(raw.effort, cfg);
+  // Desktop control: only models with Anthropic's computer toolset may answer.
+  const desktop = hasComputerToolset(tools);
+  const models = [cfg.model, ...(cfg.backupModel && cfg.backupModel !== cfg.model ? [cfg.backupModel] : [])].filter((m) => !desktop || supportsComputerToolset(m));
+  if (!models.length) return fail(400, "desktop_unsupported", `${cfg.displayName} can't control the desktop right now. Turn off desktop control for this task, or use your own Anthropic key.`);
 
   const estIn = requestTokens(system, messages, tools);
   if (estIn > cfg.maxInputTokens) {
@@ -287,7 +286,6 @@ export async function POST(req: Request) {
     ...(effort && withEffort ? { thinking: { type: "adaptive", display: "summarized" }, output_config: { effort } } : {}),
   });
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT)]);
-  const models = [cfg.model, ...(cfg.backupModel && cfg.backupModel !== cfg.model ? [cfg.backupModel] : [])];
   let up: Upstream | null = null;
   for (const model of models) {
     let withEffort = true;
