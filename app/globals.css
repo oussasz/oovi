@@ -360,6 +360,20 @@ a.tag { text-decoration: none; }
 .hero p { color: var(--muted); font-size: 16.5px; margin: 0 0 18px; }
 .hero .notice { margin: 0 auto 16px; text-align: left; }
 .hero-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+/* Task-first home: ask the Chief straight away, with example tasks to start from. */
+.hero-faces { display: flex; justify-content: center; }
+.gate-card { position: relative; }
+.gate-lang { position: absolute; top: 14px; inset-inline-end: 14px; display: flex; align-items: center; gap: 4px; color: var(--muted); }
+.gate-lang select { font: inherit; font-size: 12.5px; background: transparent; color: var(--muted); border: 1px solid var(--border); border-radius: 8px; padding: 3px 6px; }
+.home-ask { max-width: 620px; margin: 0 auto 12px; text-align: start; }
+.home-ask textarea { flex: 1; font: inherit; color: var(--text); outline: none; }
+.home-ideas { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 620px; }
+.home-ideas .idea { text-align: start; }
+@media (max-width: 640px) { .home-ideas { grid-template-columns: 1fr; } }
+.section-title .section-aside { margin-inline-start: 12px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.tile.is-hidden { opacity: 0.6; }
+.task-total { font-size: 12px; color: var(--muted); margin: -4px 0 14px 54px; }
+.handoff-cost { font-size: 12px; color: var(--muted); margin-inline-start: 6px; }
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(176px, 1fr)); gap: 12px; }
 .tile {
   display: flex; flex-direction: column; align-items: center; text-align: center; gap: 4px;
@@ -412,7 +426,10 @@ a.tag { text-decoration: none; }
 .msg-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); }
 .msg-meta b { color: var(--text); font-size: 14.5px; }
 .role { color: #171717; font-weight: 800; font-size: 11px; padding: 1px 8px; border-radius: 99px; }
-.bubble { padding: 11px 15px; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }
+/* unicode-bidi: plaintext gives every line its own direction: Arabic lines read right to left
+   (punctuation and list numbers on the correct side), French/English lines left to right. */
+.bubble { padding: 11px 15px; border-radius: 18px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; unicode-bidi: plaintext; text-align: start; }
+.bubble .md-h { font-weight: 700; }
 .user-bubble { background: var(--user); border-bottom-right-radius: 6px; max-width: min(80%, 620px); }
 .bot-bubble { background: var(--panel); border: 1px solid var(--border); border-top-left-radius: 6px; }
 .bubble a { color: inherit; text-decoration-color: var(--faint); text-underline-offset: 3px; }
@@ -439,7 +456,20 @@ a.tag { text-decoration: none; }
 .handoff { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
 .handoff-chip { display: inline-flex; align-items: center; gap: 4px; font-weight: 800; color: var(--text); background: var(--soft); border-radius: 99px; padding: 2px 9px 2px 3px; }
 
+.side-more { display: flex; align-items: center; gap: 6px; width: 100%; padding: 6px 12px; margin-top: 2px; background: none; border: 0; color: var(--muted); font-size: 12.5px; cursor: pointer; border-radius: 8px; text-align: start; }
+.side-more:hover { background: var(--hover, rgba(255, 255, 255, 0.04)); color: var(--text); }
+.side-more[aria-expanded="true"] svg { transform: rotate(-90deg); }
+.side-more svg { transform: rotate(90deg); transition: transform 0.15s; }
 .approval { display: flex; gap: 14px; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius); padding: 14px 16px; }
+/* A proposed specialist: a friendly "new teammate" card, not a warning. */
+.approval.specialist-card { background: var(--panel); border-color: var(--border); }
+.specialist-card .spec { display: flex; gap: 14px; align-items: flex-start; margin: 12px 0; }
+.specialist-card .spec-body { min-width: 0; flex: 1; }
+.specialist-card .spec-name { font-weight: 700; font-size: 16px; }
+.specialist-card .spec-role { font-weight: 500; font-size: 13px; color: var(--muted); margin-inline-start: 6px; }
+.specialist-card .spec-why { margin: 4px 0 6px; unicode-bidi: plaintext; }
+.specialist-card .spec-meta { display: flex; flex-wrap: wrap; gap: 6px; font-size: 12px; color: var(--muted); }
+.specialist-card .spec-meta span { border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; }
 .approval ul { margin: 6px 0 12px; padding-left: 18px; }
 .approval .row { display: flex; gap: 8px; }
 .approval .row.wrap { flex-wrap: wrap; }

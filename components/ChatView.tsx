@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
 import { FACE_COLORS } from "@/lib/faces";
 import { HOSTED_NAME, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
@@ -20,6 +20,27 @@ import PlanReview from "./PlanReview";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { EFFORT_LEVELS } from "@/lib/slash";
+
+/**
+ * What a team task cost, shown under its last message: the credits of every bot reply since
+ * the user's message. Only for tasks more than one bot worked on, and once they're finished.
+ */
+function taskCredits(entries: ChatWithState["entries"], i: number, running: boolean): { credits: number; bots: number } | null {
+  const next = entries[i + 1];
+  if (next && next.kind !== "user") return null; // not the task's last message
+  if (running && i === entries.length - 1) return null;
+  let credits = 0;
+  const who = new Set<string>();
+  let replies = 0;
+  for (let j = i; j >= 0; j--) {
+    const e = entries[j];
+    if (!e || e.kind === "user") break;
+    if (typeof e.credits === "number") credits += e.credits;
+    who.add(e.botId);
+    replies++;
+  }
+  return replies >= 2 && who.size >= 2 && credits > 0 ? { credits, bots: who.size } : null;
+}
 
 type Shot = { img: string; url: string; botId: string; label: string };
 /** One entry of the "/" command menu. */
@@ -84,7 +105,8 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "read_url": return t("chat.call.readUrl", { host: host(i.url) });
     case "create_document":
     case "create_spreadsheet":
-    case "create_presentation": return t("chat.call.createFile", { name: String(i.filename ?? "") });
+    case "create_presentation":
+    case "create_image": return t("chat.call.createFile", { name: String(i.filename ?? "") });
     case "read_document":
     case "read_file": return t("chat.call.readFile", { name: String(i.path ?? "") });
     case "read_attachment": return t("chat.call.readAttachment", { name: String(i.name ?? "") });
@@ -438,7 +460,8 @@ function BotMessage(props: {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const collapsed = !running && rows.length > 3 && !showAll;
   const tokens = e.usage.input + e.usage.output;
-  const files = rows.map((r) => r.result?.file).filter((f): f is NonNullable<ToolResult["file"]> => !!f);
+  // One card per file, even when the bot made it and then also sent it (create + send_file_to_user).
+  const files = [...new Map(rows.map((r) => r.result?.file).filter((f): f is NonNullable<ToolResult["file"]> => !!f).map((f) => [f.path, f] as const)).values()];
   const thinking = e.steps
     .map((s) => (s.role === "assistant" ? (s.reasoning ?? "") : ""))
     .filter(Boolean)
@@ -570,6 +593,7 @@ function BotMessage(props: {
                 </span>
               ) : null;
             })}
+            {typeof e.credits === "number" && <span className="handoff-cost" title={t("chat.teamCostTitle")}>{t("chat.teamCost", { n: e.handoff.length * 4 })}</span>}
           </div>
         )}
         {e.status === "done" && !!e.text && <ReplyActions e={e} chatId={chatId} onUpdate={onUpdate} />}
@@ -1251,7 +1275,9 @@ export default function ChatView({ id }: { id: string }) {
                     ? leaderMode
                       ? t("chat.leaderIntro", { name: lead?.name ?? t("chat.theLeader") })
                       : t("chat.leadIntro", { name: lead?.name ?? t("chat.theLead") })
-                    : solo?.instructions || t("chat.askAnything")}
+                    : solo?.role
+                      ? t("chat.soloIntro", { role: solo.role })
+                      : t("chat.askAnything")}
                 </p>
                 <div className="ideas">
                   {ideas.map((s) => (
@@ -1292,11 +1318,54 @@ export default function ChatView({ id }: { id: string }) {
                   )}
                 </div>
               ) : (
-                <BotMessage key={e.id} e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} />
+                <Fragment key={e.id}>
+                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} />
+                  {(() => {
+                    // A team task: show what the whole task cost, under its last message.
+                    const tot = taskCredits(chat.entries, i, running);
+                    return tot ? <div className="task-total">{t("chat.taskTotal", { n: tot.credits < 10 ? tot.credits.toFixed(1) : Math.round(tot.credits), bots: tot.bots })}</div> : null;
+                  })()}
+                </Fragment>
               ),
             )}
 
-            {approval && !running && (
+            {approval && !running && approval.items.length > 0 && approval.items.every((i) => i.specialist) && (
+              <div className="approval specialist-card" role="alert">
+                {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
+                <div>
+                  <strong>{t("spec.title", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
+                  {approval.items.map((it) => {
+                    const sp = it.specialist!;
+                    return (
+                      <div key={it.call.id} className="spec">
+                        <Face face={sp.face} mood="happy" size={64} />
+                        <div className="spec-body">
+                          <div className="spec-name">
+                            {sp.name} <span className="spec-role">{sp.role}</span>
+                          </div>
+                          {sp.why && <p className="spec-why">{sp.why}</p>}
+                          <div className="spec-meta">
+                            {sp.group && <span>{t("spec.joins", { group: sp.group })}</span>}
+                            {sp.web && <span>{t("spec.web")}</span>}
+                          </div>
+                          <details className="approval-detail">
+                            <summary>{t("spec.instructions")}</summary>
+                            <pre>{sp.instructions}</pre>
+                          </details>
+                        </div>
+                      </div>
+                    );
+                  })}
+                  <div className="row wrap">
+                    <button className="btn primary" onClick={() => decide(true)}>
+                      <Icon name="plus" size={16} /> {t("spec.create")}
+                    </button>
+                    <button className="btn" onClick={() => decide(false)}>{t("spec.notNow")}</button>
+                  </div>
+                </div>
+              </div>
+            )}
+            {approval && !running && !(approval.items.length > 0 && approval.items.every((i) => i.specialist)) && (
               <div className="approval" role="alert">
                 {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
                 <div>

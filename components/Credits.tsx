@@ -138,6 +138,12 @@ export function CreditsChip() {
               <b>{fmt(status.balance, tag)}</b>
               <span>{t("credits.left")}</span>
             </div>
+            {/* What that buys, from measured averages: a quick task ~3 credits, a team task ~20. */}
+            {status.balance > 0 && (
+              <p className="credits-msg credits-worth">
+                {t("credits.worth", { quick: fmt(Math.floor(status.balance / 3), tag), team: fmt(Math.floor(status.balance / 20), tag) })}
+              </p>
+            )}
             {offline ? (
               <p className="credits-msg">{t("credits.offline")}</p>
             ) : (
@@ -183,6 +189,11 @@ export function CreditsChip() {
             {showPilot && (
               <a className="credits-link" href={status.links.pilot} target="_blank" rel="noreferrer">
                 {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })} →
+              </a>
+            )}
+            {status.links.pricing && (
+              <a className="credits-link" href={status.links.pricing} target="_blank" rel="noreferrer">
+                {t("credits.pricing")} →
               </a>
             )}
           </div>

@@ -65,6 +65,8 @@ export type ApprovalItem = {
   text?: string;
   /** Desktop control: "Ask before every action" was on when this was asked. */
   askEvery?: boolean;
+  /** A specialist the leader proposes adding to the team: the card shows it and the button says "Create". */
+  specialist?: { name: string; role: string; instructions: string; why: string; web: boolean; face: Face; group?: string };
 };
 
 /** The one folder on the user's computer that bots in a chat may work in. */
@@ -90,6 +92,8 @@ export type Bot = {
   provider?: ProviderId;
   model?: string;
   tools: BotTools;
+  /** Kept out of the bots list (sidebar, Home). It still works in its groups and can be @mentioned. */
+  hidden?: boolean;
   createdAt: number;
 };
 

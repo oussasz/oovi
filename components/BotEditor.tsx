@@ -308,6 +308,16 @@ export default function BotEditor({ id }: { id: string }) {
               <span className="hint">{wasMain ? t("chief.what") : t("chief.makeHint")}</span>
             </span>
           </label>
+          {!wasMain && (
+            <label className="toggle">
+              <input type="checkbox" checked={!!d.hidden} onChange={(e) => set({ hidden: e.target.checked })} />
+              <span className="toggle-ui" />
+              <span>
+                <b>{t("bot.hide")}</b>
+                <span className="hint">{t("bot.hideHint")}</span>
+              </span>
+            </label>
+          )}
           <label className="toggle">
             <input type="checkbox" checked={d.tools.web} onChange={(e) => set({ tools: { ...d.tools, web: e.target.checked } })} />
             <span className="toggle-ui" />

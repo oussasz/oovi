@@ -164,7 +164,19 @@ export function lessonsPrompt(request: string): string {
 // ---------- reflection ----------
 
 /** The user telling a bot it got something wrong, or how they want things done. */
-export const CORRECTION = /^(no\b|nope|not (that|what|quite)|wrong|that'?s (not|wrong)|actually|i (said|meant|asked)|instead|don'?t|do not|stop|why did you|you (forgot|missed|didn'?t))|\b(next time|from now on|always|never|i prefer|i'd rather|too (long|short|formal|casual))\b/i;
+// English, French and Arabic (incl. Algerian Darija): users correct bots in the language they write in.
+export const CORRECTION = new RegExp(
+  [
+    String.raw`^(no\b|nope|not (that|what|quite)|wrong|that'?s (not|wrong)|actually|i (said|meant|asked)|instead|don'?t|do not|stop|why did you|you (forgot|missed|didn'?t))`,
+    String.raw`\b(next time|from now on|always|never|i prefer|i'd rather|too (long|short|formal|casual))\b`,
+    String.raw`^(non\b|pas (ça|ca|comme ça)|c'?est faux|en fait|j'?ai dit|plutôt|plutot|arr[êe]te|pourquoi tu)`,
+    String.raw`\b(la prochaine fois|désormais|dorénavant|toujours|jamais|je préfère|trop (long|court|formel))`,
+    // (\b doesn't work after Arabic letters: JavaScript's word boundary only knows ASCII.)
+    "^(لا(?=[\\s،.!؟]|$)|لالا|ماشي هكا|غالط|خطأ|قلتلك|ماشي هذا|علاش)",
+    "(المرة الجاية|المرة القادمة|من دروك|دايما|دائما|ابدا|أبدا|نفضل|أفضل|طويل بزاف|قصير بزاف)",
+  ].join("|"),
+  "i",
+);
 
 const REFLECT_SYSTEM = `You help an AI assistant team learn from finished work so it does better next time.
 You get the user's request, what the bots did (tools used, errors, final answer) and sometimes the user's feedback or correction.
@@ -173,7 +185,7 @@ Return ONLY a JSON object, no other text:
 
 lessons: 0-3 short, specific, reusable lessons (max 200 characters each) that would make similar future tasks faster or better. Good: "For flight prices, Google Flights pages need the browser; read_url returns no prices." "The user's company files are in the Reports folder; check there first." Bad: generic advice ("be thorough", "double-check work"), facts that only matter for this one task, anything secret.
 If the user corrected the bots or gave feedback, the most important lesson is what to do differently.
-user: 0-2 durable facts about the user's preferences shown here (format, tone, language, tools, recurring projects). Only if clearly shown.
+user: 0-2 durable facts about the user's preferences shown here (format, tone, tools, recurring projects, the business or people they work with). Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Empty arrays are normal. Never invent lessons.`;
 

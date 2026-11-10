@@ -33,7 +33,8 @@ function OoviLink({ label, target }: { label: string; target: OoviTarget }) {
 
 /** bots: colour @mentions. linkBots: bots that oovi://bot/<name> links may open (defaults to bots). */
 export default function Rich({ text, bots = [], linkBots }: { text: string; bots?: Bot[]; linkBots?: Bot[] }) {
-  const parts = text.split(RE);
+  // Markdown headings ("## Title") read as bold lines instead of showing the # marks.
+  const parts = text.replace(/^#{1,6}[ \t]+(.+?)[ \t]*#*$/gm, (_, h: string) => (h.includes("**") ? h : `**${h}**`)).split(RE);
   return (
     <>
       {parts.map((p, i) => {

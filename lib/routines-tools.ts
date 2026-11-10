@@ -6,6 +6,7 @@ import type { ToolSpec } from "./llm";
 import { createRoutine, findBot, listRoutines, validateRoutine, type RoutineInput } from "./routines";
 import { describeSchedule, localTimeZone } from "./routines-schedule";
 import { listBots } from "./store";
+import { telegramConnected } from "./telegram";
 import type { Bot, ToolCall, ToolResult } from "./types";
 
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
@@ -72,7 +73,7 @@ export function describeProposal(call: ToolCall, self?: Bot): { summary: string;
   if (typeof p === "string") return { summary: `Create a routine: ${p}` };
   const bot = listBots().find((b) => b.id === p.botId)?.name ?? "a bot";
   return {
-    summary: `Create routine "${p.name}" — ${describeSchedule(p.schedule)} (${p.timezone}), run by ${bot}${p.notifyTelegram ? ", results also sent to Telegram" : ""}`,
+    summary: `Create routine "${p.name}" — ${describeSchedule(p.schedule)} (${p.timezone}), run by ${bot}${p.notifyTelegram ? (telegramConnected() ? ", results also sent to Telegram" : ". Results go to Telegram once you connect it (Settings > Telegram); until then they stay in oovi") : ""}`,
     detail: p.prompt,
   };
 }
@@ -111,7 +112,12 @@ export function runRoutineTool(call: ToolCall, self: Bot): ToolResult {
     if (typeof p === "string") return bad(p);
     const r = createRoutine(p);
     if (typeof r === "string") return bad(r);
-    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result. They can change, pause or run it on the Routines page: [Open Routines](oovi://routines). Routines only run while oovi is open on this computer.`);
+    const phone = r.notifyTelegram
+      ? telegramConnected()
+        ? " Results are also sent to the user's Telegram."
+        : " Telegram isn't connected yet, so results stay in oovi until the user connects it: tell them so in one line with the link [Connect Telegram](oovi://settings/telegram)."
+      : "";
+    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result.${phone} They can change, pause or run it on the Routines page: [Open Routines](oovi://routines). Routines only run while oovi is open on this computer.`);
   }
 
   return bad(`Unknown tool: ${call.name}`);

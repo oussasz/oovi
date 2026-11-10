@@ -105,7 +105,6 @@ export const COMPUTER_SPECS: ToolSpec[] = [
 
 export const COMPUTER_TOOLS: ReadonlySet<string> = new Set(COMPUTER_SPECS.map((s) => s.name));
 /** Only look at names: never ask. */
-const NAME_TOOLS = new Set(["find_files", "list_folder"]);
 
 export const computerFilesOn = (s: Settings) => s.computerFiles.mode !== "off";
 
@@ -116,7 +115,7 @@ export function computerFilesPrompt(s: Settings, telegram: boolean): string[] {
   }
   return [
     "",
-    `You can reach the user's own files on this computer: find_files, list_folder, read_computer_file, send_file_to_user (it shows the file in the chat${telegram ? " and uploads it to this Telegram chat" : ", and uploads it to Telegram when the user writes from there"}). Reading or sending asks the user first unless the folder is allowed, so never say it's impossible; just try. Never change their files: edits go to a copy (edit_copy_of_file).`,
+    `You can reach the user's own files on this computer: find_files, list_folder, read_computer_file, send_file_to_user (it shows the file in the chat${telegram ? " and uploads it to this Telegram chat" : ", and uploads it to Telegram when the user writes from there"}). Looking in a folder, searching, reading or sending asks the user first unless the folder is allowed, so never say it's impossible; just try (one search at a time, in the most likely folder first). Never change their files: edits go to a copy (edit_copy_of_file).`,
   ];
 }
 
@@ -283,9 +282,25 @@ export function usualFolders(): string[] {
 
 // ---------- approvals ----------
 
-/** Reading, copying and sending ask unless the folder is allowed (or it's a file oovi made). Names never ask. */
+/**
+ * Looking in a folder, searching, reading, copying and sending ask unless the folder is allowed
+ * (or it's a file oovi made): a folder's contents are private too.
+ */
 export function computerNeedsApproval(call: ToolCall, s: Settings): boolean {
-  if (!computerFilesOn(s) || NAME_TOOLS.has(call.name)) return false;
+  if (!computerFilesOn(s)) return false;
+  if (call.name === "list_folder") {
+    if (call.input.path === undefined || !String(call.input.path).trim()) return false; // only the names of the usual folders
+    const t = target(call.input.path);
+    return "error" in t ? false : !inAllowed(t.real, s) && !within(blockers().outputs, t.real);
+  }
+  if (call.name === "find_files") {
+    if (call.input.folder !== undefined && String(call.input.folder).trim()) {
+      const t = target(call.input.folder);
+      return "error" in t ? false : !inAllowed(t.real, s) && !within(blockers().outputs, t.real);
+    }
+    // A search across the usual folders asks, unless the user allowed folders: then only those are searched.
+    return !(s.computerFiles.mode === "folders" && s.computerFiles.folders.length > 0);
+  }
   const t = target(call.input.path);
   if ("error" in t) return false; // refused when it runs, no need to ask
   if (within(blockers().outputs, t.real)) return false;
@@ -301,6 +316,17 @@ const when = (ms: number) => {
 
 /** What the approval card says. `folder`: the folder "Always allow this folder" would add. */
 export function describeComputerCall(call: ToolCall): { summary: string; detail?: string; folder?: string } {
+  if (call.name === "find_files" || call.name === "list_folder") {
+    const where = call.name === "find_files" ? call.input.folder : call.input.path;
+    const q = String(call.input.query ?? "").slice(0, 80);
+    if (where === undefined || !String(where).trim()) {
+      return { summary: `Look for files named “${q}” in your usual folders (Desktop, Documents, Downloads…)`, detail: "Only file names are searched, never their contents. To skip this question next time, allow a folder." };
+    }
+    const w = target(where);
+    const shown = "error" in w ? String(where) : w.abs;
+    const summary = call.name === "find_files" ? `Look for files named “${q}” in ${shown}` : `See what's in ${shown} (file names, sizes, dates)`;
+    return { summary, ...("error" in w || "error" in checkAllowedFolder(w.real) ? {} : { folder: w.real }) };
+  }
   const t = target(call.input.path);
   const shown = "error" in t ? String(call.input.path ?? "a file") : t.abs;
   const summary =
@@ -349,7 +375,7 @@ function matcher(query: string): (name: string) => boolean {
 /** Folders full of program files, never worth searching by name. */
 const SKIP_DIRS = new Set(["node_modules", "$recycle.bin", "system volume information", "appdata", "__pycache__", "venv", "site-packages", "windowsapps", "bower_components"]);
 
-function findFiles(call: ToolCall): ToolResult {
+function findFiles(call: ToolCall, s?: Settings): ToolResult {
   const q = String(call.input.query ?? "").trim();
   if (!q) return bad(call, "query is required: words from the file name, or a pattern like *.pdf.");
   let roots: string[];
@@ -362,6 +388,15 @@ function findFiles(call: ToolCall): ToolResult {
       return bad(call, `The folder ${t.abs} doesn't exist.`);
     }
     roots = [t.real];
+  } else if (s?.computerFiles.mode === "folders" && s.computerFiles.folders.length) {
+    // The user allowed folders: a search without a folder stays inside them (searching elsewhere asks).
+    roots = s.computerFiles.folders.map((f) => realOf(f)).filter((f) => {
+      try {
+        return fs.statSync(f).isDirectory();
+      } catch {
+        return false;
+      }
+    });
   } else roots = usualFolders();
   if (!roots.length) return bad(call, "None of the usual folders (Desktop, Documents, Downloads…) were found. Give a folder to search.");
 
@@ -487,7 +522,7 @@ function downloadsTarget(name: string): string {
 export async function runComputerTool(call: ToolCall, chat: Chat, s: Settings): Promise<ToolResult> {
   if (!computerFilesOn(s)) return bad(call, "Files on this computer are switched off. The user can turn them on in [Settings > Safety](oovi://settings/safety).");
   try {
-    if (call.name === "find_files") return findFiles(call);
+    if (call.name === "find_files") return findFiles(call, s);
     if (call.name === "list_folder") return listFolder(call);
     const f = fileOf(call);
     if ("id" in f) return f;

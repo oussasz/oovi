@@ -19,7 +19,26 @@ export default function Sidebar() {
   const [chats, setChats] = useState<ChatSummary[]>([]);
   const [chiefId, setChiefId] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const t = useT();
+
+  // Whether hidden bots are listed: remembered on this computer (a convenience; fine if storage is off).
+  useEffect(() => {
+    try {
+      setShowHidden(localStorage.getItem("oovi.showHiddenBots") === "1");
+    } catch {
+      /* storage unavailable */
+    }
+  }, []);
+  const toggleHidden = () =>
+    setShowHidden((v) => {
+      try {
+        localStorage.setItem("oovi.showHiddenBots", v ? "0" : "1");
+      } catch {
+        /* storage unavailable */
+      }
+      return !v;
+    });
 
   const load = useCallback(async () => {
     try {
@@ -65,7 +84,11 @@ export default function Sidebar() {
   const groups = chats.filter((c) => c.kind === "group");
   const dm = (botId: string) => chats.find((c) => c.id === `dm-${botId}`);
   const chief = bots.find((b) => b.id === chiefId);
-  const botList = chief ? [chief, ...bots.filter((b) => b !== chief)] : bots;
+  const ordered = chief ? [chief, ...bots.filter((b) => b !== chief)] : bots;
+  // Hidden bots work in their groups but stay out of this list (the Chief, an open chat, or one
+  // working or waiting for the user's OK always shows).
+  const hiddenBots = ordered.filter((b) => b.hidden && b !== chief);
+  const botList = ordered.filter((b) => !b.hidden || b === chief || showHidden || pathname === `/c/dm-${b.id}` || dm(b.id)?.waiting || dm(b.id)?.running);
 
   return (
     <>
@@ -122,6 +145,11 @@ export default function Sidebar() {
               </Link>
             );
           })}
+          {hiddenBots.length > 0 && (
+            <button type="button" className="side-more" onClick={() => toggleHidden()} aria-expanded={showHidden}>
+              <Icon name="chevron" size={14} /> {showHidden ? t("side.hideHidden") : t("side.showHidden", { count: hiddenBots.length })}
+            </button>
+          )}
         </nav>
 
         <CreditsChip />

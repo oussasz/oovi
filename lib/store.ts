@@ -120,6 +120,7 @@ export function validateBot(input: unknown, selfId?: string): BotInput | string 
     face: cleanFace(o.face),
     provider,
     model: provider && typeof o.model === "string" && o.model.trim() ? o.model.trim().slice(0, 120) : undefined,
+    ...(o.hidden === true ? { hidden: true } : {}),
     tools: {
       web: tools.web === true,
       browser: tools.browser === true,

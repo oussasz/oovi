@@ -7,13 +7,52 @@
 import { useCallback, useEffect, useState } from "react";
 import { api, resizeImage } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
+import { LOCALES, NATIVE_NAMES } from "@/lib/i18n";
 import { HOSTED_NAME, PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face from "./Face";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon from "./Icon";
 import Logo from "./Logo";
-import SettingsModal from "./SettingsModal";
+import SettingsModal, { openSettings } from "./SettingsModal";
+
+/** Set once someone has signed in on this computer: then the sign-in screen opens on "Sign in", not "Create account". */
+const SIGNED_IN_BEFORE = "oovi.signedInBefore";
+
+/** The language picked on the sign-in screen, saved to the account once it exists. */
+let pickedLanguage: string | null = null;
+
+/** Language picker for screens before the app (sign in, onboarding). "auto" follows the computer's language. */
+function LanguagePick() {
+  const { t, locale } = useI18n();
+  const [value, setValue] = useState<string>("auto");
+  return (
+    <label className="gate-lang">
+      <Icon name="lang" size={16} />
+      <select
+        value={value === "auto" ? "auto" : locale}
+        onChange={(e) => {
+          setValue(e.target.value);
+          pickedLanguage = e.target.value;
+          announceLanguage(e.target.value);
+        }}
+        aria-label={t("gate.language")}
+      >
+        <option value="auto">{t("gate.languageAuto")}</option>
+        {LOCALES.map((l) => (
+          <option key={l} value={l}>{NATIVE_NAMES[l]}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Keep the language chosen before signing in (the account's own setting would otherwise replace it). */
+async function savePickedLanguage() {
+  if (!pickedLanguage) return;
+  await api("/api/settings", { method: "POST", body: JSON.stringify({ language: pickedLanguage }) }).catch(() => {});
+  announceLanguage(pickedLanguage);
+}
 
 export type AccountState = {
   loggedIn: boolean;
@@ -33,6 +72,15 @@ function reportCrash(message: string, stack?: string) {
 
 function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: AccountState) => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
+  const [, setTouched] = useState(false);
+  // Nobody has signed in on this computer yet: a newcomer, so start on "Create account".
+  useEffect(() => {
+    try {
+      if (localStorage.getItem(SIGNED_IN_BEFORE) !== "1") setMode("signup");
+    } catch {
+      /* storage unavailable: keep "Sign in" */
+    }
+  }, []);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -47,7 +95,14 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
     setError(null);
     try {
       const body = mode === "signin" ? { action: "signin", email, password } : { action: "signup", name, email, password, acceptTerms: agree };
-      onDone(await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify(body) }));
+      const next = await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify(body) });
+      try {
+        localStorage.setItem(SIGNED_IN_BEFORE, "1");
+      } catch {
+        /* storage unavailable */
+      }
+      await savePickedLanguage();
+      onDone(next);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -58,14 +113,15 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
   return (
     <div className="gate">
       <div className="gate-card">
+        <LanguagePick />
         <div className="gate-hero">
           <Logo size={92} />
           <h1>{mode === "signin" ? t("auth.welcomeBack") : t("auth.meetTeam")}</h1>
           <p className="muted">{mode === "signin" ? t("auth.signInSub") : t("auth.signUpSub")}</p>
         </div>
         <div className="seg" role="tablist">
-          <button role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "on" : ""} onClick={() => setMode("signin")}>{t("auth.signIn")}</button>
-          <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "on" : ""} onClick={() => setMode("signup")}>{t("auth.createAccount")}</button>
+          <button role="tab" aria-selected={mode === "signin"} className={mode === "signin" ? "on" : ""} onClick={() => { setTouched(true); setMode("signin"); }}>{t("auth.signIn")}</button>
+          <button role="tab" aria-selected={mode === "signup"} className={mode === "signup" ? "on" : ""} onClick={() => { setTouched(true); setMode("signup"); }}>{t("auth.createAccount")}</button>
         </div>
         <form onSubmit={submit} className="gate-form">
           {mode === "signup" && (
@@ -102,11 +158,6 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
           <button className="btn primary" type="submit" disabled={busy || (mode === "signup" && !agree)}>
             {busy ? t("auth.oneMoment") : mode === "signin" ? t("auth.signIn") : t("auth.createAccount")}
           </button>
-          {mode === "signin" && (
-            <a className="note" href={`${cloudUrl}/login`} target="_blank" rel="noreferrer noopener">
-              {t("auth.forgot")}
-            </a>
-          )}
         </form>
       </div>
     </div>
@@ -268,7 +319,9 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
             </div>
             {msg && <div className={`notice small${msg.ok ? "" : " error"}`}>{msg.text}</div>}
             <div className="row-btns">
-              <button className="btn primary" disabled={busy} onClick={() => void startHosted()}>{t("onb.hostedStart")} <Icon name="arrow" size={16} /></button>
+              <button className="btn primary" disabled={busy} aria-busy={busy} onClick={() => void startHosted()}>
+                {busy ? t("auth.oneMoment") : t("onb.hostedStart")} {!busy && <Icon name="arrow" size={16} />}
+              </button>
               <button className="btn" disabled={busy} onClick={() => setOwnKey(true)}>{t("onb.useOwnKey")}</button>
             </div>
           </div>
@@ -349,8 +402,16 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
           <div className="onb">
             <Logo size={130} />
             <h1>{name ? t("onb.doneName", { name: name.split(" ")[0] ?? "" }) : t("onb.done")}</h1>
-            <p className="muted">{t("onb.doneSub")}</p>
-            <button className="btn primary" disabled={busy} onClick={() => void finish()}>{t("onb.start")} <Icon name="arrow" size={16} /></button>
+            <p className="muted">{t("onb.doneSubChief", { name: leader?.name ?? "Oovi" })}</p>
+            <div className="row-btns">
+              <button className="btn primary" disabled={busy} aria-busy={busy} onClick={() => void finish()}>
+                {busy ? t("auth.oneMoment") : t("onb.start")} {!busy && <Icon name="arrow" size={16} />}
+              </button>
+              {/* Reaching your Chief from the phone is what users love most: offer it right away (optional). */}
+              <button className="btn" disabled={busy} onClick={() => void finish().then(() => openSettings("telegram"))}>
+                {t("onb.connectPhone")}
+              </button>
+            </div>
           </div>
         )}
       </div>
