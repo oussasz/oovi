@@ -126,7 +126,7 @@ export const cleanPlanSteps = (items: unknown): string[] =>
     .slice(0, PLAN_STEPS_MAX);
 
 function planDecisionText(entry: BotEntry, approved: boolean): string {
-  if (!approved) return "The user cancelled this plan. Don't do the task. Reply with one short sentence.";
+  if (!approved) return "The user cancelled this plan. Don't do this task unless they ask for it again.";
   const steps = (entry.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
   return `The user approved this plan (they may have edited it):\n${steps}\nDo the work now, step by step, keeping update_plan current. When it's done, give the final summary.`;
 }
@@ -860,16 +860,25 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     else delete chat.pending.channel;
     if (input.channel && input.telegramChatId !== undefined) chat.pending.telegramChatId = input.telegramChatId;
     else delete chat.pending.telegramChatId;
+    if (e?.kind === "bot" && !approve) {
+      // Cancelled: nothing to do, so no model call (and no credits) just to acknowledge it.
+      // The pending proposal gets its result here, so the history stays valid for the next message.
+      closeDangling(e, planDecisionText(e, false));
+      e.planReview = "cancelled";
+      e.status = "done";
+      chat.pending = undefined;
+      saveChat(chat);
+      yield { type: "entry", entry: e };
+      return;
+    }
     if (e?.kind === "bot") {
       const call = [...e.steps].reverse().find((m): m is Extract<typeof m, { role: "assistant" }> => m.role === "assistant")?.toolCalls.find((c) => c.name === "propose_plan");
-      e.planReview = approve ? "approved" : "cancelled";
-      if (approve) {
-        e.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
-        chat.pending.deep = true;
-        chat.pending.planApproved = true;
-        chat.pending.turnsLeft = settings.maxTurns * 2;
-      }
-      if (call) resume = { entry: e, decisions: { [call.id]: approve } };
+      e.planReview = "approved";
+      e.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
+      chat.pending.deep = true;
+      chat.pending.planApproved = true;
+      chat.pending.turnsLeft = settings.maxTurns * 2;
+      if (call) resume = { entry: e, decisions: { [call.id]: true } };
     }
     if (!resume) {
       chat.pending = undefined;
