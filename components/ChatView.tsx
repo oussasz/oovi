@@ -21,6 +21,7 @@ import PlanReview from "./PlanReview";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { EFFORT_LEVELS } from "@/lib/slash";
+import SettingsLink from "./SettingsLink";
 
 /**
  * What a team task cost, shown under its last message: the credits of every bot reply since
@@ -1257,7 +1258,7 @@ export default function ChatView({ id }: { id: string }) {
               <div className="notice">
                 {rich("chat.missingKeys", {
                   providers: list(missingKeys.map((p) => PROVIDERS[p].label)),
-                  settings: <Link href="/settings">{t("common.settings")}</Link>,
+                  settings: <SettingsLink tab="models">{t("common.settings")}</SettingsLink>,
                   who: isGroup ? t("chat.theBots") : (solo?.name ?? ""),
                 })}
               </div>

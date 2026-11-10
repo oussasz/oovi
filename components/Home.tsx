@@ -10,6 +10,7 @@ import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
+import SettingsLink from "./SettingsLink";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
 const IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
@@ -75,7 +76,7 @@ export default function Home() {
         <p>{chief ? t("home.askSub", { name: chief.name }) : t("home.sub")}</p>
         {needsKey && (
           <div className="notice">
-            {rich("home.needsKey", { provider: PROVIDERS[settings.active].label, settings: <Link href="/settings">{t("common.settings")}</Link> })}
+            {rich("home.needsKey", { provider: PROVIDERS[settings.active].label, settings: <SettingsLink tab="models">{t("common.settings")}</SettingsLink> })}
           </div>
         )}
         {chief ? (

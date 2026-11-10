@@ -13,6 +13,7 @@ import Face from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
+import SettingsLink from "./SettingsLink";
 
 // Role name: bot.preset.<id>; instructions: bot.preset.<id>.text (in the UI language).
 const PRESETS: { id: "assistant" | "researcher" | "writer" | "critic" | "social" | "planner" | "shopper" | "coder"; tools: BotInput["tools"] }[] = [
@@ -290,18 +291,7 @@ export default function BotEditor({ id }: { id: string }) {
             </select>
             <span className="hint">
               {mine.length === 0 ? t("bot.noModelsYet") : t("bot.modelHint")}{" "}
-              <Link
-                href="/settings"
-                onClick={() => {
-                  try {
-                    localStorage.setItem("oovi.settings.tab", "models");
-                  } catch {
-                    /* storage unavailable */
-                  }
-                }}
-              >
-                {t("bot.manageModels")}
-              </Link>
+              <SettingsLink tab="models">{t("bot.manageModels")}</SettingsLink>
             </span>
           </label>
         </section>
@@ -353,7 +343,7 @@ export default function BotEditor({ id }: { id: string }) {
             <span className="toggle-ui" />
             <span>
               <b>{t("bot.accounts")}</b>
-              <span className="hint">{rich("bot.accountsHint", { link: <Link href="/settings">{t("bot.accountsLink")}</Link>, every: <b>{t("bot.every")}</b> })}</span>
+              <span className="hint">{rich("bot.accountsHint", { link: <SettingsLink tab="accounts">{t("bot.accountsLink")}</SettingsLink>, every: <b>{t("bot.every")}</b> })}</span>
               {!d.tools.browser && <span className="hint">{t("bot.accountsNeedsBrowser")}</span>}
             </span>
           </label>
