@@ -68,6 +68,13 @@ function answer(body) {
     if (/PRICES:/.test(all)) return text("Great work @Scout! Final: three cafés nearby, 150-300 DA.");
     return text("@Scout please list the cafés near us and their prices.");
   }
+  // A recurring request in Darija, to a bot that isn't the main bot (the routine screenshot).
+  if (me === "Scout" && /مل يوم/.test(all)) {
+    seen.routineRule = /propose_routine/.test(sys) && /كل يوم/.test(sys);
+    if (results.length) return text("OK");
+    if (!(body.tools || []).some((t) => t.name === "propose_routine")) return text("صباح الخير!"); // what happened before the fix
+    return reply([{ type: "tool_use", id: `toolu_rt_${Date.now()}`, name: "propose_routine", input: { name: "Good morning", instruction: "Say good morning to the user in Darija.", frequency: "daily", time: "10:00" } }], "tool_use");
+  }
   if (me === "Scout") return text("PRICES: three cafés nearby, 150-300 DA.");
   return text("ok");
 }
@@ -171,6 +178,13 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const t = await idle(team.id);
   const tb = t.entries.filter((e) => e.kind === "bot");
   check("the leader hands out work once and its 'Great work @Scout!' ends the task", (seen.turns.Scout || 0) - scoutTurns === 1 && tb.length === 3 && /^Great work/.test(tb.at(-1)?.text ?? ""), tb.map((e) => e.text.slice(0, 40)).join(" | "));
+
+  // E: "every day at 10, tell me good morning" (Darija, with a typo) to a bot that isn't the main bot.
+  await api("POST", `/api/chats/dm-${scout.id}/run`, { text: "مل يوم صباح على عشرة تاع صباح قلي صباح الخير" });
+  const sd = await idle(`dm-${scout.id}`);
+  const card = sd.pending?.approval?.items?.[0];
+  check("a recurring request becomes a routine proposal, from any bot's own chat", !!card && /Good morning/.test(card.summary || ""), card?.summary || sd.entries.at(-1)?.text);
+  check("bots are told that 'every day at…' (in Darija too) means a routine", seen.routineRule === true);
 
   // D: the rules are in the prompts.
   check("group members are told to keep messages short and not repeat", /Group messages are short/.test(seen.systems.c || "") && /without @/.test(seen.systems.c || ""));

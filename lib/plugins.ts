@@ -1,7 +1,6 @@
 // Server side of the marketplace: install skills and plugins (bot teams),
 // keep track of what was installed, and list Anthropic's public skills.
 
-import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { PLUGINS, SKILLS, type CatalogPlugin, type CatalogSkill } from "./catalog";
@@ -92,14 +91,25 @@ export function removePlugin(id: string): void {
 // ---------- Node.js check (for connectors started with npx) ----------
 
 let nodeOk: boolean | null = null;
+/**
+ * Is Node.js (npx) installed? Looks for the files on PATH instead of running "npx --version":
+ * running it goes through cmd.exe on Windows, and security tools (360 Total Security and others)
+ * flag a Store app that opens a command prompt as suspicious.
+ */
 export function hasNode(): boolean {
   if (nodeOk !== null) return nodeOk;
-  try {
-    const r = spawnSync("npx --version", { shell: true, timeout: 10_000, windowsHide: true, encoding: "utf8" });
-    nodeOk = r.status === 0 && /\d+\.\d+/.test(r.stdout ?? "");
-  } catch {
-    nodeOk = false;
-  }
+  const win = process.platform === "win32";
+  const names = win ? ["npx.cmd", "npx.exe", "npx"] : ["npx"];
+  const dirs = (process.env.PATH ?? process.env.Path ?? "").split(path.delimiter).filter(Boolean);
+  if (win) dirs.push(path.join(process.env.ProgramFiles ?? "C:\\Program Files", "nodejs"), path.join(process.env.APPDATA ?? "", "npm"));
+  else dirs.push("/opt/homebrew/bin", "/usr/local/bin", "/usr/bin");
+  nodeOk = dirs.some((d) => names.some((n) => {
+    try {
+      return fs.statSync(path.join(d, n)).isFile();
+    } catch {
+      return false;
+    }
+  }));
   return nodeOk;
 }
 

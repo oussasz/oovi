@@ -341,6 +341,11 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     }
   }
   lines.push("", "When you work out a reliable way to do a multi-step task the user is likely to ask for again, save it with save_skill.");
+  if (tools.some((t) => t.name === "propose_routine")) {
+    lines.push(
+      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when.",
+    );
+  }
   const answersUser = lead ? lead.id === bot.id : true;
   if (extra.learn && answersUser) {
     lines.push(`The user has asked for this kind of task ${extra.learn} times before. When you're done, save the procedure with save_skill (short steps, inputs, pitfalls) so next time is faster.`);
@@ -599,10 +604,11 @@ async function* runBot(
   const mcp = mcpIds.length ? await mcpToolsFor(mcpIds) : { specs: [], errors: [] };
   // The main bot, in its own chat with the user, runs the user's groups.
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
-  // Routine runs can look at routines but never propose new ones.
-  const routineSpecs = isMain ? (chat.routine ? [LIST_ROUTINES_SPEC] : ROUTINE_SPECS) : [];
   // Group leaders and the main bot can propose specialists the team is missing (never in a routine's unattended run).
   const leads = chat.kind === "group" && leaderOf(chat, members)?.id === bot.id;
+  // Any bot talking with the user (its own chat, or leading a group) can set up a routine it runs itself:
+  // "every day at 10, tell me good morning" must not be answered just once. Routine runs never propose new ones.
+  const routineSpecs = chat.routine ? (isMain ? [LIST_ROUTINES_SPEC] : []) : chat.kind === "direct" || leads ? ROUTINE_SPECS : [];
   const specialistSpecs = (leads || isMain) && !chat.routine ? [PROPOSE_SPECIALIST_SPEC] : [];
   // Desktop control on theOovi: its server says whether its model can use the computer toolset.
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
