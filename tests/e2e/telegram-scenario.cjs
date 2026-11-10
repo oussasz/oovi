@@ -36,6 +36,21 @@ const systemOf = (b) => (typeof b.system === "string" ? b.system : Array.isArray
 const seen = { system: "", calls: [] };
 
 const OTHER = path.join(os.tmpdir(), "oovi-tg-pictures");
+async function answerAsync(body) {
+  const lastU = [...(body.messages || [])].reverse().find((m) => m.role === "user" && (typeof m.content === "string" || (m.content || []).some((b) => b.type === "text")));
+  const u = lastU ? (typeof lastU.content === "string" ? lastU.content : lastU.content.filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
+  const lastMsg = (body.messages || []).at(-1) || {};
+  const hasResult = Array.isArray(lastMsg.content) && lastMsg.content.some((b) => b.type === "tool_result");
+  if (/PDF/.test(u)) {
+    if (hasResult) return reply([{ type: "text", text: "Voilà ton rapport." }], "end_turn");
+    return reply([{ type: "tool_use", id: `toolu_doc_${Date.now()}`, name: "create_document", input: { filename: "rapport.md", content: "# Rapport\nTout va bien." } }], "tool_use");
+  }
+  if (/LONG/.test(u)) {
+    await sleep(8000);
+    return reply([{ type: "text", text: "LONG-DONE" }], "end_turn");
+  }
+  return answer(body);
+}
 function answer(body) {
   seen.system = systemOf(body);
   const lastUser = [...(body.messages || [])].reverse().find((m) => m.role === "user" && (typeof m.content === "string" || (m.content || []).some((b) => b.type === "text")));
@@ -68,7 +83,7 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Oussama", image: null } });
-      if (url === "/api/v1/ai/messages" && req.method === "POST") return send(200, answer(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       return send(204);
     });
@@ -95,13 +110,23 @@ http
         res.end(JSON.stringify(obj));
       };
       const method = req.url.split("/").pop().split("?")[0];
-      const body = raw ? JSON.parse(raw) : {};
+      let body = {};
+      try {
+        body = raw ? JSON.parse(raw) : {};
+      } catch {
+        body = {}; // multipart (sendDocument)
+      }
       if (method === "getMe") return send(200, { ok: true, result: { id: 1, is_bot: true, username: "test_oovi_bot", first_name: "oovi" } });
       if (method === "getUpdates") {
         confirmed = Math.max(confirmed, body.offset || 0);
         const fresh = () => updates.filter((u) => u.update_id >= confirmed);
         for (let i = 0; i < 10 && !fresh().length; i++) await sleep(100);
         return send(200, { ok: true, result: fresh() });
+      }
+      if (method === "sendDocument") {
+        sent.push({ at: Date.now(), text: `[document] ${raw.match(/filename="([^"]+)"/)?.[1] ?? "?"}` });
+        log(`BOT  > [document] ${raw.match(/filename="([^"]+)"/)?.[1] ?? "?"}`);
+        return send(200, { ok: true, result: { message_id: sent.length } });
       }
       if (method === "sendMessage") {
         sent.push({ at: Date.now(), text: String(body.text) });
@@ -198,6 +223,21 @@ const check = (name, ok, detail = "") => {
   const n3 = sent.length;
   userSays("/no");
   await waitFor((m) => sent.indexOf(m) >= n3, 30_000, "answer after /no");
+
+  // /stop while a long task runs: it stops right away (it doesn't wait behind the busy chat).
+  const n4 = sent.length;
+  userSays("LONG job please");
+  await sleep(1500);
+  userSays("/stop");
+  const stopped = await waitFor((m) => sent.indexOf(m) >= n4 && /Stopped|Arrêté|تم الإيقاف/.test(m.text), 6000, "stop reply");
+  await sleep(8000);
+  check("/stop stops a running task from Telegram", !!stopped && !sent.slice(n4).some((m) => /LONG-DONE/.test(m.text)));
+
+  // A document the bot makes reaches Telegram, not just "saved in Downloads/oovi".
+  const n5 = sent.length;
+  userSays("fais-moi un PDF du rapport");
+  await waitFor((m) => sent.indexOf(m) >= n5 && /Voilà ton rapport/.test(m.text), 30_000, "report reply");
+  check("a document the bot creates is sent to Telegram", sent.slice(n5).some((m) => /\[document\] rapport\.md/.test(m.text)), sent.slice(n5).map((m) => m.text).join(" || ").slice(0, 160));
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

@@ -9,7 +9,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { groupTaskState, healInterrupted, plainText, type Earlier, type GroupTaskState } from "./delegations-core";
+import { groupTaskState, healInterrupted, INTERRUPTED, plainText, type Earlier, type GroupTaskState } from "./delegations-core";
 import { translateFor } from "./i18n-server";
 import { isRunning, onRunEnd } from "./runner";
 import { dataDir } from "./settings";
@@ -153,7 +153,7 @@ export function reportText(state: GroupTaskState, group: string, bots: Bot[], fr
     case "done":
       return `${translateFor("grp.done", { group, bot: nameOf(bots, state.botId) })}\n\n${clip(state.text, 8000)}`;
     case "error":
-      return `${translateFor("grp.error", { group, bot: nameOf(bots, state.botId), error: state.error })}${state.partial ? `\n\n${translateFor("grp.soFar")}\n${clip(state.partial, 6000)}` : ""}`;
+      return `${translateFor("grp.error", { group, bot: nameOf(bots, state.botId), error: state.error === INTERRUPTED ? translateFor("chat.interrupted") : state.error })}${state.partial ? `\n\n${translateFor("grp.soFar")}\n${clip(state.partial, 6000)}` : ""}`;
     case "stopped":
       return `${translateFor("grp.stopped", { group })}${state.partial ? `\n\n${translateFor("grp.soFar")}\n${clip(state.partial, 6000)}` : ""}`;
     case "empty":
@@ -192,6 +192,15 @@ export function toolText(state: GroupTaskState, group: string, bots: Bot[], from
 // ---------- following open tasks ----------
 
 let checking = false;
+
+/** A desktop notification (when the app runs in Electron), so a group waiting for the user's OK or a result isn't missed. */
+function notifyDesktop(title: string, body: string, chatId: string) {
+  try {
+    (globalThis as typeof globalThis & { __ooviDesktop?: { notify?: (t: string, b: string, c?: string) => void } }).__ooviDesktop?.notify?.(title, plainText(body).replace(/\s+/g, " ").trim().slice(0, 240), chatId);
+  } catch {
+    /* notifications are a bonus */
+  }
+}
 
 /** Look at every open task again: announce new requests for the user, report finished ones. */
 export function checkDelegations(): void {
@@ -241,7 +250,8 @@ export function checkDelegations(): void {
           d.notified = state.key;
           d.notifiedAt = now;
           forward(text);
-          appendToMain(d.mainBotId, text); // best effort: Telegram has it either way
+          notifyDesktop(d.groupName || chat.name, text, d.groupId);
+          appendToMain(d.mainBotId, text); // best effort: Telegram and the notification have it either way
           changed = true;
         }
         keep.push(d);
@@ -250,6 +260,7 @@ export function checkDelegations(): void {
       changed = true;
       if (!text) continue; // cancelled, superseded, gone: done, nothing to say
       forward(text);
+      notifyDesktop(d.groupName || chat.name, text, d.groupId);
       // The main bot's own copy carries what the other members said (a link, a figure), so it can answer follow-ups.
       const extra = "earlier" in state ? earlierBlock(state, bots, true) : "";
       const forModel = extra ? `${text}${extra}` : undefined;

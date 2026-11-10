@@ -12,6 +12,7 @@
 // Skills are offered in the prompt, matching ones are loaded automatically,
 // and repeated requests nudge the bot to save a new skill.
 
+import fs from "node:fs";
 import { currentUser } from "./account";
 import { complete, HostedError, type ToolSpec } from "./llm";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, recallHistory } from "./context";
@@ -25,17 +26,18 @@ import { listServers, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
 import { ADMIN_TOOLS, PROPOSE_TEAM_SPEC, REQUEST_ABILITIES_SPEC, adminItem, adminValid, runAdminTool } from "./team-admin";
-import { translateFor, translatorFor } from "./i18n-server";
+import { translateFor, translatorFor, type Tr } from "./i18n-server";
 import { loadSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
+import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
 import { healInterrupted } from "./delegations-core";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, proposalOf, runRoutineTool } from "./routines-tools";
-import { DOC_SPECS } from "./files";
+import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
@@ -518,6 +520,18 @@ function settingsFor(bot: Bot, s: Settings): Settings {
   return { ...s, active, providers: { ...s.providers, [active]: { ...cur, model: bot.model || cur.model } } };
 }
 
+/** Sends a file a bot made to the user's Telegram chat; returns a note for the bot (sent, or why not). */
+async function sendCreatedFileToTelegram(file: { path: string; name: string; size: number }, telegramChatId?: number): Promise<string> {
+  if (file.size > 50 * 1024 * 1024) return `(It's too big for Telegram's 50 MB limit: tell the user it's waiting in oovi on their computer.)`;
+  try {
+    const { sendFileToTelegram } = await import("./telegram");
+    const err = await sendFileToTelegram({ name: file.name, data: fs.readFileSync(file.path) }, undefined, telegramChatId);
+    return err ? `(Couldn't send it to Telegram: ${err} Tell the user it's in oovi on their computer.)` : "(Also sent to the user's Telegram chat: don't send it again.)";
+  } catch (e) {
+    return `(Couldn't send it to Telegram: ${(e as Error).message}. Tell the user it's in oovi on their computer.)`;
+  }
+}
+
 /** Give every unanswered tool call a result so the history stays valid. */
 function closeDangling(entry: BotEntry, reason: string) {
   const last = entry.steps.at(-1);
@@ -546,72 +560,69 @@ function cancelApproval(chat: Chat) {
 
 const baseName = (p: unknown) => String(p ?? "a file").split(/[\\/]/).pop() || "a file";
 
-export function statusText(c: ToolCall): string {
+/** The live status line while a tool runs, in the user's language (`tr`). */
+export function statusText(c: ToolCall, tr: Tr = translateFor): string {
   const i = c.input;
-  if (c.name.startsWith("mcp_")) return `Using ${c.name.replace(/^mcp_/, "").replace(/_/g, " ")}`;
+  const v = (x: unknown, fallback = "…") => (x === undefined || x === null || String(x).trim() === "" ? fallback : String(x));
+  const host = (u: unknown) => {
+    try {
+      return new URL(String(u)).host;
+    } catch {
+      return null;
+    }
+  };
+  if (c.name.startsWith("mcp_")) return tr("st.using", { what: c.name.replace(/^mcp_/, "").replace(/_/g, " ") });
   if (isDesktopName(c.name)) return desktopStatus(c);
   switch (c.name) {
-    case "web_search": return `Searching “${String(i.query ?? "")}”`;
-    case "open_url": {
-      try {
-        return `Opening ${new URL(String(i.url)).host}`;
-      } catch {
-        return "Opening a page";
-      }
-    }
-    case "read_page": return "Reading the page";
-    case "click": return "Clicking";
-    case "type": return "Typing";
-    case "go_back": return "Going back";
-    case "download_file": return "Downloading a file";
-    case "request_user_takeover": return "Waiting for you in the browser";
-    case "use_skill": return `Loading skill “${String(i.name ?? "")}”`;
-    case "save_skill": return "Saving a skill";
-    case "memory": return "Updating memory";
-    case "list_groups": return "Checking your groups";
-    case "list_routines": return "Checking your routines";
-    case "propose_routine": return `Setting up the routine “${String(i.name ?? "")}”`;
-    case "request_abilities": return "Asking to turn on an ability";
-    case "propose_team": return `Proposing the team “${String(i.name ?? "")}”`;
-    case "propose_specialist": return `Creating ${String(i.name ?? "a specialist")}, ${String(i.role ?? "")}`;
-    case "create_image": return `Designing ${String(i.filename ?? "an image")}`;
-    case "update_plan": return "Updating the plan";
-    case "oovi_help": return "Checking how oovi works";
+    case "web_search": return tr("st.searching", { q: v(i.query) });
+    case "open_url": { const h = host(i.url); return h ? tr("st.opening", { host: h }) : tr("st.openingPage"); }
+    case "read_page": return tr("st.readingPage");
+    case "click": return tr("st.clicking");
+    case "type": return tr("st.typing");
+    case "go_back": return tr("st.goingBack");
+    case "download_file": return tr("st.downloading");
+    case "request_user_takeover": return tr("st.waitingBrowser");
+    case "use_skill": return tr("st.loadingSkill", { name: v(i.name) });
+    case "save_skill": return tr("st.savingSkill");
+    case "memory": return tr("st.memory");
+    case "list_groups": return tr("st.groups");
+    case "list_routines": return tr("st.routines");
+    case "propose_routine": return tr("st.routine", { name: v(i.name) });
+    case "request_abilities": return tr("st.abilities");
+    case "propose_team": return tr("st.team", { name: v(i.name) });
+    case "propose_specialist": return tr("st.specialist", { name: v(i.name), role: v(i.role, "") });
+    case "create_image": return tr("st.designing", { name: v(i.filename) });
+    case "update_plan": return tr("st.plan");
+    case "oovi_help": return tr("st.help");
     case "vm_run":
     case "vm_write_file":
     case "vm_read_file":
     case "vm_download":
     case "vm_public_url": return describeVmCall(c);
-    case "research": return `Researching “${String(i.question ?? "").slice(0, 60)}”`;
-    case "read_url": {
-      try {
-        return `Reading ${new URL(String(i.url)).host}`;
-      } catch {
-        return "Reading a page";
-      }
-    }
-    case "create_document": return `Writing ${String(i.filename ?? "a document")}`;
-    case "create_spreadsheet": return `Building ${String(i.filename ?? "a spreadsheet")}`;
-    case "create_presentation": return `Making ${String(i.filename ?? "slides")}`;
-    case "read_document": return `Reading ${String(i.path ?? "a document")}`;
-    case "read_attachment": return `Reading ${String(i.name ?? "an attachment")}`;
-    case "edit_attachment": return `Editing a copy of ${String(i.name ?? "an attachment")}`;
-    case "vm_upload_attachment": return `Copying ${String(i.name ?? "an attachment")} to the cloud computer`;
-    case "read_group": return `Reading ${String(i.group ?? "a group")}`;
-    case "message_group": return `Working with ${String(i.group ?? "a group")}`;
-    case "list_files": return "Looking at the project files";
-    case "read_file": return `Reading ${String(i.path ?? "a file")}`;
-    case "search_files": return `Searching the project for “${String(i.query ?? "")}”`;
-    case "write_file": return `Writing ${String(i.path ?? "a file")}`;
-    case "edit_file": return `Editing ${String(i.path ?? "a file")}`;
-    case "delete_file": return `Deleting ${String(i.path ?? "a file")}`;
-    case "run_command": return `Running ${String(i.command ?? "a command").slice(0, 60)}`;
-    case "find_files": return `Looking for “${String(i.query ?? "")}” on your computer`;
-    case "list_folder": return `Looking in ${String(i.path ?? "your folders")}`;
-    case "read_computer_file": return `Reading ${String(i.path ?? "a file")}`;
-    case "send_file_to_user": return `Sending ${baseName(i.path)}`;
-    case "copy_file_to_downloads": return `Copying ${baseName(i.path)}`;
-    case "edit_copy_of_file": return `Editing a copy of ${baseName(i.path)}`;
+    case "research": return tr("st.researching", { q: v(i.question).slice(0, 60) });
+    case "read_url": { const h = host(i.url); return h ? tr("st.reading", { what: h }) : tr("st.readingPage"); }
+    case "create_document": return tr("st.writing", { what: v(i.filename) });
+    case "create_spreadsheet": return tr("st.building", { what: v(i.filename) });
+    case "create_presentation": return tr("st.making", { what: v(i.filename) });
+    case "read_document": return tr("st.reading", { what: v(i.path) });
+    case "read_attachment": return tr("st.reading", { what: v(i.name) });
+    case "edit_attachment": return tr("st.editingCopy", { what: v(i.name) });
+    case "vm_upload_attachment": return tr("st.copyingCloud", { what: v(i.name) });
+    case "read_group": return tr("st.reading", { what: v(i.group) });
+    case "message_group": return tr("st.working", { what: v(i.group) });
+    case "list_files": return tr("st.projectFiles");
+    case "read_file": return tr("st.reading", { what: v(i.path) });
+    case "search_files": return tr("st.searchProject", { q: v(i.query) });
+    case "write_file": return tr("st.writing", { what: v(i.path) });
+    case "edit_file": return tr("st.editing", { what: v(i.path) });
+    case "delete_file": return tr("st.deleting", { what: v(i.path) });
+    case "run_command": return tr("st.running", { what: v(i.command).slice(0, 60) });
+    case "find_files": return tr("st.lookingFor", { q: v(i.query) });
+    case "list_folder": return tr("st.lookingIn", { where: v(i.path) });
+    case "read_computer_file": return tr("st.reading", { what: v(i.path) });
+    case "send_file_to_user": return tr("st.sending", { what: baseName(i.path) });
+    case "copy_file_to_downloads": return tr("st.copying", { what: baseName(i.path) });
+    case "edit_copy_of_file": return tr("st.editingCopy", { what: baseName(i.path) });
     default: return c.name;
   }
 }
@@ -694,7 +705,13 @@ async function* runBot(
       const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
       const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
       // A desktop OK counts only from a card shown for exactly that call less than 20 minutes ago; otherwise ask again.
-      for (const c of last.toolCalls) if (isDesktopName(c.name) && decisions[c.id] === true && !validDesktopDecision(c.id, answered)) delete decisions[c.id];
+      const expired = new Set<string>();
+      for (const c of last.toolCalls) {
+        if (isDesktopName(c.name) && decisions[c.id] === true && !validDesktopDecision(c.id, answered)) {
+          delete decisions[c.id];
+          expired.add(c.id); // the new card says why it's asked again
+        }
+      }
       const firstDesk = last.toolCalls.find((c) => isDesktopName(c.name))?.id;
       const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery: s.desktopControl.askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
@@ -717,7 +734,11 @@ async function* runBot(
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
           // The card speaks the user's language: their latest message's, else the app's.
-          return kind ? desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery) : approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
+          if (kind) {
+            const item = desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery);
+            return expired.has(c.id) ? { ...item, detail: `${translatorFor(lastUserText(chat))("ok.expired")}${item.detail ? `\n${item.detail}` : ""}` } : item;
+          }
+          return approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
         };
         const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf), at: Date.now() };
         entry.status = "waiting";
@@ -745,7 +766,7 @@ async function* runBot(
             const item = decisions[c.id] === true ? validDesktopDecision(c.id, answered) : null;
             // Only the task's own card ("Allow for this task") grants the task.
             if (grantsTask(item) && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
-            yield { type: "status", entryId: entry.id, text: statusText(c) };
+            yield { type: "status", entryId: entry.id, text: statusText(c, translatorFor(lastUserText(chat))) };
             r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal, approved: item });
           }
           if (r.isError) deskHalted = true;
@@ -757,7 +778,7 @@ async function* runBot(
         } else if (decisions[c.id] === false) {
           results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
         } else {
-          yield { type: "status", entryId: entry.id, text: statusText(c) };
+          yield { type: "status", entryId: entry.id, text: statusText(c, translatorFor(lastUserText(chat))) };
           if (c.name === "update_plan") {
             const items = Array.isArray(c.input.items) ? c.input.items : [];
             entry.plan = items
@@ -789,6 +810,13 @@ async function* runBot(
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
+      // On Telegram, files the bot just made are sent there too (otherwise "saved in Downloads/oovi" is useless on a phone).
+      if (chat.pending?.channel === "telegram") {
+        for (const r of results) {
+          if (r.isError || !r.file || !DOC_WRITE_TOOLS.has(r.name)) continue;
+          r.content += ` ${await sendCreatedFileToTelegram(r.file, chat.pending.telegramChatId)}`;
+        }
+      }
       countTools(last.toolCalls, results);
       entry.steps.push({ role: "tool", results });
       saveProgress(chat);
@@ -800,11 +828,11 @@ async function* runBot(
     const stepLimit = chat.pending?.planMode ? Math.min(settings.maxSteps, 10) : chat.pending?.deep ? Math.min(150, settings.maxSteps * 4) : settings.maxSteps;
     if (steps >= stepLimit) {
       entry.status = "error";
-      entry.error = `Stopped after ${stepLimit} steps (limit set in Settings). Send a message to continue.`;
+      entry.error = translatorFor(lastUserText(chat))("chat.stepLimit", { count: stepLimit });
       return "error";
     }
     steps++;
-    yield { type: "status", entryId: entry.id, text: "Thinking…" };
+    yield { type: "status", entryId: entry.id, text: translatorFor(lastUserText(chat))("st.thinking") };
     try {
       const effort: Effort = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : "auto";
       let budget = budgetOf(s);
@@ -998,6 +1026,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   } else if (input.decisions && chat.pending?.approval) {
     const answered = chat.pending.approval;
     const e = chat.entries.find((x) => x.id === answered.entryId);
+    // Asked on Telegram, answered here: the user still waits on Telegram, so the reply goes there too.
+    if (!input.channel && chat.pending.channel === "telegram" && chat.pending.telegramChatId !== undefined && e) {
+      addTelegramFollowUp(chat.id, chat.pending.telegramChatId, e.id);
+    }
     chat.pending.approval = undefined;
     if (input.channel) chat.pending.channel = input.channel;
     else delete chat.pending.channel;

@@ -54,7 +54,7 @@ const sameName = (a?: string, b?: string) => !!a && !!b && a.toLowerCase() === b
 const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Our commands. Bare commands in a group count as addressed to us (Telegram only delivers them when we posted last, or when privacy is off). */
-const COMMANDS = new Set(["start", "yes", "no", "ask"]);
+const COMMANDS = new Set(["start", "yes", "no", "ask", "stop"]);
 
 /**
  * Normalize a message addressed to this bot: "/yes@my_bot always" → "/yes always",

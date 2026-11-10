@@ -61,6 +61,8 @@ export function telegramUploadRequest(
   chatId: number,
   file: { name: string; data: Buffer },
   caption?: string,
+  /** Telegram's API address (tests use a local stand-in). */
+  api = "https://api.telegram.org",
 ): { method: "sendPhoto" | "sendDocument"; url: string; init: { method: "POST"; headers: Record<string, string>; body: Buffer } } | { error: string } {
   const size = file.data.length;
   if (size > TELEGRAM_MAX_BYTES) {
@@ -72,5 +74,5 @@ export function telegramUploadRequest(
   const fields: Record<string, string> = { chat_id: String(chatId) };
   if (caption?.trim()) fields.caption = caption.trim().slice(0, 1000);
   const { body, contentType } = buildMultipart(fields, { field: photo ? "photo" : "document", name: file.name, mime: mimeOf(file.name), data: file.data });
-  return { method, url: `https://api.telegram.org/bot${token}/${method}`, init: { method: "POST", headers: { "content-type": contentType }, body } };
+  return { method, url: `${api}/bot${token}/${method}`, init: { method: "POST", headers: { "content-type": contentType }, body } };
 }

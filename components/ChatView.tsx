@@ -1,5 +1,6 @@
 "use client";
 
+import { INTERRUPTED } from "@/lib/delegations-core";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
@@ -581,7 +582,7 @@ function BotMessage(props: {
         {e.status === "waiting" && <div className="note">{t("chat.waiting")}</div>}
         {e.status === "stopped" && !e.text && <div className="note">{t("chat.stopped")}</div>}
         {e.status === "done" && !e.text && <div className="note">{t("chat.noReply")}</div>}
-        {e.error && (e.errorCode && e.errorCode !== "busy" && e.errorCode !== "bad_request" ? <HostedNotice code={e.errorCode} message={e.error} /> : <div className="notice error small">{e.error}</div>)}
+        {e.error && (e.errorCode && e.errorCode !== "busy" && e.errorCode !== "bad_request" ? <HostedNotice code={e.errorCode} message={e.error} /> : <div className="notice error small">{e.error === INTERRUPTED ? t("chat.interrupted") : e.error}</div>)}
         {e.handoff && e.handoff.length > 0 && (
           <div className="handoff">
             <Icon name="arrow" size={14} /> {t("chat.passedTo")}

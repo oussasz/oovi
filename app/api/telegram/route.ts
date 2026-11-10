@@ -1,5 +1,5 @@
 import { guard } from "@/lib/guard";
-import { connect, disconnect, dismissDetected, removeLink, saveLink, sendTest, startTelegram, status } from "@/lib/telegram";
+import { connect, disconnect, dismissDetected, ensureTelegram, removeLink, saveLink, sendTest, status } from "@/lib/telegram";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
-  startTelegram();
+  ensureTelegram();
   const advanced = new URL(req.url).searchParams.get("advanced") === "1";
   return Response.json(status({ groups: advanced }));
 }
