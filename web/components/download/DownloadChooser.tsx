@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { AppleIcon, ArrowRight, WindowsIcon } from "../icons";
 
 export type Os = "mac" | "windows";
+
+/** Set on Vercel once oovi is live in the Microsoft Store (see lib/releases.ts microsoftStoreUrl). */
+const STORE_URL = process.env.NEXT_PUBLIC_MICROSOFT_STORE_URL ?? "";
 type MacArch = "arm64" | "intel";
 
 type NavigatorUAData = {
@@ -54,6 +57,7 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
   }, [initialOs]);
 
   const target = os === "windows" ? "windows" : arch === "arm64" ? "mac-arm64" : "mac-intel";
+  const store = os === "windows" && STORE_URL !== "";
 
   return (
     <div className={`chooser ${compact ? "chooser-compact" : ""}`}>
@@ -107,6 +111,14 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         </fieldset>
       )}
 
+      {store ? (
+        <div className="notice">
+          <p className="notice-title">
+            <span className="notice-dot" /> Get oovi from the Microsoft Store
+          </p>
+          <p>No security warnings: Microsoft checks oovi, and the Store keeps it up to date by itself.</p>
+        </div>
+      ) : (
       <div className="notice">
         <p className="notice-title">
           <span className="notice-dot" /> Heads up: oovi isn’t code-signed yet
@@ -143,6 +155,7 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
           </>
         )}
       </div>
+      )}
 
       <a
         className="btn btn-dark btn-lg chooser-cta"
@@ -150,14 +163,22 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         onClick={() => setStarted(true)}
       >
         {os === "mac" ? <AppleIcon /> : <WindowsIcon />}
-        Download for {os === "mac" ? (arch === "arm64" ? "Mac (Apple silicon)" : "Mac (Intel)") : "Windows"}
+        {store ? "Get it from Microsoft Store" : `Download for ${os === "mac" ? (arch === "arm64" ? "Mac (Apple silicon)" : "Mac (Intel)") : "Windows"}`}
         <ArrowRight />
       </a>
       <p className="fine" aria-live="polite">
         {started
-          ? "Your download should start in a moment. Then follow the steps above."
+          ? store
+            ? "Opening the Microsoft Store…"
+            : "Your download should start in a moment. Then follow the steps above."
           : "Free during the pilot · Bring your own AI key"}
       </p>
+      {store && (
+        <p className="fine">
+          Prefer the installer? <a href="/download/windows?installer=1">Download oovi-Setup.exe</a>. Windows may show
+          “Windows protected your PC”: click <b>More info</b>, then <b>Run anyway</b>.
+        </p>
+      )}
     </div>
   );
 }

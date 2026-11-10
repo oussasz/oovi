@@ -1,4 +1,14 @@
 export const DOWNLOAD_TARGETS = ["mac-arm64", "mac-intel", "windows"] as const;
+
+/**
+ * oovi's Microsoft Store page (e.g. https://apps.microsoft.com/detail/9N...). When set, "Download for
+ * Windows" opens the Store: no SmartScreen warning (Microsoft signs Store apps) and the Store keeps
+ * oovi updated. The .exe installer stays available at /download/windows?installer=1.
+ */
+export const microsoftStoreUrl = (): string | null => {
+  const v = process.env.NEXT_PUBLIC_MICROSOFT_STORE_URL?.trim();
+  return v && /^https:\/\/(apps\.microsoft\.com|www\.microsoft\.com)\//.test(v) ? v : null;
+};
 export type DownloadTarget = (typeof DOWNLOAD_TARGETS)[number];
 
 export function isDownloadTarget(v: string): v is DownloadTarget {
