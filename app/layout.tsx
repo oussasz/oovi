@@ -9,6 +9,7 @@ import "./styles/updates.css";
 import "./styles/attachments.css";
 import "./styles/memory.css";
 import "./styles/files.css";
+import "./styles/desktop.css";
 import "./styles/telegram.css";
 import "./styles/live-browser.css";
 import "./styles/routines.css";

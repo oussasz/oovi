@@ -6,6 +6,7 @@ import { resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
 import ComputerFilesSettings from "./ComputerFilesSettings";
+import DesktopControlSettings from "./DesktopControlSettings";
 import Icon, { type IconName } from "./Icon";
 import MemorySettings from "./MemorySettings";
 import ModelsSettings from "./ModelsSettings";
@@ -383,6 +384,7 @@ export default function SettingsForm() {
         </div>
       </div>
       <ComputerFilesSettings />
+      <DesktopControlSettings />
     </>
   );
 

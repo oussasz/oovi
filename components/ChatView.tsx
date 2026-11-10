@@ -34,8 +34,42 @@ const host = (u: unknown) => {
   }
 };
 
+/** Desktop control (Beta): "desktop_<member>" calls of Claude's computer toolset. */
+function desktopLabel(c: ToolCall, t: TFn): string {
+  const i = c.input;
+  const m = c.name.slice("desktop_".length);
+  const p = Array.isArray(i.coordinate) && i.coordinate.length === 2 ? { x: String(i.coordinate[0]), y: String(i.coordinate[1]) } : null;
+  switch (m) {
+    case "screenshot": return t("chat.call.desk.screenshot");
+    case "zoom": return t("chat.call.desk.zoom");
+    case "left_click":
+    case "right_click":
+    case "middle_click":
+    case "double_click":
+    case "triple_click": return p ? t(`chat.call.desk.${m}`, p) : t("chat.call.desk.clickHere");
+    case "left_click_drag": return p ? t("chat.call.desk.drag", p) : t("chat.call.desk.move");
+    case "mouse_move": return t("chat.call.desk.move");
+    case "left_mouse_down":
+    case "left_mouse_up": return t("chat.call.desk.mouse");
+    case "cursor_position": return t("chat.call.desk.cursor");
+    case "scroll": {
+      const d = String(i.scroll_direction ?? "down");
+      return t(d === "up" ? "chat.call.desk.scrollUp" : d === "left" ? "chat.call.desk.scrollLeft" : d === "right" ? "chat.call.desk.scrollRight" : "chat.call.desk.scrollDown");
+    }
+    case "type": {
+      const text = String(i.text ?? "").replace(/\s+/g, " ");
+      return t("chat.call.desk.type", { text: text.length > 60 ? `${text.slice(0, 60)}…` : text });
+    }
+    case "key": return t("chat.call.desk.key", { keys: String(i.text ?? "") });
+    case "hold_key": return t("chat.call.desk.hold", { keys: String(i.text ?? "") });
+    case "wait": return t("chat.call.desk.wait");
+    default: return m.replace(/_/g, " ");
+  }
+}
+
 function callLabel(c: ToolCall, t: TFn): string {
   const i = c.input;
+  if (c.name.startsWith("desktop_")) return desktopLabel(c, t);
   switch (c.name) {
     case "web_search": return t("chat.call.search", { query: String(i.query ?? "") });
     case "open_url": return t("chat.call.open", { host: host(i.url) });
@@ -85,7 +119,7 @@ function callLabel(c: ToolCall, t: TFn): string {
 const callIcon = (c: ToolCall): IconName =>
   ["web_search", "research", "read_url"].includes(c.name)
     ? "globe"
-    : c.name === "click" || c.name === "type"
+    : c.name === "click" || c.name === "type" || c.name.startsWith("desktop_")
       ? "cursor"
       : c.name.startsWith("create_") || c.name.endsWith("_file") || c.name.endsWith("_files") || c.name === "read_document" || c.name.endsWith("_attachment")
         ? "folder"
@@ -1264,7 +1298,7 @@ export default function ChatView({ id }: { id: string }) {
               <div className="approval" role="alert">
                 {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
                 <div>
-                  <strong>{t("chat.wantsTo", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
+                  <strong>{approval.items.some((i) => i.desktop === "grant") ? t("desk.grantQ", { name: approvalBot?.name ?? t("chat.aBot") }) : t("chat.wantsTo", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
                   <ul>
                     {approval.items.map((it) => (
                       <li key={it.call.id}>
@@ -1280,7 +1314,7 @@ export default function ChatView({ id }: { id: string }) {
                   </ul>
                   <div className="row wrap">
                     <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="check" size={16} /> {approval.items.some((i) => i.always || i.folder) ? t("chat.allowOnce") : t("chat.allow")}
+                      <Icon name="check" size={16} /> {approval.items.some((i) => i.desktop === "grant") ? t("desk.allowTask") : approval.items.some((i) => i.always || i.folder) ? t("chat.allowOnce") : t("chat.allow")}
                     </button>
                     {approval.items.some((i) => i.folder) && (
                       <button className="btn" onClick={() => decide(true, "folders")} title={[...new Set(approval.items.map((i) => i.folder).filter(Boolean))].join(" · ")}>

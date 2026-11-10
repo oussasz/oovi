@@ -13,7 +13,8 @@ import { noteHosted, noteHostedState, type HostedLive, type HostedState } from "
 import { costOf, readableError, replacementFor } from "./models";
 import { HOSTED_NAME, PROVIDERS, providerName, type ProviderId } from "./providers-meta";
 import { currentModel, markRetired, usesHosted, type ModelRef, type Settings } from "./settings";
-import { replaceBotModel } from "./store";
+import { readShot, replaceBotModel } from "./store";
+import { DESKTOP_MARKER, DESKTOP_TOOLSET_NAME, DESKTOP_TOOLSET_TYPE, desktopName, isDesktopName, memberOf, supportsDesktopModel } from "./desktop-core";
 import type { Msg, ToolCall } from "./types";
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
@@ -246,7 +247,7 @@ const MEDIA_REJECTED = /image|vision|multimodal|image_url|document|pdf|media.?ty
 
 /** The conversation includes images or PDFs sent as files. */
 const hasMedia = (messages: Msg[]) =>
-  messages.some((m) => (m.role === "user" && !!m.attachments?.some((a) => !a.brief && (a.att.kind === "image" || (a.att.kind === "pdf" && a.doc)))) || (m.role === "tool" && m.results.some((t) => !!t.attach?.length)));
+  messages.some((m) => (m.role === "user" && !!m.attachments?.some((a) => !a.brief && (a.att.kind === "image" || (a.att.kind === "pdf" && a.doc)))) || (m.role === "tool" && m.results.some((t) => !!t.attach?.length || !!t.shot)));
 
 async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort, noMedia = false): Promise<RawCompletion> {
   if (ref.provider === "oovi") {
@@ -262,7 +263,8 @@ async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Ms
   const timeout = AbortSignal.timeout(TIMEOUT_FOR[effort]);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
   const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig, noMedia };
-  return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible(req, ref.provider === "openrouter");
+  // The desktop toolset is a Claude feature: other models never get it.
+  return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible({ ...req, tools: tools.filter((t) => t.name !== DESKTOP_MARKER) }, ref.provider === "openrouter");
 }
 
 /** noMedia: send attachments as text notes only (the model rejected images or PDFs). */
@@ -293,10 +295,22 @@ function mediaPlan(r: Req, wire: Wire): Map<object, MediaPart[]> {
       const textMax = Math.min(INLINE_MAX, Math.max(6000, Math.floor(INLINE_TOTAL / Math.max(1, texty))));
       plan.set(m, m.attachments.flatMap((a) => attachmentParts(a, { images, pdfs, textMax, budget })));
     } else if (m.role === "tool") {
-      for (const t of m.results) if (t.attach?.length) plan.set(t, t.attach.flatMap((a) => attachmentParts(a, { images, pdfs, textMax: INLINE_MAX, budget })));
+      for (const t of m.results) {
+        if (t.attach?.length) plan.set(t, t.attach.flatMap((a) => attachmentParts(a, { images, pdfs, textMax: INLINE_MAX, budget })));
+        else if (t.shot) plan.set(t, desktopShot(t.shot, images, budget));
+      }
     }
   }
   return plan;
+}
+
+/** A desktop screenshot for the model (JPEG from the shots folder), or a note when it can't be sent. */
+function desktopShot(id: string, images: boolean, budget: { bytes: number }): MediaPart[] {
+  const jpeg = images ? readShot(id) : null;
+  const data = jpeg?.toString("base64");
+  if (!data || data.length > budget.bytes) return [{ type: "text", text: "(The screenshot can't be shown here; take a new one if you need it.)" }];
+  budget.bytes -= data.length;
+  return [{ type: "image", mediaType: "image/jpeg", data }];
 }
 
 function anthropicMedia(p: MediaPart): ABlock {
@@ -361,8 +375,12 @@ async function post(label: string, url: string, headers: Record<string, string>,
 
 type ABlock = Record<string, unknown>;
 
-/** Messages, tools and system prompt in Anthropic's format, with prompt-caching marks. */
-function anthropicParts(r: Req, wire: Wire = "anthropic") {
+/**
+ * Messages, tools and system prompt in Anthropic's format, with prompt-caching marks.
+ * desktop: send Anthropic's computer toolset (in place of the DESKTOP_MARKER spec) and mark
+ * desktop calls and their results with toolset_name, as the toolset requires.
+ */
+function anthropicParts(r: Req, wire: Wire = "anthropic", desktop = false) {
   const plan = mediaPlan(r, wire);
   const msgs: { role: "user" | "assistant"; content: ABlock[] }[] = [];
   // Anthropic wants strictly alternating roles; merge neighbours with the same role.
@@ -379,7 +397,10 @@ function anthropicParts(r: Req, wire: Wire = "anthropic") {
     } else if (m.role === "assistant") {
       const blocks: ABlock[] = [];
       if (m.text.trim()) blocks.push({ type: "text", text: m.text });
-      for (const c of m.toolCalls) blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.input });
+      for (const c of m.toolCalls) {
+        if (desktop && isDesktopName(c.name)) blocks.push({ type: "tool_use", id: c.id, name: memberOf(c.name), toolset_name: DESKTOP_TOOLSET_NAME, input: c.input });
+        else blocks.push({ type: "tool_use", id: c.id, name: c.name, input: c.input });
+      }
       push("assistant", blocks.length ? blocks : [{ type: "text", text: "(no reply)" }]);
     } else {
       push(
@@ -387,7 +408,7 @@ function anthropicParts(r: Req, wire: Wire = "anthropic") {
         m.results.map((t) => {
           const media = plan.get(t);
           const content = media?.length ? [{ type: "text", text: t.content || "(no text)" }, ...media.map(anthropicMedia)] : t.content;
-          return { type: "tool_result", tool_use_id: t.id, content, ...(t.isError ? { is_error: true } : {}) };
+          return { type: "tool_result", tool_use_id: t.id, ...(desktop && isDesktopName(t.name) ? { toolset_name: DESKTOP_TOOLSET_NAME } : {}), content, ...(t.isError ? { is_error: true } : {}) };
         }),
       );
     }
@@ -399,7 +420,9 @@ function anthropicParts(r: Req, wire: Wire = "anthropic") {
   const CACHE = { type: "ephemeral" } as const;
   const lastBlock = msgs.at(-1)?.content.at(-1);
   if (lastBlock) lastBlock.cache_control = CACHE;
-  const tools = r.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.parameters }) as Record<string, unknown>);
+  const tools = r.tools
+    .filter((t) => t.name !== DESKTOP_MARKER || desktop)
+    .map((t) => (t.name === DESKTOP_MARKER ? { type: DESKTOP_TOOLSET_TYPE } : { name: t.name, description: t.description, input_schema: t.parameters }) as Record<string, unknown>);
   const lastTool = tools.at(-1);
   if (lastTool) lastTool.cache_control = CACHE;
   return { messages: msgs, tools, system: [{ type: "text", text: r.system, cache_control: CACHE }] };
@@ -407,7 +430,7 @@ function anthropicParts(r: Req, wire: Wire = "anthropic") {
 
 type AnthropicReply = {
   model?: string;
-  content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; input?: Record<string, unknown> }[];
+  content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; toolset_name?: string; input?: Record<string, unknown> }[];
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   oovi?: HostedLive & { credits?: number };
 };
@@ -417,7 +440,10 @@ function readAnthropic(j: AnthropicReply): RawCompletion {
   const u = j.usage ?? {};
   return {
     text: content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("\n").trim(),
-    toolCalls: content.filter((b) => b.type === "tool_use").map((b) => ({ id: b.id || randomId(), name: b.name ?? "", input: b.input ?? {} })),
+    // Desktop toolset calls become "desktop_<member>" inside oovi (the browser tools have a "type" too).
+    toolCalls: content
+      .filter((b) => b.type === "tool_use")
+      .map((b) => ({ id: b.id || randomId(), name: b.toolset_name === DESKTOP_TOOLSET_NAME ? desktopName(b.name ?? "") : (b.name ?? ""), input: b.input ?? {} })),
     usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0 },
     // Thinking blocks are kept for the UI only and never replayed: oovi trims old
     // history to save tokens, and replayed thinking requires an unedited history.
@@ -426,11 +452,15 @@ function readAnthropic(j: AnthropicReply): RawCompletion {
 }
 
 async function anthropic(r: Req): Promise<RawCompletion> {
-  const p = anthropicParts(r);
+  // Only models with the computer toolset get it (a backup model in the chain may not have it).
+  const desktop = r.tools.some((t) => t.name === DESKTOP_MARKER) && supportsDesktopModel(r.model);
+  const p = anthropicParts(r, "anthropic", desktop);
   const j = (await post(
     r.label,
     `${r.baseUrl}/v1/messages`,
-    { "x-api-key": r.key ?? "", "anthropic-version": "2023-06-01" },
+    // Requests with the desktop toolset use the current API version (its only changes remove
+    // temperature/top_p/top_k and two message shapes oovi never sends); the rest stay as they were.
+    { "x-api-key": r.key ?? "", "anthropic-version": desktop ? "2026-10-21" : "2023-06-01" },
     {
       model: r.model,
       max_tokens: r.maxOut,
@@ -449,7 +479,8 @@ async function anthropic(r: Req): Promise<RawCompletion> {
 async function hosted(r: Req): Promise<RawCompletion> {
   const token = sessionToken();
   if (!token) throw new HostedError("You're signed out. Sign in again to use theOovi.", "signed_out");
-  const p = anthropicParts(r, "oovi");
+  // theOovi's server checks the toolset and picks a model that has it.
+  const p = anthropicParts(r, "oovi", r.tools.some((t) => t.name === DESKTOP_MARKER));
   let res: Response;
   try {
     res = await fetch(`${r.baseUrl}/api/v1/ai/messages`, {

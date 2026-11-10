@@ -3,10 +3,11 @@
 // Here we run that server inside the app on a private 127.0.0.1 port and show
 // it in a native window. Nothing is exposed to the network.
 
-const { app, BrowserWindow, Menu, Notification, Tray, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, shell } = require("electron");
+const { app, BrowserWindow, Menu, Notification, Tray, desktopCapturer, dialog, ipcMain, nativeImage, nativeTheme, powerMonitor, screen, shell } = require("electron");
 const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
+const { createDesktopControl } = require("./desktop-control.cjs");
 
 const ROOT = path.join(__dirname, "..");
 const DEV_URL = process.env.OOVI_DEV_URL; // set by electron/dev.cjs
@@ -135,10 +136,13 @@ function destroyTray() {
 }
 
 const liveNotifications = new Set();
+// Desktop control (Beta): screenshots, mouse and keyboard, used by the server's lib/desktop-control.ts.
+const desktopControl = createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor });
 
 // The app's own server runs in this process: it reaches these through globalThis.
 // Set before the server starts; `npm run web` has no such bridge, and the server skips it.
 globalThis.__ooviDesktop = {
+  desktop: desktopControl.bridge,
   /** A native notification; clicking it opens oovi on that chat. */
   notify(title, body, chatId) {
     try {
@@ -255,6 +259,8 @@ function createWindow(target) {
   });
   win.on("closed", () => {
     win = null;
+    // The banner is a window too: it must not keep oovi open once the main window is gone.
+    desktopControl.bridge.hideOverlay();
   });
   if (appUrl) void win.loadURL(target ? `${appUrl}${target}` : appUrl);
   else void win.loadURL(loadingPage(dark));
@@ -317,6 +323,7 @@ app.whenReady().then(async () => {
   // Windows notifications need the app's identity (the Store build already has one from its package).
   if (process.platform === "win32" && !process.windowsStore) app.setAppUserModelId(app.isPackaged ? "app.oovi.desktop" : process.execPath);
   setupTray();
+  desktopControl.init();
   // After sleep, the server looks for routines that came due meanwhile.
   powerMonitor.on("resume", () => {
     try {
@@ -352,6 +359,7 @@ app.on("activate", () => {
 });
 app.on("before-quit", () => {
   quitting = true;
+  desktopControl.bridge.hideOverlay();
   if (server) server.close();
 });
 app.on("will-quit", () => destroyTray());

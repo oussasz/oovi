@@ -15,7 +15,7 @@
 import { currentUser } from "./account";
 import { complete, HostedError, type ToolSpec } from "./llm";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, recallHistory } from "./context";
-import { hostedMaxInput } from "./hosted";
+import { hostedMaxInput, hostedStatus } from "./hosted";
 import { memoryPrompt } from "./memory";
 import { CORRECTION, lessonsPrompt, mergeLearned, reflect } from "./learning";
 import { capabilitiesPrompt } from "./capabilities";
@@ -37,7 +37,9 @@ import { FILE_SPECS } from "./workspace";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
-import type { Approval, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
+import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
+import { DESKTOP_PROMPT, DESKTOP_SPEC, desktopApprovalSummary, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, runDesktopCall } from "./desktop-control";
+import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /**
  * alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on.
@@ -234,7 +236,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     else lines.push("To involve a teammate, @mention them and say exactly what you need; they reply right after you. Hand off only when it helps; don't @mention someone just to thank them.");
   }
 
-  const builtIn = tools.filter((t) => !t.name.startsWith("mcp_") && t.name !== "use_skill" && t.name !== "save_skill");
+  const builtIn = tools.filter((t) => !t.name.startsWith("mcp_") && t.name !== "use_skill" && t.name !== "save_skill" && t.name !== DESKTOP_MARKER);
   if (builtIn.length) {
     lines.push("", `Your tools: ${builtIn.map((t) => t.name).join(", ")}.`);
     if (bot.tools.web || bot.tools.browser) {
@@ -297,6 +299,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       "Don't open or print secrets (.env files, keys, tokens) unless the user asks. After changing code, run the project's tests or build when there is one, and report the result honestly.",
     );
   }
+  if (tools.some((t) => t.name === DESKTOP_MARKER)) lines.push("", DESKTOP_PROMPT);
   if (tools.some((t) => t.name.startsWith("mcp_"))) lines.push("Tools starting with mcp_ come from connected MCP servers; the user approves each call unless the server is trusted.");
   if (extra.mcpErrors.length) lines.push(`Some tool servers are unavailable right now: ${extra.mcpErrors.join("; ")}.`);
 
@@ -420,11 +423,11 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   return out;
 }
 
-/** Older tool outputs are cut down; the latest few stay whole. */
+/** Older tool outputs are cut down; the latest few stay whole. Only the newest desktop screenshots stay. */
 function prune(history: Msg[]): Msg[] {
   const toolIdx = history.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
   const keep = new Set(toolIdx.slice(-3));
-  return history.map((m, i) =>
+  return pruneDesktopShots(history).map((m, i) =>
     m.role === "tool" && !keep.has(i)
       ? { role: "tool", results: m.results.map((r) => ({ ...r, content: r.content.length > 800 ? `${r.content.slice(0, 800)}\n[older result truncated]` : r.content })) }
       : m,
@@ -469,6 +472,7 @@ const baseName = (p: unknown) => String(p ?? "a file").split(/[\\/]/).pop() || "
 export function statusText(c: ToolCall): string {
   const i = c.input;
   if (c.name.startsWith("mcp_")) return `Using ${c.name.replace(/^mcp_/, "").replace(/_/g, " ")}`;
+  if (isDesktopName(c.name)) return desktopStatus(c);
   switch (c.name) {
     case "web_search": return `Searching “${String(i.query ?? "")}”`;
     case "open_url": {
@@ -554,10 +558,13 @@ async function* runBot(
   const isMain = chat.kind === "direct" && mainBot(bots)?.id === bot.id;
   // Routine runs can look at routines but never propose new ones.
   const routineSpecs = isMain ? (chat.routine ? [LIST_ROUTINES_SPEC] : ROUTINE_SPECS) : [];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs];
+  // Desktop control on theOovi: its server says whether its model can use the computer toolset.
+  if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
-  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: computerFilesPrompt(settings, chat.pending?.channel === "telegram") });
+  const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
+  const system = systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] });
   let steps = 0;
 
   for (;;) {
@@ -591,11 +598,28 @@ async function* runBot(
         yield { type: "entry", entry };
         return "waiting";
       }
+      // Desktop control: the first desktop action of a task asks ("Allow for this task"); with
+      // "Ask before every action", so does every action that does more than look.
+      const taskId = lastUser(chat)?.id;
+      const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
+      const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
+      const firstDesk = last.toolCalls.find((c) => isDesktopName(c.name))?.id;
+      const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery: s.desktopControl.askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
-      const asks = (c: ToolCall) => (c.name === "propose_routine" ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string" : needsApproval(c, s, sessionId, usesAccounts, chat.workspace));
+      const asks = (c: ToolCall) =>
+        isDesktopName(c.name)
+          ? deskAsk(c) !== null
+          : c.name === "propose_routine"
+            ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string"
+            : needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
       const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined);
       if (ask.length) {
-        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map((c) => (c.name === "propose_routine" ? { call: c, ...describeProposal(c, bot) } : approvalItem(c, sessionId, chat.workspace))) };
+        const itemOf = (c: ToolCall): ApprovalItem => {
+          if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
+          const kind = isDesktopName(c.name) ? deskAsk(c) : null;
+          return kind ? { call: c, summary: desktopApprovalSummary(c, kind, bot.name), desktop: kind } : approvalItem(c, sessionId, chat.workspace);
+        };
+        const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf) };
         entry.status = "waiting";
         chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), approval };
         yield { type: "entry", entry };
@@ -603,10 +627,26 @@ async function* runBot(
         return "waiting";
       }
       const results: ToolResult[] = [];
+      // Desktop actions of one turn run in order and stop at the first failure (the computer toolset's batch rule).
+      let deskHalted = false;
       for (const c of last.toolCalls) {
         if (signal.aborted) break;
         if (c.name === "propose_plan") {
           results.push({ id: c.id, name: c.name, content: planDecisionText(entry, decisions[c.id] === true) });
+          continue;
+        }
+        if (isDesktopName(c.name)) {
+          let r: ToolResult;
+          if (!deskOn) r = { id: c.id, name: c.name, content: `Desktop control isn't enabled for ${bot.name}. The user can turn it on in [Settings > Safety](oovi://settings/safety) (it needs a supported Claude model).`, isError: true };
+          else if (deskHalted) r = { id: c.id, name: c.name, content: NOT_EXECUTED, isError: true };
+          else if (decisions[c.id] === false) r = { id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true };
+          else {
+            if (decisions[c.id] === true && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
+            yield { type: "status", entryId: entry.id, text: statusText(c) };
+            r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal });
+          }
+          if (r.isError) deskHalted = true;
+          results.push(r);
           continue;
         }
         if (!tools.some((t) => t.name === c.name)) {
@@ -689,6 +729,21 @@ async function* runBot(
 }
 
 export async function* orchestrate(chatId: string, input: RunInput, signal: AbortSignal): AsyncGenerator<ChatEvent> {
+  try {
+    yield* runChat(chatId, input, signal);
+  } finally {
+    // Desktop control ends with the run (the banner closes). Paused for an approval: the task's OK stays.
+    let waiting = false;
+    try {
+      waiting = !signal.aborted && !!getChat(chatId)?.pending?.approval;
+    } catch {
+      waiting = false;
+    }
+    endDesktopRun(chatId, { keepGrant: waiting });
+  }
+}
+
+async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): AsyncGenerator<ChatEvent> {
   // "Always allow this folder": remember the approved files' folders before settings are loaded for this run.
   if (input.decisions && input.alwaysFolders) {
     const items = getChat(chatId)?.pending?.approval?.items ?? [];

@@ -17,6 +17,8 @@ export type ToolResult = {
   file?: { path: string; name: string; size: number };
   /** Attachments shown to the model with this result (read_attachment on an image). */
   attach?: AttachRef[];
+  /** Desktop control: the screenshot (saved shot id) the model sees with this result. Only the newest few are sent. */
+  shot?: string;
 };
 
 // ---------- attachments (files the user adds to a message) ----------
@@ -49,7 +51,15 @@ export type Msg =
  * detail: preview shown under the summary (file content, a diff, a command). always: edits in the project folder can be allowed for good.
  * folder: a file on this computer; "Always allow this folder" lets bots read and send from this folder without asking.
  */
-export type ApprovalItem = { call: ToolCall; summary: string; detail?: string; always?: boolean; folder?: string };
+export type ApprovalItem = {
+  call: ToolCall;
+  summary: string;
+  detail?: string;
+  always?: boolean;
+  folder?: string;
+  /** Desktop control: "grant" = the first action of a task (allows the mouse and keyboard for the task); "action" = one more action ("Ask before every action"). */
+  desktop?: "grant" | "action";
+};
 
 /** The one folder on the user's computer that bots in a chat may work in. */
 export type Workspace = {

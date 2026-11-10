@@ -2,6 +2,7 @@
 // chats or reload the page while bots keep working. Clients subscribe to a
 // run's events; a stop request aborts it.
 
+import { setDesktopStop } from "./desktop-control";
 import { orchestrate, type RunInput } from "./orchestrator";
 import type { ChatEvent } from "./types";
 
@@ -53,6 +54,9 @@ export function subscribe(chatId: string, fn: Listener): (() => void) | null {
 export function stopRun(chatId: string): void {
   runs.get(chatId)?.ctrl.abort();
 }
+
+// The desktop-control banner's Stop button stops the run that is using the mouse and keyboard.
+setDesktopStop((chatId) => stopRun(chatId));
 
 /** NDJSON stream of a chat's run events, ending with {type:"done"}. */
 export function eventStream(chatId: string, req: Request): Response {

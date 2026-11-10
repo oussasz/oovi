@@ -266,11 +266,38 @@ export function deleteChat(id: string): void {
 
 // ---------- screenshots ----------
 
-export function saveShot(jpeg: Buffer): string {
-  const id = newId();
+/** prefix: marks a kind of screenshot ("desk-" for desktop control) so it can be cleaned up on its own schedule. */
+export function saveShot(jpeg: Buffer, prefix = ""): string {
+  const id = `${prefix}${newId()}`;
   fs.mkdirSync(shotsDir(), { recursive: true });
   fs.writeFileSync(path.join(shotsDir(), `${id}.jpg`), jpeg);
   return `/api/shots/${id}`;
+}
+
+/** Deletes screenshots whose id starts with `prefix` and that are older than maxAgeMs. Returns how many. */
+export function sweepShots(prefix: string, maxAgeMs: number): number {
+  if (!prefix) return 0;
+  let n = 0;
+  const cutoff = Date.now() - maxAgeMs;
+  let names: string[] = [];
+  try {
+    names = fs.readdirSync(shotsDir());
+  } catch {
+    return 0;
+  }
+  for (const name of names) {
+    if (!name.startsWith(prefix) || !name.endsWith(".jpg")) continue;
+    const p = path.join(shotsDir(), name);
+    try {
+      if (fs.statSync(p).mtimeMs < cutoff) {
+        fs.rmSync(p, { force: true });
+        n++;
+      }
+    } catch {
+      /* gone already */
+    }
+  }
+  return n;
 }
 
 export function readShot(id: string): Buffer | null {

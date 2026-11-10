@@ -11,6 +11,7 @@
 // theOovi requests must stay under the limit set in the console (100K tokens by
 // default); the budget leaves room for the reply and for estimation error.
 import { attachmentTokens } from "./attachments";
+import { DESKTOP_MARKER, DESKTOP_SHOT_TOKENS, DESKTOP_TOOLSET_TOKENS } from "./desktop-core";
 import type { ToolSpec } from "./llm";
 import type { AttachRef, Bot, Chat, Msg } from "./types";
 
@@ -23,13 +24,15 @@ function filesTokens(messages: Msg[]): number {
   const add = (refs?: AttachRef[]) => refs?.forEach((r) => (n += attachmentTokens(r)));
   for (const m of messages) {
     if (m.role === "user") add(m.attachments);
-    else if (m.role === "tool") m.results.forEach((t) => add(t.attach));
+    else if (m.role === "tool") m.results.forEach((t) => (add(t.attach), (n += t.shot ? DESKTOP_SHOT_TOKENS : 0)));
   }
   return n;
 }
 
 export function requestTokens(system: string, messages: Msg[], tools: ToolSpec[]): number {
-  return estimateTokens(system) + estimateTokens(messages) + filesTokens(messages) + estimateTokens(tools);
+  // The desktop toolset's definition is sent by Anthropic's name only, but costs ~4.6K tokens.
+  const desktop = tools.some((t) => t.name === DESKTOP_MARKER) ? DESKTOP_TOOLSET_TOKENS : 0;
+  return estimateTokens(system) + estimateTokens(messages) + filesTokens(messages) + estimateTokens(tools) + desktop;
 }
 
 /** Attachments become one-line mentions (read_attachment brings them back). keepLast: leave the newest message with files whole. */
@@ -37,7 +40,7 @@ function briefFiles(messages: Msg[], keepLast: boolean): Msg[] {
   const last = keepLast ? messages.map((m, i) => (m.role === "user" && m.attachments?.length ? i : -1)).filter((i) => i >= 0).at(-1) : -1;
   return messages.map((m, i): Msg => {
     if (m.role === "user" && m.attachments?.length && i !== last) return { ...m, attachments: m.attachments.map((a) => ({ ...a, brief: true })) };
-    if (m.role === "tool" && m.results.some((t) => t.attach?.length) && !(keepLast && i === messages.length - 1)) return { role: "tool", results: m.results.map((t) => ({ ...t, attach: undefined })) };
+    if (m.role === "tool" && m.results.some((t) => t.attach?.length || t.shot) && !(keepLast && i === messages.length - 1)) return { role: "tool", results: m.results.map((t) => ({ ...t, attach: undefined, shot: undefined })) };
     return m;
   });
 }

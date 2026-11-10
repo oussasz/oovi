@@ -18,6 +18,7 @@
     "publish:downloads": "bash scripts/publish-downloads.sh"
   },
   "dependencies": {
+    "@nut-tree-fork/libnut-win32": "2.7.5",
     "electron-updater": "6.8.11"
   },
   "devDependencies": {
@@ -51,6 +52,9 @@
       "buildResources": "build"
     },
     "asar": true,
+    "asarUnpack": [
+      "node_modules/@nut-tree-fork/libnut-win32/build/Release/*.node"
+    ],
     "files": [
       "electron/**",
       "!electron/dev.cjs",

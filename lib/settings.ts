@@ -21,6 +21,12 @@ export type SearchConfig = { provider: SearchProvider; searxngUrl: string; brave
  */
 export type ComputerFilesMode = "off" | "ask" | "folders";
 export type ComputerFiles = { mode: ComputerFilesMode; folders: string[] };
+/**
+ * Desktop control (Beta, lib/desktop-control.ts): bots see the screen and use the mouse and
+ * keyboard. Off by default; turning it on needs the user's consent (consentAt). askEvery: every
+ * action that isn't just looking asks first (default on); the first action of a task always asks.
+ */
+export type DesktopControl = { enabled: boolean; consentAt?: number; askEvery: boolean };
 /** One model on one provider. */
 export type ModelRef = { provider: ProviderId; model: string };
 export type Settings = {
@@ -32,6 +38,7 @@ export type Settings = {
   browser: BrowserConfig;
   approvals: { clicksAndTyping: boolean };
   computerFiles: ComputerFiles;
+  desktopControl: DesktopControl;
   maxSteps: number;
   /** In groups: how many bot-to-bot hand-offs one user message may trigger. */
   maxTurns: number;
@@ -89,6 +96,7 @@ const DEFAULTS: Settings = {
   },
   approvals: { clicksAndTyping: true },
   computerFiles: { mode: "ask", folders: [] },
+  desktopControl: { enabled: false, askEvery: true },
   maxSteps: 25,
   maxTurns: 6,
   language: "auto",
@@ -140,6 +148,7 @@ function readRaw(): Settings {
       browser: { ...DEFAULTS.browser, ...j.browser },
       approvals: { ...DEFAULTS.approvals, ...j.approvals },
       computerFiles: cleanComputerFiles(j.computerFiles),
+      desktopControl: cleanDesktopControl(j.desktopControl),
     };
   } catch {
     return structuredClone(DEFAULTS);
@@ -151,6 +160,20 @@ function cleanComputerFiles(v: unknown): ComputerFiles {
   const mode: ComputerFilesMode = o.mode === "off" || o.mode === "folders" ? o.mode : "ask";
   const folders = Array.isArray(o.folders) ? [...new Set(o.folders.filter((f): f is string => typeof f === "string" && !!f.trim()))].slice(0, 50) : [];
   return { mode, folders };
+}
+
+function cleanDesktopControl(v: unknown): DesktopControl {
+  const o = (v && typeof v === "object" ? v : {}) as Partial<DesktopControl>;
+  const consentAt = typeof o.consentAt === "number" && Number.isFinite(o.consentAt) && o.consentAt > 0 ? o.consentAt : undefined;
+  // Never on without the user's recorded consent.
+  return { enabled: o.enabled === true && !!consentAt, askEvery: o.askEvery !== false, ...(consentAt ? { consentAt } : {}) };
+}
+
+/** Save the "Control this computer" setting (checked by app/api/desktop-control). */
+export function setDesktopControl(next: DesktopControl): void {
+  const raw = readRaw();
+  raw.desktopControl = cleanDesktopControl(next);
+  writeRaw(raw);
 }
 
 /** Save the "Files on this computer" setting. Folders must already be checked (lib/computer.ts). */

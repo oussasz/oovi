@@ -17,6 +17,7 @@ export const HELP_TOPICS = {
   credits: "theOovi credits, the daily safety limit, using your own API keys and models",
   folders: "Project folders and approvals",
   computer: "The cloud computer",
+  desktop: "Desktop control (Beta): letting bots see the screen and use the mouse and keyboard in desktop apps, safety, Stop",
   telegram: "Using your main bot from Telegram",
   routines: "Routines: tasks a bot runs on a schedule (every morning, every Monday, every few hours), notifications, running in the background",
   memory: "Memory, lessons and self-learning",
@@ -107,6 +108,14 @@ Problems:
 - Bots run code, analyze data, make charts, install tools and build apps there, hand you the results as files in the chat, and can share a public link to a web app they built.
 - "Remove key" turns it off. Without it, bots can still run commands in a chat's project folder on this PC (you approve each one).`,
 
+  desktop: `Desktop control (Beta): bots can see your screen and use the mouse and keyboard to work in desktop apps (Windows only for now; coming to Mac once oovi is signed by Apple).
+- Turn it on: Settings > Safety > "Control this computer (Beta)". Read the risks, tick the box to confirm, then switch on "Let bots control this computer". It's off by default.
+- It works with theOovi, or your own Anthropic key with Claude Haiku 5.5, Sonnet 5.5 or Opus 5.5 as the bot's model. Other models: "Not available with this model".
+- Every task asks first: "Let <bot> use your mouse and keyboard for this task?" > "Allow for this task" or Deny (on Telegram: /yes or /no). "Ask before every action" (on by default) also asks before every click, key press and typed text; only screenshots don't ask.
+- While it works, a banner at the top of the screen says "oovi is controlling your computer" with a Stop button. Moving the mouse yourself also stops it at once, and so do locking the screen and 20 minutes without activity.
+- Never use it for banking, payments or passwords. oovi refuses password managers (1Password, Bitwarden, KeePass, LastPass, Dashlane, Keeper…), Windows security prompts and banking or payment windows, and bots never type passwords. Windows running as administrator, User Account Control prompts and the lock screen can't be controlled.
+- Screenshots are sent to the AI model while it works, show in the chat like browser screenshots, and stay on this computer for 30 days.`,
+
   telegram: `Telegram: Settings > Telegram. Talk to your main bot from your phone.
 1. In Telegram, open @BotFather, send /newbot, choose a name and a username ending in "bot". BotFather replies with a token.
 2. Paste the token in oovi.
@@ -128,7 +137,7 @@ Advanced (optional, Settings > Telegram > Advanced, collapsed): link another Tel
 - Under each reply: thumbs up / thumbs down; with thumbs down you can say what should be better and the bots learn from it.
 - Your name and photo: Settings > Profile.`,
 
-  settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs, Files on this computer), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
+  settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs, Files on this computer, Control this computer), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
 Elsewhere: per-bot settings in Edit bot (pencil in a bot's chat header): About, Look, Brain (model), Abilities (Main bot, Web search, Browser, signed-in accounts, Tools from MCP servers). Group settings: pencil in a group's header. Connectors, skills, plugins and memory: Marketplace.
 Links into the app, written by bots, show as buttons in chat: \`[Label](oovi://marketplace/connector/ID)\`, \`oovi://marketplace/skill/ID\`, \`oovi://marketplace/plugin/ID\`, \`oovi://settings/TAB\` (profile, models, memory, telegram, accounts, search, browser, computer, safety, language, data, about), \`oovi://bot/BOTNAME\` (opens that bot's Abilities), \`oovi://routines\` (the Routines page).`,
 

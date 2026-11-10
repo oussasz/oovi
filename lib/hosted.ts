@@ -19,6 +19,8 @@ export type HostedStatus = {
   maxInputTokens: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
   pilot: { open: boolean; eligible: boolean; public?: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
+  /** theOovi's model can control the desktop (Claude's computer toolset). Missing from older servers: treated as yes. */
+  desktop?: boolean;
   /** When the server last confirmed these numbers (ms). */
   checkedAt: number;
 };

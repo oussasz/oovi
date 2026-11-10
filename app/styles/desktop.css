@@ -1,0 +1,11 @@
+/* desktop: Settings > Safety > "Control this computer (Beta)" (components/DesktopControlSettings.tsx) */
+
+.dc-card .card-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.dc-beta { font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 99px; background: var(--yellow); color: #171717; }
+.dc-card .dc-intro { margin: -4px 0 10px; }
+.dc-risks { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 6px; }
+.dc-risks li { display: flex; align-items: flex-start; gap: 8px; font-size: 13.5px; line-height: 1.45; }
+.dc-risks li > svg { flex: none; margin-top: 2px; color: var(--muted); }
+.dc-risks li.dc-warn { font-weight: 700; }
+.dc-risks li.dc-warn > svg { color: var(--err); }
+.dc-consent { padding: 10px 12px; border-radius: 12px; background: var(--soft); }
