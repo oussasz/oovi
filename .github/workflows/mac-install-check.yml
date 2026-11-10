@@ -1,0 +1,107 @@
+# Checks, on a real Mac, what a person sees when they install oovi downloaded from the website,
+# and takes the screenshots used by the website's Mac install guide.
+#
+# For two builds: the latest published release (as people get it today) and a fresh build from
+# this branch (with the current signing settings). Each .app is installed like a download from a
+# browser (quarantine flag set), then: Apple's Gatekeeper verdict (spctl), the window macOS shows
+# when it's opened, and System Settings > Privacy & Security.
+#
+# Actions > "Mac install check" > Run workflow. Results: the run's "mac-install-check" artifact.
+name: Mac install check
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Published release to compare with (e.g. v0.8.9)"
+        required: false
+        default: "v0.8.9"
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: macos-latest
+    env:
+      OUT: ${{ github.workspace }}/check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: macOS and Gatekeeper on this machine
+        run: |
+          mkdir -p "$OUT"
+          { sw_vers; uname -m; echo "Gatekeeper: $(spctl --status 2>&1)"; } | tee "$OUT/machine.txt"
+          # Make sure Gatekeeper checks apps, as on a normal Mac.
+          sudo spctl --master-enable 2>&1 || true
+          echo "Gatekeeper after enable: $(spctl --status 2>&1)" | tee -a "$OUT/machine.txt"
+
+      - name: Fresh build (this branch's signing settings)
+        run: |
+          npm ci
+          npm run build
+          npx electron-builder --mac dmg --arm64 --publish never
+          ls -la dist
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+
+      - name: Download the published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.release }}
+        run: |
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern "*-arm64.dmg" --dir release
+          ls -la release
+
+      - name: Install and open each build like a downloaded app
+        run: |
+          set +e
+          check() {
+            local name="$1" dmg="$2"
+            local dir="$OUT/$name"; mkdir -p "$dir"
+            echo "== $name: $dmg" | tee "$dir/log.txt"
+            # Downloaded with a browser: the file carries the quarantine flag.
+            xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Safari;$(uuidgen)" "$dmg"
+            # 1. Opening the .dmg: Finder shows the install window.
+            open "$dmg"; sleep 12
+            screencapture -x "$dir/1-dmg-window.png"
+            local vol; vol=$(ls -d /Volumes/oovi* | head -1)
+            echo "mounted: $vol" | tee -a "$dir/log.txt"
+            # 2. Dragging oovi to Applications (copying keeps the quarantine flag, like Finder).
+            sudo rm -rf /Applications/oovi.app
+            ditto "$vol/oovi.app" /Applications/oovi.app
+            xattr -w com.apple.quarantine "0083;$(printf %x $(date +%s));Safari;$(uuidgen)" /Applications/oovi.app
+            hdiutil detach "$vol" -quiet; sleep 2
+            echo "--- codesign" | tee -a "$dir/log.txt"
+            codesign -dv --verbose=2 /Applications/oovi.app >> "$dir/log.txt" 2>&1
+            codesign --verify --deep --strict --verbose=2 /Applications/oovi.app >> "$dir/log.txt" 2>&1
+            echo "--- Gatekeeper verdict (spctl)" | tee -a "$dir/log.txt"
+            spctl --assess --type execute -vv /Applications/oovi.app >> "$dir/log.txt" 2>&1
+            # 3. Opening oovi for the first time: the window macOS shows.
+            open /Applications/oovi.app; sleep 10
+            screencapture -x "$dir/2-first-open.png"
+            pgrep -lf "oovi.app/Contents/MacOS/oovi" >> "$dir/log.txt" 2>&1 && echo "oovi IS RUNNING" | tee -a "$dir/log.txt" || echo "oovi is not running" | tee -a "$dir/log.txt"
+            # Close the dialog (Done / Move to Trash would delete it: press Escape), then System Settings.
+            osascript -e 'tell application "System Events" to key code 53' >/dev/null 2>&1; sleep 2
+            open "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension"; sleep 8
+            screencapture -x "$dir/3-privacy-security.png"
+            # Scroll to the Security section, where "Open Anyway" appears.
+            osascript -e 'tell application "System Settings" to activate' -e 'delay 1' -e 'tell application "System Events" to repeat 25 times' -e 'key code 125' -e 'end repeat' >/dev/null 2>&1
+            osascript -e 'tell application "System Events" to tell process "System Settings" to get name of every button of every group of every scroll area of every group of every splitter group of every group of window 1' >> "$dir/log.txt" 2>&1
+            sleep 2
+            screencapture -x "$dir/4-privacy-security-scrolled.png"
+            osascript -e 'quit app "System Settings"' >/dev/null 2>&1
+            pkill -f "oovi.app/Contents/MacOS/oovi" 2>/dev/null; sleep 2
+          }
+          check "published-${{ inputs.release }}" "$(ls release/*-arm64.dmg | head -1)"
+          check "fresh-build" "$(ls dist/*-arm64.dmg | head -1)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mac-install-check
+          path: check
