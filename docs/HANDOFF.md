@@ -23,7 +23,7 @@
 
 Written 2026-11-10 by the Claude Code session that did this work on the owner's Windows PC, for the session that continues it. Read this first; it is self-contained.
 
-## Not released yet (2026-11-11): heavy team work, learning card, Telegram files
+## 0.10.0 (2026-11-11): heavy team work, teammates at the same time, learning card, Telegram files
 Owner's words: "I want a real team that does heavy, dirty work and doesn't stop until it reaches the goal", no credit ceiling ("if the task is big, the user assumes"), chat messages stay short and the work goes into files, nothing may depend on a bot's role.
 - **Big jobs** (`start_big_job`, `lib/orchestrator.ts`): the bot that answers the user decides a task is big. Hand-off and step limits are lifted; the owner of the job is sent back until the goal is reached (a row count in a work table when there is one); the job closes itself after 2 rounds that add nothing (`JOB_STALE`). One turn may take 400 model calls (`JOB_STEPS`, a loop guard).
 - **Work files** (`lib/workfiles.ts`, `lib/workfiles-core.ts`): per chat, `work_table` (rows merged by name or phone), `work_notes`, `work_export` (Excel/CSV/Word/PDF/Markdown without retyping). Stored in `<data>/work/<chatId>.json`.
