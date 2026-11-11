@@ -1,4 +1,12 @@
-# Hand-off: oovi 0.8.8 (released 2026-11-10)
+# Hand-off: oovi 0.10.0 (released 2026-11-11)
+
+## Status after 0.10.0 (read this first)
+- 0.10.0 is on `main`, released on GitHub (v0.10.0), copied to the downloads site (website buttons + in-app updates serve 0.10.0) and submitted to the Microsoft Store by the owner (in certification, 2026-11-11).
+- The first build of the release failed on the spare-copy upload ("Artifact storage quota has been hit"); `build.yml` now makes that copy only for test builds. To attach installers to an existing release: Actions > Build desktop apps > Run workflow on `main` with the tag.
+- Website: Windows first, "Coming soon" for phone and web, 3-step Mac install guide; `status.maxConcurrent` is live.
+- Not yet proven with the real model on the real web: the big-job and parallel engine (ask the owner for the conversation of a real "100 prospects" run).
+
+# Earlier: oovi 0.8.8 (released 2026-11-10)
 
 ## Status after the release (read this first)
 - 0.8.8 is on `main`, released on GitHub (oussasz/oovi v0.8.8), copied to oussasz/oovi-downloads (website Mac buttons + in-app updates), and submitted to the Microsoft Store (in certification; the website's Windows button opens the Store).
