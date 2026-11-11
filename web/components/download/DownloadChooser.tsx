@@ -112,14 +112,7 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         </fieldset>
       )}
 
-      {store ? (
-        <div className="notice">
-          <p className="notice-title">
-            <span className="notice-dot" /> Get oovi from the Microsoft Store
-          </p>
-          <p>No security warnings: Microsoft checks oovi, and the Store keeps it up to date by itself.</p>
-        </div>
-      ) : os === "mac" ? (
+      {store ? null : os === "mac" ? (
         <MacInstallGuide />
       ) : (
       <div className="notice">
