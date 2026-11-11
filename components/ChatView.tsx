@@ -104,6 +104,10 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "go_back": return t("chat.call.back");
     case "request_user_takeover": return t("chat.call.takeover", { reason: String(i.reason ?? "") });
     case "research": return t("chat.call.research", { query: String(i.question ?? "") });
+    case "work_table": return t(i.action === "read" ? "chat.call.workTableRead" : "chat.call.workTable", { name: String(i.table ?? "") });
+    case "work_notes": return t(i.action === "read" ? "chat.call.workNotesRead" : "chat.call.workNotes", { name: String(i.file ?? "") });
+    case "work_export": return t("chat.call.createFile", { name: String(i.filename ?? i.name ?? "") });
+    case "start_big_job": return t("chat.call.bigJob", { goal: String(i.goal ?? "") });
     case "read_url": return t("chat.call.readUrl", { host: host(i.url) });
     case "create_document":
     case "create_spreadsheet":
@@ -340,6 +344,73 @@ function SentFiles({ chatId, files }: { chatId: string; files: Attachment[] }) {
   );
 }
 
+/** One line of the "Learned" card: the user can correct it or remove it right there. */
+function LearnedLine({ text, busy, onChange }: { text: string; busy: boolean; onChange: (action: "remove" | "edit", text?: string) => Promise<boolean> }) {
+  const { t } = useI18n();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(text);
+  if (editing) {
+    return (
+      <li className="learned-line editing">
+        <form
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            if (!draft.trim() || draft.trim() === text) return setEditing(false);
+            void onChange("edit", draft.trim()).then((ok) => ok && setEditing(false));
+          }}
+        >
+          <textarea
+            rows={2}
+            value={draft}
+            maxLength={600}
+            autoFocus
+            aria-label={t("chat.learnedEdit")}
+            onChange={(ev) => setDraft(ev.target.value)}
+            onKeyDown={(ev) => {
+              if (ev.key === "Escape") setEditing(false);
+              if (ev.key === "Enter" && !ev.shiftKey) {
+                ev.preventDefault();
+                ev.currentTarget.form?.requestSubmit();
+              }
+            }}
+          />
+          <div className="row-btns">
+            <button className="btn sm primary" disabled={busy || !draft.trim()}>
+              {t("common.save")}
+            </button>
+            <button type="button" className="btn sm" onClick={() => setEditing(false)}>
+              {t("common.cancel")}
+            </button>
+          </div>
+        </form>
+      </li>
+    );
+  }
+  return (
+    <li className="learned-line">
+      <span>{text}</span>
+      <span className="learned-btns">
+        <button
+          type="button"
+          className="icon-btn"
+          title={t("chat.learnedEdit")}
+          aria-label={t("chat.learnedEdit")}
+          disabled={busy}
+          onClick={() => {
+            setDraft(text);
+            setEditing(true);
+          }}
+        >
+          <Icon name="edit" size={13} />
+        </button>
+        <button type="button" className="icon-btn" title={t("chat.learnedRemove")} aria-label={t("chat.learnedRemove")} disabled={busy} onClick={() => void onChange("remove")}>
+          <Icon name="close" size={13} />
+        </button>
+      </span>
+    </li>
+  );
+}
+
 /** Thumbs up/down and what the bots learned from a reply (self-learning). */
 function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; onUpdate: (e: BotEntry) => void }) {
   const { t } = useI18n();
@@ -361,8 +432,10 @@ function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; on
       onUpdate(r.entry);
       setAsking(false);
       setNote("");
+      return true;
     } catch (x) {
       setErr((x as Error).message);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -379,14 +452,21 @@ function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; on
           {l.lessons.length > 0 && (
             <ul>
               {l.lessons.map((x, i) => (
-                <li key={i}>{x}</li>
+                <LearnedLine key={`${i}:${x}`} text={x} busy={busy} onChange={(action, text) => send({ change: { kind: "lesson", index: i, action, text } })} />
               ))}
             </ul>
           )}
           {l.user.length > 0 && (
-            <p>
-              <b>{t("chat.learnedUser")}:</b> {l.user.join(" · ")}
-            </p>
+            <>
+              <p>
+                <b>{t("chat.learnedUser")}</b>
+              </p>
+              <ul>
+                {l.user.map((x, i) => (
+                  <LearnedLine key={`${i}:${x}`} text={x} busy={busy} onChange={(action, text) => send({ change: { kind: "user", index: i, action, text } })} />
+                ))}
+              </ul>
+            </>
           )}
           {l.skill &&
             (l.skillSaved ? (

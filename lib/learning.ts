@@ -14,7 +14,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { complete } from "./llm";
-import { SUSPICIOUS, applyMemory } from "./memory";
+import { SUSPICIOUS, applyMemory, readEntries } from "./memory";
 import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
@@ -187,12 +187,20 @@ export const CORRECTION = new RegExp(
 const REFLECT_SYSTEM = `You help an AI assistant team learn from finished work so it does better next time.
 You get the user's request, what the bots did (tools used, errors, final answer) and sometimes the user's feedback or correction.
 Return ONLY a JSON object, no other text:
-{"lessons": string[], "user": string[], "skill": null | {"name": string, "description": string, "steps": string[]}}
+{"lessons": Item[], "user": Item[], "skill": null | {"name": string, "description": string, "steps": string[]}}
+Item is {"text": string, "replaces": string | null}.
+
+You are shown what is ALREADY saved (lessons with their ids, and the facts about the user). Before returning anything, compare with it:
+- Already saved, in any words or any language: return nothing for it. Saving the same thing twice is a mistake.
+- It refines, corrects or extends a saved entry ("likes apples" -> "likes green apples"): return ONE merged text and set "replaces" to that lesson's id (for a user fact: the exact saved fact). Never add a second entry about the same thing.
+- Two saved entries say almost the same: return one merged text that replaces one of them.
+- New: "replaces" is null.
+Write each text in the language of the user's request.
 
 lessons: 0-3 short, specific, reusable lessons (max 200 characters each) that would make similar future tasks faster or better. Good: "For flight prices, Google Flights pages need the browser; read_url returns no prices." "The user's company files are in the Reports folder; check there first." Bad: generic advice ("be thorough", "double-check work"), facts that only matter for this one task, anything secret.
 If the user corrected the bots or gave feedback, the most important lesson is what to do differently. When the user contradicts the bots (for example "it works, it just takes time to load"), the user is right: never save the bots' mistaken conclusion.
-Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying or skip checking.
-user: 0-2 durable facts about the user's preferences shown here (format, tone, tools, recurring projects, the business or people they work with). Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
+Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying, skip checking or avoid a site ("use another source instead of X", "X has no phone numbers"): a tool that returned nothing once proves nothing about the site. A lesson may say which way WORKED.
+user: 0-1 fact about the user, and only one that will matter in many future tasks: who they are, their business, a lasting preference (format, tone, tools), the people they work with. The profile is small, so keep only the most important things: not the details of the current task. Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Empty arrays are normal. Never invent lessons.`;
 
@@ -225,6 +233,44 @@ function parseJson(text: string): { lessons?: unknown; user?: unknown; skill?: u
 
 const strings = (v: unknown, max: number) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && x.trim().length > 0).map((x) => clean(x)).slice(0, max) : []);
 
+/** Lessons and facts come back as {text, replaces} (a plain string still works). */
+const items = (v: unknown, max: number): { text: string; replaces?: string }[] =>
+  (Array.isArray(v) ? v : [])
+    .map((x) => (typeof x === "string" ? { text: x } : x && typeof x === "object" ? { text: (x as { text?: unknown }).text, replaces: (x as { replaces?: unknown }).replaces } : { text: "" }))
+    .filter((x): x is { text: string; replaces: unknown } => typeof x.text === "string" && x.text.trim().length > 0)
+    .map((x) => ({ text: clean(x.text), ...(typeof x.replaces === "string" && x.replaces.trim() ? { replaces: x.replaces.trim() } : {}) }))
+    .slice(0, max);
+
+/** A lesson the review merged into an existing one: the text changes, and it counts as learned again. */
+function replaceLesson(id: string, text: string, entryId?: string): Lesson | null {
+  const t = clean(text);
+  if (t.length < 12 || SUSPICIOUS.test(t) || WRONG_LESSON.test(t)) return null;
+  const lessons = listLessons();
+  const l = lessons.find((x) => x.id === id);
+  if (!l) return null;
+  l.text = t;
+  l.score += 1;
+  l.updatedAt = Date.now();
+  if (entryId) l.entryId = entryId;
+  writeLessons(lessons);
+  return l;
+}
+
+/** What the review compares against: the lessons closest to this work, and the user's profile. */
+function savedContext(request: string, work: string): string {
+  const near = relevantLessons(`${request} ${work}`.slice(0, 6000), 15);
+  const recent = listLessons().sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 10);
+  const lessons = [...new Map([...near, ...recent].map((l) => [l.id, l])).values()].slice(0, 20);
+  const facts = readEntries("user");
+  return [
+    "Already saved lessons (id: text):",
+    ...(lessons.length ? lessons.map((l) => `${l.id}: ${l.text}`) : ["(none)"]),
+    "",
+    "Already saved facts about the user:",
+    ...(facts.length ? facts.map((f) => `- ${f}`) : ["(none)"]),
+  ].join("\n");
+}
+
 /**
  * Review finished work and save what was learned. Returns the note shown under
  * the reply (null when nothing worth keeping came out of it).
@@ -238,7 +284,9 @@ export async function reflect(
   if (!last) return null;
   const parts = [`User's request:\n${input.request.slice(0, 3000)}`];
   if (input.previous) parts.push(`The bots' previous answer, which this request may be correcting:\n${input.previous.slice(0, 1500)}`);
-  parts.push(`What the bots did:\n${describeWork(input.work)}`);
+  const did = describeWork(input.work);
+  parts.push(`What the bots did:\n${did}`);
+  parts.push(savedContext(input.request, did));
   if (input.feedback) parts.push(`User feedback on the final answer: ${input.feedback.rating === "up" ? "👍 good" : "👎 not good"}${input.feedback.note ? `: "${input.feedback.note.slice(0, 600)}"` : ""}`);
   const timeout = AbortSignal.timeout(45_000);
   const out = await complete(s, REFLECT_SYSTEM, [{ role: "user", content: parts.join("\n\n") }], [], signal ? AbortSignal.any([signal, timeout]) : timeout, { effort: "low" });
@@ -246,14 +294,23 @@ export async function reflect(
   if (!j) return null;
 
   const source: Lesson["source"] = input.feedback ? "feedback" : "reflection";
-  const lessons = strings(j.lessons, 3)
-    .map((t) => addLesson(t, { botId: last.bot.id, source, entryId: last.entry.id }))
-    .filter((l): l is Lesson => !!l)
-    .map((l) => l.text);
+  const saved = items(j.lessons, 3)
+    .map((x) => (x.replaces && replaceLesson(x.replaces, x.text, last.entry.id)) || addLesson(x.text, { botId: last.bot.id, source, entryId: last.entry.id }))
+    .filter((l): l is Lesson => !!l);
+  // The same lesson returned twice (or merged into one) shows once.
+  const kept = [...new Map(saved.map((l) => [l.id, l])).values()];
+  const lessons = kept.map((l) => l.text);
+  const lessonIds = kept.map((l) => l.id);
   const user: string[] = [];
   // Facts "about the user" only when the user wrote the request (not another person in a shared Telegram group).
   const fromSomeoneElse = /^\[[^\]]{1,60} on Telegram\]/.test(input.request.trim());
-  if (!fromSomeoneElse) for (const fact of strings(j.user, 2)) if (/^(Saved|Already)/.test(applyMemory("add", "user", fact))) user.push(fact);
+  if (!fromSomeoneElse) {
+    for (const x of items(j.user, 1)) {
+      // A fact that refines a saved one replaces it ("likes apples" -> "likes green apples"); else it's added.
+      const replaced = !!x.replaces && /^Updated/.test(applyMemory("replace", "user", x.text, x.replaces));
+      if (replaced || /^Saved/.test(applyMemory("add", "user", x.text))) user.push(x.text);
+    }
+  }
 
   let skill: LearnedNote["skill"];
   const sk = j.skill as { name?: unknown; description?: unknown; steps?: unknown } | null;
@@ -264,12 +321,58 @@ export async function reflect(
     }
   }
   if (!lessons.length && !user.length && !skill) return null;
-  return { lessons, user, ...(skill ? { skill } : {}), at: Date.now() };
+  return { lessons, lessonIds, user, ...(skill ? { skill } : {}), at: Date.now() };
 }
 
 /** Merge a new note into what a reply already learned. */
 export function mergeLearned(a: LearnedNote | undefined, b: LearnedNote): LearnedNote {
   if (!a) return b;
   const uniq = (xs: string[]) => [...new Set(xs)].slice(-6);
-  return { lessons: uniq([...a.lessons, ...b.lessons]), user: uniq([...a.user, ...b.user]), skill: b.skill ?? a.skill, skillSaved: a.skillSaved, at: b.at };
+  // Lessons keep their ids; one that was updated (same id) shows its newest text once.
+  const pairs = new Map<string, { text: string; id?: string }>();
+  for (const n of [a, b]) n.lessons.forEach((text, i) => pairs.set(n.lessonIds?.[i] ?? `t:${text}`, { text, id: n.lessonIds?.[i] }));
+  const last = [...pairs.values()].slice(-6);
+  return { lessons: last.map((x) => x.text), lessonIds: last.map((x) => x.id ?? ""), user: uniq([...a.user, ...b.user]), skill: b.skill ?? a.skill, skillSaved: a.skillSaved, at: b.at };
+}
+
+/**
+ * The user edits or removes something on a reply's "Learned" card: the saved lesson (or the fact in
+ * their profile) changes with it. Returns the card's new content, or an error message.
+ */
+export function changeLearned(note: LearnedNote, kind: "lesson" | "user", index: number, action: "remove" | "edit", textIn?: string): LearnedNote | string {
+  const list = kind === "lesson" ? note.lessons : note.user;
+  const old = list[index];
+  if (old === undefined) return "That line is no longer on the card.";
+  const text = clean(textIn ?? "");
+  if (action === "edit" && text.length < 3) return "Write what it should say.";
+  if (action === "edit" && SUSPICIOUS.test(text)) return "That can't be saved: it looks like an instruction or a secret.";
+  const next: LearnedNote = { ...note, lessons: [...note.lessons], lessonIds: note.lessons.map((_, i) => note.lessonIds?.[i] ?? ""), user: [...note.user] };
+  if (kind === "lesson") {
+    // Cards from before ids were kept: find the lesson by its text.
+    const id = next.lessonIds![index] || listLessons().find((l) => l.text === old)?.id || "";
+    if (action === "remove") {
+      if (id) deleteLesson(id);
+      next.lessons.splice(index, 1);
+      next.lessonIds!.splice(index, 1);
+    } else {
+      const saved = id ? editLesson(id, text) : addLesson(text, { source: "feedback" });
+      if (!saved) return "Couldn't save that lesson.";
+      next.lessons[index] = saved.text;
+      next.lessonIds![index] = saved.id;
+    }
+    return next;
+  }
+  if (action === "remove") {
+    applyMemory("remove", "user", undefined, old); // already gone from the profile: the card line goes anyway
+    next.user.splice(index, 1);
+    return next;
+  }
+  const r = applyMemory("replace", "user", text, old);
+  if (!/^Updated/.test(r)) {
+    // No longer in the profile (edited in Settings meanwhile): save the corrected fact as a new one.
+    const added = applyMemory("add", "user", text);
+    if (!/^(Saved|Already)/.test(added)) return added;
+  }
+  next.user[index] = text;
+  return next;
 }

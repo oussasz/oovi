@@ -1,5 +1,5 @@
 import { guard } from "@/lib/guard";
-import { mergeLearned, rateLessons, reflect } from "@/lib/learning";
+import { changeLearned, mergeLearned, rateLessons, reflect } from "@/lib/learning";
 import { isRunning } from "@/lib/runner";
 import { loadSettings } from "@/lib/settings";
 import { saveSkill } from "@/lib/skills";
@@ -16,6 +16,8 @@ type Ctx = { params: Promise<{ id: string }> };
  * {entryId, rating: "up" | "down" | null, note?}: rate the reply. Thumbs down is
  *   turned into a lesson; thumbs up makes its lessons rank higher.
  * {entryId, saveSkill: true}: save the skill the bots drafted from this reply.
+ * {entryId, change: {kind: "lesson" | "user", index, action: "remove" | "edit", text?}}: correct or remove
+ *   a line of the "Learned" card; the saved lesson or profile fact changes with it.
  */
 export async function POST(req: Request, { params }: Ctx) {
   const denied = guard(req);
@@ -24,10 +26,21 @@ export async function POST(req: Request, { params }: Ctx) {
   const chat = getChat(id);
   if (!chat) return Response.json({ error: "Chat not found." }, { status: 404 });
   if (isRunning(id)) return Response.json({ error: "Wait until the bots finish." }, { status: 409 });
-  const b = ((await req.json().catch(() => null)) ?? {}) as { entryId?: unknown; rating?: unknown; note?: unknown; saveSkill?: unknown };
+  const b = ((await req.json().catch(() => null)) ?? {}) as { entryId?: unknown; rating?: unknown; note?: unknown; saveSkill?: unknown; change?: { kind?: unknown; index?: unknown; action?: unknown; text?: unknown } };
   const i = chat.entries.findIndex((e) => e.id === b.entryId);
   const entry = chat.entries[i];
   if (!entry || entry.kind !== "bot") return Response.json({ error: "Reply not found." }, { status: 404 });
+
+  if (b.change && typeof b.change === "object") {
+    const c = b.change;
+    if (!entry.learned) return Response.json({ error: "Nothing was learned from this reply." }, { status: 400 });
+    if ((c.kind !== "lesson" && c.kind !== "user") || (c.action !== "remove" && c.action !== "edit") || typeof c.index !== "number" || !Number.isInteger(c.index)) return Response.json({ error: "Send {kind, index, action}." }, { status: 400 });
+    const next = changeLearned(entry.learned, c.kind, c.index, c.action, typeof c.text === "string" ? c.text.slice(0, 600) : undefined);
+    if (typeof next === "string") return Response.json({ error: next }, { status: 400 });
+    entry.learned = next;
+    saveChat(chat);
+    return Response.json({ entry });
+  }
 
   if (b.saveSkill === true) {
     const sk = entry.learned?.skill;

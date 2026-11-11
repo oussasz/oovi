@@ -767,6 +767,19 @@ a.tag { text-decoration: none; }
 .learned-head { display: flex; gap: 6px; align-items: center; font-weight: 800; font-size: 12.5px; color: var(--ok); }
 .learned ul { margin: 0; padding-inline-start: 18px; display: grid; gap: 3px; }
 .learned p { margin: 0; }
+.learned-line > span:first-child { overflow-wrap: anywhere; }
+.learned-line { display: flex; gap: 6px; align-items: flex-start; justify-content: space-between; list-style: disc; }
+.learned ul { list-style: none; padding-inline-start: 0; }
+.learned-line::before { content: "•"; color: var(--ok); flex: none; }
+.learned-line > span:first-child { flex: 1; min-width: 0; }
+.learned-btns { display: inline-flex; gap: 2px; flex: none; opacity: 0.55; }
+.learned-line:hover .learned-btns, .learned-line:focus-within .learned-btns { opacity: 1; }
+.learned-btns .icon-btn { width: 24px; height: 24px; min-width: 24px; padding: 0; display: inline-grid; place-items: center; }
+.learned-line.editing { display: block; }
+.learned-line.editing::before { content: none; }
+.learned-line.editing form { display: grid; gap: 6px; }
+.learned-line.editing textarea { font: inherit; width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical; }
+@media (hover: none) { .learned-btns { opacity: 1; } }
 .lessons { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 6px; }
 .lessons li { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 8px 10px; border: 1px solid var(--border); border-radius: 12px; }
 .lessons li > div { display: grid; gap: 2px; }

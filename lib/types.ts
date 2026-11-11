@@ -114,7 +114,8 @@ export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?:
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
 export type PlanItem = { text: string; status: "pending" | "doing" | "done" };
 /** Lessons, user preferences and a skill draft learned from a reply. */
-export type LearnedNote = { lessons: string[]; user: string[]; skill?: { name: string; description: string; body: string }; skillSaved?: boolean; at: number };
+/** lessonIds: the saved lesson behind each line of `lessons` (same order), so the card can edit or remove it. */
+export type LearnedNote = { lessons: string[]; lessonIds?: string[]; user: string[]; skill?: { name: string; description: string; body: string }; skillSaved?: boolean; at: number };
 
 export type BotEntry = {
   id: string;
