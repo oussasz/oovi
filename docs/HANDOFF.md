@@ -1,6 +1,6 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## On main, not released (2026-11-11, after 0.10.0): desktop control, honesty, learning
+## 0.10.1 (2026-11-11): desktop control, honesty, learning, tool notes
 From a real conversation ("open ChatGPT on my PC and make a tiger picture": the bot said it couldn't, made a stock-photo card, then saw a black screen).
 - **Black screen**: oovi's own window is blacked out in screenshots and covered the screen. Now `electron/desktop-control.cjs` minimizes oovi's windows when the control banner shows (`stepAside`) and restores them when it hides (`comeBack`: task end, Stop, or a pause for the user's OK).
 - **open_app** (`lib/desktop-apps-core.ts`, `OPEN_APP_SPEC`/`runOpenApp` in `lib/desktop-control.ts`): starts one Start-menu app by name after a card. Terminals, system tools, installers, uninstallers and password managers are refused, judged by the shortcut's target as well as its name. Microsoft Store apps aren't listed (no PowerShell on purpose). **Not run on Windows**: only the rules are unit-tested (`tests/unit/desktop-apps.test.mts`). Ask the owner to try it.
