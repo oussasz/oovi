@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/SiteFooter";
 import { Slime } from "@/components/Slime";
 import { Underline } from "@/components/Doodles";
 import { DownloadButton } from "@/components/download/DownloadButton";
+import { DownloadCta } from "@/components/download/DownloadCta";
 import { BookIcon, BotIcon, CheckIcon, FolderIcon, HomeIcon } from "@/components/icons";
 
 export default function Home() {
@@ -39,11 +40,7 @@ function Hero() {
           oovi is a desktop app where a few AI bots work on your request together. A leader plans, the others research,
           write and check, and you approve anything that touches the outside world.
         </p>
-        <div className="cta-row">
-          <DownloadButton os="windows" size="lg">Download for Windows</DownloadButton>
-          <DownloadButton os="mac" variant="light" size="lg">Download for Mac</DownloadButton>
-          <DownloadButton os="linux" variant="light" size="lg">Download for Linux</DownloadButton>
-        </div>
+        <DownloadCta />
         <p className="fine">Free during the pilot. Uses your own AI provider key.</p>
         <p className="fine soon-line">
           <span className="pill-soon">Coming soon</span> oovi on your phone and on the web.

@@ -5,6 +5,7 @@ import { useRef, useState, type ChangeEvent, type FormEvent, type ReactNode } fr
 import { authClient } from "@/lib/auth-client";
 import type { PublicUser } from "@/lib/api";
 import { DownloadButton } from "@/components/download/DownloadButton";
+import { DownloadCta } from "@/components/download/DownloadCta";
 import { Slime } from "@/components/Slime";
 import { LogoMark } from "@/components/LogoMark";
 import { CloseIcon } from "@/components/icons";
@@ -210,11 +211,7 @@ export function AccountClient({
             <p className="muted" style={{ marginBottom: 18 }}>
               Download it and sign in with this account. Your bots, chats and keys live on your device, not here.
             </p>
-            <div className="cta-row">
-              <DownloadButton os="windows">Download for Windows</DownloadButton>
-              <DownloadButton os="mac" variant="light">Download for Mac</DownloadButton>
-              <DownloadButton os="linux" variant="light">Download for Linux</DownloadButton>
-            </div>
+            <DownloadCta size="md" />
           </section>
 
           <section className="card">

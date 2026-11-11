@@ -2934,9 +2934,22 @@ textarea.input {
 .mac-title.left { left: 64px; right: 10px; text-align: left; }
 
 /* "Coming soon" line under the home page buttons */
+.soon-line .pill-soon { margin: 0; }
 .soon-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 
 /* Linux install steps on the download page: plain steps, not a warning */
 .notice.plain { background: var(--surface); border-color: var(--border); }
 .notice.plain .alt { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
 .notice.plain code { display: inline-block; padding: 2px 7px; border-radius: 7px; background: rgba(127, 127, 127, 0.16); font-size: 12.5px; overflow-wrap: anywhere; user-select: all; }
+
+/* Main download call to action: one button, the other systems as a quiet line */
+.dl-cta { display: flex; flex-direction: column; align-items: flex-start; gap: 12px; margin-top: 4px; }
+.dl-also { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin: 0; color: var(--muted); font-size: 14.5px; font-weight: 600; }
+.dl-also > span { margin-inline-end: 4px; }
+.dl-also-link { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); background: transparent; color: var(--ink); font: inherit; font-weight: 800; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
+.dl-also-link:hover { background: var(--surface-2); border-color: var(--muted); }
+.dl-also-link:focus-visible { outline: 2px solid var(--blue-ink, currentColor); outline-offset: 2px; }
+.dl-also-link svg { flex: none; }
+
+/* The showcase's floating cards are decoration: they may hang past the content edge, never past the screen. */
+.showcase { overflow-x: clip; }

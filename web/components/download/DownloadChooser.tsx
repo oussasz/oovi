@@ -21,10 +21,11 @@ export function detectOs(): Os | null {
   const uaData = (navigator as Navigator & { userAgentData?: NavigatorUAData }).userAgentData;
   const platform = (uaData?.platform || navigator.platform || "").toLowerCase();
   const ua = navigator.userAgent.toLowerCase();
+  // Phones and tablets can't install the desktop app: no system is preselected for them.
+  if (/iphone|ipad|ipod|android|mobile/.test(ua)) return null;
   if (platform.includes("mac") || ua.includes("mac os")) return "mac";
   if (platform.includes("win") || ua.includes("windows")) return "windows";
-  // (Android phones also say "Linux": they aren't offered the desktop app.)
-  if ((platform.includes("linux") || ua.includes("linux")) && !ua.includes("android")) return "linux";
+  if (platform.includes("linux") || ua.includes("linux")) return "linux";
   return null;
 }
 
