@@ -62,8 +62,8 @@ Windows: run `oovi Setup <version>.exe`. macOS: open `oovi-<version>-arm64.dmg`
 The installers are built by GitHub Actions (`.github/workflows/build.yml`): open
 the repo's **Actions** tab → *Build desktop apps* → *Run workflow*, then download
 them from the run's *Artifacts*. They aren't code-signed yet, so on first launch:
-Windows → "More info" → "Run anyway"; macOS → right-click oovi → **Open** → Open
-(or run `xattr -cr /Applications/oovi.app`). You need
+Windows → "More info" → "Run anyway"; macOS → open oovi, click **Done**, then System Settings →
+Privacy & Security → **Open Anyway** (macOS 15 and later; right-click → Open no longer works there). You need
 Google Chrome or Microsoft Edge installed for the bots' browser (or Docker, see below).
 
 Open oovi, go to **Settings**, paste an API key and click **Save & test

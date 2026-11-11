@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AppleIcon, ArrowRight, WindowsIcon } from "../icons";
+import { MacInstallGuide } from "./MacInstallGuide";
 
 export type Os = "mac" | "windows";
 
@@ -118,42 +119,22 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
           </p>
           <p>No security warnings: Microsoft checks oovi, and the Store keeps it up to date by itself.</p>
         </div>
+      ) : os === "mac" ? (
+        <MacInstallGuide />
       ) : (
       <div className="notice">
         <p className="notice-title">
           <span className="notice-dot" /> Heads up: oovi isn’t code-signed yet
         </p>
-        {os === "mac" ? (
-          <>
-            <p>
-              The first time you open it, macOS will say{" "}
-              <q>“oovi” can’t be opened because Apple cannot check it for malicious software.</q> That’s expected
-              during the pilot. Here’s how to open it:
-            </p>
-            <ol className="steps">
-              <li>Open the downloaded <b>.dmg</b> and drag <b>oovi</b> into <b>Applications</b>.</li>
-              <li>Open <b>Finder → Applications</b>.</li>
-              <li><b>Right-click</b> (or Control-click) <b>oovi</b> and choose <b>Open</b>.</li>
-              <li>Click <b>Open</b> again in the dialog. You only need to do this once.</li>
-            </ol>
-            <p className="alt">
-              Still blocked? Go to <b>System Settings → Privacy &amp; Security</b>, scroll down and click{" "}
-              <b>Open Anyway</b>.
-            </p>
-          </>
-        ) : (
-          <>
-            <p>
-              When you run the installer, Windows may show <q>Windows protected your PC</q> (Microsoft Defender
-              SmartScreen). That’s expected during the pilot. Here’s how to continue:
-            </p>
-            <ol className="steps">
-              <li>Run <b>oovi-Setup.exe</b> from your Downloads.</li>
-              <li>On the blue “Windows protected your PC” screen, click <b>More info</b>.</li>
-              <li>Click <b>Run anyway</b> and follow the installer.</li>
-            </ol>
-          </>
-        )}
+        <p>
+          When you run the installer, Windows may show <q>Windows protected your PC</q> (Microsoft Defender
+          SmartScreen). That’s expected during the pilot. Here’s how to continue:
+        </p>
+        <ol className="steps">
+          <li>Run <b>oovi-Setup.exe</b> from your Downloads.</li>
+          <li>On the blue “Windows protected your PC” screen, click <b>More info</b>.</li>
+          <li>Click <b>Run anyway</b> and follow the installer.</li>
+        </ol>
       </div>
       )}
 
