@@ -4,6 +4,7 @@
 //   splash → sign in / create account → onboarding (first time) → the app.
 // It also reports unexpected UI errors (crash reports) and hosts the Settings window.
 
+import { isRealCrash } from "@/lib/crash-filter";
 import { useCallback, useEffect, useState } from "react";
 import { api, resizeImage } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
@@ -65,6 +66,7 @@ export type AccountState = {
 const PHOTO_PLACEHOLDER: FaceT = { color: 1, shape: 2, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 1, top: 0, wear: 0 };
 
 function reportCrash(message: string, stack?: string) {
+  if (!isRealCrash(message)) return; // a browser notice, not a crash (lib/crash-filter.ts)
   void fetch("/api/crash", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ message, stack, context: location.pathname }) }).catch(() => {});
 }
 

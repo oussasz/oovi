@@ -81,7 +81,73 @@ function hwndOf(win) {
 
 const langOf = (app, lang) => String(lang && lang !== "auto" ? lang : app.getLocale() || "en").slice(0, 2).toLowerCase();
 
-function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage }) {
+function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage, shell }) {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  // oovi's own windows, minimized while a bot controls the computer. They cover the screen the bot must
+  // see (and are blacked out in its screenshots), so a bot started from a maximized oovi saw only black.
+  let aside = [];
+  function stepAside() {
+    for (const w of BrowserWindow.getAllWindows()) {
+      if (w === overlay || w.isDestroyed() || !w.isVisible() || w.isMinimized()) continue;
+      try {
+        w.minimize();
+        aside.push(w);
+      } catch {
+        /* that window stays where it is */
+      }
+    }
+  }
+  /** The task ended or needs the user's OK: oovi comes back where it was. */
+  function comeBack() {
+    const list = aside;
+    aside = [];
+    for (const w of list) {
+      try {
+        if (w.isDestroyed()) continue;
+        if (w.isMinimized()) w.restore();
+        w.show();
+        w.focus();
+      } catch {
+        /* closed meanwhile */
+      }
+    }
+  }
+  /** Start-menu shortcuts (this user's and everyone's): the apps a bot may be allowed to open. */
+  let appCache = { at: 0, list: [] };
+  function startMenuApps() {
+    if (Date.now() - appCache.at < 60_000) return appCache.list;
+    const roots = [
+      process.env.APPDATA && path.join(process.env.APPDATA, "Microsoft", "Windows", "Start Menu", "Programs"),
+      process.env.ProgramData && path.join(process.env.ProgramData, "Microsoft", "Windows", "Start Menu", "Programs"),
+    ].filter(Boolean);
+    const list = [];
+    const walk = (dir, depth) => {
+      if (depth > 4 || list.length >= 2000) return;
+      let entries = [];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const e of entries) {
+        const full = path.join(dir, e.name);
+        if (e.isDirectory()) walk(full, depth + 1);
+        else if (/\.lnk$/i.test(e.name)) {
+          let target;
+          try {
+            target = shell.readShortcutLink(full).target || "";
+          } catch {
+            target = undefined; // some shortcuts (installed by Windows Installer) don't say what they start
+          }
+          list.push({ name: e.name.replace(/\.lnk$/i, ""), path: full, target });
+        }
+      }
+    };
+    for (const r of roots) walk(r, 0);
+    appCache = { at: Date.now(), list };
+    return list;
+  }
   let nut = null;
   let win32 = null;
   let loadError = null;
@@ -264,6 +330,17 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       lockListeners.add(fn);
       return () => lockListeners.delete(fn);
     },
+    /** Installed apps from the Start menu: [{ name, path, target }]. Windows only. */
+    apps() {
+      return process.platform === "win32" ? startMenuApps() : [];
+    },
+    /** Start one of those apps (the server checked it and the user said yes). Resolves "" or an error text. */
+    async openApp(file) {
+      if (process.platform !== "win32") return "Desktop control is only available on Windows for now.";
+      const known = startMenuApps().some((a) => a.path === file);
+      if (!known) return "That isn't an app from the Start menu.";
+      return (await shell.openPath(file)) || "";
+    },
     /** The Stop button on the banner calls this (the server aborts the run). */
     setStopHandler(fn) {
       stopHandler = typeof fn === "function" ? fn : null;
@@ -283,7 +360,10 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
      */
     showOverlay(lang) {
       if (!app.isReady()) return Promise.resolve(false);
-      if (overlay && !overlay.isDestroyed()) return Promise.resolve(overlay.isVisible());
+      if (overlay && !overlay.isDestroyed()) {
+        stepAside();
+        return Promise.resolve(overlay.isVisible());
+      }
       const code = langOf(app, lang);
       const text = OVERLAY_TEXT[code] || OVERLAY_TEXT.en;
       const rtl = code === "ar";
@@ -363,7 +443,10 @@ button:hover{background:#dc2626}
         win.once("ready-to-show", () => {
           try {
             win.showInactive();
-            finish(win.isVisible());
+            if (!win.isVisible()) return finish(false);
+            // oovi's own window gets out of the way; a moment for it to finish minimizing before the first screenshot.
+            stepAside();
+            setTimeout(() => finish(true), 400);
           } catch {
             finish(false);
           }
@@ -376,6 +459,7 @@ button:hover{background:#dc2626}
     hideOverlay() {
       if (overlay && !overlay.isDestroyed()) overlay.destroy();
       overlay = null;
+      comeBack();
     },
   };
 

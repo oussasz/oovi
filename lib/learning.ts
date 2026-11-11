@@ -18,7 +18,7 @@ import { SUSPICIOUS, applyMemory, readEntries } from "./memory";
 import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
-import { WRONG_LESSON } from "./lesson-rules";
+import { TECHNICAL_LESSON, WRONG_LESSON } from "./lesson-rules";
 export { WRONG_LESSON };
 
 export type Lesson = {
@@ -197,7 +197,7 @@ You are shown what is ALREADY saved (lessons with their ids, and the facts about
 - New: "replaces" is null.
 Write each text in the language of the user's request.
 
-lessons: 0-3 short, specific, reusable lessons (max 200 characters each) that would make similar future tasks faster or better. Good: "For flight prices, Google Flights pages need the browser; read_url returns no prices." "The user's company files are in the Reports folder; check there first." Bad: generic advice ("be thorough", "double-check work"), facts that only matter for this one task, anything secret.
+lessons: usually none. A lesson is worth saving only when it is about THIS USER's work and will change what the bots do for them again: what the user corrected or asked for from now on, where their things are, how they want a recurring kind of job done, which source or person is right for their business. At most 1 lesson (2 when the user corrected the bots), max 200 characters each. Good: "The user's company files are in the Reports folder; check there first." "For m3ak prospect lists, the user wants a phone number for every row, in an Excel file." Not lessons, never save them: how oovi's own tools behave or fail (search snippets, pages that didn't load, tool names, errors, limits, retries); how the team should organise itself; generic advice ("be thorough", "double-check", "announce progress"); a detail of this one task; something the bots simply did normally; anything secret. When the work went fine and the user corrected nothing, the right answer is no lesson.
 If the user corrected the bots or gave feedback, the most important lesson is what to do differently. When the user contradicts the bots (for example "it works, it just takes time to load"), the user is right: never save the bots' mistaken conclusion.
 Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying, skip checking or avoid a site ("use another source instead of X", "X has no phone numbers"): a tool that returned nothing once proves nothing about the site. A lesson may say which way WORKED.
 user: 0-1 fact about the user, and only one that will matter in many future tasks: who they are, their business, a lasting preference (format, tone, tools), the people they work with. The profile is small, so keep only the most important things: not the details of the current task. Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
@@ -294,7 +294,10 @@ export async function reflect(
   if (!j) return null;
 
   const source: Lesson["source"] = input.feedback ? "feedback" : "reflection";
+  // Technical notes about oovi's own tools aren't lessons about the user's work (the model is told so; this makes sure).
   const saved = items(j.lessons, 3)
+    .filter((x) => input.feedback || !TECHNICAL_LESSON.test(x.text))
+    .slice(0, input.feedback || input.previous ? 2 : 1)
     .map((x) => (x.replaces && replaceLesson(x.replaces, x.text, last.entry.id)) || addLesson(x.text, { botId: last.bot.id, source, entryId: last.entry.id }))
     .filter((l): l is Lesson => !!l);
   // The same lesson returned twice (or merged into one) shows once.

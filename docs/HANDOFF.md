@@ -1,5 +1,15 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## On main, not released (2026-11-11, after 0.10.0): desktop control, honesty, learning
+From a real conversation ("open ChatGPT on my PC and make a tiger picture": the bot said it couldn't, made a stock-photo card, then saw a black screen).
+- **Black screen**: oovi's own window is blacked out in screenshots and covered the screen. Now `electron/desktop-control.cjs` minimizes oovi's windows when the control banner shows (`stepAside`) and restores them when it hides (`comeBack`: task end, Stop, or a pause for the user's OK).
+- **open_app** (`lib/desktop-apps-core.ts`, `OPEN_APP_SPEC`/`runOpenApp` in `lib/desktop-control.ts`): starts one Start-menu app by name after a card. Terminals, system tools, installers, uninstallers and password managers are refused, judged by the shortcut's target as well as its name. Microsoft Store apps aren't listed (no PowerShell on purpose). **Not run on Windows**: only the rules are unit-tested (`tests/unit/desktop-apps.test.mts`). Ask the owner to try it.
+- **Honesty**: bots are told desktop control is a real ability (or where to turn it on), that `create_image` designs from stock photos and doesn't generate pictures, that named websites are done in the browser, and to say which option they picked after "ok".
+- **Step details**: the expandable raw tool result is labelled "What the bot received (technical)" and isn't shown for steps that made a file.
+- **Learning**: at most 1 lesson per run (2 after a correction), only about the user's work; notes about oovi's tools are refused (`TECHNICAL_LESSON` in `lib/lesson-rules.ts`).
+- **Crash reports**: "ResizeObserver loop…" is fixed at its source (`components/Updates.tsx`) and no longer reported (`lib/crash-filter.ts`).
+- **CAPTCHAs, not done**: measured cause: the bots' browser announces itself as automated (`HeadlessChrome`, `navigator.webdriver = true`). Hiding that was refused by the cloud session's safety check (bot-check circumvention) and was not done. Only the bots' behaviour changed: continue on the page after the user solves a check, never loop on the same check, use another route. The owner must decide whether to pursue anything further.
+
 ## Linux added to 0.10.0 (2026-11-11)
 - Owner's choice: no new version. The Linux files are built from `main` as 0.10.0 and attached to the existing v0.10.0 release (Actions > Build desktop apps > Run workflow on `main`, tag `v0.10.0`, only `linux`), so Windows and Mac users aren't asked to update and the Store package is untouched. The Linux-only code paths (update feed, browser paths) are in `main`, not in the Windows/Mac 0.10.0 installers, which don't need them.
 - Built on GitHub (ubuntu-latest): `oovi-<version>-linux.AppImage` (any distribution) and `oovi-<version>-linux.deb` (Ubuntu, Debian, Mint), x64 only, plus `latest-linux.yml`. `publish-downloads.yml` now requires them.

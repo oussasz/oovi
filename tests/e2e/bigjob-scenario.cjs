@@ -53,10 +53,10 @@ function answer(body) {
   if (/learn from finished work/.test(sys)) {
     const body0 = JSON.stringify(msgs);
     seen.reflects.push(body0);
-    const id = (body0.match(/([0-9a-f]{12}): For phone numbers/) || [])[1];
-    if (!id) return text(JSON.stringify({ lessons: [{ text: "For phone numbers, open the listing page: a search snippet is not enough.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], skill: null }));
+    const id = (body0.match(/([0-9a-f]{12}): For m3ak prospect lists/) || [])[1];
+    if (!id) return text(JSON.stringify({ lessons: [{ text: "For phone numbers, a web_search snippet is not enough: open the page with read_url.", replaces: null }, { text: "For m3ak prospect lists, the user wants a phone number on every row.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], skill: null }));
     // Second review: the same lesson again (in French, refined) and a refined fact. Both must update, not add.
-    return text(JSON.stringify({ lessons: [{ text: "Pour les numéros de téléphone, ouvrir la fiche et cliquer sur « afficher le numéro » : un extrait de recherche ne suffit pas.", replaces: id }], user: [{ text: "The user likes green apples.", replaces: "The user likes apples." }], skill: null }));
+    return text(JSON.stringify({ lessons: [{ text: "Pour les listes de prospects m3ak, l'utilisateur veut un numéro de téléphone sur chaque ligne, dans un fichier Excel.", replaces: id }], user: [{ text: "The user likes green apples.", replaces: "The user likes apples." }], skill: null }));
   }
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[me] = sys;
@@ -253,6 +253,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
     return null;
   };
   const first = await learnedOn(team.id);
+  check("H) a note about oovi's own tools is not saved as a lesson; the one about the user's work is", lessonsNow().length === 1 && /m3ak prospect lists/.test(lessonsNow()[0].text) && !/web_search|read_url/.test(JSON.stringify(first?.learned || {})), lessonsNow().map((l) => l.text).join(" | "));
   check("H) the review is shown what is already saved, and the card keeps each lesson's id", !!first && first.learned.lessons.length === 1 && (first.learned.lessonIds || [])[0] === lessonsNow()[0]?.id && /Already saved lessons \(id: text\)/.test(seen.reflects[0] || ""), JSON.stringify(first?.learned || null).slice(0, 160));
 
   // F: rounds that add nothing end the job by themselves.
@@ -273,7 +274,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   // H (second half): the same lesson learned again updates the saved one; the card can correct and forget.
   const second = await learnedOn(`dm-${solo.id}`);
   const ls = lessonsNow();
-  check("H) the same lesson in another language updates the saved one instead of adding a copy", ls.length === 1 && /afficher le numéro/.test(ls[0].text) && ls[0].score >= 2, `${ls.length} lessons: ${ls.map((l) => l.text.slice(0, 50)).join(" | ")}`);
+  check("H) the same lesson in another language updates the saved one instead of adding a copy", ls.length === 1 && /fichier Excel/.test(ls[0].text) && ls[0].score >= 2, `${ls.length} lessons: ${ls.map((l) => l.text.slice(0, 50)).join(" | ")}`);
   check("H) 'likes apples' becomes 'likes green apples' (one fact, not two)", /green apples/.test(profileNow()) && !/likes apples/.test(profileNow()), profileNow().slice(0, 120));
   const dmId = `dm-${solo.id}`;
   const edit = await api("POST", `/api/chats/${dmId}/learn`, { entryId: second.id, change: { kind: "lesson", index: 0, action: "edit", text: "Open the listing page to read a phone number." } });

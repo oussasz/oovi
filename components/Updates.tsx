@@ -67,10 +67,24 @@ export function UpdateBanner() {
       return;
     }
     const el = bar.current;
-    const ro = new ResizeObserver(() => root.style.setProperty("--bar-h", `${el.offsetHeight}px`));
+    // The app's size depends on --bar-h, so setting it inside the observer's own pass could resize what
+    // is being observed ("ResizeObserver loop…"). It's set on the next frame, and only when it changed.
+    let last = -1;
+    let frame = 0;
+    const apply = () => {
+      const h = el.offsetHeight;
+      if (h === last) return;
+      last = h;
+      root.style.setProperty("--bar-h", `${h}px`);
+    };
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(apply);
+    });
     ro.observe(el);
-    root.style.setProperty("--bar-h", `${el.offsetHeight}px`);
+    apply();
     return () => {
+      cancelAnimationFrame(frame);
       ro.disconnect();
       root.style.setProperty("--bar-h", "0px");
     };

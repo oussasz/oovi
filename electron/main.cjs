@@ -145,7 +145,7 @@ function destroyTray() {
 
 const liveNotifications = new Set();
 // Desktop control (Beta): screenshots, mouse and keyboard, used by the server's lib/desktop-control.ts.
-const desktopControl = createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage });
+const desktopControl = createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage, shell });
 
 // The app's own server runs in this process: it reaches these through globalThis.
 // Set before the server starts; `npm run web` has no such bridge, and the server skips it.

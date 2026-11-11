@@ -108,6 +108,7 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "work_notes": return t(i.action === "read" ? "chat.call.workNotesRead" : "chat.call.workNotes", { name: String(i.file ?? "") });
     case "work_export": return t("chat.call.createFile", { name: String(i.filename ?? i.name ?? "") });
     case "start_big_job": return t("chat.call.bigJob", { goal: String(i.goal ?? "") });
+    case "open_app": return t("chat.call.openApp", { app: String(i.name ?? "") });
     case "read_url": return t("chat.call.readUrl", { host: host(i.url) });
     case "create_document":
     case "create_spreadsheet":
@@ -634,7 +635,13 @@ function BotMessage(props: {
                       <span className="step-label">{callLabel(r.call, t)}</span>
                       {r.result?.image && <Icon name="panel" size={14} className="step-icon" />}
                     </button>
-                    {open.has(r.call.id) && r.result && <pre className="step-out">{r.result.content}</pre>}
+                    {/* The tool's internal answer, written for the bot. A step that made a file shows the file card instead. */}
+                    {open.has(r.call.id) && r.result && !r.result.file && (
+                      <div className="step-detail">
+                        <small className="step-detail-title">{t("chat.stepRaw")}</small>
+                        <pre className="step-out">{r.result.content}</pre>
+                      </div>
+                    )}
                   </div>
                 );
               })
