@@ -41,7 +41,7 @@ import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import { WORK_FILE_TOOLS, WORK_SPECS, WORK_TOOLS, loadWork, runWorkTool, workPrompt } from "./workfiles";
+import { WORK_SPECS, WORK_TOOLS, loadWork, runWorkTool, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark } from "./workfiles-core";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
@@ -939,10 +939,14 @@ async function* runBot(
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
-      // On Telegram, files the bot just made are sent there too (otherwise "saved in Downloads/oovi" is useless on a phone).
+      // On Telegram, every file a bot just made or fetched is sent there too: created documents, exports,
+      // downloads, copies, files from its cloud computer (otherwise "saved in Downloads/oovi" is useless on a phone).
+      // send_file_to_user uploads by itself; a file already sent in this reply isn't sent twice.
       if (chat.pending?.channel === "telegram") {
+        const already = new Set(entry.steps.flatMap((st) => (st.role === "tool" ? st.results.filter((r) => r.file && /Telegram chat/.test(r.content)).map((r) => r.file!.path) : [])));
         for (const r of results) {
-          if (r.isError || !r.file || !(DOC_WRITE_TOOLS.has(r.name) || WORK_FILE_TOOLS.has(r.name))) continue;
+          if (r.isError || !r.file || r.name === "send_file_to_user" || already.has(r.file.path)) continue;
+          already.add(r.file.path);
           r.content += ` ${await sendCreatedFileToTelegram(r.file, chat.pending.telegramChatId)}`;
         }
       }

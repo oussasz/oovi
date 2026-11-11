@@ -94,8 +94,6 @@ export const WORK_SPECS: ToolSpec[] = [
 ];
 
 export const WORK_TOOLS: ReadonlySet<string> = new Set(WORK_SPECS.map((s) => s.name));
-/** Exports make a file for the user (it's sent to Telegram too, like other created files). */
-export const WORK_FILE_TOOLS: ReadonlySet<string> = new Set(["work_export"]);
 
 /** For every bot's instructions: what the team already has. */
 export function workPrompt(chatId: string, group: boolean): string[] {

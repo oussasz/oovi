@@ -6,6 +6,7 @@
 // as usual, the routine shows "waiting" and the user is told. When they answer later, the
 // next tick picks up the result. The decisions themselves are pure (routines-schedule.ts).
 
+import fs from "node:fs";
 import { currentSession } from "./account";
 import type { TKey, Vars } from "./i18n";
 import { translateFor } from "./i18n-server";
@@ -14,7 +15,7 @@ import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, ty
 import { isRunning, startRun, subscribe } from "./runner";
 import { loadSettings } from "./settings";
 import { getBot, getChat } from "./store";
-import { sendToMainChat } from "./telegram";
+import { sendFileToTelegram, sendToMainChat } from "./telegram";
 import type { Chat, Routine } from "./types";
 
 const TICK_MS = 30_000;
@@ -207,8 +208,10 @@ function finish(id: string, res: RunResult, entryId?: string) {
     };
   });
   if (!r) return; // deleted meanwhile
-  if (res.status === "ok") notifyResult(r, res.text);
-  else if (res.status === "error" && !toldBefore) notifyResult(r, translateFor("routines.n.failed", { name: r.name, error: res.text.slice(0, 600) }), true);
+  if (res.status === "ok") {
+    notifyResult(r, res.text);
+    void telegramFiles(r);
+  } else if (res.status === "error" && !toldBefore) notifyResult(r, translateFor("routines.n.failed", { name: r.name, error: res.text.slice(0, 600) }), true);
   else if (res.status === "waiting") notify(r, "routines.n.waiting", { name: r.name, what: res.text.slice(0, 600) }, "routines.n.waitingTg");
   if (paused) notify(r, "routines.n.paused", { name: r.name, count: MAX_FAILURES });
 }
@@ -227,6 +230,28 @@ function desktop(title: string, body: string, chatId?: string) {
 function telegram(r: Routine, text: string) {
   if (!r.notifyTelegram) return;
   void sendToMainChat(text.slice(0, TELEGRAM_MAX + 400)).catch(() => false);
+}
+
+/** Files the routine's run made (a report, a spreadsheet) go to Telegram with its result. */
+async function telegramFiles(r: Routine) {
+  if (!r.notifyTelegram) return;
+  try {
+    const chat = getChat(r.chatId);
+    if (!chat) return;
+    let u = chat.entries.length - 1;
+    while (u >= 0 && chat.entries[u]?.kind !== "user") u--;
+    const files = new Map<string, { path: string; name: string; size: number }>();
+    for (const e of chat.entries.slice(u + 1)) {
+      if (e.kind !== "bot") continue;
+      for (const st of e.steps) if (st.role === "tool") for (const x of st.results) if (x.file && !x.isError) files.set(x.file.path, x.file);
+    }
+    for (const f of [...files.values()].slice(0, 5)) {
+      if (f.size > 50 * 1024 * 1024 || !fs.existsSync(f.path)) continue;
+      await sendFileToTelegram({ name: f.name, data: fs.readFileSync(f.path) });
+    }
+  } catch (e) {
+    console.error("[routines] telegram files:", (e as Error).message);
+  }
 }
 
 /** A run's reply (or error, already worded). */

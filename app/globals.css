@@ -776,6 +776,7 @@ a.tag { text-decoration: none; }
 .learned-line:hover .learned-btns, .learned-line:focus-within .learned-btns { opacity: 1; }
 .learned-btns .icon-btn { width: 24px; height: 24px; min-width: 24px; padding: 0; display: inline-grid; place-items: center; }
 .learned-line.editing { display: block; }
+.learned:has(.learned-line.editing) { width: 100%; }
 .learned-line.editing::before { content: none; }
 .learned-line.editing form { display: grid; gap: 6px; }
 .learned-line.editing textarea { font: inherit; width: 100%; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); resize: vertical; }

@@ -17,4 +17,4 @@ Read `docs/HANDOFF.md` first for where the product stands.
 - The owner is not a developer: do the work end to end, and give exact links and clicks for the steps only they can do.
 
 ## Before every release
-`npx tsc --noEmit`, `cd tests/unit && node --test`, `npm run build`, then `node tests/e2e/group-scenario.cjs`, `node tests/e2e/spec-scenario.cjs`, `node tests/e2e/phase1-scenario.cjs`. All must pass.
+`npx tsc --noEmit`, `cd tests/unit && node --test`, `npm run build`, then `node tests/e2e/group-scenario.cjs`, `node tests/e2e/spec-scenario.cjs`, `node tests/e2e/phase1-scenario.cjs`, `node tests/e2e/bigjob-scenario.cjs`, `node tests/e2e/telegram-scenario.cjs`. All must pass.

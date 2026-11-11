@@ -23,6 +23,16 @@
 
 Written 2026-11-10 by the Claude Code session that did this work on the owner's Windows PC, for the session that continues it. Read this first; it is self-contained.
 
+## Not released yet (2026-11-11): heavy team work, learning card, Telegram files
+Owner's words: "I want a real team that does heavy, dirty work and doesn't stop until it reaches the goal", no credit ceiling ("if the task is big, the user assumes"), chat messages stay short and the work goes into files, nothing may depend on a bot's role.
+- **Big jobs** (`start_big_job`, `lib/orchestrator.ts`): the bot that answers the user decides a task is big. Hand-off and step limits are lifted; the owner of the job is sent back until the goal is reached (a row count in a work table when there is one); the job closes itself after 2 rounds that add nothing (`JOB_STALE`). One turn may take 400 model calls (`JOB_STEPS`, a loop guard).
+- **Work files** (`lib/workfiles.ts`, `lib/workfiles-core.ts`): per chat, `work_table` (rows merged by name or phone), `work_notes`, `work_export` (Excel/CSV/Word/PDF/Markdown without retyping). Stored in `<data>/work/<chatId>.json`.
+- **Reader** (`lib/contacts.ts`, `lib/reader.ts`): phones, emails, WhatsApp, addresses from tel: links, buttons, footers, JSON-LD. Checked on real pages (DzAdvisor, Glammy) that bots had reported as "no number".
+- **Learning** (`lib/learning.ts`): the review sees saved lessons and the profile and returns `{text, replaces}`; the Learned card has Correct / Forget per line (`POST /api/chats/[id]/learn` with `change`).
+- **Telegram**: every file a tool returns is sent (exports, downloads, copies, cloud-computer files), and a routine's files too.
+- Tests: `tests/e2e/bigjob-scenario.cjs` (23 checks), `tests/e2e/telegram-scenario.cjs` (8), unit `contacts`, `workfiles`.
+- **Not done**: teammates still work one after another, not at the same time (two bots asking for the user's OK at once needs a safe design first). The owner's Telegram file failure wasn't reproduced: ask what was requested when it failed.
+
 ## The product in two lines
 oovi is a closed-source Electron 44 + Next.js 15 desktop AI assistant (this repo; the accounts website and theOovi model proxy live in `web/`, deployed to Vercel at oovi.conuron.com). Users create bots with roles, put them in groups led by a leader, talk to a main bot (the "Chief") in the app or from Telegram; the default model is theOovi (Claude Haiku via the proxy, on credits).
 

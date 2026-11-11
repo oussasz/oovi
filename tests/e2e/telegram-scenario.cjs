@@ -41,6 +41,14 @@ async function answerAsync(body) {
   const u = lastU ? (typeof lastU.content === "string" ? lastU.content : lastU.content.filter((b) => b.type === "text").map((b) => b.text).join(" ")) : "";
   const lastMsg = (body.messages || []).at(-1) || {};
   const hasResult = Array.isArray(lastMsg.content) && lastMsg.content.some((b) => b.type === "tool_result");
+  // A list built in a work table, then exported: two tools in one turn, the file must reach Telegram once.
+  if (/EXPORT/.test(u)) {
+    const prev = (body.messages || []).at(-2);
+    const lastTool = hasResult && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
+    if (lastTool === "work_export") return reply([{ type: "text", text: "Voilà la liste." }], "end_turn");
+    if (lastTool === "work_table") return reply([{ type: "tool_use", id: `toolu_ex_${Date.now()}`, name: "work_export", input: { name: "Clients", format: "xlsx" } }], "tool_use");
+    return reply([{ type: "tool_use", id: `toolu_wt_${Date.now()}`, name: "work_table", input: { action: "add", table: "Clients", columns: ["Name", "Phone"], rows: [["Café A", "0555 11 22 33"], ["Salon B", "0555 44 55 66"]] } }], "tool_use");
+  }
   if (/PDF/.test(u)) {
     if (hasResult) return reply([{ type: "text", text: "Voilà ton rapport." }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_doc_${Date.now()}`, name: "create_document", input: { filename: "rapport.md", content: "# Rapport\nTout va bien." } }], "tool_use");
@@ -238,6 +246,11 @@ const check = (name, ok, detail = "") => {
   userSays("fais-moi un PDF du rapport");
   await waitFor((m) => sent.indexOf(m) >= n5 && /Voilà ton rapport/.test(m.text), 30_000, "report reply");
   check("a document the bot creates is sent to Telegram", sent.slice(n5).some((m) => /\[document\] rapport\.md/.test(m.text)), sent.slice(n5).map((m) => m.text).join(" || ").slice(0, 160));
+  // Any file a bot makes goes to Telegram, not only documents it writes directly (here: an exported work table).
+  const n6 = sent.length;
+  userSays("EXPORT la liste des clients en Excel");
+  await waitFor((m) => sent.indexOf(m) >= n6 && /Voilà la liste/.test(m.text), 30_000, "export reply");
+  check("an exported list (a file from another tool) is sent to Telegram, once", sent.slice(n6).filter((m) => /\[document\] Clients\.xlsx/.test(m.text)).length === 1, sent.slice(n6).map((m) => m.text).join(" || ").slice(0, 160));
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

@@ -355,7 +355,8 @@ export function changeLearned(note: LearnedNote, kind: "lesson" | "user", index:
       next.lessons.splice(index, 1);
       next.lessonIds!.splice(index, 1);
     } else {
-      const saved = id ? editLesson(id, text) : addLesson(text, { source: "feedback" });
+      // The lesson may be gone meanwhile (removed in Settings): the corrected text is saved as a new one.
+      const saved = (id && editLesson(id, text)) || addLesson(text, { source: "feedback" });
       if (!saved) return "Couldn't save that lesson.";
       next.lessons[index] = saved.text;
       next.lessonIds![index] = saved.id;
