@@ -228,7 +228,7 @@ const es: Dict = {
   "settings.data.syncNote": "Mantén tu equipo sincronizado en todos tus ordenadores con una copia cifrada en la nube. No disponible en esta versión.",
 
   "settings.about.lead": "oovi {version}: software propietario. Todos los derechos reservados.",
-  "settings.about.crash": "Enviar informes de errores para ayudar a solucionar problemas. Incluyen la versión de la app, tu sistema operativo y el error, nunca tus chats, archivos ni claves.",
+  "settings.about.crash": "Enviar informes de errores y problemas de herramientas para ayudar a mejorar oovi. Incluyen la versión de la app, tu sistema operativo, el error y notas breves sobre qué herramienta de oovi falló y en qué sitio web, nunca tus chats, archivos ni claves.",
 
   "side.menu": "Menú",
   "side.home": "Inicio",

@@ -238,19 +238,26 @@ export async function pilotCreditsGranted(): Promise<number> {
 
 // ---------- feedback ----------
 
+/** from: "bots" = notes the app's bots sent about oovi's own tools; "people" = what users wrote themselves. */
+export type FeedbackFrom = "people" | "bots";
+export const FEEDBACK_FROM: FeedbackFrom[] = ["people", "bots"];
+
 export async function listFeedback(
   status: FeedbackStatus | null,
   kind: FeedbackKind | null,
-): Promise<{ rows: FeedbackRow[]; counts: Record<FeedbackStatus, number>; kinds: Record<FeedbackKind, number> }> {
-  const [list, counts] = await Promise.all([
+  from: FeedbackFrom | null = null,
+): Promise<{ rows: FeedbackRow[]; counts: Record<FeedbackStatus, number>; kinds: Record<FeedbackKind, number>; bots: { total: number; fresh: number } }> {
+  const [list, counts, bots] = await Promise.all([
     pool.query(
       `SELECT f.*, u.email FROM feedback f LEFT JOIN "user" u ON u.id = f.user_id
         WHERE ($1::text IS NULL OR f.status = $1) AND ($2::text IS NULL OR f.kind = $2)
+          AND ($3::text IS NULL OR ($3 = 'bots' AND f.source = 'bot') OR ($3 = 'people' AND f.source <> 'bot'))
         ORDER BY (f.status = 'new') DESC, f.created_at DESC
         LIMIT 300`,
-      [status, kind],
+      [status, kind, from],
     ),
     pool.query(`SELECT status, kind, count(*) AS c FROM feedback GROUP BY status, kind`),
+    pool.query(`SELECT count(*) AS total, count(*) FILTER (WHERE status = 'new') AS fresh FROM feedback WHERE source = 'bot'`),
   ]);
   const c: Record<FeedbackStatus, number> = { new: 0, reviewed: 0, done: 0 };
   const k: Record<FeedbackKind, number> = { problem: 0, improvement: 0, other: 0 };
@@ -258,7 +265,7 @@ export async function listFeedback(
     if (FEEDBACK_STATUSES.includes(r.status)) c[r.status as FeedbackStatus] += n(r.c);
     if (FEEDBACK_KINDS.includes(r.kind)) k[r.kind as FeedbackKind] += n(r.c);
   }
-  return { rows: list.rows.map(toFeedback), counts: c, kinds: k };
+  return { rows: list.rows.map(toFeedback), counts: c, kinds: k, bots: { total: n(bots.rows[0]?.total), fresh: n(bots.rows[0]?.fresh) } };
 }
 
 // ---------- audit log ----------

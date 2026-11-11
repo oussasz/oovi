@@ -103,6 +103,12 @@ export default function PrivacyPage() {
         it. If you are signed in, a crash report may be linked to your account.
       </p>
       <p>
+        With the same setting, the App may also send short notes about a problem with one of its own tools (for
+        example, that a tool could not read a kind of page), with the name of the website concerned. Before a note is
+        sent, the App removes email addresses, phone numbers and other numbers, file paths, quoted text and the rest
+        of a page&rsquo;s address. You can turn crash reports and these notes off in the App&rsquo;s Settings.
+      </p>
+      <p>
         When you are signed in, the App also tells us its version and your operating system when it starts, and sends
         a daily summary of usage numbers (for example how many messages were sent, tool calls made and AI cost, plus
         how many bots, groups, connectors and skills you have set up). These are numbers only, never your chats,

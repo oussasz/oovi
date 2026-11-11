@@ -241,7 +241,7 @@ const en = {
   "settings.data.syncNote": "Keep your team in sync on all your computers with an encrypted cloud backup. Not available in this version.",
 
   "settings.about.lead": "oovi {version}: proprietary software. All rights reserved.",
-  "settings.about.crash": "Send crash reports to help fix problems. They include the app version, your operating system and the error, never your chats, files or keys.",
+  "settings.about.crash": "Send crash reports and tool problems to help fix oovi. They include the app version, your operating system, the error, and short notes on which oovi tool failed and on which website, never your chats, files or keys.",
 
   // ---------- sidebar ----------
   "side.menu": "Menu",

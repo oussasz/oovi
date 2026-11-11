@@ -37,7 +37,7 @@ const call = (name, input) => reply([{ type: "tool_use", id: `toolu_${name}_${Da
 const systemOf = (b) => (typeof b.system === "string" ? b.system : Array.isArray(b.system) ? b.system.map((x) => x.text || "").join("\n") : "");
 
 const COLS = ["Name", "Type", "Area", "Phone", "Source"];
-const seen = { systems: {}, tools: {}, turns: {}, calls: {}, leaderAskedToContinue: 0, memberSteps: 0, wrapUp: 0, reflects: [] };
+const seen = { systems: {}, tools: {}, turns: {}, calls: {}, leaderAskedToContinue: 0, memberSteps: 0, wrapUp: 0, reflects: [], toolNotes: [] };
 let serial = 0;
 const phone = () => `+213 5${String(50 + (serial % 40))} ${String(100000 + serial).slice(-6)}`;
 /** n new businesses for this bot; `withPhone` of them have a number. */
@@ -54,7 +54,7 @@ function answer(body) {
     const body0 = JSON.stringify(msgs);
     seen.reflects.push(body0);
     const id = (body0.match(/([0-9a-f]{12}): For m3ak prospect lists/) || [])[1];
-    if (!id) return text(JSON.stringify({ lessons: [{ text: "For phone numbers, a web_search snippet is not enough: open the page with read_url.", replaces: null }, { text: "For m3ak prospect lists, the user wants a phone number on every row.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], skill: null }));
+    if (!id) return text(JSON.stringify({ lessons: [{ text: "For phone numbers, a web_search snippet is not enough: open the page with read_url.", replaces: null }, { text: "For m3ak prospect lists, the user wants a phone number on every row.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], tools: ["read_url returned no phone numbers on https://www.dzadvisor.com/listing/patisserie-le-prince-3570 for Marys (+213 555 199 669); the number is behind a button."], skill: null }));
     // Second review: the same lesson again (in French, refined) and a refined fact. Both must update, not add.
     return text(JSON.stringify({ lessons: [{ text: "Pour les listes de prospects m3ak, l'utilisateur veut un numéro de téléphone sur chaque ligne, dans un fichier Excel.", replaces: id }], user: [{ text: "The user likes green apples.", replaces: "The user likes apples." }], skill: null }));
   }
@@ -148,6 +148,10 @@ http
         }
       }
       if (url === "/api/v1/catalog") return send(200, { items: [] });
+      if (url === "/api/v1/feedback" && req.method === "POST") {
+        seen.toolNotes.push(JSON.parse(raw));
+        return send(204);
+      }
       return send(204);
     });
   })
@@ -156,7 +160,7 @@ http
 let server = null;
 function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
-    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
+    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TEST_USER_NAME: "Marys", OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => fs.appendFileSync(LOG, `   [server] ${d}`));
@@ -254,6 +258,10 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   };
   const first = await learnedOn(team.id);
   check("H) a note about oovi's own tools is not saved as a lesson; the one about the user's work is", lessonsNow().length === 1 && /m3ak prospect lists/.test(lessonsNow()[0].text) && !/web_search|read_url/.test(JSON.stringify(first?.learned || {})), lessonsNow().map((l) => l.text).join(" | "));
+  await sleep(800);
+  const notes = seen.toolNotes.map((n) => n.message);
+  check("H) notes about oovi's own tools go to oovi's developers, not to the user's card", seen.toolNotes.length === 2 && seen.toolNotes.every((n) => n.source === "bot") && notes.some((m) => m.startsWith("read_url returned no phone numbers on www.dzadvisor.com for [user] ([number])")) && notes.some((m) => /web_search snippet is not enough/.test(m)), notes.join(" || ").slice(0, 260));
+  check("H) what is sent carries no page address, no phone number and not the user's name", !/listing|3570|555|https?:|Marys/.test(notes.join(" ")));
   check("H) the review is shown what is already saved, and the card keeps each lesson's id", !!first && first.learned.lessons.length === 1 && (first.learned.lessonIds || [])[0] === lessonsNow()[0]?.id && /Already saved lessons \(id: text\)/.test(seen.reflects[0] || ""), JSON.stringify(first?.learned || null).slice(0, 160));
 
   // F: rounds that add nothing end the job by themselves.

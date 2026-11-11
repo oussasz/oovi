@@ -19,6 +19,7 @@ import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
 import { TECHNICAL_LESSON, WRONG_LESSON } from "./lesson-rules";
+import { sendToolNotes } from "./tool-notes";
 export { WRONG_LESSON };
 
 export type Lesson = {
@@ -187,7 +188,7 @@ export const CORRECTION = new RegExp(
 const REFLECT_SYSTEM = `You help an AI assistant team learn from finished work so it does better next time.
 You get the user's request, what the bots did (tools used, errors, final answer) and sometimes the user's feedback or correction.
 Return ONLY a JSON object, no other text:
-{"lessons": Item[], "user": Item[], "skill": null | {"name": string, "description": string, "steps": string[]}}
+{"lessons": Item[], "user": Item[], "tools": string[], "skill": null | {"name": string, "description": string, "steps": string[]}}
 Item is {"text": string, "replaces": string | null}.
 
 You are shown what is ALREADY saved (lessons with their ids, and the facts about the user). Before returning anything, compare with it:
@@ -201,6 +202,7 @@ lessons: usually none. A lesson is worth saving only when it is about THIS USER'
 If the user corrected the bots or gave feedback, the most important lesson is what to do differently. When the user contradicts the bots (for example "it works, it just takes time to load"), the user is right: never save the bots' mistaken conclusion.
 Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying, skip checking or avoid a site ("use another source instead of X", "X has no phone numbers"): a tool that returned nothing once proves nothing about the site. A lesson may say which way WORKED.
 user: 0-1 fact about the user, and only one that will matter in many future tasks: who they are, their business, a lasting preference (format, tone, tools), the people they work with. The profile is small, so keep only the most important things: not the details of the current task. Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
+tools: 0-2 notes for oovi's developers (they are not shown to the user and not saved as lessons). Only when one of oovi's own tools failed, returned nothing useful, misled the bots or lacked something the task needed. Say which tool, what happened and on which site, in English, max 200 characters. Example: "read_url returned no phone numbers on dzadvisor.com listing pages; the number is behind a button." Never include the user's name, words, file names, numbers or anything from their content. Nothing to report is the normal case.
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Empty arrays are normal. Never invent lessons.`;
 
@@ -221,11 +223,11 @@ function describeWork(work: { bot: Bot; entry: BotEntry }[]): string {
   return out.join("\n").slice(0, 12_000);
 }
 
-function parseJson(text: string): { lessons?: unknown; user?: unknown; skill?: unknown } | null {
+function parseJson(text: string): { lessons?: unknown; user?: unknown; tools?: unknown; skill?: unknown } | null {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   try {
-    return JSON.parse(m[0]) as { lessons?: unknown; user?: unknown; skill?: unknown };
+    return JSON.parse(m[0]) as { lessons?: unknown; user?: unknown; tools?: unknown; skill?: unknown };
   } catch {
     return null;
   }
@@ -295,7 +297,10 @@ export async function reflect(
 
   const source: Lesson["source"] = input.feedback ? "feedback" : "reflection";
   // Technical notes about oovi's own tools aren't lessons about the user's work (the model is told so; this makes sure).
-  const saved = items(j.lessons, 3)
+  // Notes about oovi's own tools go to oovi's developers instead of the user's lessons (lib/tool-notes.ts).
+  const all = items(j.lessons, 3);
+  void sendToolNotes([...strings(j.tools, 2), ...(input.feedback ? [] : all.filter((x) => TECHNICAL_LESSON.test(x.text)).map((x) => x.text))]);
+  const saved = all
     .filter((x) => input.feedback || !TECHNICAL_LESSON.test(x.text))
     .slice(0, input.feedback || input.previous ? 2 : 1)
     .map((x) => (x.replaces && replaceLesson(x.replaces, x.text, last.entry.id)) || addLesson(x.text, { botId: last.bot.id, source, entryId: last.entry.id }))

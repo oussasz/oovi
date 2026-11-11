@@ -15,3 +15,21 @@ export const WRONG_LESSON = /(empty|blank|vide)[^.]*(tunnel|offline|down|hors li
  */
 export const TECHNICAL_LESSON =
   /\b(web_search|read_url|open_url|read_page|research tool|work_table|work_notes|work_export|create_(document|spreadsheet|presentation|image)|request_user_takeover|message_group|send_file_to_user|find_files|vm_run|mcp_\w+|tool call|tool result|api (error|call|limit)|rate limit|time[d ]?out|timeout|status code|http \d{3}|\b[45]\d{2} error|json|javascript|snippets?|extraits? de recherche|headless|selector|element number|step limit|hand-?offs?|token limit|context window|retry|retries|réessay)/i;
+
+/**
+ * A note for oovi's developers about how one of oovi's tools behaved ("read_url returned no phone
+ * numbers on dzadvisor.com listing pages"). It leaves the user's computer, so anything personal is
+ * taken out first: emails, phone numbers and long numbers, file paths, quoted text, and addresses are
+ * cut down to the site's name. Returns "" when nothing useful is left.
+ */
+export function cleanToolNote(text: string): string {
+  let t = String(text ?? "").replace(/\s+/g, " ").trim();
+  t = t.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]");
+  t = t.replace(/https?:\/\/([\w.-]+)[^\s)"']*/gi, "$1"); // the site, not the page (a page address can hold a search or a name)
+  // A file path, with spaces in it, up to its extension when it has one.
+  t = t.replace(/(?:[A-Za-z]:\\|\/(?:home|Users)\/)(?:[^"'\n]*?\.[A-Za-z0-9]{2,5}\b|[^\s"']+)/g, "[path]");
+  t = t.replace(/["“«][^"”»]{12,}["”»]/g, "[text]");
+  t = t.replace(/\+?\d[\d\s().-]{6,}\d/g, "[number]");
+  t = t.slice(0, 300).trim();
+  return t.length >= 15 && TECHNICAL_LESSON.test(t) ? t : "";
+}

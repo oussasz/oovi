@@ -12,7 +12,7 @@ export function FeedbackItem({ f, showUser = true }: { f: FeedbackRow; showUser?
   return (
     <li className="adm-list-item">
       <div className="adm-list-head">
-        <span className={`adm-badge${f.kind === "problem" ? " warn" : ""}`}>{FEEDBACK_KIND_LABELS[f.kind]}</span>
+        {f.source === "bot" ? <span className="adm-badge">Tool note from a bot</span> : <span className={`adm-badge${f.kind === "problem" ? " warn" : ""}`}>{FEEDBACK_KIND_LABELS[f.kind]}</span>}
         <span className={`adm-badge${f.status === "done" ? " on" : ""}`}>{FEEDBACK_STATUS_LABELS[f.status]}</span>
         {showUser &&
           (f.userId ? (

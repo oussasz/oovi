@@ -228,7 +228,7 @@ const de: Dict = {
   "settings.data.syncNote": "Halte dein Team auf all deinen Computern mit einem verschlüsselten Cloud-Backup synchron. In dieser Version nicht verfügbar.",
 
   "settings.about.lead": "oovi {version}: proprietäre Software. Alle Rechte vorbehalten.",
-  "settings.about.crash": "Absturzberichte senden, um Probleme zu beheben. Sie enthalten die App-Version, dein Betriebssystem und den Fehler, nie deine Chats, Dateien oder Schlüssel.",
+  "settings.about.crash": "Absturzberichte und Werkzeugprobleme senden, um oovi zu verbessern. Sie enthalten die App-Version, dein Betriebssystem, den Fehler und kurze Notizen, welches oovi-Werkzeug auf welcher Website versagt hat, nie deine Chats, Dateien oder Schlüssel.",
 
   "side.menu": "Menü",
   "side.home": "Start",

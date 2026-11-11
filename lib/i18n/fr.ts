@@ -228,7 +228,7 @@ const fr: Dict = {
   "settings.data.syncNote": "Gardez votre équipe synchronisée sur tous vos ordinateurs avec une sauvegarde cloud chiffrée. Pas disponible dans cette version.",
 
   "settings.about.lead": "oovi {version} : logiciel propriétaire. Tous droits réservés.",
-  "settings.about.crash": "Envoyer des rapports de plantage pour aider à corriger les problèmes. Ils contiennent la version de l'app, votre système d'exploitation et l'erreur, jamais vos discussions, fichiers ou clés.",
+  "settings.about.crash": "Envoyer les rapports de plantage et les problèmes d'outils pour aider à corriger oovi. Ils contiennent la version de l'app, votre système d'exploitation, l'erreur et de courtes notes sur l'outil d'oovi qui a échoué et sur quel site, jamais vos discussions, fichiers ou clés.",
 
   "side.menu": "Menu",
   "side.home": "Accueil",

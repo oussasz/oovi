@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TECHNICAL_LESSON, WRONG_LESSON } from "../../lib/lesson-rules.ts";
+import { TECHNICAL_LESSON, WRONG_LESSON, cleanToolNote } from "../../lib/lesson-rules.ts";
 
 test("the wrong 'tunnel is down' lessons are recognised", () => {
   for (const t of [
@@ -39,4 +39,18 @@ test("lessons about the user's work are kept", () => {
     "Les factures de la société sont envoyées à Samir chaque lundi.",
     "المستخدم يريد التقارير بصيغة PDF باللغة العربية.",
   ]) assert.ok(!TECHNICAL_LESSON.test(t), t);
+});
+
+test("a tool note sent to oovi's developers carries no personal details", () => {
+  assert.equal(
+    cleanToolNote("read_url returned no phone numbers on https://www.dzadvisor.com/listing/patisserie-le-prince-3570?user=marys for +213 555 199 669"),
+    "read_url returned no phone numbers on www.dzadvisor.com for [number]",
+  );
+  assert.equal(cleanToolNote('web_search failed for "prospects for my company m3ak in Algiers" sent by marys@example.com'), "web_search failed for [text] sent by [email]");
+  assert.equal(cleanToolNote("create_document timed out writing C:\\Users\\marys\\Downloads\\oovi\\Rapport client.docx"), "create_document timed out writing [path]");
+  assert.equal(cleanToolNote("read_computer_file timeout on /home/marys/My Docs/secret plan.pdf then retried"), "read_computer_file timeout on [path] then retried");
+  // Not about a tool, or too short: nothing is sent.
+  assert.equal(cleanToolNote("The user likes green apples."), "");
+  assert.equal(cleanToolNote("timeout"), "");
+  assert.equal(cleanToolNote(""), "");
 });
