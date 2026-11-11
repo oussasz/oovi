@@ -2890,12 +2890,19 @@ textarea.input {
 
 /* ---------- Mac install guide (download page) ---------- */
 /* The pictures draw macOS windows (light, as macOS shows them by default), not screenshots. */
-.mac-guide { display: flex; flex-direction: column; gap: 14px; }
+.mac-guide { display: flex; flex-direction: column; gap: 14px; container-type: inline-size; }
 .mac-guide-lead { font-weight: 700; margin: 0; }
 .mac-steps { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .mac-steps > li { display: grid; grid-row: span 2; grid-template-rows: subgrid; gap: 10px; min-width: 0; }
 .mac-steps > li > p { margin: 0; font-size: 14px; line-height: 1.45; }
-@media (max-width: 760px) { .mac-steps { grid-template-columns: 1fr; } }
+/* Three pictures side by side only when each gets enough room; else one under the other (follows the guide's own width, not the screen's). */
+@container (max-width: 699px) {
+  .mac-steps { grid-template-columns: minmax(0, 1fr); }
+  .mac-steps > li { grid-row: auto; grid-template-rows: none; grid-template-columns: minmax(0, 270px) minmax(0, 1fr); align-items: center; gap: 16px; }
+}
+@container (max-width: 459px) {
+  .mac-steps > li { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+}
 .mac-win { background: #f5f5f7; color: #1d1d1f; border: 1px solid #d2d2d7; border-radius: 12px; overflow: hidden; box-shadow: var(--shadow-sm); font-family: -apple-system, "SF Pro Text", system-ui, sans-serif; min-height: 200px; display: flex; flex-direction: column; }
 .mac-bar { display: flex; align-items: center; gap: 6px; padding: 7px 10px; background: #ececee; border-bottom: 1px solid #dcdce0; position: relative; }
 .mac-dot { width: 10px; height: 10px; border-radius: 50%; }
@@ -2905,7 +2912,7 @@ textarea.input {
 .mac-dmg { display: flex; align-items: center; gap: 14px; }
 .mac-app { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; }
 .mac-arrow { font-size: 24px; color: #8e8e93; }
-.mac-alert { background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); padding: 10px 12px; width: 190px; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; font-size: 11px; }
+.mac-alert { background: #fff; border-radius: 12px; box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12); padding: 10px 12px; width: 190px; max-width: 100%; display: flex; flex-direction: column; align-items: center; gap: 5px; text-align: center; font-size: 11px; }
 .mac-alert b { font-size: 11.5px; }
 .mac-alert small { font-size: 9.5px; line-height: 1.3; color: #3a3a3c; }
 .mac-btn { display: block; width: 100%; text-align: center; border-radius: 7px; padding: 3px 8px; font-size: 10.5px; font-weight: 600; background: #e8e8ed; color: #1d1d1f; }
@@ -2913,9 +2920,10 @@ textarea.input {
 .mac-btn.ring { outline: 2.5px solid var(--coral); outline-offset: 2px; }
 .mac-settings { display: flex; width: 100%; align-self: stretch; gap: 8px; }
 .mac-side { width: 36%; flex: none; display: flex; flex-direction: column; gap: 4px; font-size: 10px; color: #3a3a3c; padding-top: 4px; }
-.mac-side span { padding: 3px 6px; border-radius: 6px; line-height: 1.25; overflow-wrap: anywhere; }
+.mac-side span { padding: 3px 6px; border-radius: 6px; line-height: 1.25; }
 .mac-side .on { background: #0a84ff; color: #fff; font-weight: 600; }
 .mac-pane { flex: 1; background: #fff; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 6px; justify-content: center; font-size: 11px; }
 .mac-pane small { font-size: 10px; color: #3a3a3c; }
 .mac-pane .mac-btn { width: auto; align-self: flex-start; }
+.mac-win img { flex: none; max-width: none; height: auto; object-fit: contain; }
 .mac-title.left { left: 64px; right: 10px; text-align: left; }
