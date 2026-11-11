@@ -180,6 +180,13 @@ export type Pending = {
   planApproved?: boolean;
   /** A slash command used in the message being worked on. */
   slash?: SlashUse;
+  /**
+   * A big job (start_big_job): the hand-off and step limits are lifted and the bot that answers the
+   * user keeps the team going until the goal is reached, or until rounds stop adding anything.
+   * table/target/require: "100 rows of Prospects with a Phone". mark: the size of the team's work after
+   * the last round; stale: rounds in a row that added nothing.
+   */
+  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number };
   /** Where the user is talking from right now (files bots send go there too). */
   channel?: "telegram";
   /** Which Telegram chat the message came from (the main chat or a chat linked to this group). */

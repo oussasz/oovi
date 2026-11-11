@@ -1381,6 +1381,11 @@ const en = {
   "tg.alreadyConnected": "You're connected. Send a message to talk to your main bot.",
   "tg.noBots": "You have no bots yet. Create one in oovi first.",
   "chat.stepLimit": "Stopped after {count} steps (limit set in Settings). Send a message to continue.",
+  "chat.stepPause": "Paused after {count} steps. The work so far is saved in the work files.",
+  "st.workTable": "Updating the team's table {what}",
+  "st.workNotes": "Writing in the team's notes {what}",
+  "st.workExport": "Preparing the file {what}",
+  "st.bigJob": "Starting a big job",
   "ok.expired": "Your earlier OK expired after 20 minutes (the screen may have changed), so it's asked again.",
   "chat.interrupted": "oovi closed before this finished. Send a message to continue.",
 } as const;

@@ -1362,6 +1362,11 @@ const es: Dict = {
   "tg.alreadyConnected": "Estás conectado. Envía un mensaje para hablar con tu bot principal.",
   "tg.noBots": "Todavía no tienes bots. Crea uno en oovi primero.",
   "chat.stepLimit": "Detenido después de {count} pasos (límite fijado en Ajustes). Envía un mensaje para continuar.",
+  "chat.stepPause": "Pausa después de {count} pasos. El trabajo hecho está guardado en los archivos de trabajo.",
+  "st.workTable": "Actualiza la tabla del equipo {what}",
+  "st.workNotes": "Escribe en las notas del equipo {what}",
+  "st.workExport": "Prepara el archivo {what}",
+  "st.bigJob": "Empieza un trabajo grande",
   "ok.expired": "Tu aprobación anterior caducó tras 20 minutos (la pantalla puede haber cambiado), así que se vuelve a pedir.",
   "chat.interrupted": "oovi se cerró antes de terminar. Envía un mensaje para continuar.",
 };

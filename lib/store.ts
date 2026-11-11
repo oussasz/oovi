@@ -269,6 +269,8 @@ export function createGroup(g: { name: string; memberIds: string[]; leadId?: str
 export function deleteChat(id: string): void {
   if (!ID_RE.test(id)) return;
   fs.rmSync(chatFile(id), { force: true });
+  // The chat's shared work files (lib/workfiles.ts) go with it.
+  fs.rmSync(path.join(dataDir(), "work", `${id}.json`), { force: true });
   groupsRev++;
 }
 

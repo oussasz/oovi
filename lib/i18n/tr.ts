@@ -1362,6 +1362,11 @@ const tr: Dict = {
   "tg.alreadyConnected": "Bağlısın. Ana botunla konuşmak için bir mesaj gönder.",
   "tg.noBots": "Henüz botun yok. Önce oovi'de bir tane oluştur.",
   "chat.stepLimit": "{count} adımdan sonra durduruldu (sınır Ayarlar'da). Devam etmek için bir mesaj gönder.",
+  "chat.stepPause": "{count} adımdan sonra ara verildi. Şimdiye kadarki iş çalışma dosyalarında kayıtlı.",
+  "st.workTable": "Ekip tablosunu güncelliyor {what}",
+  "st.workNotes": "Ekip notlarına yazıyor {what}",
+  "st.workExport": "Dosyayı hazırlıyor {what}",
+  "st.bigJob": "Büyük bir işe başlıyor",
   "ok.expired": "Önceki onayın 20 dakika sonra geçersiz oldu (ekran değişmiş olabilir), bu yüzden yeniden soruluyor.",
   "chat.interrupted": "oovi bu iş bitmeden kapandı. Devam etmek için bir mesaj gönder.",
 };
