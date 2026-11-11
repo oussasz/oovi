@@ -52,9 +52,14 @@ jobs:
         if: runner.os == 'Windows'
         shell: bash
         run: for f in dist/*Setup*.exe; do n="${f// /-}"; [ "$f" = "$n" ] || mv "$f" "$n"; done
+      # A spare copy under the run's "Artifacts", only for test builds (no release). A release gets its
+      # installers attached below, so this copy must never block one: GitHub's artifact storage can be full.
       - uses: actions/upload-artifact@v4
+        if: github.event_name != 'release' && inputs.tag == ''
+        continue-on-error: true
         with:
           name: oovi-${{ runner.os }}
+          retention-days: 3
           path: |
             dist/*.dmg
             dist/*.exe
