@@ -82,8 +82,10 @@ function compare(a, b) {
   return 0;
 }
 
+/** Installed from the .deb package (under /opt): the .deb is the file to get again. Otherwise the AppImage. */
+const linuxTarget = () => (process.env.APPIMAGE ? "linux-appimage" : "linux-deb");
 const downloadPage = () =>
-  `${SITE}/download/${process.platform === "darwin" ? (process.arch === "arm64" ? "mac-arm64" : "mac-intel") : "windows"}`;
+  `${SITE}/download/${process.platform === "darwin" ? (process.arch === "arm64" ? "mac-arm64" : "mac-intel") : process.platform === "linux" ? linuxTarget() : "windows"}`;
 
 let prefs = { auto: true, lastVersion: null, shortcuts: null };
 let updater = null; // electron-updater's autoUpdater (Windows only)
@@ -155,7 +157,7 @@ function setupElectronUpdater() {
 
 /** Version check only (Mac, or a build that can't install itself): the version in the website's latest*.yml. */
 async function checkLatestRelease() {
-  const res = await fetch(`${FEED}/${process.platform === "darwin" ? "latest-mac.yml" : "latest.yml"}`, {
+  const res = await fetch(`${FEED}/${process.platform === "darwin" ? "latest-mac.yml" : process.platform === "linux" ? "latest-linux.yml" : "latest.yml"}`, {
     headers: { "User-Agent": "oovi-desktop" },
     signal: AbortSignal.timeout(20_000),
   });

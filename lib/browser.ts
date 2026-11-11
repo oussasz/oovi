@@ -97,12 +97,38 @@ const blockPrivate = (c: BrowserContext) => c.route("**/*", (route) => (requestA
 const channelsFor = (channel: BrowserConfig["channel"]): (string | undefined)[] =>
   channel === "auto" ? ["chrome", "msedge", undefined] : [channel === "chromium" ? undefined : channel];
 
+/**
+ * Linux: browsers the usual places Playwright's "chrome"/"msedge" channels don't look in
+ * (Chromium from the distribution or snap, Brave, Chrome under another name). Tried after the channels.
+ */
+const LINUX_BROWSERS = [
+  "/usr/bin/google-chrome-stable",
+  "/usr/bin/google-chrome",
+  "/usr/bin/chromium",
+  "/usr/bin/chromium-browser",
+  "/snap/bin/chromium",
+  "/usr/bin/microsoft-edge-stable",
+  "/usr/bin/microsoft-edge",
+  "/usr/bin/brave-browser",
+  "/var/lib/flatpak/exports/bin/com.google.Chrome",
+  "/var/lib/flatpak/exports/bin/org.chromium.Chromium",
+];
+export const linuxBrowser = (): string | undefined => (process.platform === "linux" ? LINUX_BROWSERS.find((p) => fs.existsSync(p)) : undefined);
+
 /** "auto" tries installed Chrome, then Edge, then Playwright's own Chromium. */
 export async function launchLocal(channel: BrowserConfig["channel"]): Promise<Browser> {
   let lastErr: unknown;
   for (const ch of channelsFor(channel)) {
     try {
       return await chromium.launch({ headless: true, ...(ch ? { channel: ch } : {}) });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  const exe = linuxBrowser();
+  if (exe) {
+    try {
+      return await chromium.launch({ headless: true, executablePath: exe });
     } catch (e) {
       lastErr = e;
     }
@@ -122,6 +148,14 @@ async function launchProfile(channel: BrowserConfig["channel"], headless: boolea
         viewport: headless ? { width: 1280, height: 800 } : null,
         locale: "en-US",
       });
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  const exe = linuxBrowser();
+  if (exe) {
+    try {
+      return await chromium.launchPersistentContext(profileDir(), { headless, executablePath: exe, acceptDownloads: true, viewport: headless ? { width: 1280, height: 800 } : null, locale: "en-US" });
     } catch (e) {
       lastErr = e;
     }

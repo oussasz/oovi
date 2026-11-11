@@ -42,6 +42,7 @@ function Hero() {
         <div className="cta-row">
           <DownloadButton os="windows" size="lg">Download for Windows</DownloadButton>
           <DownloadButton os="mac" variant="light" size="lg">Download for Mac</DownloadButton>
+          <DownloadButton os="linux" variant="light" size="lg">Download for Linux</DownloadButton>
         </div>
         <p className="fine">Free during the pilot. Uses your own AI provider key.</p>
         <p className="fine soon-line">
@@ -321,8 +322,8 @@ function FinalCta() {
   return (
     <section className="final-simple container">
       <h2 className="h2">Set up your team in a few minutes.</h2>
-      <p className="lead small">Free during the pilot. Windows and Mac. Phone and web versions are coming soon.</p>
-      <DownloadButton size="lg" showIcon={false}>Download for Windows + Mac</DownloadButton>
+      <p className="lead small">Free during the pilot. Windows, Mac and Linux. Phone and web versions are coming soon.</p>
+      <DownloadButton size="lg" showIcon={false}>Download oovi</DownloadButton>
     </section>
   );
 }

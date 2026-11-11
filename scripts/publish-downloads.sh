@@ -17,16 +17,12 @@ WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
 echo "Downloading $TAG installers from $PRIVATE_REPO…"
-gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "*.dmg" --pattern "*.exe" --dir "$WORK"
+gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "*.dmg" --pattern "*.exe" --pattern "*.AppImage" --pattern "*.deb" --dir "$WORK"
 # Update files for the in-app updater (present from 0.7.0 on).
 gh release download "$TAG" --repo "$PRIVATE_REPO" --pattern "latest*.yml" --pattern "*.blockmap" --dir "$WORK" 2>/dev/null || true
 ls -lh "$WORK"
 
-NOTES="oovi $TAG for Mac and Windows. Download from https://oovi.conuron.com/download.
-
-The app isn't code-signed yet:
-- Mac: right-click oovi in Applications, then Open, then Open.
-- Windows: More info, then Run anyway."
+NOTES="oovi $TAG for Windows, Mac and Linux. Download from https://oovi.conuron.com/download (the page shows the first-open steps for each system)."
 
 if gh release view "$TAG" --repo "$PUBLIC_REPO" >/dev/null 2>&1; then
   echo "Updating existing release $TAG on $PUBLIC_REPO…"

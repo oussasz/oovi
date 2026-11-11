@@ -864,6 +864,7 @@ const fr: Dict = {
   "update.autoHint": "Les nouvelles versions se téléchargent en arrière-plan. oovi les installe seulement quand vous choisissez de redémarrer, jamais pendant l'arrêt de l'ordinateur. Vos bots, discussions et réglages sont conservés.",
   "update.macNote": "Sur Mac, installez les nouvelles versions depuis le site : téléchargez, ouvrez, glissez oovi dans Applications et choisissez Remplacer. Vos bots, discussions et réglages sont conservés.",
   "update.manualNote": "Installez les nouvelles versions depuis le site. Vos bots, discussions et réglages sont conservés.",
+  "update.linuxNote": "Sous Linux, installez les nouvelles versions depuis le site : téléchargez le nouveau fichier et ouvrez-le, comme la première fois. Vos bots, discussions et réglages sont conservés.",
   "update.errorOffline": "Pas de connexion internet. oovi réessaiera plus tard.",
   "update.errorDamaged": "Le téléchargement est endommagé. Réessayez.",
   "update.errorFailed": "Mise à jour impossible pour le moment. oovi réessaiera plus tard.",

@@ -880,6 +880,7 @@ const en = {
   "update.autoHint": "New versions download in the background. oovi installs them only when you choose to restart, never while your computer shuts down. Your bots, chats and settings are kept.",
   "update.macNote": "On Mac, install new versions from the website: download, open it, drag oovi into Applications and choose Replace. Your bots, chats and settings are kept.",
   "update.manualNote": "Install new versions from the website. Your bots, chats and settings are kept.",
+  "update.linuxNote": "On Linux, install new versions from the website: download the new file and open it, as you did the first time. Your bots, chats and settings are kept.",
   "update.errorOffline": "No internet connection. oovi will try again later.",
   "update.errorDamaged": "The download was damaged. Try again.",
   "update.errorFailed": "Couldn't update right now. oovi will try again later.",

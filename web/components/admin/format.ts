@@ -68,6 +68,8 @@ export const TARGET_LABELS: Record<string, string> = {
   "mac-arm64": "Mac (Apple silicon)",
   "mac-intel": "Mac (Intel)",
   windows: "Windows",
+  "linux-deb": "Linux (.deb)",
+  "linux-appimage": "Linux (AppImage)",
 };
 
 /** Series colors from the site palette (they adapt to dark mode). */
@@ -75,6 +77,8 @@ export const TARGET_COLORS: Record<string, string> = {
   "mac-arm64": "var(--blue-ink)",
   "mac-intel": "var(--lilac)",
   windows: "var(--coral)",
+  "linux-deb": "var(--yellow, #f2c94c)",
+  "linux-appimage": "var(--ok, #3aa76d)",
 };
 
 export function countryName(code: string): string {

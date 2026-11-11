@@ -1181,8 +1181,10 @@ p {
 }
 .seg {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  /* one equal column per system, however many there are */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
   padding: 5px;
   border-radius: 999px;
   background: var(--surface-2);
@@ -1192,8 +1194,10 @@ p {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 10px;
+  gap: 7px;
+  padding: 10px 6px;
+  min-width: 0;
+  white-space: nowrap;
   border-radius: 999px;
   border: 0;
   background: transparent;
@@ -1202,6 +1206,7 @@ p {
   font-weight: 800;
   cursor: pointer;
 }
+.seg button svg { flex: none; }
 .seg button.on {
   background: var(--surface);
   color: var(--ink);
@@ -2930,3 +2935,8 @@ textarea.input {
 
 /* "Coming soon" line under the home page buttons */
 .soon-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+
+/* Linux install steps on the download page: plain steps, not a warning */
+.notice.plain { background: var(--surface); border-color: var(--border); }
+.notice.plain .alt { margin: 8px 0 0; font-size: 13.5px; color: var(--muted); }
+.notice.plain code { display: inline-block; padding: 2px 7px; border-radius: 7px; background: rgba(127, 127, 127, 0.16); font-size: 12.5px; overflow-wrap: anywhere; user-select: all; }

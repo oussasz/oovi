@@ -1,6 +1,14 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## Status after 0.10.0 (read this first)
+## Linux added to 0.10.0 (2026-11-11)
+- Owner's choice: no new version. The Linux files are built from `main` as 0.10.0 and attached to the existing v0.10.0 release (Actions > Build desktop apps > Run workflow on `main`, tag `v0.10.0`, only `linux`), so Windows and Mac users aren't asked to update and the Store package is untouched. The Linux-only code paths (update feed, browser paths) are in `main`, not in the Windows/Mac 0.10.0 installers, which don't need them.
+- Built on GitHub (ubuntu-latest): `oovi-<version>-linux.AppImage` (any distribution) and `oovi-<version>-linux.deb` (Ubuntu, Debian, Mint), x64 only, plus `latest-linux.yml`. `publish-downloads.yml` now requires them.
+- Checked on Ubuntu 24.04 (cloud session, as root with --no-sandbox, virtual display): the .deb installs with apt (dependencies resolved, menu entry, icon, AppArmor profile for Ubuntu 24+ in its postinst), and both the installed app and the AppImage start and show the sign-in screen. Not checked: a real desktop session as a normal user, and the AppImage on Ubuntu 24+ (unprivileged user namespaces are restricted there: the website recommends the .deb).
+- App: Linux checks `latest-linux.yml` and sends "Download" to `/download/linux-deb` or `/download/linux-appimage` (updates are manual, like Mac; AppImage self-update is possible later once tested on a real update). Bots' browser: besides Chrome/Edge channels, `lib/browser.ts` tries the usual Linux paths (Chromium from apt/snap/flatpak, Brave…), proven by making a PDF with Chrome's channel path hidden.
+- Website: Linux tab (two choices), Linux buttons, `/updates/latest-linux.yml`, targets `linux-deb` and `linux-appimage` (deploy the website only once a release has the Linux files, or the buttons lead to "unavailable").
+- Desktop control stays Windows only.
+
+## Status after 0.10.0
 - 0.10.0 is on `main`, released on GitHub (v0.10.0), copied to the downloads site (website buttons + in-app updates serve 0.10.0) and submitted to the Microsoft Store by the owner (in certification, 2026-11-11).
 - The first build of the release failed on the spare-copy upload ("Artifact storage quota has been hit"); `build.yml` now makes that copy only for test builds. To attach installers to an existing release: Actions > Build desktop apps > Run workflow on `main` with the tag.
 - Website: Windows first, "Coming soon" for phone and web, 3-step Mac install guide; `status.maxConcurrent` is live.

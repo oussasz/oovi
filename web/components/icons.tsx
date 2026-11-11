@@ -16,6 +16,18 @@ export function WindowsIcon({ size = 16, className }: P) {
   );
 }
 
+/** A simple penguin (Linux). */
+export function LinuxIcon({ size = 16, className }: P) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden fill="currentColor">
+      <path
+        fillRule="evenodd"
+        d="M12 2c-2.3 0-3.9 1.8-3.9 4.3 0 1 .1 1.9-.3 2.8-.5 1.1-1.5 2.2-2.2 3.6-.9 1.7-1.3 3.4-1.1 4.9l-1.2 1.6c-.5.7 0 1.6.8 1.6h3.1c1 .8 2.7 1.2 4.8 1.2s3.800-.4 4.8-1.200h3.100c.8 0 1.300-.900.800-1.600l-1.200-1.600c.200-1.500-.200-3.200-1.100-4.900-.700-1.400-1.700-2.500-2.200-3.600-.400-.900-.300-1.800-.300-2.800C15.900 3.800 14.300 2 12 2Zm0 8.200c1.900 0 3.300 2.900 3.300 5.700 0 2.200-1.300 3.600-3.300 3.600s-3.300-1.400-3.300-3.600c0-2.800 1.400-5.700 3.300-5.700ZM10.400 5.600a.8.900 0 1 0 0 1.800.8.900 0 0 0 0-1.800Zm3.200 0a.8.900 0 1 0 0 1.800.8.900 0 0 0 0-1.800Z"
+      />
+    </svg>
+  );
+}
+
 export function ArrowRight({ size = 16, className }: P) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden fill="none" stroke="currentColor" strokeWidth={2.4} strokeLinecap="round" strokeLinejoin="round">

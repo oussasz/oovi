@@ -6,7 +6,7 @@ import { LogoMark } from "@/components/LogoMark";
 
 export const metadata: Metadata = {
   title: "Download",
-  description: "Download oovi for Windows and Mac (Apple silicon or Intel).",
+  description: "Download oovi for Windows, Mac (Apple silicon or Intel) and Linux.",
 };
 
 export default async function DownloadPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {

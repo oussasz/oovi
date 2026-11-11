@@ -864,6 +864,7 @@ const tr: Dict = {
   "update.autoHint": "Yeni sürümler arka planda indirilir. oovi bunları yalnızca yeniden başlatmayı seçtiğinde yükler, bilgisayar kapanırken asla. Botların, sohbetlerin ve ayarların korunur.",
   "update.macNote": "Mac'te yeni sürümleri web sitesinden yükle: indir, aç, oovi'yi Uygulamalar'a sürükle ve Değiştir'i seç. Botların, sohbetlerin ve ayarların korunur.",
   "update.manualNote": "Yeni sürümleri web sitesinden yükle. Botların, sohbetlerin ve ayarların korunur.",
+  "update.linuxNote": "Linux'ta yeni sürümleri web sitesinden kur: yeni dosyayı indir ve ilk seferdeki gibi aç. Botların, sohbetlerin ve ayarların korunur.",
   "update.errorOffline": "İnternet bağlantısı yok. oovi daha sonra tekrar deneyecek.",
   "update.errorDamaged": "İndirme bozuk. Tekrar dene.",
   "update.errorFailed": "Şu an güncellenemedi. oovi daha sonra tekrar deneyecek.",

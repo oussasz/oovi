@@ -232,7 +232,7 @@ export function UpdateCard() {
           </span>
         </label>
       ) : (
-        <p className="note">{s.platform === "darwin" ? t("update.macNote") : t("update.manualNote")}</p>
+        <p className="note">{s.platform === "darwin" ? t("update.macNote") : s.platform === "linux" ? t("update.linuxNote") : t("update.manualNote")}</p>
       )}
     </div>
   );

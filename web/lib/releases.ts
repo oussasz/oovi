@@ -1,4 +1,4 @@
-export const DOWNLOAD_TARGETS = ["mac-arm64", "mac-intel", "windows"] as const;
+export const DOWNLOAD_TARGETS = ["mac-arm64", "mac-intel", "windows", "linux-deb", "linux-appimage"] as const;
 
 /**
  * oovi's Microsoft Store page (e.g. https://apps.microsoft.com/detail/9N...). When set, "Download for
@@ -85,7 +85,7 @@ async function assetLink(src: Source, asset: ReleaseAsset): Promise<string | nul
 }
 
 /** Update files the app asks for (electron-updater's generic provider): only these names. */
-export const UPDATE_FILE = /^(latest(-mac)?\.yml|oovi-Setup-\d+\.\d+\.\d+\.exe(\.blockmap)?|oovi-\d+\.\d+\.\d+(-arm64|-x64)?\.(dmg|zip)(\.blockmap)?)$/;
+export const UPDATE_FILE = /^(latest(-mac|-linux)?\.yml|oovi-\d+\.\d+\.\d+-linux\.(AppImage|deb)|oovi-Setup-\d+\.\d+\.\d+\.exe(\.blockmap)?|oovi-\d+\.\d+\.\d+(-arm64|-x64)?\.(dmg|zip)(\.blockmap)?)$/;
 
 /**
  * Find an update file. latest*.yml always comes from the newest release; a versioned file comes
@@ -111,7 +111,7 @@ async function findUpdateAsset(name: string): Promise<{ src: Source; asset: Rele
 }
 
 /** The contents of latest.yml / latest-mac.yml (small text files), or null. */
-export async function updateManifest(name: "latest.yml" | "latest-mac.yml"): Promise<string | null> {
+export async function updateManifest(name: "latest.yml" | "latest-mac.yml" | "latest-linux.yml"): Promise<string | null> {
   const found = await findUpdateAsset(name);
   if (!found) return null;
   const url = await assetLink(found.src, found.asset);
@@ -135,6 +135,10 @@ function matchAsset(target: DownloadTarget, assets: ReleaseAsset[]): ReleaseAsse
       return find(/^oovi-[\d.]+\.dmg$/i) ?? find(/^oovi-[\d.]+-x64\.dmg$/i);
     case "windows":
       return find(/^oovi-Setup-[\d.]+\.exe$/i);
+    case "linux-deb":
+      return find(/^oovi[-_][\d.]+[-_].*\.deb$/i);
+    case "linux-appimage":
+      return find(/^oovi-[\d.]+.*\.AppImage$/i);
   }
 }
 
@@ -145,7 +149,7 @@ export type GithubDownloads = {
 };
 let countsCache: { at: number; data: GithubDownloads } | null = null;
 
-const emptyTargets = (): Record<DownloadTarget, number> => ({ "mac-arm64": 0, "mac-intel": 0, windows: 0 });
+const emptyTargets = (): Record<DownloadTarget, number> => ({ "mac-arm64": 0, "mac-intel": 0, windows: 0, "linux-deb": 0, "linux-appimage": 0 });
 
 /**
  * Installer download counts as GitHub counts them, for every release of the

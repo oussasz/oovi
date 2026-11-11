@@ -4,7 +4,10 @@
   "version": "0.10.0",
   "private": true,
   "license": "UNLICENSED",
-  "author": "oovi",
+  "author": {
+    "name": "oovi",
+    "email": "contact@conuron.com"
+  },
   "description": "Your own crew of AI bots on your desktop. Bring your own API key, no subscription.",
   "main": "electron/main.cjs",
   "scripts": {
@@ -111,8 +114,36 @@
       "hardenedRuntime": false
     },
     "linux": {
-      "target": "AppImage",
-      "category": "Utility"
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "icon": "build/icon.png",
+      "executableName": "oovi",
+      "synopsis": "Your own team of AI bots",
+      "description": "oovi is a desktop app where a few AI bots work on your request together.",
+      "maintainer": "oovi <contact@conuron.com>",
+      "vendor": "Conuron",
+      "artifactName": "${productName}-${version}-linux.${ext}",
+      "desktop": {
+        "entry": {
+          "Name": "oovi",
+          "Comment": "Your own team of AI bots",
+          "StartupWMClass": "oovi",
+          "Keywords": "AI;assistant;bots;"
+        }
+      }
     },
     "publish": [
       {
@@ -129,5 +160,6 @@
       "tr"
     ],
     "afterPack": "scripts/after-pack.cjs"
-  }
+  },
+  "homepage": "https://oovi.conuron.com"
 }

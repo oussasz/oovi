@@ -56,12 +56,12 @@ jobs:
         run: |
           mkdir work
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir work \
-            --pattern "*.dmg" --pattern "*.exe" --pattern "*.exe.blockmap" --pattern "latest*.yml"
+            --pattern "*.dmg" --pattern "*.exe" --pattern "*.exe.blockmap" --pattern "*.AppImage" --pattern "*.deb" --pattern "latest*.yml"
           ls -lh work
           # The real release notes, so the public copy matches what the website shows.
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
-          # Every platform must be there, or Mac or Windows users would be left on the old version.
-          for want in "*.exe" "*arm64.dmg" "latest.yml" "latest-mac.yml"; do
+          # Every platform must be there, or its users would be left on the old version.
+          for want in "*.exe" "*arm64.dmg" "*.AppImage" "*.deb" "latest.yml" "latest-mac.yml" "latest-linux.yml"; do
             compgen -G "work/$want" > /dev/null || { echo "::error::$want is missing from release $TAG (did a build fail?)"; exit 1; }
           done
 

@@ -213,6 +213,7 @@ export function AccountClient({
             <div className="cta-row">
               <DownloadButton os="windows">Download for Windows</DownloadButton>
               <DownloadButton os="mac" variant="light">Download for Mac</DownloadButton>
+              <DownloadButton os="linux" variant="light">Download for Linux</DownloadButton>
             </div>
           </section>
 

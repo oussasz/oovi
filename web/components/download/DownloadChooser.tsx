@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { AppleIcon, ArrowRight, WindowsIcon } from "../icons";
+import { AppleIcon, ArrowRight, LinuxIcon, WindowsIcon } from "../icons";
 import { MacInstallGuide } from "./MacInstallGuide";
 
-export type Os = "mac" | "windows";
+export type Os = "mac" | "windows" | "linux";
 
 /** Set on Vercel once oovi is live in the Microsoft Store (see lib/releases.ts microsoftStoreUrl). */
 const STORE_URL = process.env.NEXT_PUBLIC_MICROSOFT_STORE_URL ?? "";
 type MacArch = "arm64" | "intel";
+type LinuxKind = "deb" | "appimage";
 
 type NavigatorUAData = {
   platform?: string;
@@ -22,6 +23,8 @@ export function detectOs(): Os | null {
   const ua = navigator.userAgent.toLowerCase();
   if (platform.includes("mac") || ua.includes("mac os")) return "mac";
   if (platform.includes("win") || ua.includes("windows")) return "windows";
+  // (Android phones also say "Linux": they aren't offered the desktop app.)
+  if ((platform.includes("linux") || ua.includes("linux")) && !ua.includes("android")) return "linux";
   return null;
 }
 
@@ -40,6 +43,7 @@ async function detectMacArch(): Promise<MacArch | null> {
 export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os | null; compact?: boolean }) {
   const [os, setOs] = useState<Os>(initialOs ?? "windows"); // most visitors are on Windows; the visitor's own system replaces it right away
   const [arch, setArch] = useState<MacArch>("arm64");
+  const [kind, setKind] = useState<LinuxKind>("deb");
   const [archDetected, setArchDetected] = useState(false);
   const [started, setStarted] = useState(false);
 
@@ -57,7 +61,7 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
     });
   }, [initialOs]);
 
-  const target = os === "windows" ? "windows" : arch === "arm64" ? "mac-arm64" : "mac-intel";
+  const target = os === "windows" ? "windows" : os === "linux" ? (kind === "deb" ? "linux-deb" : "linux-appimage") : arch === "arm64" ? "mac-arm64" : "mac-intel";
   const store = os === "windows" && STORE_URL !== "";
 
   return (
@@ -87,7 +91,39 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         >
           <AppleIcon size={16} /> Mac
         </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={os === "linux"}
+          className={os === "linux" ? "on" : ""}
+          onClick={() => {
+            setOs("linux");
+            setStarted(false);
+          }}
+        >
+          <LinuxIcon size={16} /> Linux
+        </button>
       </div>
+
+      {os === "linux" && (
+        <fieldset className="arch">
+          <legend>Which Linux do you have?</legend>
+          <label className={kind === "deb" ? "on" : ""}>
+            <input type="radio" name="linux" checked={kind === "deb"} onChange={() => setKind("deb")} />
+            <span>
+              <b>Ubuntu, Debian, Mint</b>
+              <small>.deb package</small>
+            </span>
+          </label>
+          <label className={kind === "appimage" ? "on" : ""}>
+            <input type="radio" name="linux" checked={kind === "appimage"} onChange={() => setKind("appimage")} />
+            <span>
+              <b>Other Linux</b>
+              <small>AppImage (Fedora, Arch, openSUSE…)</small>
+            </span>
+          </label>
+        </fieldset>
+      )}
 
       {os === "mac" && (
         <fieldset className="arch">
@@ -114,6 +150,28 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
 
       {store ? null : os === "mac" ? (
         <MacInstallGuide />
+      ) : os === "linux" ? (
+        <div className="notice plain">
+          {kind === "deb" ? (
+            <ol className="steps">
+              <li>Open the downloaded file and click <b>Install</b> (it asks for your password).</li>
+              <li>Open <b>oovi</b> from your apps.</li>
+            </ol>
+          ) : (
+            <ol className="steps">
+              <li>Right-click the downloaded file, open <b>Properties</b> and allow it to <b>run as a program</b>.</li>
+              <li>Double-click it to open oovi.</li>
+            </ol>
+          )}
+          <p className="alt">
+            Prefer the terminal? In your Downloads folder, run{" "}
+            <code>{kind === "deb" ? "sudo apt install ./oovi-*-linux.deb" : "chmod +x oovi-*-linux.AppImage && ./oovi-*-linux.AppImage"}</code>
+          </p>
+          <p className="alt">
+            For 64-bit PCs (Intel or AMD). To let your bots browse the web, have Chrome or Chromium installed.
+            {kind === "appimage" ? " On Ubuntu, Debian or Mint, pick the .deb instead: it sets everything up for you." : ""}
+          </p>
+        </div>
       ) : (
       <div className="notice">
         <p className="notice-title">
@@ -136,8 +194,8 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         href={`/download/${target}`}
         onClick={() => setStarted(true)}
       >
-        {os === "mac" ? <AppleIcon /> : <WindowsIcon />}
-        {store ? "Get it from Microsoft Store" : `Download for ${os === "mac" ? (arch === "arm64" ? "Mac (Apple silicon)" : "Mac (Intel)") : "Windows"}`}
+        {os === "mac" ? <AppleIcon /> : os === "linux" ? <LinuxIcon /> : <WindowsIcon />}
+        {store ? "Get it from Microsoft Store" : `Download for ${os === "mac" ? (arch === "arm64" ? "Mac (Apple silicon)" : "Mac (Intel)") : os === "linux" ? (kind === "deb" ? "Linux (.deb)" : "Linux (AppImage)") : "Windows"}`}
         <ArrowRight />
       </a>
       <p className="fine" aria-live="polite">
