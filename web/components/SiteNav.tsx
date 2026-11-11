@@ -25,7 +25,7 @@ export function SiteNav() {
         <div className="nav-actions">
           <NavAccount />
           <DownloadButton size="sm" className="nav-dl">
-            <span className="hide-sm">Download for Mac + Windows</span>
+            <span className="hide-sm">Download for Windows + Mac</span>
             <span className="show-sm">Download</span>
           </DownloadButton>
         </div>

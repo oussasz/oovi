@@ -16,7 +16,7 @@ type Props = {
 
 export function DownloadButton({ os, variant = "dark", size = "md", children, showIcon = true, className }: Props) {
   const { open } = useDownload();
-  const label = children ?? (os === "mac" ? "Download for Mac" : os === "windows" ? "Download for Windows" : "Download for Mac + Windows");
+  const label = children ?? (os === "mac" ? "Download for Mac" : os === "windows" ? "Download for Windows" : "Download for Windows + Mac");
   return (
     <button
       type="button"

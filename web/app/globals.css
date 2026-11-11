@@ -2927,3 +2927,6 @@ textarea.input {
 .mac-pane .mac-btn { width: auto; align-self: flex-start; }
 .mac-win img { flex: none; max-width: none; height: auto; object-fit: contain; }
 .mac-title.left { left: 64px; right: 10px; text-align: left; }
+
+/* "Coming soon" line under the home page buttons */
+.soon-line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }

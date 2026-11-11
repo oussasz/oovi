@@ -211,8 +211,8 @@ export function AccountClient({
               Download it and sign in with this account. Your bots, chats and keys live on your device, not here.
             </p>
             <div className="cta-row">
-              <DownloadButton os="mac">Download for Mac</DownloadButton>
-              <DownloadButton os="windows" variant="light">Download for Windows</DownloadButton>
+              <DownloadButton os="windows">Download for Windows</DownloadButton>
+              <DownloadButton os="mac" variant="light">Download for Mac</DownloadButton>
             </div>
           </section>
 

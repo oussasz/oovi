@@ -38,7 +38,7 @@ async function detectMacArch(): Promise<MacArch | null> {
 }
 
 export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os | null; compact?: boolean }) {
-  const [os, setOs] = useState<Os>(initialOs ?? "mac");
+  const [os, setOs] = useState<Os>(initialOs ?? "windows"); // most visitors are on Windows; the visitor's own system replaces it right away
   const [arch, setArch] = useState<MacArch>("arm64");
   const [archDetected, setArchDetected] = useState(false);
   const [started, setStarted] = useState(false);
@@ -66,18 +66,6 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
         <button
           type="button"
           role="tab"
-          aria-selected={os === "mac"}
-          className={os === "mac" ? "on" : ""}
-          onClick={() => {
-            setOs("mac");
-            setStarted(false);
-          }}
-        >
-          <AppleIcon size={16} /> Mac
-        </button>
-        <button
-          type="button"
-          role="tab"
           aria-selected={os === "windows"}
           className={os === "windows" ? "on" : ""}
           onClick={() => {
@@ -86,6 +74,18 @@ export function DownloadChooser({ initialOs, compact = false }: { initialOs?: Os
           }}
         >
           <WindowsIcon size={14} /> Windows
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={os === "mac"}
+          className={os === "mac" ? "on" : ""}
+          onClick={() => {
+            setOs("mac");
+            setStarted(false);
+          }}
+        >
+          <AppleIcon size={16} /> Mac
         </button>
       </div>
 

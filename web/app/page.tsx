@@ -40,10 +40,13 @@ function Hero() {
           write and check, and you approve anything that touches the outside world.
         </p>
         <div className="cta-row">
-          <DownloadButton os="mac" size="lg">Download for Mac</DownloadButton>
-          <DownloadButton os="windows" variant="light" size="lg">Download for Windows</DownloadButton>
+          <DownloadButton os="windows" size="lg">Download for Windows</DownloadButton>
+          <DownloadButton os="mac" variant="light" size="lg">Download for Mac</DownloadButton>
         </div>
         <p className="fine">Free during the pilot. Uses your own AI provider key.</p>
+        <p className="fine soon-line">
+          <span className="pill-soon">Coming soon</span> oovi on your phone and on the web.
+        </p>
       </div>
 
       <div className="hero-art" aria-hidden>
@@ -318,8 +321,8 @@ function FinalCta() {
   return (
     <section className="final-simple container">
       <h2 className="h2">Set up your team in a few minutes.</h2>
-      <p className="lead small">Free during the pilot. Mac and Windows.</p>
-      <DownloadButton size="lg" showIcon={false}>Download for Mac + Windows</DownloadButton>
+      <p className="lead small">Free during the pilot. Windows and Mac. Phone and web versions are coming soon.</p>
+      <DownloadButton size="lg" showIcon={false}>Download for Windows + Mac</DownloadButton>
     </section>
   );
 }
