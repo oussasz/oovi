@@ -276,6 +276,7 @@ const de: Dict = {
   "chat.show": "Anzeigen",
   "chat.thinking": "Denkt nach…",
   "chat.waiting": "Wartet auf dein OK…",
+  "chat.waitingNext": "Fragt gleich nach deinem OK…",
   "chat.stopped": "Gestoppt.",
   "chat.noReply": "(keine Antwort)",
   "chat.passedTo": "Übergeben an",

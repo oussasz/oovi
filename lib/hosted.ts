@@ -17,6 +17,8 @@ export type HostedStatus = {
   plan: { id: string; name: string };
   planUntil: string | null;
   maxInputTokens: number;
+  /** How many calls the server lets this account run at once. Missing from older servers: 3 (the server's default). */
+  maxConcurrent?: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
   pilot: { open: boolean; eligible: boolean; public?: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
   /** theOovi's model can control the desktop (Claude's computer toolset). Missing from older servers: treated as yes. */
@@ -64,6 +66,8 @@ export function noteHostedState(state: HostedState, message: string | null) {
 
 /** Largest request theOovi accepts (in tokens); the app compacts history to stay well below it. */
 export const hostedMaxInput = () => g.__ooviHosted?.maxInputTokens || DEFAULT_MAX_INPUT;
+/** How many theOovi calls may run at once from this app (several bots working at the same time share them). */
+export const hostedMaxConcurrent = () => Math.min(50, Math.max(1, Math.floor(Number(g.__ooviHosted?.maxConcurrent) || 3)));
 
 export async function hostedStatus(fresh = false): Promise<HostedStatus | null> {
   if (!sessionToken()) {

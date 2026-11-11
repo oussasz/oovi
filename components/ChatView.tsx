@@ -534,8 +534,10 @@ function BotMessage(props: {
   /** Set only for the reply whose proposed plan waits for review. */
   onPlanDecision?: (approve: boolean, items: string[]) => void;
   planBusy?: boolean;
+  /** Worked at the same time as teammates and still has a question for the user: its card comes after the current one. */
+  queued?: boolean;
 }) {
-  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy } = props;
+  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy, queued } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -660,7 +662,7 @@ function BotMessage(props: {
             <span>{status ?? t("chat.thinking")}</span>
           </div>
         )}
-        {e.status === "waiting" && <div className="note">{t("chat.waiting")}</div>}
+        {e.status === "waiting" && <div className="note">{t(queued ? "chat.waitingNext" : "chat.waiting")}</div>}
         {e.status === "stopped" && !e.text && <div className="note">{t("chat.stopped")}</div>}
         {e.status === "done" && !e.text && <div className="note">{t("chat.noReply")}</div>}
         {e.error && (e.errorCode && e.errorCode !== "busy" && e.errorCode !== "bad_request" ? <HostedNotice code={e.errorCode} message={e.error} /> : <div className="notice error small">{e.error === INTERRUPTED ? t("chat.interrupted") : e.error}</div>)}
@@ -1401,7 +1403,7 @@ export default function ChatView({ id }: { id: string }) {
                 </div>
               ) : (
                 <Fragment key={e.id}>
-                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} />
+                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} queued={chat.pending?.parked?.includes(e.id)} />
                   {(() => {
                     // A team task: show what the whole task cost, under its last message.
                     const tot = taskCredits(chat.entries, i, running);

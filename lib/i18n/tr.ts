@@ -276,6 +276,7 @@ const tr: Dict = {
   "chat.show": "Göster",
   "chat.thinking": "Düşünüyor…",
   "chat.waiting": "Onayını bekliyor…",
+  "chat.waitingNext": "Birazdan onayını isteyecek…",
   "chat.stopped": "Durduruldu.",
   "chat.noReply": "(yanıt yok)",
   "chat.passedTo": "Devredildi:",

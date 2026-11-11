@@ -292,6 +292,7 @@ const en = {
   "chat.show": "Show",
   "chat.thinking": "Thinking…",
   "chat.waiting": "Waiting for your OK…",
+  "chat.waitingNext": "Will ask for your OK next…",
   "chat.stopped": "Stopped.",
   "chat.noReply": "(no reply)",
   "chat.passedTo": "Passed to",

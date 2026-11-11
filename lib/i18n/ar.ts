@@ -285,6 +285,7 @@ const ar: Dict = {
   "chat.show": "عرض",
   "chat.thinking": "يفكّر…",
   "chat.waiting": "بانتظار موافقتك…",
+  "chat.waitingNext": "سيطلب موافقتك بعد قليل…",
   "chat.stopped": "تم الإيقاف.",
   "chat.noReply": "(لا رد)",
   "chat.passedTo": "مُرّر إلى",

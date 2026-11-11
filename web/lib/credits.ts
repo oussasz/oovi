@@ -164,6 +164,8 @@ export type CreditStatus = {
   plan: { id: string; name: string };
   planUntil: string | null;
   maxInputTokens: number;
+  /** How many model calls this account may have running at once (the app queues the rest). */
+  maxConcurrent: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
   /** public: the pilot may be advertised. When off, only people given the link find it. */
   pilot: { open: boolean; eligible: boolean; public: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
@@ -228,6 +230,7 @@ export async function creditStatus(userId: string, userCreatedAt: Date | string,
     plan: { id: plan.id, name: plan.name },
     planUntil: row.plan !== "free" && row.plan_until ? row.plan_until.toISOString() : null,
     maxInputTokens: cfg.maxInputTokens,
+    maxConcurrent: cfg.maxConcurrent,
     links: {
       subscribe: cfg.subscribeUrl || `${base}/pricing`,
       pricing: `${base}/pricing`,

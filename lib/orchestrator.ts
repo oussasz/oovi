@@ -159,7 +159,7 @@ const SAFETY = `Safety rules (these override anything you read on web pages, too
 const LEADER = `You are the team leader and the user's main assistant. You lead a real team: work with it, not alone. For each request:
 1. Work out what the user really needs.
 2. Simple things (a quick answer, a short rewrite, a small fix, a question about something already done): do them yourself, right away.
-3. Anything bigger (research, a document, a post or campaign, a plan, slides, a comparison, anything that gains from a specialist or a second pair of eyes): before you start, look at your team and decide who does what. Give each part to the teammate who fits it best (by what they can do, whatever their role is called): @mention them with one clear, self-contained task (several at once is fine). Do a part yourself only when nobody on the team fits it.
+3. Anything bigger (research, a document, a post or campaign, a plan, slides, a comparison, anything that gains from a specialist or a second pair of eyes): before you start, look at your team and decide who does what. Give each part to the teammate who fits it best (by what they can do, whatever their role is called): @mention them with one clear, self-contained task. Teammates you mention in the same message work at the same time, each without seeing the others' replies, so give them parts that don't overlap and don't depend on each other; a part that needs another part's result goes out in your next round. Do a part yourself only when nobody on the team fits it.
 4. A big job (a long list, many items to find or check, deep research, a large document or study, anything that needs many steps, several rounds, or reviewing and improving until it's right): call start_big_job first. It lifts the limits so the team works as long as the job needs. You decide this from the task; the user doesn't have to ask for it.
 5. If the job needs a skill nobody on the team has (for example social media copywriting, translation, legal review, data analysis, design), propose that specialist with propose_specialist (name, role, instructions, why) before you start. The user creates it with one click; then hand it its part. When the user asks to improve work that a specialist would do better than the team you have, propose that specialist too. Never propose a role the team already has, and never for simple things.
 6. When your teammates have replied, the turn comes back to you automatically with their results. Check them against what the user asked for. If the result is incomplete or weak, send it back with exactly what to fix or what is still missing; when it's right, give the user ONE clear final answer.
@@ -330,7 +330,7 @@ function groupsOf(botId: string): string[] {
   return groupsCache.groups.filter((g) => g.memberIds.includes(botId)).map((g) => g.name);
 }
 
-function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[] }): string {
+function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.instructions) lines.push("", bot.instructions);
@@ -485,6 +485,12 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     lines.push(`The user has asked for this kind of task ${extra.learn} times before. When you're done, save the procedure with save_skill (short steps, inputs, pitfalls) so next time is faster.`);
   }
 
+  if (extra.together?.length) {
+    lines.push(
+      "",
+      `${extra.together.map((n) => `@${n}`).join(", ")} ${extra.together.length > 1 ? "are" : "is"} working on ${extra.together.length > 1 ? "their parts" : "another part"} right now, at the same time as you. You won't see their replies until this round ends, so don't wait for them and don't @mention them: do your own part. Stay inside the part you were given so the work doesn't overlap; what they have added so far is in the work files (work_table read shows it).`,
+    );
+  }
   const job = chat.pending?.job;
   if (job && !extra.wrapUp) lines.push("", answersUser ? (mates.length && chat.kind === "group" ? JOB_LEAD : JOB_SOLO) : JOB_MEMBER, ...jobLines(chat, job, answersUser));
   else if (!job && answersUser && !lead && tools.some((t) => t.name === "start_big_job")) {
@@ -573,7 +579,7 @@ function pdfMode(s: Settings): "anthropic" | "oovi" | "other" {
 }
 
 /** The conversation as this bot sees it. */
-function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other"): Msg[] {
+function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other", current?: BotEntry): Msg[] {
   const out: Msg[] = [];
   const group = chat.kind === "group";
   // Older turns may have been condensed into a summary to save tokens.
@@ -593,7 +599,12 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
     else if (e.botId === bot.id) out.push(...(e.steps.length ? e.steps : e.text ? [{ role: "assistant" as const, text: e.text, toolCalls: [] }] : []));
+    // Teammates working at the same time: while this bot works, it doesn't see their replies arrive
+    // (its view stays stable; what they add is in the shared work files). The next turn sees everything.
+    else if (current?.batch && e.batch === current.batch) continue;
     else if (e.text) out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"}]: ${e.text}` });
+    // A teammate whose turn failed: the others (and the leader) know that part wasn't done.
+    else if (e.status === "error") out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"} couldn't finish this part: an error stopped it.]` });
   }
   return out;
 }
@@ -658,7 +669,49 @@ function cancelApproval(chat: Chat) {
       e.status = "stopped";
     }
   }
+  // Replies that were still waiting their turn to ask (teammates who worked at the same time).
+  for (const pid of chat.pending?.parked ?? []) {
+    const x = chat.entries.find((y) => y.id === pid);
+    if (x?.kind === "bot" && x.status === "waiting") {
+      closeDangling(x, "Cancelled: the user sent a new message instead.");
+      x.status = "stopped";
+    }
+  }
   chat.pending = undefined;
+}
+
+/** How many teammates work at the same time (the rest of a big team follows in the next group). */
+const MAX_TOGETHER = 4;
+
+/**
+ * Run several bot turns at the same time: events come out as they happen, and the outcomes come back
+ * in the order the turns were given. A turn that throws counts as an error; it never takes the others down.
+ */
+async function* runTogether<T, R>(runs: AsyncGenerator<T, R>[], onThrow: (i: number, e: unknown) => R): AsyncGenerator<T, R[]> {
+  const out: R[] = new Array<R>(runs.length);
+  type Step = { i: number; r: IteratorResult<T, R> };
+  const step = (i: number): Promise<Step> =>
+    runs[i]!.next().then(
+      (r) => ({ i, r }),
+      (e) => ({ i, r: { done: true as const, value: onThrow(i, e) } }),
+    );
+  const live = new Map<number, Promise<Step>>(runs.map((_, i) => [i, step(i)]));
+  try {
+    while (live.size) {
+      const { i, r } = await Promise.race(live.values());
+      if (r.done) {
+        out[i] = r.value;
+        live.delete(i);
+      } else {
+        live.set(i, step(i));
+        yield r.value;
+      }
+    }
+  } finally {
+    // Left early (the caller stopped listening): let the turns that are still open close.
+    for (const i of live.keys()) void runs[i]!.return(undefined as never).catch(() => undefined);
+  }
+  return out;
 }
 
 const baseName = (p: unknown) => String(p ?? "a file").split(/[\\/]/).pop() || "a file";
@@ -745,11 +798,16 @@ async function* runBot(
   signal: AbortSignal,
   /** The approval card the user just answered (desktop decisions are checked against it). */
   answered?: Approval,
+  /**
+   * together: this bot works at the same time as teammates. The conversation was already compacted for
+   * the whole batch, and a request for the user's OK is handed to `park` (cards are shown one at a time).
+   */
+  opts: { together?: boolean; park?: (a: Approval) => void } = {},
 ): AsyncGenerator<ChatEvent, Outcome> {
   const s = settingsFor(bot, settings);
   decisions = { ...decisions };
   // Keep the conversation small before every turn, including hand-offs between bots.
-  await compactIfLong(chat, s, signal);
+  if (!opts.together) await compactIfLong(chat, s, signal);
   const usesAccounts = !!bot.tools.accounts;
   const sessionId = `${chat.id}_${bot.id}`;
   // The bot's own connectors, plus one lent for this message by a /connector command
@@ -773,7 +831,7 @@ async function* runBot(
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
   const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
   // Rebuilt when a big job starts mid-turn, so the goal stays in view however long the turn gets.
-  const buildSystem = () => systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] });
+  const buildSystem = () => systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
   let system = buildSystem();
   let steps = 0;
   let jobStarted = false;
@@ -852,6 +910,12 @@ async function* runBot(
         };
         const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf), at: Date.now() };
         entry.status = "waiting";
+        if (opts.park) {
+          // Working at the same time as teammates: the card waits until they're done (one question at a time).
+          opts.park(approval);
+          yield { type: "entry", entry };
+          return "waiting";
+        }
         chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), approval };
         yield { type: "entry", entry };
         yield { type: "approval", approval };
@@ -979,7 +1043,7 @@ async function* runBot(
     try {
       const effort: Effort = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : "auto";
       let budget = budgetOf(s);
-      const view = prune(viewFor(bot, chat, bots, pdfMode(s)));
+      const view = prune(viewFor(bot, chat, bots, pdfMode(s), entry));
       let out;
       try {
         out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
@@ -1036,8 +1100,9 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     for (const it of items) if (it.folder && input.decisions[it.call.id] === true) allowFolder(it.folder, loadSettings().computerFiles);
   }
   const settings = loadSettings();
-  const chat = getChat(chatId);
-  if (!chat) throw new Error("Chat not found.");
+  const found = getChat(chatId);
+  if (!found) throw new Error("Chat not found.");
+  const chat: Chat = found;
   // A reply left "working…" when the app closed mid-run (this run is the only one holding the chat now).
   if (typeof input.text === "string" && healInterrupted(chat)) saveChat(chat);
   const bots = listBots();
@@ -1184,55 +1249,11 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     return;
   }
 
-  for (;;) {
-    let entry: BotEntry;
-    let decisions: Record<string, boolean> = {};
-    let answered: Approval | undefined;
-    if (resume) {
-      entry = resume.entry;
-      decisions = resume.decisions;
-      answered = resume.answered;
-      entry.status = "running";
-      resume = null;
-    } else {
-      if (signal.aborted) break;
-      const nextId = chat.pending?.queue.shift();
-      if (!nextId) break;
-      if (!members.some((m) => m.id === nextId)) continue;
-      entry = { id: newId(), kind: "bot", botId: nextId, at: Date.now(), steps: [], text: "", status: "running", usage: { input: 0, output: 0 } };
-      chat.entries.push(entry);
-    }
-
-    const bot = members.find((m) => m.id === entry.botId);
-    if (!bot) {
-      entry.status = "error";
-      entry.error = "This bot is no longer in the chat.";
-      saveChat(chat);
-      yield { type: "entry", entry };
-      continue;
-    }
-
-    saveChat(chat);
-    yield { type: "entry", entry };
-    // A big job: was the goal already reached when this turn started? (If it's reached during the turn,
-    // the owner gets one more turn to check and deliver.)
-    const metBefore = ((c) => !!c && c.done >= c.target)(chat.pending?.job ? jobCount(chat.id, chat.pending.job) : null);
-    let outcome = yield* runBot(chat, entry, bot, bots, members, settings, decisions, signal, answered);
-    // The bot's own abilities changed mid-turn: carry on with its fresh settings (same message, same history).
-    for (let i = 0; outcome === "refresh" && i < 3; i++) {
-      const fresh = listBots().find((b) => b.id === bot.id);
-      if (!fresh) break;
-      for (const list of [bots, members]) {
-        const at = list.findIndex((b) => b.id === fresh.id);
-        if (at >= 0) list[at] = fresh;
-      }
-      outcome = yield* runBot(chat, entry, fresh, bots, members, settings, {}, signal);
-    }
-    if (outcome === "refresh") outcome = "done";
-    if (outcome === "waiting") {
-      saveChat(chat);
-      return;
-    }
+  /**
+   * A bot's turn ended: who goes next? (Hand-offs, the leader's turn back, big-job rounds, the final answer.)
+   * othersBusy: teammates of the same group are still working or waiting, so the leader's turn isn't due yet.
+   */
+  const settle = (entry: BotEntry, bot: Bot, outcome: Outcome, metBefore: boolean, othersBusy: boolean) => {
     const p = (chat.pending ??= { queue: [], turnsLeft: settings.maxTurns });
     // Who closes the conversation: the leader, or in a plain group the bot that answered first.
     const closer = lead ?? members.find((m) => m.id === chat.leadId);
@@ -1283,7 +1304,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
         p.awaitingLead = false;
       }
       // Leader mode: once the delegated work is all done, hand the turn back to the leader.
-      if (lead && bot.id !== lead.id && p.awaitingLead && p.queue.length === 0) {
+      if (lead && bot.id !== lead.id && p.awaitingLead && p.queue.length === 0 && !othersBusy && !p.parked?.length) {
         p.awaitingLead = false;
         if (job || p.turnsLeft > 0) {
           if (!job) p.turnsLeft--;
@@ -1292,9 +1313,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
           wrapUp();
         }
       }
-    } else if (p.job && outcome === "error" && !entry.errorCode && lead && bot.id !== lead.id) {
-      // A big job doesn't die because one teammate's turn failed: the others go on, and the leader gets the turn.
-      if (p.awaitingLead && p.queue.length === 0) {
+    } else if ((p.job || entry.batch) && outcome === "error" && (!entry.errorCode || entry.errorCode === "busy" || entry.errorCode === "unavailable") && lead && bot.id !== lead.id) {
+      // A big job, or teammates working together: one failed turn doesn't end the work. The others go on,
+      // and the leader gets the turn (it's told which part wasn't done).
+      if (p.awaitingLead && p.queue.length === 0 && !othersBusy && !p.parked?.length) {
         p.awaitingLead = false;
         p.queue.push(lead.id);
       }
@@ -1302,6 +1324,165 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       p.queue = []; // an error or stop ends the chain
       p.awaitingLead = false;
     }
+  };
+
+  /**
+   * The teammates next in line who can work at the same time, or null when the next turn runs alone.
+   * Only work the leader handed out (a plain group is a conversation: each reply answers the one before).
+   * Kept one at a time: bots using the user's signed-in accounts (one browser profile), chats with a
+   * project folder (two bots editing the same files), and desktop control (one mouse and keyboard).
+   */
+  const teamBatch = (): string[] | null => {
+    const p = chat.pending;
+    if (!p || !lead || !p.awaitingLead || chat.workspace || settings.desktopControl.enabled) return null;
+    const ids: string[] = [];
+    for (const id of p.queue) {
+      const m = members.find((x) => x.id === id);
+      if (!m || m.id === lead.id || m.tools.accounts || ids.includes(id) || ids.length >= MAX_TOGETHER) break;
+      ids.push(id);
+    }
+    if (ids.length < 2) return null;
+    p.queue.splice(0, ids.length);
+    return ids;
+  };
+
+  /** One teammate's turn inside a group that works together (with the restart when its abilities change). */
+  async function* oneOf(entry: BotEntry, first: Bot, park: (a: Approval) => void): AsyncGenerator<ChatEvent, Outcome> {
+    let bot = first;
+    let outcome = yield* runBot(chat, entry, bot, bots, members, settings, {}, signal, undefined, { together: true, park });
+    for (let i = 0; outcome === "refresh" && i < 3; i++) {
+      const fresh = listBots().find((b) => b.id === bot.id);
+      if (!fresh) break;
+      for (const list of [bots, members]) {
+        const at = list.findIndex((b) => b.id === fresh.id);
+        if (at >= 0) list[at] = fresh;
+      }
+      bot = fresh;
+      outcome = yield* runBot(chat, entry, bot, bots, members, settings, {}, signal, undefined, { together: true, park });
+    }
+    return outcome === "refresh" ? "done" : outcome;
+  }
+
+  /** Run these teammates at the same time. Returns true when the run must pause for the user's OK. */
+  async function* runBatch(ids: string[]): AsyncGenerator<ChatEvent, boolean> {
+    // Compacted once for everyone (not by each bot while the others read the conversation).
+    await compactIfLong(chat, settings, signal);
+    // theOovi: know how many calls the server allows at once before several start together.
+    if (ids.some((id) => usesHosted(settingsFor(members.find((m) => m.id === id)!, settings)))) await hostedStatus().catch(() => null);
+    const batch = newId();
+    const turns = ids.map((id) => {
+      const entry: BotEntry = { id: newId(), kind: "bot", botId: id, at: Date.now(), steps: [], text: "", status: "running", usage: { input: 0, output: 0 }, batch };
+      chat.entries.push(entry);
+      return { entry, bot: members.find((m) => m.id === id)! };
+    });
+    saveChat(chat);
+    for (const t of turns) yield { type: "entry", entry: t.entry };
+    const asks: Approval[] = [];
+    const outcomes = yield* runTogether(
+      turns.map((t) => oneOf(t.entry, t.bot, (a) => asks.push(a))),
+      (i, e) => {
+        const t = turns[i]!;
+        closeDangling(t.entry, "Stopped by an error.");
+        t.entry.status = signal.aborted ? "stopped" : "error";
+        if (!signal.aborted) t.entry.error = (e as Error).message || String(e);
+        return signal.aborted ? "stopped" : "error";
+      },
+    );
+    // Everyone is done (or waits for the user's OK): settle the turns in the order the work was handed out.
+    const waiting = turns.filter((_, i) => outcomes[i] === "waiting");
+    const finished = turns.map((t, i) => ({ ...t, outcome: outcomes[i]! })).filter((t) => t.outcome !== "waiting");
+    for (const [k, t] of finished.entries()) {
+      settle(t.entry, t.bot, t.outcome, false, k < finished.length - 1 || waiting.length > 0);
+      yield { type: "entry", entry: t.entry };
+    }
+    const order = signal.aborted ? [] : waiting.map((t) => asks.find((a) => a.entryId === t.entry.id)).filter((a): a is Approval => !!a);
+    // Stopped by the user while a teammate waited to ask: its request is closed, never left hanging.
+    for (const t of waiting) {
+      if (order.some((a) => a.entryId === t.entry.id)) continue;
+      closeDangling(t.entry, "Stopped by the user.");
+      t.entry.status = "stopped";
+      yield { type: "entry", entry: t.entry };
+    }
+    saveChat(chat);
+    // One question at a time: the first card now, the others when their turn comes.
+    const firstAsk = order[0];
+    if (!firstAsk) return false;
+    const p = (chat.pending ??= { queue: [], turnsLeft: settings.maxTurns });
+    p.approval = { ...firstAsk, at: Date.now() };
+    p.parked = [...(p.parked ?? []), ...order.slice(1).map((a) => a.entryId)];
+    yield { type: "approval", approval: p.approval };
+    return true;
+  }
+
+  for (;;) {
+    let entry: BotEntry;
+    let decisions: Record<string, boolean> = {};
+    let answered: Approval | undefined;
+    if (resume) {
+      entry = resume.entry;
+      decisions = resume.decisions;
+      answered = resume.answered;
+      entry.status = "running";
+      resume = null;
+    } else {
+      if (signal.aborted) break;
+      // A teammate that worked at the same time as others and still has to ask for the user's OK: its card now.
+      const parkedId = chat.pending?.parked?.shift();
+      const parked = parkedId ? chat.entries.find((e): e is BotEntry => e.kind === "bot" && e.id === parkedId && e.status === "waiting") : undefined;
+      if (parkedId && !parked) continue;
+      if (parked) {
+        entry = parked;
+        entry.status = "running";
+      } else {
+        // The leader handed work to several teammates: they work at the same time.
+        const ids = teamBatch();
+        if (ids) {
+          const paused = yield* runBatch(ids);
+          if (paused) {
+            saveChat(chat);
+            return;
+          }
+          continue;
+        }
+        const nextId = chat.pending?.queue.shift();
+        if (!nextId) break;
+        if (!members.some((m) => m.id === nextId)) continue;
+        entry = { id: newId(), kind: "bot", botId: nextId, at: Date.now(), steps: [], text: "", status: "running", usage: { input: 0, output: 0 } };
+        chat.entries.push(entry);
+      }
+    }
+
+    const bot = members.find((m) => m.id === entry.botId);
+    if (!bot) {
+      entry.status = "error";
+      entry.error = "This bot is no longer in the chat.";
+      saveChat(chat);
+      yield { type: "entry", entry };
+      continue;
+    }
+
+    saveChat(chat);
+    yield { type: "entry", entry };
+    // A big job: was the goal already reached when this turn started? (If it's reached during the turn,
+    // the owner gets one more turn to check and deliver.)
+    const metBefore = ((c) => !!c && c.done >= c.target)(chat.pending?.job ? jobCount(chat.id, chat.pending.job) : null);
+    let outcome = yield* runBot(chat, entry, bot, bots, members, settings, decisions, signal, answered);
+    // The bot's own abilities changed mid-turn: carry on with its fresh settings (same message, same history).
+    for (let i = 0; outcome === "refresh" && i < 3; i++) {
+      const fresh = listBots().find((b) => b.id === bot.id);
+      if (!fresh) break;
+      for (const list of [bots, members]) {
+        const at = list.findIndex((b) => b.id === fresh.id);
+        if (at >= 0) list[at] = fresh;
+      }
+      outcome = yield* runBot(chat, entry, fresh, bots, members, settings, {}, signal);
+    }
+    if (outcome === "refresh") outcome = "done";
+    if (outcome === "waiting") {
+      saveChat(chat);
+      return;
+    }
+    settle(entry, bot, outcome, metBefore, false);
     saveChat(chat);
     yield { type: "entry", entry };
   }

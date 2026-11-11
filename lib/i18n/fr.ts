@@ -276,6 +276,7 @@ const fr: Dict = {
   "chat.show": "Afficher",
   "chat.thinking": "Réflexion…",
   "chat.waiting": "En attente de votre OK…",
+  "chat.waitingNext": "Demandera votre accord juste après…",
   "chat.stopped": "Arrêté.",
   "chat.noReply": "(pas de réponse)",
   "chat.passedTo": "Transmis à",

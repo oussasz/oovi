@@ -9,7 +9,8 @@
 
 import { appVersion, cloudUrl, sessionToken } from "./account";
 import { attachmentParts, INLINE_MAX, INLINE_TOTAL, type MediaPart } from "./attachments";
-import { noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
+import { hostedMaxConcurrent, noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
+import { createGate, type Gate } from "./gate";
 import { costOf, readableError, replacementFor } from "./models";
 import { HOSTED_NAME, PROVIDERS, providerName, type ProviderId } from "./providers-meta";
 import { currentModel, markRetired, usesHosted, type ModelRef, type Settings } from "./settings";
@@ -273,9 +274,12 @@ const hasMedia = (messages: Msg[]) =>
 
 async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort, noMedia = false): Promise<RawCompletion> {
   if (ref.provider === "oovi") {
-    const timeout = AbortSignal.timeout(290_000);
-    const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-    return hosted({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig, noMedia });
+    // Wait for a free place first (other bots may be calling too); the call's own time limit starts after that.
+    return hostedGate.run(() => {
+      const timeout = AbortSignal.timeout(290_000);
+      const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      return hostedCall({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig, noMedia });
+    }, signal);
   }
   const meta = PROVIDERS[ref.provider];
   const cfg = s.providers[ref.provider] ?? {};
@@ -498,7 +502,11 @@ async function anthropic(r: Req): Promise<RawCompletion> {
 
 // ---------- theOovi (the hosted model, through the oovi account service) ----------
 
-async function hosted(r: Req): Promise<RawCompletion> {
+// Several bots can work at the same time; the server allows a few calls at once per account.
+// Calls beyond that wait here for a free place instead of coming back as "busy".
+const hostedGate = ((globalThis as typeof globalThis & { __ooviHostedGate?: Gate }).__ooviHostedGate ??= createGate(hostedMaxConcurrent));
+
+async function hostedCall(r: Req): Promise<RawCompletion> {
   const token = sessionToken();
   if (!token) throw new HostedError("You're signed out. Sign in again to use theOovi.", "signed_out");
   // theOovi's server checks the toolset and picks a model that has it.

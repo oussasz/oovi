@@ -151,6 +151,8 @@ export type BotEntry = {
   feedback?: { rating: "up" | "down"; note?: string; at: number };
   /** Teammates this reply handed off to (bot ids). */
   handoff?: string[];
+  /** Teammates who worked at the same time share one batch id (while they work, they don't see each other's replies). */
+  batch?: string;
   /** Hand-off requested but the per-message limit was reached. */
   handoffBlocked?: boolean;
 };
@@ -188,6 +190,11 @@ export type Pending = {
    * the last round; stale: rounds in a row that added nothing.
    */
   job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number };
+  /**
+   * Teammates worked at the same time and several needed the user's OK: one card is shown at a time.
+   * These replies (entry ids) wait their turn to ask.
+   */
+  parked?: string[];
   /** Where the user is talking from right now (files bots send go there too). */
   channel?: "telegram";
   /** Which Telegram chat the message came from (the main chat or a chat linked to this group). */
