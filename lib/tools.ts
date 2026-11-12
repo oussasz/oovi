@@ -20,6 +20,7 @@ import { translateFor, type Tr } from "./i18n-server";
 import { SCROLL_JS, collectList, toRows } from "./page-list";
 import { runScrape } from "./scrape";
 import { PLACES_SPEC, runPlacesTool } from "./places";
+import { PAPERS_SPEC, runPapersTool } from "./papers";
 import { rowLine, type ListRow } from "./page-list-core";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -228,7 +229,12 @@ const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "scr
  * What runTool needs from the run: its stop signal, where the user is writing from, and how rows
  * reach the chat's work table (extract_list with `table`): the run knows which work files are in use.
  */
-export type RunCtx = { signal?: AbortSignal; channel?: "telegram"; addToTable?: (table: string, rows: ListRow[], source: string) => { text: string; isError?: boolean } };
+export type RunCtx = {
+  signal?: AbortSignal;
+  channel?: "telegram";
+  addToTable?: (table: string, rows: ListRow[], source: string) => { text: string; isError?: boolean };
+  addRecords?: (table: string, rows: Record<string, string>[]) => { text: string; isError?: boolean };
+};
 
 /**
  * Bots never touch the browser while the user has control of it. Returns an error
@@ -246,7 +252,7 @@ const userNote = (sess: Session) => `The user used the browser; the page may hav
 
 /** The tools a bot may use, from its toggles. */
 export function toolsFor(t: BotTools): ToolSpec[] {
-  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC] : [])];
+  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC, PAPERS_SPEC] : [])];
 }
 
 async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
@@ -353,6 +359,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
   if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings, ctx.signal);
   if (call.name === PLACES_SPEC.name) return runPlacesTool(call, { signal: ctx.signal, addToTable: ctx.addToTable });
+  if (call.name === PAPERS_SPEC.name) return runPapersTool(call, { signal: ctx.signal, addRecords: ctx.addRecords });
   // One cloud computer per chat (sessionId is "<chatId>_<botId>").
   if (VM_TOOLS.has(call.name)) return runVmTool(call, settings, sessionId.split("_")[0] ?? sessionId, workspace);
   try {

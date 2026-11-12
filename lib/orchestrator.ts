@@ -42,7 +42,7 @@ import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import { WORK_SPECS, WORK_TOOLS, addListRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
+import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark } from "./workfiles-core";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
@@ -194,15 +194,14 @@ const JOB_LEAD = `BIG JOB MODE. You own the result: the job ends when the goal i
 const JOB_MEMBER = `BIG JOB MODE: the team is on a big job. Do your whole part in this turn: keep working, step after step, until your part is complete or you have truly run out of ways. Don't stop to report a partial result, and don't ask whether to continue.
 - Put results into the team's work file as you go (work_table add in batches, work_notes append), never in the chat.
 - When one way fails (a page won't load, a site hides the detail, a search returns little), try another: other search words, other sites and directories, another language, the browser. Only give up on an item after several different ways failed.
-- A list of local businesses or places (cafés, salons, clinics, shops… in a city or district): start with find_places, one call per district and kind, straight into the work table; it gives names, phones and addresses at once. Then fill what is missing from websites.
-- A site that lists many items (a directory, a catalogue, results pages): collect it with scrape_list in one call (all its pages, and each item's own page for the phone number with details=true), straight into the work table. Never read and retype items one by one.
+- Collect in bulk before you read one by one, straight into the work table: businesses and places of a city or district with find_places; scientific and scholarly publications on a topic with find_papers; any website's list (a directory, a catalogue, results pages, with each item's own page when details=true) with scrape_list. One call brings dozens or hundreds of rows. Then spend your steps on what the bulk result lacks or on reading the items that matter. Never read and retype items one by one.
 - Record what you read, with where you read it. Never write a detail you read nowhere.
 - Your reply is at most three short lines: what you added (numbers), in which work file, and what you couldn't get and why. No tables or lists in the chat.`;
 
 /** A big job, for a bot working alone with the user. */
 const JOB_SOLO = `BIG JOB MODE. You own the result: keep working, step after step, until the goal is reached. Don't stop to report a partial result and don't ask the user whether to continue.
 - Put results into work files as you go (work_table for lists, work_notes for long text), not in the chat.
-- When one way fails, try another: other search words, other sites, another language, the browser. A list of local businesses or places: start with find_places (one call per district and kind, straight into the work table). A site that lists many items: collect it with scrape_list in one call (all its pages, and each item's own page with details=true), straight into the work table. Review your own work and correct it before you finish.
+- When one way fails, try another: other search words, other sites, another language, the browser. Collect in bulk before you read one by one, straight into the work table: places of a city or district with find_places, publications on a topic with find_papers, any website's list with scrape_list (all its pages, each item's own page with details=true). Review your own work and correct it before you finish.
 - Never give the user work you can do (opening pages, checking sources). Ask only for what only they can give.
 - To finish: work_export the result, then one short message with what was done, the numbers, the file name and what is still open.`;
 
@@ -779,6 +778,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "extract_list": return tr("st.extracting");
     case "scrape_list": return tr("st.scraping", { name: v(i.table) });
     case "find_places": return tr("st.places", { area: v(i.area) });
+    case "find_papers": return tr("st.papers", { q: v(i.query) });
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
     case "go_back": return tr("st.goingBack");
@@ -1064,7 +1064,7 @@ async function* runBot(
             results.push(r);
             // This bot just got a new ability: its turn restarts with the new tools and instructions.
             if (!r.isError && c.name === "request_abilities" && JSON.stringify(listBots().find((b) => b.id === bot.id)?.tools) !== JSON.stringify(bot.tools)) selfChanged = true;
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source) }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });

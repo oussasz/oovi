@@ -103,6 +103,7 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "scroll": return t("chat.call.scroll");
     case "scrape_list": return t("chat.call.scrape", { name: String(i.table ?? "") });
     case "find_places": return t("chat.call.places", { area: String(i.area ?? "") });
+    case "find_papers": return t("chat.call.papers", { query: String(i.query ?? "") });
     case "extract_list": return t(i.table ? "chat.call.extractTo" : "chat.call.extract", { name: String(i.table ?? "") });
     case "click": return t("chat.call.click", { element: String(i.element) });
     case "type": return t(i.submit ? "chat.call.typeEnter" : "chat.call.type", { text: String(i.text ?? "") });

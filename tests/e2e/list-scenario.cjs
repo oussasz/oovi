@@ -15,7 +15,8 @@
 //   G) bots are told to keep rows found on directories, with their source,
 //   H) scrape_list does a whole site in one call, like a scraping script: every page of the list,
 //      each item's own page for its phone number and address, the site's own footer number left out,
-//   I) find_places answers from the open places data (a stand-in bucket and geocoders served here).
+//   I) find_places answers from the open places data (a stand-in bucket and geocoders served here),
+//   J) find_papers merges the open publication catalogues (stand-ins served here).
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -39,6 +40,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 const PARQUET = fs.readFileSync(path.join(__dirname, "fixtures", "places.parquet")); // 6,144 made-up places in three towns
 const geo = { first: [], second: [] };
+const papers = { crossref: [], epmc: [] };
 
 // ---- the "directory" ----
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
@@ -110,6 +112,26 @@ http
       res.writeHead(m ? 206 : 200, { "content-type": "application/octet-stream", "accept-ranges": "bytes", "content-length": to - from + 1, ...(m ? { "content-range": `bytes ${from}-${to}/${PARQUET.length}` } : {}) });
       return res.end(PARQUET.subarray(from, to + 1));
     }
+    // ---- stand-ins for the publication catalogues ----
+    if (u.pathname === "/crossref/works") {
+      papers.crossref.push(u.search);
+      res.writeHead(200, { "content-type": "application/json" });
+      const n = Math.min(40, Number(u.searchParams.get("rows")));
+      return res.end(JSON.stringify({ message: { items: Array.from({ length: n }, (_, k) => ({ DOI: `10.5555/TEST.${k + 1}`, title: [`Study number ${k + 1} of membrane fouling in desalination`], author: [{ given: "Amel", family: `Author${k + 1}` }], issued: { "date-parts": [[2015 + (k % 10)]] }, "container-title": ["Journal of Tests"], type: "journal-article", "is-referenced-by-count": k * 3 })) } }));
+    }
+    if (u.pathname === "/epmc/search") {
+      papers.epmc.push(u.searchParams.get("query"));
+      res.writeHead(200, { "content-type": "application/json" });
+      // Studies 1 to 20 again (with abstracts and free full text for the even ones), and 10 only found here.
+      const rec = (k, extra = {}) => ({ id: `E${k}`, source: "MED", title: `Study number ${k} of membrane fouling in desalination.`, authorString: `Author${k} A.`, journalInfo: { journal: { title: "Journal of Tests" } }, pubYear: String(2015 + ((k - 1) % 10)), abstractText: `Abstract of study ${k}. 😀 Fouling was reduced.`, citedByCount: 1, isOpenAccess: "N", ...extra });
+      const list = [...Array.from({ length: 20 }, (_, k) => rec(k + 1, { doi: `10.5555/test.${k + 1}`, ...((k + 1) % 2 === 0 ? { pmcid: `PMC${k + 1}`, isOpenAccess: "Y" } : {}) })), ...Array.from({ length: 10 }, (_, k) => rec(100 + k, { title: `Only in the medical catalogue ${k + 1}: biofilm on membranes.` }))];
+      return res.end(JSON.stringify({ hitCount: list.length, nextCursorMark: "end", resultList: { result: list } }));
+    }
+    if (u.pathname === "/arxiv/api/query") {
+      // As the real one does at times: it refuses to answer for a while.
+      res.writeHead(429, { "content-type": "text/plain" });
+      return res.end("Rate exceeded.");
+    }
     if (u.pathname === "/geo/search") {
       geo.first.push(u.searchParams.get("q"));
       res.writeHead(200, { "content-type": "application/json" });
@@ -156,7 +178,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -187,6 +209,16 @@ function answer(body) {
     const n = (all.split("PLACES:").pop().match(/"type":"tool_use"/g) || []).length;
     if (lastTool) seen.out[`places${n}`] = out;
     return n < steps.length ? call("find_places", steps[n]) : text("PLACES-RESULT: done");
+  }
+  if (scene === "PAPERS") {
+    const steps = [
+      { query: "membrane fouling desalination", year_from: 2016, limit: 40, table: "Littérature" },
+      { query: "membrane fouling desalination", sort: "most_cited", limit: 3 },
+      { query: "membrane fouling desalination", free_full_text: true, limit: 50 },
+    ];
+    const n = (all.split("PAPERS:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`papers${n}`] = out;
+    return n < steps.length ? call("find_papers", steps[n]) : text("PAPERS-RESULT: done");
   }
   // One call each: the engine does the pages by itself.
   if (scene === "SITE") return lastTool ? done() : call("scrape_list", { url: `${SITE}/annuaire`, table: "Salons Alger", pages: 10, details: true, fields: { Prix: ".price" } });
@@ -234,7 +266,7 @@ http
 let server = null;
 function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
-    env: { ...process.env, OOVI_PLACES_URL: `${SITE}/bucket`, OOVI_GEOCODER_URL: `${SITE}/geo`, OOVI_GEOCODER2_URL: `${SITE}/geo2`, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
+    env: { ...process.env, OOVI_CROSSREF_URL: `${SITE}/crossref`, OOVI_EUROPEPMC_URL: `${SITE}/epmc`, OOVI_ARXIV_URL: `${SITE}/arxiv`, OOVI_PLACES_URL: `${SITE}/bucket`, OOVI_GEOCODER_URL: `${SITE}/geo`, OOVI_GEOCODER2_URL: `${SITE}/geo2`, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => fs.appendFileSync(LOG, `   [server] ${d}`));
@@ -366,6 +398,22 @@ const check = (name, ok, detail = "") => {
   check("I) a name filter narrows the answer", /Café Testville 9\b/.test(seen.out.places5 || "") && !/Café Testville 39/.test(seen.out.places5 || ""), (seen.out.places5 || "").split("\n").slice(2, 4).join(" / ").slice(0, 200));
   check("I) the data's index is kept on disk, so the next question doesn't rebuild it", fs.existsSync(path.join(DATA, "accounts", "p1test", "cache", "places", "2026-02-01.0.json")) || fs.existsSync(path.join(DATA, "cache", "places", "2026-02-01.0.json")));
 
+  // J: scientific publications from the open catalogues, merged, in one call.
+  c = await run(dm, "PAPERS: what has been published on membrane fouling in desalination since 2016?");
+  t = work(dm).tables["Littérature"];
+  const j1 = seen.out.papers1 || "";
+  check("J) find_papers asks the catalogues once each and saves the merged list: 40 publications from 2016 on", !!t && t.rows.length === 40 && /40 publications for "membrane fouling desalination", 2016–…, most relevant first/.test(j1), `${t?.rows.length} rows | ${j1.split("\n")[0].slice(0, 230)}`);
+  check("J) the year filter is sent to the catalogues, and the product names itself to them (never the user)", papers.crossref.some((q) => /from-pub-date(:|%3A)2016/.test(q) && /mailto=contact(@|%40)conuron\.com/.test(q)) && papers.epmc.some((q) => /PUB_YEAR:\[2016 TO 3000\]/.test(q)), `${papers.crossref[0]} | ${papers.epmc[0]}`);
+  if (t) {
+    const two = t.rows.find((r) => r[0] === "Study number 2 of membrane fouling in desalination") || [];
+    check("J) a paper found in two catalogues is one row with the best of both: citations from one, abstract and free full text from the other", two[col(t, "Source")] === "Crossref + Europe PMC" && two[col(t, "Citations")] === "3" && /Abstract of study 2\./.test(two[col(t, "Abstract")] || "") && two[col(t, "Free full text")] === "https://europepmc.org/article/PMC/PMC2" && t.rows.filter((r) => /^Study number 2 of/.test(r[0])).length === 1, two.map((x) => x.slice(0, 40)).join(" | "));
+    check("J) papers before 2016 are left out; DOI and link are in the table", t.rows.every((r) => Number(r[col(t, "Year")]) >= 2016) && two[col(t, "DOI")] === "10.5555/test.2" && two[col(t, "Link")] === "https://doi.org/10.5555/test.2", `${two[col(t, "DOI")]} | ${two[col(t, "Link")]}`);
+  }
+  check("J) a catalogue that doesn't answer (arXiv, limiting requests) is named, and the others still answer", /arXiv couldn't be read \(it is limiting how often it can be asked right now\): the answer comes from the others/.test(j1), j1.split("\n")[1]?.slice(0, 160));
+  check("J) the bot is told a record is not the paper: read it before reporting its findings", /A record proves the paper exists, not what it shows/.test(j1));
+  check("J) 'most cited' sorts the relevant results", /^1\. Study number 40 of[^\n]*cited 117/m.test(seen.out.papers2 || ""), (seen.out.papers2 || "").split("\n").slice(3, 4).join("").slice(0, 160));
+  check("J) 'free full text only' keeps only papers with a free link (the 10 even-numbered ones)", /^10 publications/.test(seen.out.papers3 || "") && /10 have a free full text link/.test(seen.out.papers3 || ""), (seen.out.papers3 || "").split("\n")[0].slice(0, 200));
+
   // F: one job, one table.
   const newBot = (name) => api("POST", "/api/bots", { name, role: "", instructions: `You are ${name}, a teammate.`, face: scout.face, tools: { web: false, browser: false } });
   const amel = await newBot("Amel");
@@ -382,7 +430,7 @@ const check = (name, ok, detail = "") => {
   check("F) a message written in the group itself uses the group's own files, as before", /There is no table "Cafés Alger"/.test(lastText(c)) && !/the same ones as the main assistant/.test(seen.systems["Amel:DIRECT"] || ""), lastText(c).slice(0, 160));
 
   // G: instructions.
-  check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list", "find_places"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
+  check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list", "find_places", "find_papers"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
   check("G) every bot is told to keep a row found on a directory, with its source, marked to confirm", /a row needs a source, not a perfect one/.test(seen.systems["Amel:SHARE"] || "") && /never ask the user to copy from a page what a page shows/.test(seen.systems["Scout:LIST"] || ""));
 
   const ok = results.filter((x) => x.ok).length;

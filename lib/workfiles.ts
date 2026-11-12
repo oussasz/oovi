@@ -96,10 +96,18 @@ export const WORK_SPECS: ToolSpec[] = [
 
 /** Rows pulled from a web page (extract_list) go into a work table, in the columns the table already has. */
 export function addListRows(chatId: string, wanted: string, rows: ListRow[], source: string): { text: string; isError?: boolean } {
+  return addRecordRows(chatId, wanted, (columns) => rowsForTable(columns, rows, source));
+}
+
+/**
+ * Records a tool collected (places, publications, a page's list) go into a work table without passing
+ * through the model: rows as objects keyed by column name, or built from the table's present columns.
+ */
+export function addRecordRows(chatId: string, wanted: string, records: Record<string, string>[] | ((columns: string[] | undefined) => Record<string, string>[])): { text: string; isError?: boolean } {
   if (!ID_RE.test(chatId)) return { text: "This chat has no work files.", isError: true };
   const store = loadWork(chatId);
   const name = nameOf(store, wanted, "tables") ?? cleanFileName(wanted);
-  const r = addRows(store, name, undefined, rowsForTable(store.tables[name]?.columns, rows, source));
+  const r = addRows(store, name, undefined, typeof records === "function" ? records(store.tables[name]?.columns) : records);
   if (r.error) return { text: r.error, isError: true };
   saveWork(chatId, store);
   const parts = [`${r.added} added`, r.merged ? `${r.merged} already there and completed` : "", r.skipped ? `${r.skipped} skipped (already there with nothing new)` : ""].filter(Boolean);
