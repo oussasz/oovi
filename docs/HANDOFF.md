@@ -1,6 +1,6 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## On main, not released (2026-11-12, after 0.10.1): the user's chat is where things happen
+## 0.10.2 (2026-11-12): the user's chat is where things happen; bots act for the user
 Second conversation the same night ("use brave, go to facebook.com and send a message to me: test"): the bot refused ("sending messages from your accounts is outside what I can do"), asked "should I go ahead?" after being told to, sent the user to do it himself, and the review saved the false lesson "The user does not want the bots to control their PC or browser".
 - **Acting for the user is the job** (`FOR_THE_USER` in `lib/orchestrator.ts`, placed before `SAFETY`): the request is the authorization, the card is the confirmation, a task passed on by the main bot has the user's authority, never "do it yourself". The blanket bans ("never … send … unless the user asked for that exact action", "ONLY when…") are reworded to "do what was asked and no more". `abilityLines` no longer tells a bot with desktop control that it can't send messages.
 - **False lessons**: `bansAbility` in `lib/lesson-rules.ts`: the automatic review never saves a lesson or profile fact that takes an ability away, and such lessons saved before are dropped when lessons are read.
