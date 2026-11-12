@@ -187,7 +187,8 @@ async function callAnthropic(key: string, body: Record<string, unknown>, signal:
     const res = await fetch(`${UPSTREAM}/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": ANTHROPIC_VERSION },
-      body: JSON.stringify(body),
+      // Half an emoji left by cut text (older app versions send it) would make the whole request invalid.
+      body: JSON.stringify(body, (_k, v: unknown) => (typeof v === "string" && !v.isWellFormed() ? v.toWellFormed() : v)),
       signal,
     });
     const text = await res.text();

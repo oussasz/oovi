@@ -7,6 +7,7 @@
 // can't use tools, or times out, the next one answers instead, and the failing
 // one "cools down" for a while so later calls skip straight past it.
 
+import { wireJson } from "./wire-json";
 import { appVersion, cloudUrl, sessionToken } from "./account";
 import { attachmentParts, INLINE_MAX, INLINE_TOTAL, type MediaPart } from "./attachments";
 import { hostedMaxConcurrent, noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
@@ -384,7 +385,7 @@ function openaiReasoning(provider: ProviderId, model: string, effort: Effort): R
 async function post(label: string, url: string, headers: Record<string, string>, body: unknown, signal?: AbortSignal): Promise<unknown> {
   let res: Response;
   try {
-    res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal });
+    res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: wireJson(body), signal });
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     if ((e as Error).name === "TimeoutError") throw new ProviderError(`${label} took too long to answer.`, 504);
@@ -522,7 +523,7 @@ async function hostedCall(r: Req): Promise<RawCompletion> {
         "x-oovi-platform": process.platform,
       },
       // The server picks the model; the app only says how hard to think.
-      body: JSON.stringify({ system: p.system, messages: p.messages, tools: p.tools, max_tokens: r.maxOut, ...(r.effort !== "auto" ? { effort: r.effort } : {}) }),
+      body: wireJson({ system: p.system, messages: p.messages, tools: p.tools, max_tokens: r.maxOut, ...(r.effort !== "auto" ? { effort: r.effort } : {}) }),
       signal: r.signal,
     });
   } catch (e) {
