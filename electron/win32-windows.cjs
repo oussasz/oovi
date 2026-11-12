@@ -33,16 +33,30 @@ function load(koffi) {
     OpenProcessToken: advapi32.func("bool __stdcall OpenProcessToken(void *h, uint32_t access, _Out_ void **token)"),
     GetTokenInformation: advapi32.func("bool __stdcall GetTokenInformation(void *token, int cls, _Out_ uint8_t *buf, uint32_t len, _Out_ uint32_t *ret)"),
     DwmGetWindowAttribute: dwmapi.func("int32_t __stdcall DwmGetWindowAttribute(void *hwnd, uint32_t attr, _Out_ uint8_t *buf, uint32_t size)"),
-    // Switching, minimizing and closing windows (manage_window).
-    ShowWindow: user32.func("bool __stdcall ShowWindow(void *hwnd, int cmd)"),
-    SetForegroundWindow: user32.func("bool __stdcall SetForegroundWindow(void *hwnd)"),
-    BringWindowToTop: user32.func("bool __stdcall BringWindowToTop(void *hwnd)"),
-    PostMessageW: user32.func("bool __stdcall PostMessageW(void *hwnd, uint32_t msg, uintptr_t wparam, intptr_t lparam)"),
-    IsWindow: user32.func("bool __stdcall IsWindow(void *hwnd)"),
-    IsZoomed: user32.func("bool __stdcall IsZoomed(void *hwnd)"),
-    GetWindow: user32.func("void * __stdcall GetWindow(void *hwnd, uint32_t cmd)"),
-    GetWindowLongW: user32.func("int32_t __stdcall GetWindowLongW(void *hwnd, int index)"),
-    keybd_event: user32.func("void __stdcall keybd_event(uint8_t vk, uint8_t scan, uint32_t flags, uintptr_t extra)"),
+  };
+
+  // Switching, minimizing and closing windows (manage_window). Declared apart: if any of these can't be
+  // bound on some Windows version, only manage_window is off; screenshots, clicks and typing still work.
+  const more = {};
+  let moreError = null;
+  try {
+    Object.assign(more, {
+      ShowWindow: user32.func("bool __stdcall ShowWindow(void *hwnd, int cmd)"),
+      SetForegroundWindow: user32.func("bool __stdcall SetForegroundWindow(void *hwnd)"),
+      BringWindowToTop: user32.func("bool __stdcall BringWindowToTop(void *hwnd)"),
+      PostMessageW: user32.func("bool __stdcall PostMessageW(void *hwnd, uint32_t msg, uintptr_t wparam, intptr_t lparam)"),
+      IsWindow: user32.func("bool __stdcall IsWindow(void *hwnd)"),
+      IsZoomed: user32.func("bool __stdcall IsZoomed(void *hwnd)"),
+      GetWindow: user32.func("void * __stdcall GetWindow(void *hwnd, uint32_t cmd)"),
+      GetWindowLongW: user32.func("int32_t __stdcall GetWindowLongW(void *hwnd, int index)"),
+      keybd_event: user32.func("void __stdcall keybd_event(uint8_t vk, uint8_t scan, uint32_t flags, uintptr_t extra)"),
+    });
+  } catch (e) {
+    moreError = String((e && e.message) || e);
+  }
+  const need = () => {
+    if (moreError) throw new Error(`Managing windows isn't available on this computer: ${moreError}`);
+    return more;
   };
 
   const GA_ROOT = 2;
@@ -141,8 +155,8 @@ function load(koffi) {
   function appWindows(max = 300) {
     const handles = [];
     fn.EnumWindows((h) => {
-      if (fn.IsWindowVisible(h) && !cloaked(h) && !fn.GetWindow(h, GW_OWNER)) {
-        const ex = fn.GetWindowLongW(h, GWL_EXSTYLE) >>> 0;
+      if (fn.IsWindowVisible(h) && !cloaked(h) && !need().GetWindow(h, GW_OWNER)) {
+        const ex = need().GetWindowLongW(h, GWL_EXSTYLE) >>> 0;
         if (!(ex & WS_EX_TOOLWINDOW) && !(ex & WS_EX_NOACTIVATE) && text(fn.GetWindowTextW, h)) handles.push(h);
       }
       return handles.length < max;
@@ -158,7 +172,7 @@ function load(koffi) {
       return appWindows()
         .map((h) => {
           const w = info(h);
-          return w ? { ...w, minimized: !!fn.IsIconic(h), maximized: !!fn.IsZoomed(h) } : null;
+          return w ? { ...w, minimized: !!fn.IsIconic(h), maximized: !!need().IsZoomed(h) } : null;
         })
         .filter(Boolean);
     },
@@ -169,19 +183,19 @@ function load(koffi) {
     act(handle, action) {
       const h = find(handle);
       if (!h) return "That window isn't open any more.";
-      if (action === "close") return fn.PostMessageW(h, WM_CLOSE, 0, 0) ? "" : "Windows didn't accept the request to close it.";
+      if (action === "close") return need().PostMessageW(h, WM_CLOSE, 0, 0) ? "" : "Windows didn't accept the request to close it.";
       if (action === "minimize" || action === "maximize" || action === "restore") {
-        fn.ShowWindow(h, SW[action]);
+        need().ShowWindow(h, SW[action]);
         return "";
       }
       if (action === "switch") {
-        if (fn.IsIconic(h)) fn.ShowWindow(h, SW.restore);
+        if (fn.IsIconic(h)) need().ShowWindow(h, SW.restore);
         // Windows only lets a program bring a window to the front right after a key press of its own:
         // a lone Alt press (no other key) does that without doing anything else.
-        fn.keybd_event(VK_MENU, 0, 0, 0);
-        fn.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
-        fn.BringWindowToTop(h);
-        fn.SetForegroundWindow(h);
+        need().keybd_event(VK_MENU, 0, 0, 0);
+        need().keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+        need().BringWindowToTop(h);
+        need().SetForegroundWindow(h);
         return num(fn.GetForegroundWindow()) === num(h) ? "" : "Windows didn't let oovi bring it to the front.";
       }
       return "Unknown action.";

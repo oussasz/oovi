@@ -21,10 +21,20 @@ const hostOf = (u: string) => {
   }
 };
 
-/** The item's text, one cleaned line each, without repeats. */
+/**
+ * A line that is never an item's name: a rank or a number ("01", "12.", "#3"), a lone symbol, or the
+ * site's own buttons and ad labels ("Voir plus", "Discover more", "Sponsored").
+ */
+const NOT_A_NAME = /^(?:#?\d{1,4}[.)]?|[^\p{L}\p{N}]+|(?:voir|view|see|show|discover|learn|read|en savoir|lire)\b.{0,20}|(?:sponsored|sponsorisé|ad|annonce|pub|publicité|new|nouveau|verified|vérifié|top|map|carte|photos?)\s*\d*)$/iu;
+/** Words a page adds to every item that say nothing about it (ad blocks, buttons). */
+const NOISE_LINE = /^(discover more|get cloud st|explore more|voir plus|see more|show more|view profile|voir le profil|e-?mail|website|site web|map|carte|share|partager|call|appeler)$/i;
+
+/** The item's text, one cleaned line each, without repeats, without the page's own buttons and ad labels. */
 export const itemLines = (item: RawItem): string[] => {
   const lines: string[] = [];
-  for (const l of item.text.map(clean)) if (l && !lines.includes(l)) lines.push(l);
+  for (const l of item.text.map(clean)) if (l && !lines.includes(l) && !NOISE_LINE.test(l)) lines.push(l);
+  // The name is the first line that can be one: a rank number before it ("01") is dropped.
+  while (lines.length > 1 && NOT_A_NAME.test(lines[0]!)) lines.shift();
   return lines;
 };
 

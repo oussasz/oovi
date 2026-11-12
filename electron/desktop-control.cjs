@@ -309,8 +309,6 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
 
   /** Called once the app is ready (powerMonitor needs it). */
   function init() {
-    // The Store apps list takes a few seconds to read: start now, so it's there when a bot asks.
-    setTimeout(() => storeApps(), 15_000).unref?.();
     try {
       powerMonitor.on("lock-screen", () => {
         locked = true;
@@ -535,6 +533,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
      */
     showOverlay(lang) {
       if (!app.isReady()) return Promise.resolve(false);
+      // A bot is starting to use the computer: read the Store apps now (a few seconds), so open_app finds them.
+      storeApps();
       if (overlay && !overlay.isDestroyed()) {
         stepAside();
         if (!pointerWin || pointerWin.isDestroyed()) showDeco();

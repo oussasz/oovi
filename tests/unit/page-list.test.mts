@@ -64,3 +64,12 @@ test("an item's page only fills what the list didn't give", () => {
   assert.equal(row.phone, "0550 00 00 01");
   assert.equal(row.email, "a@a.example");
 });
+
+test("a directory's rank number, buttons and ad labels are never taken for the name", () => {
+  const r = rowOf({ text: ["01", "BADR Banque de l'Agriculture", "97 rue Larbi Touati, 06200, Akbou", "Verified", "+213 34 35 90 71", "E-mail", "Map", "Website", "Discover more"], links: [], html: "" }, "https://dir.example/location/Akbou")!;
+  assert.equal(r.name, "BADR Banque de l'Agriculture");
+  assert.equal(r.details, "97 rue Larbi Touati, 06200, Akbou · Verified · +213 34 35 90 71");
+  assert.equal(r.phone, "+213 34 35 90 71");
+  // A name that is a number on its own (a shop called "1990") is kept when nothing else could be the name.
+  assert.equal(rowOf({ text: ["1990"], links: [], html: "" }, "https://x.example")!.name, "1990");
+});
