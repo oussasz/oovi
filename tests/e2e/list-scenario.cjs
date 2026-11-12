@@ -12,7 +12,9 @@
 //   E) a page without a list says so and what to try,
 //   F) a job the main bot gives a group is done in the main bot's work files (one table, one count);
 //      a message written in the group itself uses the group's own files,
-//   G) bots are told to keep rows found on directories, with their source.
+//   G) bots are told to keep rows found on directories, with their source,
+//   H) scrape_list does a whole site in one call, like a scraping script: every page of the list,
+//      each item's own page for its phone number and address, the site's own footer number left out.
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -58,12 +60,39 @@ const PAGES = {
     "Salons",
     `${NAV}<table><thead><tr><th>Salon</th><th>Quartier</th><th>Téléphone</th></tr></thead><tbody>${range(1, 8).map((n) => `<tr><td>Salon Lina ${n}</td><td>Kouba</td><td>021 23 45 ${String(n).padStart(2, "0")}</td></tr>`).join("")}</tbody></table>`,
   ),
+  // "Annuaire": 3 pages of 12 salons (a "Suivant" link), each salon with its own page.
+  ...Object.fromEntries(
+    [1, 2, 3].map((p) => [
+      p === 1 ? "/annuaire" : `/annuaire/p${p}`,
+      page(
+        `Salons, page ${p}`,
+        `${NAV}<h1>Salons de beauté à Alger</h1><ul class="list">${range((p - 1) * 12 + 1, p * 12)
+          .map((n) => `<li class="item"><a class="name" href="/salon/${n}">Salon Beauté ${n}</a><span class="area">Kouba</span><span class="price">${n}00 DA</span>${n % 6 === 0 ? `<span>0661 20 00 ${String(n).padStart(2, "0")}</span>` : ""}</li>`)
+          .join("")}</ul><div class="pagination">${[1, 2, 3].map((x) => (x === p ? `<span class="active">${x}</span>` : `<a href="${x === 1 ? "/annuaire" : `/annuaire/p${x}`}">${x}</a>`)).join("")}${p < 3 ? `<a href="/annuaire/p${p + 1}">Suivant »</a>` : ""}</div>
+         <footer>Annuaire Alger · Tél : 021 00 00 00 · <a href="mailto:contact@annuaire.example">contact</a></footer>`,
+      ),
+    ]),
+  ),
+  // The same kind of list where "next" is a button that swaps the items in place (no new address).
+  "/app": page(
+    "App",
+    `<h1>Produits</h1><div id="list"></div><button id="nx" aria-label="Next page">›</button>
+     <script>let p=1;const draw=()=>{document.getElementById("list").innerHTML=Array.from({length:10},(_,i)=>{const n=(p-1)*10+i+1;return '<div class="prod"><h3>Produit '+n+'</h3><p>Référence P-'+n+' en stock</p></div>'}).join("");if(p>=3)document.getElementById("nx").disabled=true;};draw();document.getElementById("nx").onclick=()=>{p++;draw();};</script>`,
+  ),
   "/article": page("Un article", `<h1>Les cafés d'Alger</h1><p>${"Un long texte sur les cafés de la ville, sans aucune liste. ".repeat(30)}</p>`),
 };
 http
   .createServer((req, res) => {
     const u = new URL(req.url, SITE);
-    const body = u.pathname === "/more" ? range(Number(u.searchParams.get("from")), Number(u.searchParams.get("to"))).map((n) => card(n)).join("") : PAGES[u.pathname];
+    const salon = u.pathname.match(/^\/salon\/(\d+)$/);
+    // Salon 5's page is refused to plain downloads (as some sites do) and answers only a real browser.
+    if (salon && salon[1] === "5" && !/Chrome\/\d+\.\d+\.\d+\.\d+/.test(req.headers["user-agent"] || "")) {
+      res.writeHead(403, { "content-type": "text/html" });
+      return res.end("Forbidden");
+    }
+    const body = salon
+      ? page(`Salon Beauté ${salon[1]}`, `${NAV}<h1>Salon Beauté ${salon[1]}</h1><p>Coiffure et soins.</p>${salon[1] === "7" ? "" : `<a href="tel:+2135550000${String(salon[1]).padStart(2, "0")}">Appeler</a>`}<script type="application/ld+json">{"@type":"BeautySalon","address":"${salon[1]} rue des Roses, Kouba"}</script><footer>Annuaire Alger · Tél : 021 00 00 00 · <a href="mailto:contact@annuaire.example">contact</a></footer>`)
+      : u.pathname === "/more" ? range(Number(u.searchParams.get("from")), Number(u.searchParams.get("to"))).map((n) => card(n)).join("") : PAGES[u.pathname];
     res.writeHead(body ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
     res.end(body || "not found");
   })
@@ -77,10 +106,12 @@ const text = (t) => reply([{ type: "text", text: t }], "end_turn");
 const call = (name, input) => reply([{ type: "tool_use", id: `toolu_${name}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`, name, input }], "tool_use");
 const systemOf = (b) => (typeof b.system === "string" ? b.system : Array.isArray(b.system) ? b.system.map((x) => x.text || "").join("\n") : "");
 const seen = { systems: {}, tools: {}, out: {} };
+let modelCalls = 0;
 
 function answer(body) {
   const sys = systemOf(body);
   if (/learn from finished work/.test(sys)) return text('{"lessons":[],"user":[],"tools":[],"skill":null}');
+  modelCalls++;
   const msgs = body.messages || [];
   const last = msgs[msgs.length - 1] || {};
   const results = Array.isArray(last.content) ? last.content.filter((b) => b.type === "tool_result") : [];
@@ -88,7 +119,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -107,6 +138,11 @@ function answer(body) {
     return done();
   }
   if (scene === "DIRECT") return lastTool ? done() : call("work_table", { action: "read", table: "Cafés Alger" });
+
+  // One call each: the engine does the pages by itself.
+  if (scene === "SITE") return lastTool ? done() : call("scrape_list", { url: `${SITE}/annuaire`, table: "Salons Alger", pages: 10, details: true, fields: { Prix: ".price" } });
+  if (scene === "PATTERN") return lastTool ? done() : call("scrape_list", { url: `${SITE}/annuaire/p{page}`, from_page: 2, pages: 2, table: "Pages 2 et 3" });
+  if (scene === "APP") return lastTool ? done() : call("scrape_list", { url: `${SITE}/app`, table: "Produits", pages: 5 });
 
   const url = { LIST: "/cafes", NEXT: "/cafes2", SCROLL: "/cafes", TABLE: "/salons", NOLIST: "/article" }[scene];
   if (!lastTool) return call("open_url", { url: SITE + url });
@@ -238,6 +274,29 @@ const check = (name, ok, detail = "") => {
   c = await run(dm, "NOLIST: take the list from this page");
   check("E) a page without a list says so and what to try next", /No list found on .*\/article\..*read_page.*containing.*selector/.test(seen.out["Scout:NOLIST:extract_list"] || ""), (seen.out["Scout:NOLIST:extract_list"] || "").slice(0, 200));
 
+  // H: a whole site in one call, like a scraping script.
+  const before = modelCalls;
+  c = await run(dm, "SITE: all the beauty salons of this directory with their phone numbers");
+  const used = modelCalls - before;
+  t = work(dm).tables["Salons Alger"];
+  const res = seen.out["Scout:SITE:scrape_list"] || "";
+  check("H) one scrape_list call goes through all 3 pages by itself (it follows 'Suivant' and stops at the end): 36 salons", !!t && t.rows.length === 36 && /36 items from 3 pages/.test(res), `${t?.rows.length} rows | ${res.split("\n").slice(0, 4).join(" / ").slice(0, 330)}`);
+  check("H) the whole job cost 2 model calls (the call and the answer), not one per page or per salon", used === 2, `${used} model calls`);
+  if (t) {
+    const ph = t.rows.map((r) => r[col(t, "Phone")]);
+    check("H) each salon's own page was opened for its phone number: 35 of 36 (salon 7 shows none)", ph.filter(Boolean).length === 35 && ph[0] === "+213555000001" && ph[5] === "0661 20 00 06" && ph[6] === "", `${ph.filter(Boolean).length} phones; salon 1 ${ph[0]}; salon 6 ${ph[5]}; salon 7 "${ph[6]}"`);
+    check("H) a page that refuses plain downloads is read in the browser instead (salon 5)", ph[4] === "+213555000005", `salon 5: "${ph[4]}"`);
+    check("H) the directory's own number and email (in every footer) are given to no salon", !ph.some((p) => /021 00 00 00/.test(p)) && (col(t, "Email") < 0 || t.rows.every((r) => !r[col(t, "Email")])), `columns ${t.columns.join(", ")}`);
+    check("H) the address from each salon's page and the asked-for column (Prix) are in the table", t.rows[0][col(t, "Address")] === "1 rue des Roses, Kouba" && t.rows[11][col(t, "Prix")] === "1200 DA", `${t.rows[0][col(t, "Address")]} | ${t.rows[11][col(t, "Prix")]}`);
+  }
+  if (t) check("H) each row names the page it was found on", t.rows[0][col(t, "Source")] === `${SITE}/annuaire` && t.rows[35][col(t, "Source")] === `${SITE}/annuaire/p3`, `${t.rows[0][col(t, "Source")]} | ${t.rows[35][col(t, "Source")]}`);
+  c = await run(dm, "PATTERN: pages 2 and 3 only");
+  t = work(dm).tables["Pages 2 et 3"];
+  check("H) a URL with {page} reads exactly the pages asked (2 and 3: salons 13 to 36)", !!t && t.rows.length === 24 && t.rows[0][0] === "Salon Beauté 13", `${t?.rows.length} rows, first ${t?.rows[0]?.[0]}`);
+  c = await run(dm, "APP: all the products");
+  t = work(dm).tables["Produits"];
+  check("H) a 'next' button that changes the list in place is clicked until it is disabled: 30 products from 3 pages", !!t && t.rows.length === 30 && /30 items from 3 pages/.test(seen.out["Scout:APP:scrape_list"] || ""), `${t?.rows.length} rows | ${(seen.out["Scout:APP:scrape_list"] || "").split("\n").slice(0, 4).join(" / ").slice(0, 300)}`);
+
   // F: one job, one table.
   const newBot = (name) => api("POST", "/api/bots", { name, role: "", instructions: `You are ${name}, a teammate.`, face: scout.face, tools: { web: false, browser: false } });
   const amel = await newBot("Amel");
@@ -254,7 +313,7 @@ const check = (name, ok, detail = "") => {
   check("F) a message written in the group itself uses the group's own files, as before", /There is no table "Cafés Alger"/.test(lastText(c)) && !/the same ones as the main assistant/.test(seen.systems["Amel:DIRECT"] || ""), lastText(c).slice(0, 160));
 
   // G: instructions.
-  check("G) bots with a browser have scroll and extract_list; bots without don't", ["scroll", "extract_list"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
+  check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
   check("G) every bot is told to keep a row found on a directory, with its source, marked to confirm", /a row needs a source, not a perfect one/.test(seen.systems["Amel:SHARE"] || "") && /never ask the user to copy from a page what a page shows/.test(seen.systems["Scout:LIST"] || ""));
 
   const ok = results.filter((x) => x.ok).length;

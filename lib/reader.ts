@@ -141,29 +141,39 @@ function extract(html: string, url: string): Article {
   return { url, title, text, published, site };
 }
 
+/**
+ * Download one page as the server sends it (no JavaScript). Refuses private-network addresses, also
+ * after redirects. body is empty for an error answer or a PDF.
+ */
+export async function fetchPage(url: string, s: Settings, signal?: AbortSignal): Promise<{ url: string; type: string; ok: boolean; status: number; body: string }> {
+  const err = checkUrl(url, s.browser.allowPrivateNetwork);
+  if (err) throw new Error(err);
+  const timeout = AbortSignal.timeout(20_000);
+  const res = await fetch(url, {
+    headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5", "accept-language": "en,*;q=0.5" },
+    redirect: "follow",
+    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+  });
+  // A redirect must not lead into the user's private network either.
+  const finalErr = checkUrl(res.url, s.browser.allowPrivateNetwork);
+  if (finalErr) throw new Error(finalErr);
+  const type = res.headers.get("content-type") ?? "";
+  return { url: res.url, type, ok: res.ok, status: res.status, body: res.ok && !/pdf/.test(type) ? (await res.text()).slice(0, MAX_HTML) : "" };
+}
+
 /** Download and extract one page. Uses Exa's reader for pages that need JavaScript or block plain downloads. */
 export async function readArticle(url: string, s: Settings, signal?: AbortSignal): Promise<Article> {
   const err = checkUrl(url, s.browser.allowPrivateNetwork);
   if (err) throw new Error(err);
   let plainError = "";
   try {
-    const timeout = AbortSignal.timeout(20_000);
-    const res = await fetch(url, {
-      headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5", "accept-language": "en,*;q=0.5" },
-      redirect: "follow",
-      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-    });
-    // A redirect must not lead into the user's private network either.
-    const finalErr = checkUrl(res.url, s.browser.allowPrivateNetwork);
-    if (finalErr) throw new Error(finalErr);
-    const type = res.headers.get("content-type") ?? "";
+    const res = await fetchPage(url, s, signal);
     if (!res.ok) plainError = `${new URL(url).host} answered ${res.status}`;
-    else if (/pdf/.test(type)) plainError = "it's a PDF";
-    else if (/text\/plain|markdown|json/.test(type)) {
-      const t = (await res.text()).slice(0, MAX_HTML);
-      return { url: res.url, title: new URL(res.url).pathname.split("/").pop() || url, text: t };
+    else if (/pdf/.test(res.type)) plainError = "it's a PDF";
+    else if (/text\/plain|markdown|json/.test(res.type)) {
+      return { url: res.url, title: new URL(res.url).pathname.split("/").pop() || url, text: res.body };
     } else {
-      const html = (await res.text()).slice(0, MAX_HTML);
+      const html = res.body;
       const a = withContacts(extract(html, res.url), html);
       // A short page that still gives its contact details is a real answer (a directory listing, a contact page).
       if (a.text.length >= 300 || (a.contacts?.length && a.text.length >= 40)) return a;

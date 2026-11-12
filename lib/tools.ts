@@ -17,8 +17,9 @@ import { VM_TOOLS, runVmTool } from "./sandbox";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
 import { COMPUTER_TOOLS, computerNeedsApproval, describeComputerCall, uploadSource } from "./computer";
 import { translateFor, type Tr } from "./i18n-server";
-import { contactDetails, phonesInText } from "./contacts";
-import { itemLines, rowLine, rowOf, type ListRow, type RawItem } from "./page-list-core";
+import { SCROLL_JS, collectList, toRows } from "./page-list";
+import { runScrape } from "./scrape";
+import { rowLine, type ListRow } from "./page-list-core";
 
 export const TOOL_SPECS: ToolSpec[] = [
   {
@@ -47,6 +48,28 @@ export const TOOL_SPECS: ToolSpec[] = [
     parameters: { type: "object", properties: { element: { type: "integer" }, text: { type: "string" }, submit: { type: "boolean" } }, required: ["element", "text"] },
   },
   { name: "go_back", description: "Go back to the previous page.", parameters: { type: "object", properties: {} } },
+  {
+    name: "scrape_list",
+    description:
+      "Collect a whole list from a website into a work table in ONE call, the way a scraping script does, with no step-by-step work from you: it reads the list on the page, goes through the following pages by itself (a next button, numbered pages, or a URL with {page}), can open each item's own page to take the phone number, email and address it shows, and saves every row (name, details, phone, email, address, link, source). Use it for any job of the kind 'get me all the X from this site/directory/catalogue': dozens or hundreds of rows cost you one call. Use extract_list for a single page you want to look at first, and open_url + click when the list only appears after a search you must type.",
+    parameters: {
+      type: "object",
+      properties: {
+        url: { type: "string", description: "The first page of the list. For numbered pages you can write the page number as {page}, e.g. 'https://site.com/cafes?page={page}'. Leave out to start from the page the browser is on." },
+        table: { type: "string", description: "Work table the rows go into (created if new; known names and phone numbers are completed, not repeated)." },
+        pages: { type: "integer", minimum: 1, maximum: 100, description: "How many list pages to go through (default 1)." },
+        from_page: { type: "integer", minimum: 0, description: "With {page}: the first page number (default 1)." },
+        more: { type: "integer", minimum: 0, maximum: 30, description: "On each page, scroll to the end up to this many times first, for lists that load as you scroll (default 0)." },
+        details: { type: "boolean", description: "true: for every item that shows no phone number in the list, open its own page and take the phone, email and address found there." },
+        detail_limit: { type: "integer", minimum: 1, maximum: 1000, description: "With details: at most this many item pages (default 200)." },
+        fields: { type: "object", description: "Extra columns, each taken from inside an item with a CSS selector: {\"Price\": \".price\", \"Image\": \"img@src\", \"Rating\": \"[itemprop=ratingValue]@content\"}. 'selector@attribute' takes an attribute instead of the text." },
+        containing: { type: "string", description: "When a page has several lists: a word that items of the right one contain." },
+        selector: { type: "string", description: "Only when the automatic choice picks the wrong list: a CSS selector matching one item." },
+        next: { type: "string", description: "Only when the next-page control isn't found by itself: its CSS selector." },
+      },
+      required: ["table"],
+    },
+  },
   {
     name: "scroll",
     description: "Scroll the current page, and any result panel inside it, to load what comes next (results that appear as you scroll) or to go back up. Returns the text that appeared and a fresh element list.",
@@ -149,75 +172,6 @@ const SNAPSHOT_JS = `(() => {
   return { title: document.title, text, els };
 })()`;
 
-// Runs inside the page. Scrolls the window and every scrollable panel (a results list often scrolls
-// inside its own box, not with the page). Returns whether anything moved.
-const SCROLL_JS = `((to) => {
-  const boxes = [document.scrollingElement || document.documentElement];
-  for (const el of Array.from(document.querySelectorAll("body *"))) {
-    if (el.clientHeight < 150 || el.scrollHeight - el.clientHeight < 100) continue;
-    const o = getComputedStyle(el).overflowY;
-    if (o === "auto" || o === "scroll") boxes.push(el);
-  }
-  let moved = false;
-  for (const el of boxes) {
-    const before = el.scrollTop;
-    const page = Math.max(200, (el === boxes[0] ? window.innerHeight : el.clientHeight) * 0.9);
-    el.scrollTop = to === "top" ? 0 : to === "bottom" ? el.scrollHeight : to === "up" ? before - page : before + page;
-    if (Math.abs(el.scrollTop - before) > 2) moved = true;
-  }
-  return moved;
-})`;
-
-// Runs inside the page. Finds the page's main list: the largest group of sibling elements built the
-// same way (same tag and classes) that each hold some text. Returns each item's text lines, links and HTML.
-const LIST_JS = `((arg) => {
-  const hint = (arg.containing || "").toLowerCase();
-  const shown = (el) => { const r = el.getBoundingClientRect(); return r.width > 1 && r.height > 1; };
-  const sig = (el) => el.tagName + "|" + (typeof el.className === "string" ? el.className.trim().split(/\\s+/).filter((c) => c && !/\\d{3,}/.test(c)).slice(0, 3).sort().join(".") : "");
-  const SKIP = { SCRIPT: 1, STYLE: 1, NOSCRIPT: 1, TEMPLATE: 1, OPTION: 1, BR: 1, HR: 1 };
-  let items = null;
-  if (arg.selector) {
-    try { items = Array.from(document.querySelectorAll(arg.selector)); } catch (e) { return { error: "bad selector" }; }
-  } else {
-    let best = null;
-    for (const parent of Array.from(document.querySelectorAll("body, body *"))) {
-      if (parent.children.length < 3 || SKIP[parent.tagName]) continue;
-      const groups = new Map();
-      for (const ch of Array.from(parent.children)) {
-        if (SKIP[ch.tagName]) continue;
-        const k = sig(ch);
-        if (!groups.has(k)) groups.set(k, []);
-        groups.get(k).push(ch);
-      }
-      for (const g of groups.values()) {
-        if (g.length < 3) continue;
-        const lens = g.map((e) => (e.textContent || "").replace(/\\s+/g, " ").trim().length);
-        const filled = lens.filter((n) => n >= 12).length;
-        if (filled < 3 || filled < g.length * 0.6) continue;
-        let score = lens.reduce((s, n) => s + Math.min(n, 300), 0) * Math.log2(g.length);
-        // A few very long blocks are the page's sections, not a list.
-        if (lens.reduce((s, n) => s + n, 0) / g.length > 2500) score *= 0.2;
-        if (parent.closest("nav, footer, header, [role=navigation], [role=menu], select")) score *= 0.1;
-        if (hint && g.some((e) => (e.textContent || "").toLowerCase().includes(hint))) score *= 4;
-        if (!best || score > best.score) best = { score, g };
-      }
-    }
-    items = best ? best.g : [];
-  }
-  const out = [];
-  for (const el of items) {
-    if (out.length >= 400) break;
-    if (!shown(el)) continue;
-    const text = (el.innerText || el.textContent || "").split(/\\n|\\t/).map((l) => l.replace(/\\s+/g, " ").trim()).filter(Boolean).slice(0, 25);
-    if (!text.length) continue;
-    const links = [];
-    const as = el.matches("a[href]") ? [el] : Array.from(el.querySelectorAll("a[href]"));
-    for (const a of as.slice(0, 20)) if (a.href && !links.includes(a.href)) links.push(a.href);
-    out.push({ text, links: links.slice(0, 8), html: el.outerHTML.slice(0, 15000) });
-  }
-  return { items: out };
-})`;
-
 type Snap = { title: string; text: string; els: { n: number; kind: string; label: string; href: string }[] };
 
 async function settle(page: Page) {
@@ -267,7 +221,7 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "scroll", "extract_list", "download_file", "upload_file", "request_user_takeover"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
 
 /**
  * What runTool needs from the run: its stop signal, where the user is writing from, and how rows
@@ -516,34 +470,11 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       if (page.url() === "about:blank") return fail(call, "Open the page with the list first (open_url), then call extract_list.");
       const arg = { containing: typeof input.containing === "string" ? input.containing.trim().slice(0, 80) : "", selector: typeof input.selector === "string" ? input.selector.trim().slice(0, 300) : "" };
       const more = Math.min(30, Math.max(0, Math.floor(Number(input.more) || 0)));
-      // Collected across scrolls: some pages drop the items that leave the screen.
-      const seen = new Map<string, RawItem>();
-      const collect = async (): Promise<string | null> => {
-        const r = (await page.evaluate(`${LIST_JS}(${JSON.stringify(arg)})`)) as { items?: RawItem[]; error?: string };
-        if (r.error) return r.error;
-        for (const it of r.items ?? []) {
-          const key = it.text.join("|");
-          if (!seen.has(key)) seen.set(key, it);
-        }
-        return null;
-      };
-      const bad = await collect();
-      if (bad) return fail(call, `That selector isn't valid CSS: ${arg.selector}. Leave it out to let oovi find the list.`);
-      let loads = 0;
-      for (let quiet = 0; loads < more && quiet < 2 && !ctx.signal?.aborted; loads++) {
-        const size = seen.size;
-        await page.evaluate(`${SCROLL_JS}("bottom")`);
-        await page.waitForTimeout(1_200);
-        await page.waitForLoadState("networkidle", { timeout: 2_500 }).catch(() => {});
-        await collect();
-        quiet = seen.size > size ? 0 : quiet + 1;
-      }
+      const got = await collectList(page, arg, more, ctx.signal);
+      if (got.error) return fail(call, `That selector isn't valid CSS: ${arg.selector}. Leave it out to let oovi find the list.`);
+      const loads = got.loads;
       const url = page.url();
-      const rows: ListRow[] = [];
-      for (const it of seen.values()) {
-        const row = rowOf(it, url, contactDetails(`<html><body>${it.html}</body></html>`), phonesInText(itemLines(it).join("\n")));
-        if (row) rows.push(row);
-      }
+      const rows = toRows(got.items, url);
       if (rows.length < 2) {
         return fail(
           call,
@@ -571,6 +502,16 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       const cut = rows.length - lines.length;
       return { id: call.id, name: call.name, content: [head, ...lines, cut > 0 ? `… ${cut} more items not shown. Call extract_list again with \`table\` to keep them all in a work table.` : ""].filter(Boolean).join("\n") };
     }
+    case "scrape_list":
+      return runScrape(call, sess, settings, {
+        signal: ctx.signal,
+        addToTable: ctx.addToTable,
+        userHasBrowser: () => isControlled(sessionId),
+        ready: async (p) => {
+          await settle(p);
+          await waitForContent(p);
+        },
+      });
     case "go_back": {
       await page.goBack({ waitUntil: "domcontentloaded", timeout: 20_000 });
       await settle(page);

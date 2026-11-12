@@ -1,5 +1,15 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## After 0.10.3, not released yet: scrape_list, a whole site in one call (2026-11-12)
+- Owner: "my friends scrape without AI, with tools like Playwright; oovi must outperform them."
+- `scrape_list` (`lib/scrape.ts`, spec in `lib/tools.ts`): one tool call does what a scraping script does, with no model call per page. It reads the list (`lib/page-list.ts`, shared with extract_list), goes through the next pages by itself (rel=next, a "Next/Suivant/التالي" control with or without arrows, numbered pages, a button that swaps the list in place, or a URL with `{page}`), optionally opens each item's own page (`details: true`: plain download 4 at a time through `fetchPage` in `lib/reader.ts`, the browser when the site refuses that) and saves name, details, phone, email, address, link, source and any asked-for column (`fields: {column: "selector"}` or `"selector@attr"`) into the work table.
+- A phone or email found on most item pages of one site is the site's own (footer) and is given to no item (`siteWide` in `lib/page-list-core.ts`).
+- Item text is split into lines by blocks and by inline pieces that touch (`linesOf` in `LIST_JS`), because innerText glued "Salon Lina" + "Kouba".
+- Limits: one call works at most 9 minutes and then says how to go on; 100 list pages and 1,000 item pages per call; every address is checked against the private-network block; if the user takes the browser, it stops and says so. No disguise: a site that refuses automated visits is reported, not worked around.
+- Run on real sites from the cloud machine: dzadvisor.com cafés in Algiers, 3 pages with details: 48 cafés, 48 with phone and address, 16 seconds, 2 model calls. books.toscrape.com 3 pages with Price/Stock/Title fields: 60 rows, 4 seconds.
+- `tests/e2e/list-scenario.cjs` is now 25 checks (scene H is scrape_list).
+- Still to build: the "find places" tool on Overture Maps (measurements under 0.10.3 below).
+
 ## 0.10.3 (2026-11-12): two errors that stopped teams, lists taken from pages in one step, one table per job
 - Seen by the owner in a team chat: the leader's turn failed with "This model does not support assistant message prefill. The conversation must end with a user message."
 - Cause (in the app since 0.10.0): a bot given the turn right after its own message (a big job's next round, `settle()` `p.queue.push(bot.id)`; a last turn to conclude; teammates who added nothing) was sent a conversation ending with its own words. The service refuses that.

@@ -72,7 +72,7 @@ export function countUsage(delta: Partial<UsageCounts>): void {
 }
 
 const SEARCH = new Set(["web_search", "research"]);
-const PAGES = new Set(["open_url", "read_url", "read_page", "extract_list"]);
+const PAGES = new Set(["open_url", "read_url", "read_page", "extract_list", "scrape_list"]);
 
 /** Count one step's tool calls. */
 export function countTools(calls: ToolCall[], results: ToolResult[]): void {
