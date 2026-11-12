@@ -401,7 +401,7 @@ const de: Dict = {
   "desk.offReady": "Aus. Schalte es ein, wenn du bereit bist.",
   "desk.offConsent": "Aus. Setze zuerst oben das Häkchen.",
   "desk.askEvery": "Vor jeder Aktion fragen",
-  "desk.askEvery.on": "Empfohlen. Jeder Klick, jeder Tastendruck und jeder getippte Text fragt dich zuerst; nur das Ansehen des Bildschirms nicht.",
+  "desk.askEvery.on": "Empfohlen. Jeder Klick, jeder Tastendruck und jeder getippte Text fragt dich zuerst; nur das Ansehen des Bildschirms nicht. Ein Plan, den du genehmigt hast, deckt seine Schritte ab.",
   "desk.askEvery.off": "Bots fragen einmal pro Aufgabe und handeln dann selbst, bis die Aufgabe fertig ist.",
   "desk.blocked": "Fenster, die als Administrator laufen, Abfragen der Benutzerkontensteuerung und der Sperrbildschirm lassen sich nicht steuern. Screenshots gehen während der Arbeit an das KI-Modell und bleiben 24 Stunden auf diesem Computer, damit du nachsehen kannst, was passiert ist.",
   "desk.grantQ": "{name} für diese Aufgabe Maus und Tastatur nutzen lassen?",

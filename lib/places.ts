@@ -1,18 +1,16 @@
 // find_places: businesses and places in an area, from Overture Maps' open "places" data
 // (https://overturemaps.org: Meta, Microsoft, Foursquare and others; CDLA-Permissive-2.0). Free, no key.
-// The data is a set of large Parquet files on a public bucket, sorted by location. Nothing is
-// downloaded whole: the app reads each file's index once per data release (which part of the world
-// each block of rows covers), then for a question fetches only the blocks that cover the area asked.
-// The area's outline comes from OpenStreetMap's geocoder (Nominatim), with Photon as a second source.
+// The oovi server answers the question (it reads the data next to where it is stored); when it can't,
+// the app reads the data itself (lib/places-data.ts). The area's outline comes from OpenStreetMap's
+// geocoder (Nominatim), with Photon as a second source, asked from this computer.
 
 import fs from "node:fs";
 import path from "node:path";
-import { asyncBufferFromUrl, parquetMetadataAsync, parquetRead } from "hyparquet";
-import { compressors } from "hyparquet-compressors";
-import { appVersion } from "./account";
+import { appVersion, cloudUrl, sessionToken } from "./account";
 import type { ToolSpec } from "./llm";
 import { rowLine, type ListRow } from "./page-list-core";
-import { atLeast, categoryWords, inCategory, inside, isOpen, nameHas, overlaps, placeRow, sizeKm, topCategories, type Box, type Place } from "./places-core";
+import { atLeast, categoryWords, filterPlaces, placeRow, sizeKm, type Box, type Place, type PlaceAnswer, type PlaceQuery } from "./places-core";
+import { placesIn, type PlacesIndex } from "./places-data";
 import { dataDir } from "./settings";
 import type { ToolCall, ToolResult } from "./types";
 
@@ -42,12 +40,6 @@ const UA = () => `oovi/${appVersion()} (+https://oovi.conuron.com)`;
 
 /** An area this wide or tall (km) is a region or a country: too many places to be a useful answer. */
 const MAX_KM = 150;
-/** Blocks of rows read for one question (each is 5 to 10 MB to download). */
-const MAX_BLOCKS = 12;
-const COLUMNS = ["names", "basic_category", "taxonomy", "phones", "emails", "websites", "socials", "addresses", "confidence", "operating_status", "bbox"];
-
-type Block = [start: number, rows: number, xmin: number, xmax: number, ymin: number, ymax: number];
-type Index = { release: string; files: { key: string; size: number; blocks: Block[] }[] };
 
 const withTimeout = (signal: AbortSignal | undefined, ms: number) => (signal ? AbortSignal.any([signal, AbortSignal.timeout(ms)]) : AbortSignal.timeout(ms));
 
@@ -57,75 +49,56 @@ async function getText(url: string, signal?: AbortSignal, headers: Record<string
   return res.text();
 }
 
-// ---------- the data release and its index ----------
-
+/** The index of the open data, kept on disk once per data release (rebuilt only when a new one comes out). */
 const cacheDir = () => path.join(dataDir(), "cache", "places");
-let memo: { at: number; index: Index } | null = null;
-let building: Promise<Index> | null = null;
-
-/** The newest release's place files, from the bucket's own listing. */
-async function listRelease(signal?: AbortSignal): Promise<{ release: string; files: { key: string; size: number }[] }> {
-  const top = await getText(`${BUCKET()}/?list-type=2&prefix=release/&delimiter=/`, signal);
-  const releases = [...top.matchAll(/<Prefix>release\/([^<\/]+)\/<\/Prefix>/g)].map((m) => m[1]!).sort();
-  // The newest first; the one before it as a spare (a release is listed a little before all its files are there).
-  for (const release of releases.reverse().slice(0, 2)) {
-    const xml = await getText(`${BUCKET()}/?list-type=2&prefix=${encodeURIComponent(`release/${release}/theme=places/type=place/`)}`, signal);
-    const files = [...xml.matchAll(/<Contents>[\s\S]*?<Key>([^<]+\.parquet)<\/Key>[\s\S]*?<Size>(\d+)<\/Size>[\s\S]*?<\/Contents>/g)].map((m) => ({ key: m[1]!, size: Number(m[2]) }));
-    if (files.length) return { release, files };
-  }
-  throw new Error("no place files in the data release");
-}
-
-const fileOf = (key: string, size: number, signal?: AbortSignal) => asyncBufferFromUrl({ url: `${BUCKET()}/${key}`, byteLength: size, requestInit: { headers: { "user-agent": UA() }, signal: withTimeout(signal, 120_000) } });
-
-async function buildIndex(signal?: AbortSignal): Promise<Index> {
-  const { release, files } = await listRelease(signal);
-  const saved = path.join(cacheDir(), `${release}.json`);
-  try {
-    const j = JSON.parse(fs.readFileSync(saved, "utf8")) as Index;
-    if (j.release === release && j.files.length === files.length) return j;
-  } catch {
-    /* not built yet for this release */
-  }
-  const out: Index["files"] = [];
-  let next = 0;
-  const worker = async () => {
-    while (next < files.length) {
-      const f = files[next++]!;
-      const md = await parquetMetadataAsync(await fileOf(f.key, f.size, signal));
-      const blocks: Block[] = [];
-      let start = 0;
-      for (const rg of md.row_groups) {
-        const rows = Number(rg.num_rows);
-        const stat = (name: string) => rg.columns.find((c) => c.meta_data?.path_in_schema.join(".") === name)?.meta_data?.statistics;
-        const [x0, x1, y0, y1] = [stat("bbox.xmin")?.min_value, stat("bbox.xmax")?.max_value, stat("bbox.ymin")?.min_value, stat("bbox.ymax")?.max_value].map(Number);
-        // A block without location statistics could hold anything: it is read for every question.
-        blocks.push([start, rows, ...([x0, x1, y0, y1].every(Number.isFinite) ? [x0!, x1!, y0!, y1!] : [-180, 180, -90, 90])] as Block);
-        start += rows;
-      }
-      out.push({ key: f.key, size: f.size, blocks });
+const diskCache = {
+  load(release: string, files: number): PlacesIndex | null {
+    try {
+      const j = JSON.parse(fs.readFileSync(path.join(cacheDir(), `${release}.json`), "utf8")) as PlacesIndex;
+      return j.release === release && j.files.length === files ? j : null;
+    } catch {
+      return null;
     }
-  };
-  await Promise.all(Array.from({ length: 4 }, worker));
-  const index: Index = { release, files: out.sort((a, b) => a.key.localeCompare(b.key)) };
-  try {
-    fs.mkdirSync(cacheDir(), { recursive: true });
-    for (const old of fs.readdirSync(cacheDir())) if (old.endsWith(".json") && old !== `${release}.json`) fs.rmSync(path.join(cacheDir(), old), { force: true });
-    fs.writeFileSync(`${saved}.tmp`, JSON.stringify(index));
-    fs.renameSync(`${saved}.tmp`, saved);
-  } catch {
-    /* no cache: it is rebuilt next time */
-  }
-  return index;
-}
+  },
+  save(index: PlacesIndex) {
+    try {
+      fs.mkdirSync(cacheDir(), { recursive: true });
+      for (const old of fs.readdirSync(cacheDir())) if (old.endsWith(".json") && old !== `${index.release}.json`) fs.rmSync(path.join(cacheDir(), old), { force: true });
+      const f = path.join(cacheDir(), `${index.release}.json`);
+      fs.writeFileSync(`${f}.tmp`, JSON.stringify(index));
+      fs.renameSync(`${f}.tmp`, f);
+    } catch {
+      /* no cache: it is rebuilt next time */
+    }
+  },
+};
 
-/** The index, checked against the bucket at most once a day (one build at a time, shared by callers). */
-async function getIndex(signal?: AbortSignal): Promise<Index> {
-  if (memo && Date.now() - memo.at < 24 * 3600_000) return memo.index;
-  building ??= buildIndex(signal).finally(() => (building = null));
-  const index = await building;
-  memo = { at: Date.now(), index };
-  return index;
+/**
+ * The places that answer the question. First through the oovi server, which reads the data next to
+ * where it is stored and sends back only the answer (a few KB): on a slow connection, reading the data
+ * here took longer than any time limit. When the server can't answer (signed out, offline, an older
+ * server), the data is read from here, each download with its own time limit.
+ */
+async function answer(box: Box, q: PlaceQuery, signal?: AbortSignal): Promise<{ a: PlaceAnswer; release: string; skipped: number; via: "server" | "direct" }> {
+  const token = sessionToken();
+  if (token && !process.env.OOVI_PLACES_DIRECT) {
+    try {
+      const res = await fetch(`${cloudUrl()}/api/v1/places`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}`, "x-oovi-version": appVersion() },
+        body: JSON.stringify({ box, ...q }),
+        signal: withTimeout(signal, 120_000),
+      });
+      if (res.ok) {
+        const j = (await res.json()) as { release?: string; skipped?: number; hits?: Place[]; matching?: number; open?: number; top?: string[] };
+        if (Array.isArray(j.hits) && typeof j.release === "string") return { a: { hits: j.hits, matching: Number(j.matching) || 0, open: Number(j.open) || 0, top: Array.isArray(j.top) ? j.top.map(String) : [] }, release: j.release, skipped: Number(j.skipped) || 0, via: "server" };
+      }
+    } catch (e) {
+      if (signal?.aborted) throw e;
+    }
+  }
+  const got = await placesIn(box, { bucket: BUCKET(), userAgent: UA(), signal, cache: diskCache });
+  return { a: filterPlaces(got.places, q), release: got.release, skipped: got.skipped, via: "direct" };
 }
 
 // ---------- the area ----------
@@ -175,49 +148,6 @@ export async function findArea(text: string, signal?: AbortSignal): Promise<Area
   return found;
 }
 
-// ---------- the question ----------
-
-async function placesIn(box: Box, signal?: AbortSignal): Promise<{ places: Place[]; release: string; skipped: number }> {
-  const index = await getIndex(signal);
-  const wanted: { key: string; size: number; block: Block }[] = [];
-  for (const f of index.files) for (const b of f.blocks) if (overlaps(box, { xmin: b[2], xmax: b[3], ymin: b[4], ymax: b[5] })) wanted.push({ key: f.key, size: f.size, block: b });
-  const read = wanted.slice(0, MAX_BLOCKS);
-  const places: Place[] = [];
-  const meta = new Map<string, Promise<{ file: Awaited<ReturnType<typeof fileOf>>; md: Awaited<ReturnType<typeof parquetMetadataAsync>> }>>();
-  const open = (key: string, size: number) => {
-    let m = meta.get(key);
-    if (!m) {
-      m = (async () => {
-        const file = await fileOf(key, size, signal);
-        return { file, md: await parquetMetadataAsync(file) };
-      })();
-      meta.set(key, m);
-    }
-    return m;
-  };
-  let next = 0;
-  const worker = async () => {
-    while (next < read.length) {
-      const w = read[next++]!;
-      const { file, md } = await open(w.key, w.size);
-      await parquetRead({
-        file,
-        metadata: md,
-        compressors,
-        columns: COLUMNS,
-        rowStart: w.block[0],
-        rowEnd: w.block[0] + w.block[1],
-        rowFormat: "object",
-        onComplete: (rows) => {
-          for (const r of rows as Place[]) if (inside(r.bbox, box)) places.push(r);
-        },
-      });
-    }
-  };
-  await Promise.all(Array.from({ length: 3 }, worker));
-  return { places, release: index.release, skipped: wanted.length - read.length };
-}
-
 export type PlacesCtx = { signal?: AbortSignal; addToTable?: (table: string, rows: ListRow[], source: string) => { text: string; isError?: boolean } };
 
 export async function runPlacesTool(call: ToolCall, ctx: PlacesCtx = {}): Promise<ToolResult> {
@@ -235,23 +165,20 @@ export async function runPlacesTool(call: ToolCall, ctx: PlacesCtx = {}): Promis
     if (!area) return fail(`"${areaText}" wasn't found on the map. Write it as a person would in an address, with the city and the country ("Hydra, Alger, Algérie"), or try a nearby district or the city itself.`);
     const { w, h } = sizeKm(area.box);
     if (w > MAX_KM || h > MAX_KM) return fail(`"${area.label}" is about ${Math.round(w)} × ${Math.round(h)} km: too large for one question. Ask for a city or a district, one call each.`);
-    const got = await placesIn(area.box, ctx.signal);
-    const open = got.places.filter(isOpen);
-    let hits = open.filter((p) => inCategory(p, words) && (!name || nameHas(p, name)));
-    if (i.with_phone === true) hits = hits.filter((p) => p.phones?.some(Boolean));
+    const got = await answer(area.box, { words, name, withPhone: i.with_phone === true, limit }, ctx.signal);
+    const hits = got.a.hits;
     const where = `${area.label} (about ${w < 10 ? w.toFixed(1) : Math.round(w)} × ${h < 10 ? h.toFixed(1) : Math.round(h)} km)`;
     if (!hits.length) {
-      if (!open.length) return fail(`The open map data has no places in ${where}. Try the city instead of the district, or use scrape_list / research on a local directory.`);
+      if (!got.a.open) return fail(`The open map data has no places in ${where}. Try the city instead of the district, or use scrape_list / research on a local directory.`);
       return fail(
-        `Nothing in ${where} matches ${[words.length ? `the categories ${words.join(", ")}` : "", name ? `the name "${name}"` : "", i.with_phone === true ? "with a phone number" : ""].filter(Boolean).join(" and ") || "that"}. The data has ${open.length} places there, in these categories (most common first): ${topCategories(open).join(", ")}. Call again with categories from this list.`,
+        `Nothing in ${where} matches ${[words.length ? `the categories ${words.join(", ")}` : "", name ? `the name "${name}"` : "", i.with_phone === true ? "with a phone number" : ""].filter(Boolean).join(" and ") || "that"}. The data has ${got.a.open} places there, in these categories (most common first): ${got.a.top.join(", ")}. Call again with categories from this list.`,
       );
     }
-    hits.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
     const source = `Overture Maps open data (${got.release})`;
-    const rows = hits.slice(0, limit).map((p) => placeRow(p, source)).filter((r): r is ListRow => !!r);
+    const rows = hits.map((p) => placeRow(p, source)).filter((r): r is ListRow => !!r);
     const withPhone = rows.filter((r) => r.phone).length;
     const head = [
-      `${hits.length} places in ${where}${words.length ? ` in the categories ${words.join(", ")}` : ""}${name ? ` named "${name}"` : ""}; ${rows.length < hits.length ? `the ${rows.length} best-known are given (raise \`limit\` for more); ` : ""}${withPhone} of ${rows.length} have a phone number.`,
+      `${got.a.matching} places in ${where}${words.length ? ` in the categories ${words.join(", ")}` : ""}${name ? ` named "${name}"` : ""}; ${rows.length < got.a.matching ? `the ${rows.length} best-known are given (raise \`limit\` for more); ` : ""}${withPhone} of ${rows.length} have a phone number.`,
       `Source: ${source}. It is built from business pages (mostly Facebook pages in some countries): a place can be missing, closed or have an old number. Treat numbers as "to confirm".`,
       got.skipped ? `The area is large: only part of it was read. Ask district by district for a complete answer.` : "",
     ];

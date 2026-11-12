@@ -401,7 +401,7 @@ const tr: Dict = {
   "desk.offReady": "Kapalı. Hazır olduğunda aç.",
   "desk.offConsent": "Kapalı. Önce yukarıdaki kutuyu işaretle.",
   "desk.askEvery": "Her işlemden önce sor",
-  "desk.askEvery.on": "Önerilir. Her tıklama, tuşa basma ve yazılan metin önce sana sorulur; yalnızca ekrana bakmak sorulmaz.",
+  "desk.askEvery.on": "Önerilir. Her tıklama, tuşa basma ve yazılan metin önce sana sorulur; yalnızca ekrana bakmak sorulmaz. Onayladığın bir plan, adımlarını kapsar.",
   "desk.askEvery.off": "Botlar her görev için bir kez sorar, sonra görev bitene kadar kendileri çalışır.",
   "desk.blocked": "Yönetici olarak çalışan pencereler, Kullanıcı Hesabı Denetimi istemleri ve kilit ekranı kontrol edilemez. Ekran görüntüleri çalışma sırasında yapay zekâ modeline gönderilir ve ne olduğunu kontrol edebilmen için 24 saat bu bilgisayarda kalır.",
   "desk.grantQ": "{name} bu görev için fareni ve klavyeni kullansın mı?",

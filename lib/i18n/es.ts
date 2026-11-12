@@ -401,7 +401,7 @@ const es: Dict = {
   "desk.offReady": "Desactivado. Actívalo cuando estés listo.",
   "desk.offConsent": "Desactivado. Marca primero la casilla de arriba.",
   "desk.askEvery": "Preguntar antes de cada acción",
-  "desk.askEvery.on": "Recomendado. Cada clic, pulsación de tecla y texto escrito te pregunta primero; solo mirar la pantalla no.",
+  "desk.askEvery.on": "Recomendado. Cada clic, pulsación de tecla y texto escrito te pregunta primero; solo mirar la pantalla no. Un plan que aprobaste cubre sus pasos.",
   "desk.askEvery.off": "Los bots preguntan una vez por tarea y luego actúan solos hasta que termina.",
   "desk.blocked": "No se pueden controlar las ventanas que se ejecutan como administrador, los avisos del Control de cuentas de usuario ni la pantalla de bloqueo. Las capturas se envían al modelo de IA mientras trabaja y se guardan 24 horas en este ordenador para que puedas revisar lo que pasó.",
   "desk.grantQ": "¿Dejar que {name} use tu ratón y teclado para esta tarea?",

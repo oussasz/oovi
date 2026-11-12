@@ -401,7 +401,7 @@ const fr: Dict = {
   "desk.offReady": "Désactivé. Activez-le quand vous êtes prêt.",
   "desk.offConsent": "Désactivé. Cochez d'abord la case ci-dessus.",
   "desk.askEvery": "Demander avant chaque action",
-  "desk.askEvery.on": "Recommandé. Chaque clic, touche et texte tapé vous est demandé d'abord ; seul le fait de regarder l'écran ne l'est pas.",
+  "desk.askEvery.on": "Recommandé. Chaque clic, touche et texte tapé vous est demandé d'abord ; seul le fait de regarder l'écran ne l'est pas. Un plan que vous avez approuvé couvre ses étapes.",
   "desk.askEvery.off": "Les bots demandent une fois par tâche, puis agissent seuls jusqu'à la fin de la tâche.",
   "desk.blocked": "Les fenêtres lancées en administrateur, les invites du Contrôle de compte d'utilisateur et l'écran de verrouillage ne peuvent pas être contrôlés. Les captures d'écran sont envoyées au modèle d'IA pendant le travail et restent 24 heures sur cet ordinateur, pour que vous puissiez vérifier ce qui s'est passé.",
   "desk.grantQ": "Laisser {name} utiliser votre souris et votre clavier pour cette tâche ?",

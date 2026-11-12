@@ -39,10 +39,13 @@ export default function PrivacyPage() {
         websites your bots visit receive data under their own policies.
       </p>
       <p>
-        When a bot looks for businesses or places in an area, the App asks open map services directly from your device:
-        the name of the area goes to OpenStreetMap’s search service (Nominatim), or to Photon if that one has no answer,
-        and the list of places is read from Overture Maps’ public data files. These services receive the request and
-        your internet address, as any website does; they do not receive your account, your chats or your files.
+        When a bot looks for businesses or places in an area, the App asks OpenStreetMap’s search service
+        (Nominatim, or Photon if that one has no answer) for the outline of the area, directly from your device. The
+        question (that outline and the kind of place asked for, never your chats or files) then goes to our server,
+        which reads Overture Maps’ public data and sends back the matching places; we keep only the usual technical
+        logs. If our server can’t answer, the App reads that public data itself. When a bot looks for scientific
+        publications, the App asks the public catalogues Crossref, Europe PMC and arXiv directly, with the topic only.
+        These services receive the request and your internet address, as any website does.
       </p>
       <p>
         When your bots use <b>theOovi</b>, the model included with your oovi account, each request (the messages, files

@@ -1,7 +1,9 @@
 // find_places (places.ts): the parts with no network, so they are unit-tested
 // (tests/unit/places.test.mts). The data is Overture Maps "places": open data, one row per business.
 
-import type { ListRow } from "./page-list-core";
+/** A row for the work table (the same shape as ListRow in page-list-core.ts; no import, so the oovi
+ * server can use an identical copy of this file: web/lib/places-core.ts, checked by tests/unit/places-sync.test.mts). */
+export type PlaceRow = { name: string; details: string; phone: string; email: string; link: string; address?: string; extra?: Record<string, string>; source?: string };
 
 export type Box = { xmin: number; xmax: number; ymin: number; ymax: number };
 
@@ -74,7 +76,7 @@ const realUrl = (u: string) => {
 };
 
 /** A place as a row for the work table. */
-export function placeRow(p: Place, source: string): ListRow | null {
+export function placeRow(p: Place, source: string): PlaceRow | null {
   const name = (p.names?.primary ?? "").replace(/\s+/g, " ").trim();
   if (!name) return null;
   const a = p.addresses?.[0];
@@ -109,3 +111,15 @@ export const nameHas = (p: Place, q: string) => {
   const n = ` ${norm(p.names?.primary ?? "")}`;
   return norm(q).split(" ").filter(Boolean).every((w) => n.includes(` ${w}`));
 };
+
+export type PlaceQuery = { words: string[]; name: string; withPhone: boolean; limit: number };
+export type PlaceAnswer = { hits: Place[]; matching: number; open: number; top: string[] };
+
+/** The places of an area that answer a question, best-known first. The app and the oovi server use the same rule. */
+export function filterPlaces(places: Place[], q: PlaceQuery): PlaceAnswer {
+  const open = places.filter(isOpen);
+  let hits = open.filter((p) => inCategory(p, q.words) && (!q.name || nameHas(p, q.name)));
+  if (q.withPhone) hits = hits.filter((p) => p.phones?.some(Boolean));
+  hits.sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+  return { hits: hits.slice(0, Math.min(2000, Math.max(1, q.limit))), matching: hits.length, open: open.length, top: hits.length ? [] : topCategories(open) };
+}

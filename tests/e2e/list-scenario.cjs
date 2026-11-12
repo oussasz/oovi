@@ -188,7 +188,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -215,10 +215,29 @@ function answer(body) {
       { area: "Testville", categories: ["plumber"] },
       { area: "Nowhere at all" },
       { area: "Testville", categories: ["cafe"], name: "testville 9", limit: 3 },
+      { area: "Testville", categories: ["server answer"], limit: 5 },
     ];
     const n = (all.split("PLACES:").pop().match(/"type":"tool_use"/g) || []).length;
     if (lastTool) seen.out[`places${n}`] = out;
     return n < steps.length ? call("find_places", steps[n]) : text("PLACES-RESULT: done");
+  }
+  if (scene === "PLAN") {
+    seen.planSys = sys;
+    seen.planTools = (body.tools || []).map((t) => t.name);
+    const n = (all.split("PLAN:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`plan${n}`] = out;
+    if (/INTERACTIVE ELEMENTS/.test(out)) seen.planList = out;
+    const num = (label) => Number(((seen.planList || "").match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`)) || [])[1]);
+    if (n === 0) return call("propose_plan", { goal: "Add the list to the m3ak project", steps: ["Open the import page", "Choose the m3ak project", "Tick Projet prioritaire", "Click Ajouter"] });
+    if (n === 1) return call("open_url", { url: `${SITE}/form` });
+    if (n === 2) return call("type", { element: num("select"), text: "m3ak" });
+    if (n === 3) return call("click", { element: num("Projet prioritaire") });
+    if (n === 4) return call("click", { element: num("Ajouter") });
+    return text(`PLAN-RESULT: ${((out.match(/AJOUTÉ[^\n]*/) || [""])[0])}`);
+  }
+  if (scene === "HINT") {
+    if (lastTool) seen.out[`hint:${me}`] = out;
+    return lastTool ? text("HINT-RESULT: read") : call("read_url", { url: `${SITE}/annuaire` });
   }
   if (scene === "TRUTH") {
     // The bot reads a page with real numbers, then writes rows: some as read, some from "memory".
@@ -289,6 +308,13 @@ http
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
       if (url === "/api/v1/catalog") return send(200, { items: [] });
+      // The oovi server's find_places: answers only the "server answer" question (else as an older server would: 404).
+      if (url === "/api/v1/places" && req.method === "POST") {
+        const q = JSON.parse(raw);
+        seen.placesServer = q;
+        if (!(q.words || []).includes("server answer")) return send(404, { error: "not found" });
+        return send(200, { release: "server-test", skipped: 0, matching: 1, open: 9, top: [], hits: [{ names: { primary: "Café du serveur" }, basic_category: "cafe", phones: ["+213550999999"], addresses: [{ freeform: "1 rue du Serveur", locality: "Testville" }], confidence: 0.9 }] });
+      }
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
       if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
@@ -437,6 +463,7 @@ const check = (name, ok, detail = "") => {
   check("I) a category that matches nothing gets the area's own categories to choose from", /Nothing in Testville.* matches the categories plumber\. The data has 2007 places there.*beauty_salon \(670\), cafe \(669\)/.test(seen.out.places3 || ""), (seen.out.places3 || "").slice(0, 220));
   check("I) a place that isn't on the map says so and what to write", /"Nowhere at all" wasn't found on the map/.test(seen.out.places4 || ""), (seen.out.places4 || "").slice(0, 120));
   check("I) a name filter narrows the answer", /Café Testville 9\b/.test(seen.out.places5 || "") && !/Café Testville 39/.test(seen.out.places5 || ""), (seen.out.places5 || "").split("\n").slice(2, 4).join(" / ").slice(0, 200));
+  check("I) when the oovi server answers, its answer is used (the area located here, the question sent with it)", /Café du serveur \| cafe \| 1 rue du Serveur, Testville \| Phone: \+213550999999/.test(seen.out.places6 || "") && /Overture Maps open data \(server-test\)/.test(seen.out.places6 || "") && seen.placesServer?.box?.xmin < 3.0 && seen.placesServer?.limit === 5, (seen.out.places6 || "").slice(0, 200));
   check("I) the data's index is kept on disk, so the next question doesn't rebuild it", fs.existsSync(path.join(DATA, "accounts", "p1test", "cache", "places", "2026-02-01.0.json")) || fs.existsSync(path.join(DATA, "cache", "places", "2026-02-01.0.json")));
 
   // J: scientific publications from the open catalogues, merged, in one call.
@@ -454,6 +481,41 @@ const check = (name, ok, detail = "") => {
   check("J) the bot is told a record is not the paper: read it before reporting its findings", /A record proves the paper exists, not what it shows/.test(j1));
   check("J) 'most cited' sorts the relevant results", /^1\. Study number 40 of[^\n]*cited 117/m.test(seen.out.papers2 || ""), (seen.out.papers2 || "").split("\n").slice(3, 4).join("").slice(0, 160));
   check("J) 'free full text only' keeps only papers with a free link (the 10 even-numbered ones)", /^10 publications/.test(seen.out.papers3 || "") && /10 have a free full text link/.test(seen.out.papers3 || ""), (seen.out.papers3 || "").split("\n")[0].slice(0, 200));
+
+  // N: a bot acting with the user's accounts proposes one plan; once approved, its clicks and typing don't ask again.
+  await api("POST", "/api/settings", { approvals: { clicksAndTyping: true } });
+  const agent = await api("POST", "/api/bots", { name: "Agent", role: "", instructions: "You are Agent, an assistant.", face: scout.face, tools: { web: true, browser: true, accounts: true } });
+  const ach = `dm-${agent.id}`;
+  await api("POST", `/api/chats/${ach}/run`, { text: "PLAN: add my list to the m3ak project on the dashboard" });
+  let pc = null;
+  for (let i = 0; i < 100; i++) {
+    pc = await api("GET", `/api/chats/${ach}`);
+    if (!pc.running) break;
+    await sleep(300);
+  }
+  check("N) a bot that acts with the user's accounts is told to propose one plan first, and has the tool for it", (seen.planTools || []).includes("propose_plan") && /call propose_plan once with the whole task/.test(seen.planSys || ""));
+  check("N) the plan waits for the user's OK before anything is done", !!pc?.pending?.planReview && !seen.out.plan1, JSON.stringify(pc?.pending || {}).slice(0, 120));
+  const cards = [];
+  await api("POST", `/api/chats/${ach}/run`, { planDecision: { approve: true, items: ["Open the import page", "Choose the m3ak project", "Tick Projet prioritaire", "Click Ajouter"] } });
+  for (let i = 0; i < 100; i++) {
+    pc = await api("GET", `/api/chats/${ach}`);
+    if (!pc.running) {
+      if (!pc.pending?.approval) break;
+      cards.push(pc.pending.approval.items.map((x) => x.summary).join(" + "));
+      await api("POST", `/api/chats/${ach}/run`, { decisions: Object.fromEntries(pc.pending.approval.items.map((x) => [x.call.id, true])) });
+    }
+    await sleep(300);
+  }
+  const lastPlan = pc.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? "";
+  check("N) after the one approval, every click and typing runs without another card, and the job gets done", cards.length === 0 && /PLAN-RESULT: AJOUTÉ au projet m3ak \(Alger\) \(prioritaire\)/.test(lastPlan), `${cards.length} cards: ${cards.join(" | ").slice(0, 160)} || ${lastPlan.slice(0, 120)}`);
+  await api("POST", "/api/settings", { approvals: { clicksAndTyping: false } });
+
+  // M: a page that is a list says so where the bot reads it, and every bot that can search can collect it.
+  const webby = await api("POST", "/api/bots", { name: "Webby", role: "", instructions: "You are Webby, a researcher.", face: scout.face, tools: { web: true, browser: false } });
+  await run(`dm-${webby.id}`, "HINT: what is on this directory page?");
+  const hint = seen.out["hint:Webby"] || "";
+  check("M) reading a directory page tells the bot it is a list and gives the exact scrape_list call", /This page is a list of about 12 items \(2 show a phone number\), and it has more pages\. To keep them all, call scrape_list with url="http:\/\/127\.0\.0\.1:\d+\/annuaire"/.test(hint), hint.split("This page is a list")[1]?.slice(0, 200) || hint.slice(-200));
+  check("M) a bot with web search but no browser has scrape_list (collecting public pages is reading)", (seen.tools.Webby || []).includes("scrape_list") && !(seen.tools.Webby || []).includes("click"), (seen.tools.Webby || []).join(","));
 
   // K: a phone number or an email is saved only when it was read somewhere.
   c = await run(dm, "TRUTH: make me a verified list from this page");

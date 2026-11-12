@@ -265,7 +265,9 @@ const userNote = (sess: Session) => `The user used the browser; the page may hav
 
 /** The tools a bot may use, from its toggles. */
 export function toolsFor(t: BotTools): ToolSpec[] {
-  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC, PAPERS_SPEC] : [])];
+  // Collecting a public site's list is reading, not acting: every bot that can search has scrape_list
+  // (it uses the private browser when a page needs one). Clicking and typing need the browser ability.
+  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : s.name === "scrape_list" ? t.web || t.browser : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC, PAPERS_SPEC] : [])];
 }
 
 async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean, sessionId: string, ctx: RunCtx): Promise<ToolResult> {

@@ -1023,7 +1023,10 @@ async function* runBot(
       const taskId = lastUser(chat)?.id;
       const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
       const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
-      const planCovers = !!chat.pending?.planApproved && !s.desktopControl.askEvery;
+      // An approved plan covers its steps: no card per action, even with "Ask before every action" on
+      // (that setting applies to work without a plan). The owner's rule: one plan, approved once.
+      const planCovers = !!chat.pending?.planApproved;
+      const askEvery = s.desktopControl.askEvery && !planCovers;
       // A desktop OK counts only from a card shown for exactly that call less than 20 minutes ago; otherwise ask again.
       const expired = new Set<string>();
       for (const c of last.toolCalls) {
@@ -1033,22 +1036,22 @@ async function* runBot(
         }
       }
       const firstDesk = last.toolCalls.find((c) => isDesktopName(c.name))?.id;
-      const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery: s.desktopControl.askEvery, first: c.id === firstDesk }) : null);
+      const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
       const asks = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
           : c.name === "open_in_user_browser"
             ? // Same rule as open_app: asks, unless the task already has the mouse-and-keyboard OK.
-              tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !s.desktopControl.askEvery)
+              tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !askEvery)
             : c.name === "manage_window"
             ? // Listing never asks. Acting on a window follows open_app's rule (and isn't asked when it can't run).
-              tools.some((t) => t.name === c.name) && "win" in windowFor(c) && !(deskGranted && !s.desktopControl.askEvery)
+              tools.some((t) => t.name === c.name) && "win" in windowFor(c) && !(deskGranted && !askEvery)
             : c.name === "open_app"
             ? // Starting an app always asks (unless it can't be opened: then it runs and returns why).
               // Once the user allowed the mouse and keyboard for this task (and didn't choose "ask before every
               // action"), opening an app is part of that OK: its card says so. Otherwise it asks.
-              tools.some((t) => t.name === c.name) && "app" in appFor(c) && !(deskGranted && !s.desktopControl.askEvery)
+              tools.some((t) => t.name === c.name) && "app" in appFor(c) && !(deskGranted && !askEvery)
             : c.name === "propose_routine"
               ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string"
             : SPECIALIST_TOOLS.has(c.name)
@@ -1072,7 +1075,7 @@ async function* runBot(
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
           // The card speaks the user's language: their latest message's, else the app's.
           if (kind) {
-            const item = desktopApprovalItem(c, kind, bot.name, last.toolCalls, s.desktopControl.askEvery);
+            const item = desktopApprovalItem(c, kind, bot.name, last.toolCalls, askEvery);
             return expired.has(c.id) ? { ...item, detail: `${translatorFor(lastUserText(chat))("ok.expired")}${item.detail ? `\n${item.detail}` : ""}` } : item;
           }
           return approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));

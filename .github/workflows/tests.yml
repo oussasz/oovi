@@ -1,0 +1,38 @@
+# The release checks on all three systems the app ships for: type check, unit tests, the build and
+# every scenario against the built server (scripted model, local pages, no account, no key).
+# The owner has no Mac or Linux machine: this is where those two are tested.
+name: Tests on Windows, Mac and Linux
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - name: Unit tests
+        working-directory: tests/unit
+        run: node --test
+      - run: npm run build
+      - name: Scenarios
+        shell: bash
+        run: |
+          fail=0
+          for t in group spec bigjob parallel telegram upload list phase1; do
+            echo "::group::$t"
+            if node tests/e2e/$t-scenario.cjs; then echo "PASSED $t"; else echo "FAILED $t"; fail=1; fi
+            echo "::endgroup::"
+          done
+          exit $fail

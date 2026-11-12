@@ -417,7 +417,7 @@ const en = {
   "desk.offReady": "Off. Turn it on when you're ready.",
   "desk.offConsent": "Off. Tick the box above first.",
   "desk.askEvery": "Ask before every action",
-  "desk.askEvery.on": "Recommended. Every click, key press and typed text asks you first; only looking at the screen doesn't.",
+  "desk.askEvery.on": "Recommended. Every click, key press and typed text asks you first; only looking at the screen doesn't. A plan you approved covers its steps.",
   "desk.askEvery.off": "Bots ask once per task, then act on their own until the task ends.",
   "desk.blocked": "Windows running as administrator, User Account Control prompts and the lock screen can't be controlled. Screenshots go to the AI model while it works and stay on this computer for 24 hours, so you can check what happened.",
   "desk.grantQ": "Let {name} use your mouse and keyboard for this task?",
