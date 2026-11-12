@@ -258,7 +258,6 @@ export default function SettingsForm() {
             {t("settings.search.provider")}
             <select value={s.search.provider} onChange={(e) => setS({ ...s, search: { ...s.search, provider: e.target.value as PublicSettings["search"]["provider"] } })}>
               <option value="auto">{t("settings.search.auto")}</option>
-              <option value="none">{t("settings.search.none")}</option>
               <option value="searxng">{t("settings.search.searxng")}</option>
               <option value="brave">{t("settings.search.brave")}</option>
               <option value="tavily">{t("settings.search.tavily")}</option>

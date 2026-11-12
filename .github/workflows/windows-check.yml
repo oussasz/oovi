@@ -1,0 +1,22 @@
+# The native half of desktop control's window tools, on a real Windows machine (no installer is built).
+name: Windows desktop check
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install koffi alone
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/k" && cd "$RUNNER_TEMP/k" && npm init -y >/dev/null && npm install koffi@3.3.4 --no-audit --no-fund
+      - name: Window tools on a real desktop
+        shell: bash
+        run: KOFFI_PATH="$RUNNER_TEMP/k/node_modules/koffi" node tests/win/windows-check.cjs

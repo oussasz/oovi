@@ -165,7 +165,11 @@ function cleanMessages(raw: unknown): Message[] | null {
     if (!blocks.length) return null;
     out.push({ role, content: blocks });
   }
-  return out[0]?.role === "user" ? out : null;
+  if (out[0]?.role !== "user") return null;
+  // App versions before 0.10.3 could send a conversation ending on the bot's own words (a bot turned again
+  // right after its message); the model refuses that as "assistant message prefill". Ask it to go on instead.
+  if (out.at(-1)?.role === "assistant") out.push({ role: "user", content: "[oovi]: Go on from where you stopped, following your instructions. Don't repeat what you already said." });
+  return out;
 }
 
 function cleanSystem(raw: unknown): string | Block[] | null {

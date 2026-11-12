@@ -6,7 +6,7 @@ import { cleanText, consumeUserUse, isControlled, MAX_REASON, requestTakeover, w
 import type { ToolSpec } from "./llm";
 import { callMcpTool, mcpServerOf } from "./mcp";
 import { applyMemory } from "./memory";
-import { webSearch } from "./search";
+import { searchWithNote } from "./search";
 import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
 import type { Settings } from "./settings";
 import { saveShot } from "./store";
@@ -403,10 +403,10 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     if (call.name === "web_search") {
       const q = String(input.query ?? "").trim();
       if (!q) return fail(call, "query is required");
-      const hits = await webSearch(settings, q);
+      const { hits, note } = await searchWithNote(settings, q);
       if (!hits.length) return fail(call, `The search for "${q}" returned nothing usable. That can be a search problem, not proof that it doesn't exist: try other words, or the research tool.`);
       const body = hits.map((h, i) => `${i + 1}. ${h.title}\n   ${h.url}\n   ${h.snippet.slice(0, 300)}`).join("\n");
-      return { id: call.id, name: call.name, content: `Search results for "${q}" (untrusted web content):\n${body}` };
+      return { id: call.id, name: call.name, content: `Search results for "${q}" (untrusted web content):\n${body}${note ? `\n${note}` : ""}` };
     }
 
     if (call.name === "request_user_takeover") return await takeoverTool(call, sessionId, ctx);

@@ -75,6 +75,29 @@ function answer(body) {
   const solo = /SOLO:/.test(JSON.stringify(msgs));
 
   // ---- a bot alone that finds nothing and keeps asking (the owner's case: the job ended on a question) ----
+  if (me === "Lone" && /LONE2:/.test(JSON.stringify(msgs))) {
+    // "retry": the job is picked up again; this time the rows are found.
+    if (!results.length && /This job ended earlier before its goal/.test(sys) && /BIG JOB MODE/.test(sys)) seen.loneCarried = true;
+    if (/WRAP UP NOW/.test(sys)) return text("LONE2-WRAP");
+    if (lastTool === "work_export") return text("LONE2-DONE: 20 of 20 rare suppliers, Rare.xlsx");
+    if (status.length && status[0] >= status[1]) return call("work_export", { name: "Rare", format: "xlsx" });
+    return call("work_table", { action: "add", table: "Rare", columns: COLS, rows: rows("lone", 20, 20) });
+  }
+  if (me === "Drift") {
+    const m = JSON.stringify(msgs);
+    if (/DRIFT3:/.test(m)) {
+      seen.drift3Sys = sys;
+      return text("DRIFT3-ANSWER: hello");
+    }
+    if (/DRIFT2:/.test(m)) {
+      seen.drift2Turns = (seen.drift2Turns || 0) + (results.length ? 0 : 1);
+      if (/WRAP UP NOW/.test(sys)) seen.drift2Wrap = true;
+      return text("DRIFT2-ANSWER: 2 + 2 = 4");
+    }
+    if (/WRAP UP NOW/.test(sys)) return text("DRIFT-FINAL: nothing found.");
+    if (!/BIG JOB MODE/.test(sys)) return call("start_big_job", { goal: "15 rare parts", table: "Parts", target_rows: 15, required_columns: ["Phone"] });
+    return text("Nothing found this round.");
+  }
   if (me === "Lone") {
     seen.loneTurns = (seen.loneTurns || 0) + (results.length ? 0 : 1);
     if (/WRAP UP NOW/.test(sys)) {
@@ -321,6 +344,24 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const lb = lc.entries.filter((e) => e.kind === "bot");
   check("I) a bot alone whose rounds add nothing gets one last turn to report; the job doesn't end on 'shall I continue?'", /^LONE-FINAL/.test(lb.at(-1)?.text ?? "") && lb.length <= 4 && !lc.pending, `${lb.length} turns; last: ${(lb.at(-1)?.text ?? "").slice(0, 70)}`);
   check("I) that last turn is told to say plainly the goal isn't reached and not to ask whether to continue", /If the goal isn't reached, say so plainly in the first line\. Don't ask the user whether to continue/.test(seen.loneWrap || ""));
+
+  // J: the user's next message picks an unfinished job up again ("retry"), without starting from zero.
+  await api("POST", `/api/chats/dm-${lone.id}/run`, { text: "LONE2: retry" + DIRECTORY });
+  const l2 = await idle(`dm-${lone.id}`, 120000);
+  const l2b = l2.entries.slice(l2.entries.findLastIndex((e) => e.kind === "user")).filter((e) => e.kind === "bot");
+  check("J) 'retry' after a job that stopped short goes back into the job at once, with its goal (no question, no fresh start)", seen.loneCarried === true, `carried: ${seen.loneCarried}`);
+  check("J) ...and keeps going until the goal: 20 of 20 and the file delivered", /^LONE2-DONE/.test(l2b.at(-1)?.text ?? "") && !l2.openJob, `${l2b.length} turns; last: ${(l2b.at(-1)?.text ?? "").slice(0, 60)}`);
+  // A job that stopped short, then a message about something else: answered once, the job isn't forced on it.
+  const drift = await newBot("Drift", "");
+  await api("POST", `/api/chats/dm-${drift.id}/run`, { text: "DRIFT: find 15 rare parts" });
+  const d1 = await idle(`dm-${drift.id}`, 120000);
+  check("J) a job that ends before its goal stays open for the next message", !!d1.openJob && d1.openJob.goal === "15 rare parts", JSON.stringify(d1.openJob || null).slice(0, 120));
+  await api("POST", `/api/chats/dm-${drift.id}/run`, { text: "DRIFT2: unrelated, what is 2 + 2?" });
+  const d2 = await idle(`dm-${drift.id}`, 120000);
+  check("J) a message about something else gets one answer: no extra rounds, no report, and the job closes", seen.drift2Turns === 1 && !seen.drift2Wrap && !d2.openJob && /^DRIFT2-ANSWER/.test(d2.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? ""), `${seen.drift2Turns} turns, wrap ${!!seen.drift2Wrap}, open ${!!d2.openJob}`);
+  await api("POST", `/api/chats/dm-${drift.id}/run`, { text: "DRIFT3: hello" });
+  await idle(`dm-${drift.id}`, 60000);
+  check("J) ...and the next message is an ordinary one again", !!seen.drift3Sys && !/BIG JOB MODE/.test(seen.drift3Sys));
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

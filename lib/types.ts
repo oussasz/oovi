@@ -191,7 +191,8 @@ export type Pending = {
    * table/target/require: "100 rows of Prospects with a Phone". mark: the size of the team's work after
    * the last round; stale: rounds in a row that added nothing.
    */
-  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number };
+  /** carried: the job was picked up again by the user's next message (see Chat.openJob). */
+  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number; carried?: boolean };
   /**
    * Teammates worked at the same time and several needed the user's OK: one card is shown at a time.
    * These replies (entry ids) wait their turn to ask.
@@ -216,6 +217,12 @@ export type Chat = {
   updatedAt: number;
   entries: Entry[];
   pending?: Pending;
+  /**
+   * A big job that ended before its goal (out of new ideas, stopped, an error). The user's next message
+   * ("retry", "continue", "the search works now, go") picks it up again with its goal and count, instead
+   * of the bot starting from nothing with ordinary limits. Kept for a day.
+   */
+  openJob?: { goal: string; by: string; table?: string; target?: number; require?: string[]; at: number };
   /** Older entries (up to and including upTo) condensed to save tokens. */
   summary?: { upTo: string; text: string };
   /** Project folder the bots in this chat can work in. */

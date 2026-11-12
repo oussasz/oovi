@@ -24,7 +24,7 @@ test("an app is found by its name, whatever the case or accents", () => {
   assert.equal(name(findApp(apps, "excel")), "Excel");
   assert.equal(name(findApp(apps, "Google Chrome")), "Google Chrome"); // listed twice: still one app
   assert.equal(name(findApp(apps, "chrome")), "Google Chrome");
-  assert.equal(name(findApp(apps, "vs code")), "ERR No installed app is called \"vs code\" in the Start menu. Apps from the Microsoft Store may not be listed: ask the user to open it, then go on in its window.");
+  assert.equal(name(findApp(apps, "vs code")), "ERR No installed app is called \"vs code\" (Start menu and Microsoft Store apps were searched; the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.");
   assert.equal(name(findApp(apps, "Visual Studio Code")), "Visual Studio Code");
 });
 
@@ -46,8 +46,22 @@ test("terminals, uninstallers, password managers and shortcuts to them are never
 test("nonsense input is refused; unknown apps get a useful answer", () => {
   assert.match(name(findApp(apps, "")), /^ERR Give the app's name/);
   assert.match(name(findApp(apps, "x".repeat(200))), /^ERR Give the app's name/);
-  assert.match(name(findApp(apps, "ChatGPT")), /Microsoft Store may not be listed/);
+  assert.match(name(findApp(apps, "ChatGPT")), /Start menu and Microsoft Store apps were searched/);
   assert.match(name(findApp(apps, "..\\..\\Windows\\System32\\cmd.exe")), /^ERR No installed app/);
   assert.equal(blockedApp({ name: "Run script", path: "x.lnk", target: "C:\\a\\go.bat" }), "It can run commands or change the system");
   assert.equal(blockedApp({ name: "Paint", path: "x.lnk" }), null); // target unknown: the name decides
+});
+
+test("Microsoft Store apps can be opened by name; system and password packages can't", () => {
+  const apps = [
+    { name: "WhatsApp", path: "shell:AppsFolder\\5319275A.WhatsAppDesktop_cv1g1gvanyjgm!App", store: true },
+    { name: "Terminal", path: "shell:AppsFolder\\Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", store: true },
+    { name: "Bitwarden", path: "shell:AppsFolder\\8bitSolutionsLLC.bitwardendesktop_h4e712dmw3xyy!bitwardendesktop", store: true },
+    { name: "Odd", path: "shell:AppsFolder\\..\\..\\Windows\\System32\\cmd.exe", store: true },
+  ];
+  const ok = findApp(apps, "whatsapp");
+  assert.ok("app" in ok && ok.app.path.endsWith("WhatsAppDesktop_cv1g1gvanyjgm!App"));
+  assert.ok("error" in findApp(apps, "Terminal"));
+  assert.ok("error" in findApp(apps, "Bitwarden"));
+  assert.ok("error" in findApp(apps, "Odd"));
 });

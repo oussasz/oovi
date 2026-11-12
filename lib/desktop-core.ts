@@ -675,3 +675,58 @@ export function glidePath(from: Point, to: Point): Point[] {
   out[out.length - 1] = { x: Math.round(to.x), y: Math.round(to.y) };
   return out;
 }
+
+// ---------- manage_window: the windows open on the user's computer ----------
+
+const normWin = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+export type AppWindow = WinInfo & { minimized?: boolean; maximized?: boolean };
+export const WINDOW_ACTIONS = ["list", "switch", "minimize", "maximize", "restore", "close"] as const;
+export type WindowAction = (typeof WINDOW_ACTIONS)[number];
+
+const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+const appName = (w: AppWindow) => (w.exe || "").replace(/\.exe$/i, "");
+
+/**
+ * The list the bot sees: numbered, top of the screen first. oovi's own windows are left out; private
+ * windows (passwords, banking, security) are listed without their title, and can't be acted on.
+ */
+export function windowLines(list: AppWindow[]): { lines: string[]; shown: AppWindow[] } {
+  const shown = list.filter((w) => !w.own && !w.overlay);
+  const lines = shown.map((w, i) => {
+    const v = windowVerdict(w);
+    const state = w.minimized ? " (minimized)" : w.maximized ? " (maximized)" : "";
+    if (v && (v.reason === "password" || v.reason === "security" || v.reason === "money")) return `${i + 1}. (a private window oovi doesn't touch)${state}`;
+    if (v) return `${i + 1}. ${w.title} — ${appName(w)}${state} (oovi doesn't act on this one: ${v.reason === "system" ? "it can run programs or change the system" : v.reason === "elevated" ? "it runs as administrator" : "unknown window"})`;
+    return `${i + 1}. ${w.title} — ${appName(w)}${state}${i === 0 && !w.minimized ? " (in front)" : ""}`;
+  });
+  return { lines, shown };
+}
+
+/** The window meant by a number from the latest list, or by words of its title or app name. */
+export function pickWindow(list: AppWindow[], wanted: unknown): { win: AppWindow } | { error: string } {
+  const { shown } = windowLines(list);
+  if (!shown.length) return { error: "No windows are open (other than oovi's own)." };
+  const raw = String(wanted ?? "").trim();
+  if (!raw) return { error: "Say which window: its number from manage_window list, or words of its title." };
+  if (/^\d{1,3}$/.test(raw)) {
+    const w = shown[Number(raw) - 1];
+    return w ? { win: w } : { error: `There is no window ${raw}: the list has ${shown.length}. Call manage_window list again (it changes as windows open and close).` };
+  }
+  const q = normWin(raw);
+  const hits = shown.filter((w) => {
+    const t = normWin(`${w.title} ${appName(w)}`);
+    return q.split(" ").every((part) => t.includes(part));
+  });
+  if (hits.length === 1) return { win: hits[0]! };
+  if (!hits.length) return { error: `No open window matches "${raw}". Open windows: ${windowLines(list).lines.join("; ") || "none"}.` };
+  // Several windows of one app (two Chrome windows): the one nearest the front.
+  const apps = new Set(hits.map(appName));
+  if (apps.size === 1) return { win: hits[0]! };
+  return { error: `Several windows match "${raw}": ${hits.slice(0, 6).map((w) => `${shown.indexOf(w) + 1}. ${w.title}`).join("; ")}. Give the number.` };
+}
+
+/** Whether oovi may act on this window (never its own, system, administrator or private windows). */
+export function mayAct(w: AppWindow): string | null {
+  const v = windowVerdict(w);
+  return v ? v.message : null;
+}

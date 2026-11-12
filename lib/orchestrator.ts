@@ -48,7 +48,7 @@ import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerF
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
-import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
+import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /**
@@ -220,6 +220,9 @@ export const START_JOB_SPEC: ToolSpec = {
     required: ["goal"],
   },
 };
+
+/** How long an unfinished big job waits for the user's next message to pick it up again. */
+const OPEN_JOB_MS = 24 * 3600_000;
 
 /** One bot turn in a big job may take this many model calls: a guard against a loop that never ends, not a work limit. */
 const JOB_STEPS = 400;
@@ -554,6 +557,11 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   }
   const job = chat.pending?.job;
   if (job && !extra.wrapUp) lines.push("", answersUser ? (mates.length && chat.kind === "group" ? JOB_LEAD : JOB_SOLO) : JOB_MEMBER, ...jobLines(chat, job, answersUser));
+  if (job?.carried && answersUser && !extra.wrapUp) {
+    lines.push(
+      "This job ended earlier before its goal, and the user has just written again. Unless their new message clearly asks for something else, it means: go on with the job now (\"retry\", \"continue\", \"do it\", \"it works now\" all mean that). Don't ask what they mean and don't wait for another message: start working at once, with other sources and ways than the ones that failed before. If their message asks for something else, answer that only.",
+    );
+  }
   else if (!job && answersUser && !lead && tools.some((t) => t.name === "start_big_job")) {
     lines.push("", "A big job (a long list, many items to find or check, deep research, a large document, anything that needs many steps or reviewing and improving until it's right): call start_big_job first. It lifts the limits so you can work as long as the job needs. You decide this from the task; the user doesn't have to ask for it.");
   }
@@ -661,7 +669,7 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
-    else if (e.botId === bot.id) out.push(...(e.steps.length ? e.steps : e.text ? [{ role: "assistant" as const, text: e.text, toolCalls: [] }] : []));
+    else if (e.botId === bot.id) out.push(...answered(e.steps.length ? e.steps : e.text ? [{ role: "assistant" as const, text: e.text, toolCalls: [] }] : []));
     // Teammates working at the same time: while this bot works, it doesn't see their replies arrive
     // (its view stays stable; what they add is in the shared work files). The next turn sees everything.
     else if (current?.batch && e.batch === current.batch) continue;
@@ -674,6 +682,27 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   // bot's own words is refused by the service ("must end with a user message"), so say whose turn it is.
   const last = out.at(-1);
   if (last?.role === "assistant" && !last.toolCalls.length) out.push({ role: "user", content: AGAIN });
+  return out;
+}
+
+/**
+ * A turn stopped, crashed or was cut while tools were running leaves tool calls with no result. The
+ * model service refuses such a history (and one that ends on the bot's own words): every call gets a
+ * result saying it didn't finish.
+ */
+function answered(steps: Msg[]): Msg[] {
+  const out: Msg[] = [];
+  steps.forEach((m, i) => {
+    out.push(m);
+    if (m.role !== "assistant" || !m.toolCalls.length) return;
+    const next = steps[i + 1];
+    const got = new Set(next?.role === "tool" ? next.results.map((r) => r.id) : []);
+    const missing = m.toolCalls.filter((c) => !got.has(c.id));
+    if (!missing.length) return;
+    const results = missing.map((c) => ({ id: c.id, name: c.name, content: "This action didn't finish: the turn ended before it (stopped, an error or the app closed).", isError: true }));
+    // Right after the call (the wire format merges it with a following tool message).
+    out.push({ role: "tool", results });
+  });
   return out;
 }
 
@@ -837,6 +866,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "work_export": return tr("st.workExport", { what: v(i.filename, v(i.name)) });
     case "start_big_job": return tr("st.bigJob");
     case "open_app": return tr("st.openApp", { app: v(i.name) });
+    case "manage_window": return tr("st.window");
     case "open_in_user_browser": return tr("st.openApp", { app: host(i.url) ?? v(i.url) });
     case "research": return tr("st.researching", { q: v(i.question).slice(0, 60) });
     case "read_url": { const h = host(i.url); return h ? tr("st.reading", { what: h }) : tr("st.readingPage"); }
@@ -907,7 +937,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
   const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
@@ -970,6 +1000,9 @@ async function* runBot(
           : c.name === "open_in_user_browser"
             ? // Same rule as open_app: asks, unless the task already has the mouse-and-keyboard OK.
               tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !s.desktopControl.askEvery)
+            : c.name === "manage_window"
+            ? // Listing never asks. Acting on a window follows open_app's rule (and isn't asked when it can't run).
+              tools.some((t) => t.name === c.name) && "win" in windowFor(c) && !(deskGranted && !s.desktopControl.askEvery)
             : c.name === "open_app"
             ? // Starting an app always asks (unless it can't be opened: then it runs and returns why).
               // Once the user allowed the mouse and keyboard for this task (and didn't choose "ask before every
@@ -988,6 +1021,7 @@ async function* runBot(
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
           if (c.name === "open_app") return openAppItem(c, bot.name, translatorFor(lastUserText(chat)));
+          if (c.name === "manage_window") return windowItem(c, bot.name, translatorFor(lastUserText(chat)));
           if (c.name === "open_in_user_browser") return openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat)));
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
@@ -1058,6 +1092,8 @@ async function* runBot(
             results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
           } else if (c.name === "open_app") {
             results.push(await runOpenApp(c));
+          } else if (c.name === "manage_window") {
+            results.push(await runManageWindow(c));
           } else if (c.name === "open_in_user_browser") {
             results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {
@@ -1277,6 +1313,9 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     // Learning: how often has the user asked for this kind of thing?
     // (A routine repeats the same request by design: that's not a reason to suggest a skill.)
     const similar = text && !input.routine ? recordCommand(text) : 0;
+    // The user writes again after a big job that ended before its goal: the job goes on.
+    const open = chat.openJob && Date.now() - chat.openJob.at < OPEN_JOB_MS && !input.routine && !plan && !slash && !input.via && members.some((m) => m.id === chat.openJob!.by) ? chat.openJob : undefined;
+    delete chat.openJob;
     chat.pending = {
       queue,
       turnsLeft: deep ? settings.maxTurns * 2 : settings.maxTurns,
@@ -1289,7 +1328,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       ...(slash ? { slash: { ...slash, for: [...queue] } } : {}),
       ...(input.channel ? { channel: input.channel } : {}),
       ...(input.channel && input.telegramChatId !== undefined ? { telegramChatId: input.telegramChatId } : {}),
+      ...(open ? { deep: true, job: { goal: open.goal, by: open.by, ...(open.table ? { table: open.table } : {}), ...(open.target ? { target: open.target } : {}), ...(open.require ? { require: open.require } : {}), rounds: 0, mark: progressMark(loadWork(workHome(chat))), stale: 0, carried: true } } : {}),
     };
+    // The job's owner answers it (in a group, the user may have mentioned someone else: that bot goes first).
+    if (open && !queue.length) queue.push(open.by);
     saveChat(chat);
     yield { type: "entry", entry: user };
   } else if (input.planDecision && chat.pending?.planReview) {
@@ -1381,6 +1423,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       // A big job: its owner's turn closes a round. Did the team's work grow? Is the goal reached?
       const job = p.job;
       const round = job && bot.id === job.by ? jobRound(chat, job) : null;
+      // Picked up again by the user's message: once it adds something it is an ordinary job. If its first
+      // round added nothing, the user was asking about something else: it ends here, without a report.
+      const quiet = !!(round && job?.carried && job.stale > 0);
+      if (round && job?.carried && job.stale === 0) job.carried = false;
       if (round?.spent && handoff.length) {
         wrapUp(); // rounds stopped adding anything: one last turn to say so
       } else if (handoff.length) {
@@ -1392,12 +1438,14 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
         } else {
           wrapUp();
         }
+      } else if (quiet) {
+        p.awaitingLead = false;
       } else if (round && !round.spent && (round.met === false || (round.met === true && !metBefore && !exported(entry)))) {
         // It stopped before the goal: it goes again (its instructions show the live count and what's missing).
         // Or the goal was reached during this turn and nothing was delivered yet: one more turn to check and export.
         p.awaitingLead = false;
         p.queue.push(bot.id);
-      } else if (round?.spent && round.met === false && !p.wrapUpFor) {
+      } else if (round?.spent && round.met === false && !p.wrapUpFor && !quiet) {
         // The rounds stopped adding anything and the goal isn't reached: the job doesn't end on whatever
         // the last message happened to say (a question, a promise to continue). Its owner gets one last
         // turn to report where it stands.
@@ -1591,6 +1639,16 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     yield { type: "entry", entry };
   }
 
+  // A big job that ends before its goal stays open for the user's next message.
+  const endedJob = chat.pending?.job;
+  if (endedJob && !chat.pending?.approval) {
+    const c = jobCount(workHome(chat), endedJob);
+    const unfinished = c ? c.done < c.target : endedJob.rounds === 0 || signal.aborted;
+    // Picked up again and nothing was added: the user moved on to something else, so it closes.
+    const idle = endedJob.carried && endedJob.stale > 0;
+    if (unfinished && !idle) chat.openJob = { goal: endedJob.goal, by: endedJob.by, ...(endedJob.table ? { table: endedJob.table } : {}), ...(endedJob.target ? { target: endedJob.target } : {}), ...(endedJob.require?.length ? { require: endedJob.require } : {}), at: Date.now() };
+    else delete chat.openJob;
+  }
   if (chat.pending && !chat.pending.approval) chat.pending = undefined;
   saveChat(chat);
 

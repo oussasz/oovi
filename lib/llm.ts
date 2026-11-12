@@ -402,6 +402,9 @@ async function post(label: string, url: string, headers: Record<string, string>,
 
 type ABlock = Record<string, unknown>;
 
+/** The user-side line added when a conversation would otherwise end on the bot's own words. */
+const CONTINUE = "[oovi]: Go on from where you stopped, following your instructions. Don't repeat what you already said.";
+
 /**
  * Messages, tools and system prompt in Anthropic's format, with prompt-caching marks.
  * desktop: send Anthropic's computer toolset (in place of the DESKTOP_MARKER spec) and mark
@@ -440,6 +443,11 @@ function anthropicParts(r: Req, wire: Wire = "anthropic", desktop = false) {
       );
     }
   }
+
+  // The service answers a conversation that starts and ends with the user's side, whatever path built it
+  // (a bot turned again after its own words was refused as "assistant message prefill").
+  if (msgs[0]?.role === "assistant") msgs.unshift({ role: "user", content: [{ type: "text", text: "(Conversation so far:)" }] });
+  if (msgs.at(-1)?.role === "assistant") msgs.push({ role: "user", content: [{ type: "text", text: CONTINUE }] });
 
   // Prompt caching: mark the stable prefix (tools + system) and the conversation
   // so far. In a bot's tool loop each step re-sends the same prefix, which is
@@ -575,6 +583,8 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
       if (shown.some((p) => p.type === "image")) msgs.push({ role: "user", content: [{ type: "text", text: "(Images returned by read_attachment:)" }, ...oaParts(shown)] });
     }
   }
+
+  if (msgs.at(-1)?.role === "assistant") msgs.push({ role: "user", content: CONTINUE });
 
   const headers: Record<string, string> = {};
   if (r.key) headers.authorization = `Bearer ${r.key}`;

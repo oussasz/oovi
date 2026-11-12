@@ -33,6 +33,16 @@ function load(koffi) {
     OpenProcessToken: advapi32.func("bool __stdcall OpenProcessToken(void *h, uint32_t access, _Out_ void **token)"),
     GetTokenInformation: advapi32.func("bool __stdcall GetTokenInformation(void *token, int cls, _Out_ uint8_t *buf, uint32_t len, _Out_ uint32_t *ret)"),
     DwmGetWindowAttribute: dwmapi.func("int32_t __stdcall DwmGetWindowAttribute(void *hwnd, uint32_t attr, _Out_ uint8_t *buf, uint32_t size)"),
+    // Switching, minimizing and closing windows (manage_window).
+    ShowWindow: user32.func("bool __stdcall ShowWindow(void *hwnd, int cmd)"),
+    SetForegroundWindow: user32.func("bool __stdcall SetForegroundWindow(void *hwnd)"),
+    BringWindowToTop: user32.func("bool __stdcall BringWindowToTop(void *hwnd)"),
+    PostMessageW: user32.func("bool __stdcall PostMessageW(void *hwnd, uint32_t msg, uintptr_t wparam, intptr_t lparam)"),
+    IsWindow: user32.func("bool __stdcall IsWindow(void *hwnd)"),
+    IsZoomed: user32.func("bool __stdcall IsZoomed(void *hwnd)"),
+    GetWindow: user32.func("void * __stdcall GetWindow(void *hwnd, uint32_t cmd)"),
+    GetWindowLongW: user32.func("int32_t __stdcall GetWindowLongW(void *hwnd, int index)"),
+    keybd_event: user32.func("void __stdcall keybd_event(uint8_t vk, uint8_t scan, uint32_t flags, uintptr_t extra)"),
   };
 
   const GA_ROOT = 2;
@@ -118,7 +128,64 @@ function load(koffi) {
     return fn.DwmGetWindowAttribute(h, DWMWA_CLOAKED, b, 4) === 0 && b.readUInt32LE(0) !== 0;
   }
 
+  const GW_OWNER = 4;
+  const GWL_EXSTYLE = -20;
+  const WS_EX_TOOLWINDOW = 0x80;
+  const WS_EX_NOACTIVATE = 0x08000000;
+  const SW = { minimize: 6, maximize: 3, restore: 9 };
+  const WM_CLOSE = 0x0010;
+  const VK_MENU = 0x12;
+  const KEYEVENTF_KEYUP = 0x2;
+
+  /** The windows a person sees in the taskbar and Alt+Tab: titled, not owned, not tool windows, not cloaked. */
+  function appWindows(max = 300) {
+    const handles = [];
+    fn.EnumWindows((h) => {
+      if (fn.IsWindowVisible(h) && !cloaked(h) && !fn.GetWindow(h, GW_OWNER)) {
+        const ex = fn.GetWindowLongW(h, GWL_EXSTYLE) >>> 0;
+        if (!(ex & WS_EX_TOOLWINDOW) && !(ex & WS_EX_NOACTIVATE) && text(fn.GetWindowTextW, h)) handles.push(h);
+      }
+      return handles.length < max;
+    }, 0);
+    return handles;
+  }
+  /** The live handle behind a number from a list (handles are never taken from outside as pointers). */
+  const find = (handle) => appWindows().find((h) => num(h) === Number(handle)) || null;
+
   return {
+    /** Windows the user could switch to, top of the z-order first, with minimized: true for those in the taskbar only. */
+    appWindows() {
+      return appWindows()
+        .map((h) => {
+          const w = info(h);
+          return w ? { ...w, minimized: !!fn.IsIconic(h), maximized: !!fn.IsZoomed(h) } : null;
+        })
+        .filter(Boolean);
+    },
+    /**
+     * Bring to the front, minimize, maximize, restore or ask to close one of those windows. Returns "" or
+     * an error text. Closing is a polite request (WM_CLOSE): the app may first ask to save.
+     */
+    act(handle, action) {
+      const h = find(handle);
+      if (!h) return "That window isn't open any more.";
+      if (action === "close") return fn.PostMessageW(h, WM_CLOSE, 0, 0) ? "" : "Windows didn't accept the request to close it.";
+      if (action === "minimize" || action === "maximize" || action === "restore") {
+        fn.ShowWindow(h, SW[action]);
+        return "";
+      }
+      if (action === "switch") {
+        if (fn.IsIconic(h)) fn.ShowWindow(h, SW.restore);
+        // Windows only lets a program bring a window to the front right after a key press of its own:
+        // a lone Alt press (no other key) does that without doing anything else.
+        fn.keybd_event(VK_MENU, 0, 0, 0);
+        fn.keybd_event(VK_MENU, 0, KEYEVENTF_KEYUP, 0);
+        fn.BringWindowToTop(h);
+        fn.SetForegroundWindow(h);
+        return num(fn.GetForegroundWindow()) === num(h) ? "" : "Windows didn't let oovi bring it to the front.";
+      }
+      return "Unknown action.";
+    },
     /** The window that receives the keyboard. */
     foreground() {
       return info(fn.GetForegroundWindow());

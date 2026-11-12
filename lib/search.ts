@@ -135,11 +135,10 @@ async function getJson(label: string, url: string, init: RequestInit): Promise<u
   return res.json();
 }
 
-export async function webSearch(s: Settings, query: string): Promise<SearchHit[]> {
+/** One search with the provider the user chose. */
+async function withProvider(s: Settings, provider: string, query: string): Promise<SearchHit[]> {
   const cfg = s.search;
-  switch (cfg.provider) {
-    case "auto":
-      return aiSearch(s, query);
+  switch (provider) {
     case "searxng": {
       const j = (await getJson("SearXNG", `${cfg.searxngUrl}/search?q=${encodeURIComponent(query)}&format=json`, { headers: { accept: "application/json" } })) as {
         results?: { title?: string; url?: string; content?: string }[];
@@ -147,14 +146,14 @@ export async function webSearch(s: Settings, query: string): Promise<SearchHit[]
       return (j.results ?? []).slice(0, 10).map((r) => ({ title: r.title ?? "", url: r.url ?? "", snippet: r.content ?? "" }));
     }
     case "brave": {
-      if (!cfg.braveKey) throw new Error("Add your Brave Search API key in Settings → Web search.");
+      if (!cfg.braveKey) throw new Error("no Brave API key is saved");
       const j = (await getJson("Brave Search", `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
         headers: { accept: "application/json", "x-subscription-token": cfg.braveKey },
       })) as { web?: { results?: { title?: string; url?: string; description?: string }[] } };
-      return (j.web?.results ?? []).map((r) => ({ title: r.title ?? "", url: r.url ?? "", snippet: (r.description ?? "").replace(/<[^>]+>/g, "") }));
+      return (j.web?.results ?? []).map((r) => ({ title: r.title ?? "", url: r.url ?? "", snippet: r.description ?? "" }));
     }
     case "tavily": {
-      if (!cfg.tavilyKey) throw new Error("Add your Tavily API key in Settings → Web search.");
+      if (!cfg.tavilyKey) throw new Error("no Tavily API key is saved");
       const j = (await getJson("Tavily", "https://api.tavily.com/search", {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${cfg.tavilyKey}` },
@@ -163,8 +162,49 @@ export async function webSearch(s: Settings, query: string): Promise<SearchHit[]
       return (j.results ?? []).map((r) => ({ title: r.title ?? "", url: r.url ?? "", snippet: r.content ?? "" }));
     }
     default:
-      throw new Error(
-        "Web search isn't set up. Ask the user to pick a search provider in Settings → Web search (SearXNG is free and self-hosted; Brave and Tavily have free tiers). Meanwhile, use open_url on sites you already know (e.g. https://en.wikipedia.org/wiki/Special:Search?search=...).",
-      );
+      return aiSearch(s, query);
   }
+}
+
+const PROVIDER_NAME: Record<string, string> = { searxng: "SearXNG", brave: "Brave Search", tavily: "Tavily" };
+
+/**
+ * Web search that works with no setup. The provider the user chose is tried first; when it isn't
+ * set, fails or finds nothing, the built-in search answers (the AI provider's own search with an own
+ * key, else Exa's free public search). Search is never "off": a bot with Web search always gets
+ * results, and is never sent to ask the user to set anything up.
+ * note: for the bot, when the chosen provider didn't answer (so it doesn't blame the user's setup).
+ */
+export async function searchWithNote(s: Settings, query: string): Promise<{ hits: SearchHit[]; note: string }> {
+  const chosen = s.search.provider;
+  const errors: string[] = [];
+  if (chosen === "searxng" || chosen === "brave" || chosen === "tavily") {
+    try {
+      const hits = await withProvider(s, chosen, query);
+      if (hits.length) return { hits, note: "" };
+    } catch (e) {
+      errors.push(`${PROVIDER_NAME[chosen]}: ${(e as Error).message.slice(0, 160)}`);
+    }
+  }
+  try {
+    const hits = await aiSearch(s, query);
+    if (hits.length) return { hits, note: errors.length ? `(The search service chosen in Settings didn't answer: ${errors[0]}. oovi's built-in search answered instead: nothing for the user to do.)` : "" };
+  } catch (e) {
+    errors.push((e as Error).message.slice(0, 200));
+  }
+  // An own Claude or Gemini key whose search failed: Exa's free search still answers.
+  if (s.providers.anthropic?.apiKey || s.providers.gemini?.apiKey) {
+    try {
+      const hits = await exaSearch(query);
+      if (hits.length) return { hits, note: "" };
+    } catch (e) {
+      errors.push((e as Error).message.slice(0, 200));
+    }
+  }
+  if (errors.length) throw new Error(`Search didn't answer right now (${errors.join("; ")}). It is usually a passing network problem: try again in a moment, or read pages you know with read_url meanwhile. Don't ask the user to change any setting.`);
+  return { hits: [], note: "" };
+}
+
+export async function webSearch(s: Settings, query: string): Promise<SearchHit[]> {
+  return (await searchWithNote(s, query)).hits;
 }

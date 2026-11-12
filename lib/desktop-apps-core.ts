@@ -5,7 +5,11 @@
 // password managers.
 // Pure (no imports): tests/unit/desktop-apps.test.mts.
 
-export type AppEntry = { name: string; path: string; target?: string };
+/** store: a Microsoft Store app (path "shell:AppsFolder\\<package id>!<app>", no shortcut file). */
+export type AppEntry = { name: string; path: string; target?: string; store?: boolean };
+
+/** Store packages that run commands or change the system (Terminal, PowerShell, Settings, the Store itself, Dev Home…). */
+const BLOCKED_PACKAGE = /WindowsTerminal|PowerShell|immersivecontrolpanel|Microsoft\.WindowsStore|Microsoft\.DevHome|Microsoft\.WinGet|DesktopAppInstaller|Microsoft\.SecHealthUI|Microsoft\.Windows\.SecHealthUI|Microsoft\.Windows\.Shell|Microsoft\.Windows\.Search|windows\.immersive|MicrosoftCorporationII\.QuickAssist|Microsoft\.RemoteDesktop|WindowsSubsystemForLinux|CanonicalGroupLimited|TheDebianProject|SUSE|KaliLinux|AutoHotkey|1Password|Bitwarden|KeePass|LastPass|Dashlane|NordPass|Keeper/i;
 
 const BLOCKED_EXE = new Set([
   "cmd.exe", "powershell.exe", "powershell_ise.exe", "pwsh.exe", "windowsterminal.exe", "wt.exe", "openconsole.exe", "conhost.exe",
@@ -23,6 +27,11 @@ const exeOf = (target?: string) => (target ?? "").replace(/\\/g, "/").split("/")
 
 /** Why this app can't be opened by a bot, or null when it can. */
 export function blockedApp(a: AppEntry): string | null {
+  if (a.store) {
+    if (!/^shell:AppsFolder\\[\w.\-]+![\w.\-]+$/.test(a.path)) return "It isn't a program";
+    if (BLOCKED_PACKAGE.test(a.path) || BLOCKED_NAME.test(a.name)) return "It can run commands, change the system or holds passwords";
+    return null;
+  }
   const exe = exeOf(a.target);
   if (BLOCKED_EXE.has(exe) || /\.(msc|bat|cmd|ps1|vbs|js|reg|scr|hta|msi)$/i.test(a.target ?? "")) return "It can run commands or change the system";
   if (BLOCKED_NAME.test(a.name)) return "It can run commands, change the system or holds passwords";
@@ -49,7 +58,7 @@ export function findApp(apps: AppEntry[], wanted: string): AppMatch {
     })
     .filter((x) => x.score > 0)
     .sort((x, y) => y.score - x.score || x.n.length - y.n.length);
-  if (!scored.length) return { error: `No installed app is called "${wanted}" in the Start menu. Apps from the Microsoft Store may not be listed: ask the user to open it, then go on in its window.` };
+  if (!scored.length) return { error: `No installed app is called "${wanted}" (Start menu and Microsoft Store apps were searched; the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.` };
   const best = scored.filter((x) => x.score === scored[0]!.score);
   // The same app listed twice (for this user and for all users) is one app.
   const names = [...new Set(best.map((x) => x.n))];

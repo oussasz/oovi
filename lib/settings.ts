@@ -144,7 +144,8 @@ function readRaw(): Settings {
       ...structuredClone(DEFAULTS),
       ...j,
       providers: j.providers ?? {},
-      search: { ...DEFAULTS.search, ...j.search },
+      // "none" (search off) was removed: a bot with Web search always searches. Old settings become "auto".
+      search: ((q) => (q.provider === "none" ? { ...q, provider: "auto" } : q))({ ...DEFAULTS.search, ...j.search }),
       browser: { ...DEFAULTS.browser, ...j.browser },
       approvals: { ...DEFAULTS.approvals, ...j.approvals },
       computerFiles: cleanComputerFiles(j.computerFiles),
@@ -297,7 +298,7 @@ export function updateSettings(patch: SettingsPatch): void {
 
   const q = patch.search;
   if (q) {
-    if (q.provider === "auto" || q.provider === "none" || q.provider === "searxng" || q.provider === "brave" || q.provider === "tavily") raw.search.provider = q.provider;
+    if (q.provider === "auto" || q.provider === "searxng" || q.provider === "brave" || q.provider === "tavily") raw.search.provider = q.provider;
     if (typeof q.searxngUrl === "string" && /^https?:\/\/\S+$/.test(q.searxngUrl.trim())) raw.search.searxngUrl = q.searxngUrl.trim().replace(/\/+$/, "");
     if (q.clearBraveKey) delete raw.search.braveKey;
     else if (typeof q.braveKey === "string" && q.braveKey.trim()) raw.search.braveKey = encrypt(q.braveKey.trim());

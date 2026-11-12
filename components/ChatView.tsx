@@ -115,6 +115,7 @@ function callLabel(c: ToolCall, t: TFn): string {
     case "work_export": return t("chat.call.createFile", { name: String(i.filename ?? i.name ?? "") });
     case "start_big_job": return t("chat.call.bigJob", { goal: String(i.goal ?? "") });
     case "open_app": return t("chat.call.openApp", { app: String(i.name ?? "") });
+    case "manage_window": return t(i.action === "list" ? "chat.call.windowsList" : "chat.call.window", { window: String(i.window ?? "") });
     case "open_in_user_browser": return t("chat.call.openApp", { app: host(i.url) });
     case "upload_file": return t("chat.call.upload", { name: String(i.path ?? "").split(/[\\/]/).pop() ?? "" });
     case "read_url": return t("chat.call.readUrl", { host: host(i.url) });

@@ -83,6 +83,7 @@ const langOf = (app, lang) => String(lang && lang !== "auto" ? lang : app.getLoc
 
 function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage, shell }) {
   const fs = require("node:fs");
+  const { execFile, spawn } = require("node:child_process");
   const path = require("node:path");
   // oovi's own windows, minimized while a bot controls the computer. They cover the screen the bot must
   // see (and are blacked out in its screenshots), so a bot started from a maximized oovi saw only black.
@@ -246,6 +247,32 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     appCache = { at: Date.now(), list };
     return list;
   }
+  /**
+   * Microsoft Store apps (WhatsApp, Netflix, the new Outlook…): they have no Start-menu shortcut file.
+   * Windows lists them with Get-StartApps; only packaged apps (ids with "!") are kept, the rest are the
+   * shortcuts already found above. Read once in the background and cached for ten minutes.
+   */
+  let storeCache = { at: 0, list: [], loading: false };
+  function storeApps() {
+    if (process.platform !== "win32") return [];
+    if (!storeCache.loading && Date.now() - storeCache.at > 600_000) {
+      storeCache.loading = true;
+      const ps = path.join(process.env.SystemRoot || "C:\\Windows", "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+      execFile(ps, ["-NoProfile", "-NonInteractive", "-Command", "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-StartApps | Where-Object { $_.AppID -like '*!*' } | ConvertTo-Json -Compress"], { windowsHide: true, timeout: 20_000, maxBuffer: 8 * 1024 * 1024 }, (err, out) => {
+        storeCache.loading = false;
+        storeCache.at = Date.now();
+        if (err) return;
+        try {
+          const j = JSON.parse(String(out || "[]"));
+          const rows = Array.isArray(j) ? j : [j];
+          storeCache.list = rows.filter((r) => r && r.Name && r.AppID && /^[\w.\-]+!\w[\w.\-]*$/.test(r.AppID)).map((r) => ({ name: String(r.Name), path: `shell:AppsFolder\\${r.AppID}`, store: true }));
+        } catch {
+          /* keep the last list */
+        }
+      });
+    }
+    return storeCache.list;
+  }
   let nut = null;
   let win32 = null;
   let loadError = null;
@@ -282,6 +309,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
 
   /** Called once the app is ready (powerMonitor needs it). */
   function init() {
+    // The Store apps list takes a few seconds to read: start now, so it's there when a bot asks.
+    setTimeout(() => storeApps(), 15_000).unref?.();
     try {
       powerMonitor.on("lock-screen", () => {
         locked = true;
@@ -399,6 +428,15 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     visibleWindows() {
       return windows().visibleWindows().map(tag);
     },
+    /** The windows the user can switch to, minimized ones included (oovi's own are marked own: true). */
+    appWindows() {
+      return windows().appWindows().map(tag);
+    },
+    /** switch | minimize | maximize | restore | close one of them (the server checked it may). "" or an error. */
+    windowAction(handle, action) {
+      if (!["switch", "minimize", "maximize", "restore", "close"].includes(action)) return "Unknown action.";
+      return windows().act(handle, action);
+    },
     move(x, y) {
       need().moveMouse(Math.round(x), Math.round(y));
     },
@@ -442,13 +480,25 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
         /* a bonus: the real pointer still moves */
       }
     },
-    /** Installed apps from the Start menu: [{ name, path, target }]. Windows only. */
+    /** Installed apps: Start-menu shortcuts, and Microsoft Store apps ({ name, path: "shell:AppsFolder\\<id>", store: true }). Windows only. */
     apps() {
-      return process.platform === "win32" ? startMenuApps() : [];
+      return process.platform === "win32" ? [...startMenuApps(), ...storeApps()] : [];
     },
     /** Start one of those apps (the server checked it and the user said yes). Resolves "" or an error text. */
     async openApp(file) {
       if (process.platform !== "win32") return "Desktop control is only available on Windows for now.";
+      const store = storeApps().find((a) => a.path === file);
+      if (store) {
+        // A Store app has no file to open: Windows starts it from its app id, as the Start menu does.
+        return await new Promise((resolve) => {
+          const p = spawn(path.join(process.env.SystemRoot || "C:\\Windows", "explorer.exe"), [store.path], { detached: true, stdio: "ignore", windowsHide: false });
+          p.once("error", (e) => resolve(String((e && e.message) || e)));
+          p.once("spawn", () => {
+            p.unref();
+            resolve("");
+          });
+        });
+      }
       const known = startMenuApps().some((a) => a.path === file);
       if (!known) return "That isn't an app from the Start menu.";
       return (await shell.openPath(file)) || "";
