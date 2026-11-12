@@ -19,6 +19,7 @@ import { COMPUTER_TOOLS, computerNeedsApproval, describeComputerCall, uploadSour
 import { translateFor, type Tr } from "./i18n-server";
 import { SCROLL_JS, collectList, toRows } from "./page-list";
 import { runScrape } from "./scrape";
+import { PLACES_SPEC, runPlacesTool } from "./places";
 import { rowLine, type ListRow } from "./page-list-core";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -245,7 +246,7 @@ const userNote = (sess: Session) => `The user used the browser; the page may hav
 
 /** The tools a bot may use, from its toggles. */
 export function toolsFor(t: BotTools): ToolSpec[] {
-  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? READER_SPECS : [])];
+  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC] : [])];
 }
 
 async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
@@ -351,6 +352,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
   if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
   if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings, ctx.signal);
+  if (call.name === PLACES_SPEC.name) return runPlacesTool(call, { signal: ctx.signal, addToTable: ctx.addToTable });
   // One cloud computer per chat (sessionId is "<chatId>_<botId>").
   if (VM_TOOLS.has(call.name)) return runVmTool(call, settings, sessionId.split("_")[0] ?? sessionId, workspace);
   try {

@@ -14,7 +14,8 @@
 //      a message written in the group itself uses the group's own files,
 //   G) bots are told to keep rows found on directories, with their source,
 //   H) scrape_list does a whole site in one call, like a scraping script: every page of the list,
-//      each item's own page for its phone number and address, the site's own footer number left out.
+//      each item's own page for its phone number and address, the site's own footer number left out,
+//   I) find_places answers from the open places data (a stand-in bucket and geocoders served here).
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -35,6 +36,9 @@ const log = (...a) => {
   fs.appendFileSync(LOG, line + "\n");
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const PARQUET = fs.readFileSync(path.join(__dirname, "fixtures", "places.parquet")); // 6,144 made-up places in three towns
+const geo = { first: [], second: [] };
 
 // ---- the "directory" ----
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title></head><body>${body}</body></html>`;
@@ -84,6 +88,39 @@ const PAGES = {
 http
   .createServer((req, res) => {
     const u = new URL(req.url, SITE);
+    // ---- stand-ins for the open places data (a bucket listing and one Parquet file) and the two geocoders ----
+    if (u.pathname.startsWith("/bucket")) {
+      const KEY = "release/2026-02-01.0/theme=places/type=place/part-00000.zstd.parquet";
+      const prefix = u.searchParams.get("prefix");
+      if (prefix === "release/") {
+        res.writeHead(200, { "content-type": "application/xml" });
+        return res.end(`<ListBucketResult><CommonPrefixes><Prefix>release/2026-01-01.0/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>release/2026-02-01.0/</Prefix></CommonPrefixes></ListBucketResult>`);
+      }
+      if (prefix) {
+        res.writeHead(200, { "content-type": "application/xml" });
+        return res.end(`<ListBucketResult>${prefix.startsWith("release/2026-02-01.0/") ? `<Contents><Key>${KEY}</Key><LastModified>x</LastModified><Size>${PARQUET.length}</Size></Contents>` : ""}</ListBucketResult>`);
+      }
+      if (decodeURIComponent(u.pathname) !== `/bucket/${KEY}`) {
+        res.writeHead(404);
+        return res.end();
+      }
+      const m = /bytes=(\d+)-(\d*)/.exec(req.headers.range || "");
+      const from = m ? Number(m[1]) : 0;
+      const to = m && m[2] ? Math.min(Number(m[2]), PARQUET.length - 1) : PARQUET.length - 1;
+      res.writeHead(m ? 206 : 200, { "content-type": "application/octet-stream", "accept-ranges": "bytes", "content-length": to - from + 1, ...(m ? { "content-range": `bytes ${from}-${to}/${PARQUET.length}` } : {}) });
+      return res.end(PARQUET.subarray(from, to + 1));
+    }
+    if (u.pathname === "/geo/search") {
+      geo.first.push(u.searchParams.get("q"));
+      res.writeHead(200, { "content-type": "application/json" });
+      // Only Testville is known here; a post office with the same name comes first, as in real answers.
+      return res.end(JSON.stringify(/testville/i.test(u.searchParams.get("q")) ? [{ category: "amenity", display_name: "Poste de Testville", boundingbox: ["36.71", "36.7101", "3.01", "3.0101"] }, { category: "boundary", display_name: "Testville, Testland", boundingbox: ["36.69", "36.75", "2.99", "3.06"] }] : []));
+    }
+    if (u.pathname === "/geo2/api/") {
+      geo.second.push(u.searchParams.get("q"));
+      res.writeHead(200, { "content-type": "application/json" });
+      return res.end(JSON.stringify({ features: /farcity/i.test(u.searchParams.get("q")) ? [{ properties: { name: "Farcity", country: "Testland", extent: [9.99, 45.05, 10.06, 44.99] }, geometry: { coordinates: [10.02, 45.02] } }] : [] }));
+    }
     const salon = u.pathname.match(/^\/salon\/(\d+)$/);
     // Salon 5's page is refused to plain downloads (as some sites do) and answers only a real browser.
     if (salon && salon[1] === "5" && !/Chrome\/\d+\.\d+\.\d+\.\d+/.test(req.headers["user-agent"] || "")) {
@@ -119,7 +156,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -139,6 +176,18 @@ function answer(body) {
   }
   if (scene === "DIRECT") return lastTool ? done() : call("work_table", { action: "read", table: "Cafés Alger" });
 
+  if (scene === "PLACES") {
+    const steps = [
+      { area: "Testville", categories: ["cafés"], table: "Lieux", limit: 700 },
+      { area: "Farcity", categories: ["Beauty salons"], with_phone: true, limit: 5 },
+      { area: "Testville", categories: ["plumber"] },
+      { area: "Nowhere at all" },
+      { area: "Testville", categories: ["cafe"], name: "testville 9", limit: 3 },
+    ];
+    const n = (all.split("PLACES:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`places${n}`] = out;
+    return n < steps.length ? call("find_places", steps[n]) : text("PLACES-RESULT: done");
+  }
   // One call each: the engine does the pages by itself.
   if (scene === "SITE") return lastTool ? done() : call("scrape_list", { url: `${SITE}/annuaire`, table: "Salons Alger", pages: 10, details: true, fields: { Prix: ".price" } });
   if (scene === "PATTERN") return lastTool ? done() : call("scrape_list", { url: `${SITE}/annuaire/p{page}`, from_page: 2, pages: 2, table: "Pages 2 et 3" });
@@ -185,7 +234,7 @@ http
 let server = null;
 function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
-    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
+    env: { ...process.env, OOVI_PLACES_URL: `${SITE}/bucket`, OOVI_GEOCODER_URL: `${SITE}/geo`, OOVI_GEOCODER2_URL: `${SITE}/geo2`, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => fs.appendFileSync(LOG, `   [server] ${d}`));
@@ -297,6 +346,26 @@ const check = (name, ok, detail = "") => {
   t = work(dm).tables["Produits"];
   check("H) a 'next' button that changes the list in place is clicked until it is disabled: 30 products from 3 pages", !!t && t.rows.length === 30 && /30 items from 3 pages/.test(seen.out["Scout:APP:scrape_list"] || ""), `${t?.rows.length} rows | ${(seen.out["Scout:APP:scrape_list"] || "").split("\n").slice(0, 4).join(" / ").slice(0, 300)}`);
 
+  // I: businesses of an area from the open places data, without visiting a website.
+  c = await run(dm, "PLACES: the cafés of Testville, then other questions");
+  t = work(dm).tables["Lieux"];
+  const p1 = seen.out.places1 || "";
+  check("I) find_places gives every café of the area in one call, from the open data: 669, none of them closed", /669 places in Testville, Testland \(about [\d.]+ × [\d.]+ km\) in the categories cafe; 498 of 669 have a phone number/.test(p1) && !!t && t.rows.length === 669, `${t?.rows.length} rows | ${p1.split("\n")[0].slice(0, 200)}`);
+  if (t) {
+    const row = (name) => t.rows.find((r) => r[0] === name) || [];
+    check("I) the district is chosen over a shop of the same name, and only that area's places come back", t.rows.every((r) => /^Café Testville \d+$/.test(r[0])), t.rows.filter((r) => !/^Café Testville/.test(r[0])).slice(0, 2).join(" | "));
+    check("I) rows carry phone, address, email, website or social page, and the source", row("Café Testville 9")[col(t, "Phone")] === "+213550000009" && row("Café Testville 9")[col(t, "Address")] === "10 rue des Tests, Testville, 16000" && row("Café Testville 105")[col(t, "Link")] === "https://site105.example/" && row("Café Testville 105")[col(t, "Email")] === "contact105@example.test" && /Overture Maps open data \(2026-02-01\.0\)/.test(row("Café Testville 9")[col(t, "Source")]), `${row("Café Testville 9").join(" | ").slice(0, 160)} || ${row("Café Testville 105").join(" | ").slice(0, 160)}`);
+    check("I) a placeholder link in the data is not kept as a website (the social page is)", row("Café Testville 33")[col(t, "Link")] === "https://www.facebook.com/100033", row("Café Testville 33")[col(t, "Link")]);
+    check("I) the best-known places come first", t.rows[0][0] === "Café Testville 9", t.rows[0][0]);
+  }
+  check("I) the bot is told where the data comes from and to treat numbers as 'to confirm'", /Source: Overture Maps open data .*Treat numbers as "to confirm"/.test(p1));
+  const p2 = seen.out.places2 || "";
+  check("I) when the first geocoder doesn't know a place, the second one is asked (Farcity)", /places in Farcity, Testland/.test(p2) && geo.second.some((q) => /Farcity/.test(q)) && /the 5 best-known are given/.test(p2) && (p2.match(/Phone: \+2135500/g) || []).length === 5 && /beauty salon/.test(p2), p2.split("\n")[0].slice(0, 200));
+  check("I) a category that matches nothing gets the area's own categories to choose from", /Nothing in Testville.* matches the categories plumber\. The data has 2007 places there.*beauty_salon \(670\), cafe \(669\)/.test(seen.out.places3 || ""), (seen.out.places3 || "").slice(0, 220));
+  check("I) a place that isn't on the map says so and what to write", /"Nowhere at all" wasn't found on the map/.test(seen.out.places4 || ""), (seen.out.places4 || "").slice(0, 120));
+  check("I) a name filter narrows the answer", /Café Testville 9\b/.test(seen.out.places5 || "") && !/Café Testville 39/.test(seen.out.places5 || ""), (seen.out.places5 || "").split("\n").slice(2, 4).join(" / ").slice(0, 200));
+  check("I) the data's index is kept on disk, so the next question doesn't rebuild it", fs.existsSync(path.join(DATA, "accounts", "p1test", "cache", "places", "2026-02-01.0.json")) || fs.existsSync(path.join(DATA, "cache", "places", "2026-02-01.0.json")));
+
   // F: one job, one table.
   const newBot = (name) => api("POST", "/api/bots", { name, role: "", instructions: `You are ${name}, a teammate.`, face: scout.face, tools: { web: false, browser: false } });
   const amel = await newBot("Amel");
@@ -313,7 +382,7 @@ const check = (name, ok, detail = "") => {
   check("F) a message written in the group itself uses the group's own files, as before", /There is no table "Cafés Alger"/.test(lastText(c)) && !/the same ones as the main assistant/.test(seen.systems["Amel:DIRECT"] || ""), lastText(c).slice(0, 160));
 
   // G: instructions.
-  check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
+  check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list", "find_places"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
   check("G) every bot is told to keep a row found on a directory, with its source, marked to confirm", /a row needs a source, not a perfect one/.test(seen.systems["Amel:SHARE"] || "") && /never ask the user to copy from a page what a page shows/.test(seen.systems["Scout:LIST"] || ""));
 
   const ok = results.filter((x) => x.ok).length;

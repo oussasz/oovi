@@ -1,14 +1,20 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## After 0.10.3, not released yet: scrape_list, a whole site in one call (2026-11-12)
+## 0.10.4 (2026-11-12): scrape_list (a whole site in one call) and find_places (open map data)
 - Owner: "my friends scrape without AI, with tools like Playwright; oovi must outperform them."
 - `scrape_list` (`lib/scrape.ts`, spec in `lib/tools.ts`): one tool call does what a scraping script does, with no model call per page. It reads the list (`lib/page-list.ts`, shared with extract_list), goes through the next pages by itself (rel=next, a "Next/Suivant/التالي" control with or without arrows, numbered pages, a button that swaps the list in place, or a URL with `{page}`), optionally opens each item's own page (`details: true`: plain download 4 at a time through `fetchPage` in `lib/reader.ts`, the browser when the site refuses that) and saves name, details, phone, email, address, link, source and any asked-for column (`fields: {column: "selector"}` or `"selector@attr"`) into the work table.
 - A phone or email found on most item pages of one site is the site's own (footer) and is given to no item (`siteWide` in `lib/page-list-core.ts`).
 - Item text is split into lines by blocks and by inline pieces that touch (`linesOf` in `LIST_JS`), because innerText glued "Salon Lina" + "Kouba".
 - Limits: one call works at most 9 minutes and then says how to go on; 100 list pages and 1,000 item pages per call; every address is checked against the private-network block; if the user takes the browser, it stops and says so. No disguise: a site that refuses automated visits is reported, not worked around.
 - Run on real sites from the cloud machine: dzadvisor.com cafés in Algiers, 3 pages with details: 48 cafés, 48 with phone and address, 16 seconds, 2 model calls. books.toscrape.com 3 pages with Price/Stock/Title fields: 60 rows, 4 seconds.
-- `tests/e2e/list-scenario.cjs` is now 25 checks (scene H is scrape_list).
-- Still to build: the "find places" tool on Overture Maps (measurements under 0.10.3 below).
+- `find_places` (`lib/places.ts`, pure parts in `lib/places-core.ts`, spec `PLACES_SPEC`; bots with Web search or Browser have it). Owner refused a paid Google key and asked for a free open source: Overture Maps "places" (open data, CDLA-Permissive-2.0, no key).
+  - How: the newest release is found from the public bucket's listing; each file's index is read once per release (about 38 MB for the 16 files, then kept in `<data>/cache/places/<release>.json`); a question downloads only the blocks of rows that cover the area (5 to 10 MB each, at most 12). Read with `hyparquet` + `hyparquet-compressors` (MIT, pure JavaScript, bundled into the standalone server: no native code).
+  - The area's outline: Nominatim (OpenStreetMap), at most one request a second with oovi's own User-Agent, then Photon. "lat,lon" works too. An area over 150 km across is refused.
+  - Categories are English words matched on whole words of Overture's categories; when nothing matches, the tool answers with the area's own categories.
+  - Run for real from the cloud machine: Hydra, Alger: 26 cafés and coffee shops (18 with a phone) and 117 beauty/hair/spa (100 given, all with a phone) in about 8 seconds including the first index build; Shibuya, Tokyo works; "Algérie" is refused as too large.
+  - Known limits: in Algeria almost every row comes from Facebook pages (a business without one is missing; numbers can be old); "internet cafe" matches "cafe"; the first question each month downloads the 38 MB index; tests use `OOVI_PLACES_URL`, `OOVI_GEOCODER_URL`, `OOVI_GEOCODER2_URL` and `tests/e2e/fixtures/places.parquet` (made-up places).
+  - Privacy page has a paragraph about these services (needs a website deploy).
+- `tests/e2e/list-scenario.cjs` is now 36 checks (scene I is find_places).
 
 ## 0.10.3 (2026-11-12): two errors that stopped teams, lists taken from pages in one step, one table per job
 - Seen by the owner in a team chat: the leader's turn failed with "This model does not support assistant message prefill. The conversation must end with a user message."

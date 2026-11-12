@@ -14,7 +14,7 @@ export const WRONG_LESSON = /(empty|blank|vide)[^.]*(tunnel|offline|down|hors li
  * themselves with thumbs-down is kept as they wrote it).
  */
 export const TECHNICAL_LESSON =
-  /\b(web_search|read_url|open_url|read_page|extract_list|scrape_list|research tool|work_table|work_notes|work_export|create_(document|spreadsheet|presentation|image)|request_user_takeover|message_group|send_file_to_user|find_files|vm_run|mcp_\w+|tool call|tool result|api (error|call|limit)|rate limit|time[d ]?out|timeout|status code|http \d{3}|\b[45]\d{2} error|json|javascript|snippets?|extraits? de recherche|headless|selector|element number|step limit|hand-?offs?|token limit|context window|retry|retries|réessay)/i;
+  /\b(web_search|read_url|open_url|read_page|extract_list|scrape_list|find_places|research tool|work_table|work_notes|work_export|create_(document|spreadsheet|presentation|image)|request_user_takeover|message_group|send_file_to_user|find_files|vm_run|mcp_\w+|tool call|tool result|api (error|call|limit)|rate limit|time[d ]?out|timeout|status code|http \d{3}|\b[45]\d{2} error|json|javascript|snippets?|extraits? de recherche|headless|selector|element number|step limit|hand-?offs?|token limit|context window|retry|retries|réessay)/i;
 
 /**
  * A note for oovi's developers about how one of oovi's tools behaved ("read_url returned no phone

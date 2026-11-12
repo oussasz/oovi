@@ -88,7 +88,7 @@ export function rowsForTable(columns: string[] | undefined, rows: ListRow[], sou
 }
 
 /** One item on one line, for the bot to read. */
-export const rowLine = (r: ListRow, n: number) => `${n}. ${[r.name, r.details, r.phone && `Phone: ${r.phone}`, r.email && `Email: ${r.email}`, r.link].filter(Boolean).join(" | ")}`;
+export const rowLine = (r: ListRow, n: number) => `${n}. ${[r.name, r.details, r.address, r.phone && `Phone: ${r.phone}`, r.email && `Email: ${r.email}`, r.link].filter(Boolean).join(" | ")}`;
 
 const digits = (p: string) => p.replace(/\D/g, "").replace(/^00/, "").slice(-9);
 
