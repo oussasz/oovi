@@ -65,3 +65,15 @@ test("Microsoft Store apps can be opened by name; system and password packages c
   assert.ok("error" in findApp(apps, "Bitwarden"));
   assert.ok("error" in findApp(apps, "Odd"));
 });
+
+test("the Store apps a real Windows lists: Settings, Terminal and Windows Security are refused, the others can open", () => {
+  // As read on GitHub's windows-latest by tests/win/windows-check.cjs (2026-11-12).
+  const real = [
+    ["Feedback Hub", "Microsoft.WindowsFeedbackHub_8wekyb3d8bbwe!App", true],
+    ["Get Started", "MicrosoftWindows.Client.CBS_cw5n1h2txyewy!WebExperienceHost", true],
+    ["Settings", "windows.immersivecontrolpanel_cw5n1h2txyewy!microsoft.windows.immersivecontrolpanel", false],
+    ["Terminal", "Microsoft.WindowsTerminal_8wekyb3d8bbwe!App", false],
+    ["Windows Security", "Microsoft.SecHealthUI_8wekyb3d8bbwe!SecHealthUI", false],
+  ] as const;
+  for (const [name, id, ok] of real) assert.equal(blockedApp({ name, path: `shell:AppsFolder\\${id}`, store: true }) === null, ok, name);
+});
