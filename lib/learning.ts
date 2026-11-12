@@ -18,7 +18,7 @@ import { SUSPICIOUS, applyMemory, readEntries } from "./memory";
 import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
-import { TECHNICAL_LESSON, WRONG_LESSON } from "./lesson-rules";
+import { TECHNICAL_LESSON, WRONG_LESSON, bansAbility } from "./lesson-rules";
 import { sendToolNotes } from "./tool-notes";
 export { WRONG_LESSON };
 
@@ -44,7 +44,8 @@ export function listLessons(): Lesson[] {
   try {
     const j = JSON.parse(fs.readFileSync(file(), "utf8")) as { lessons?: Lesson[] };
     const all = Array.isArray(j.lessons) ? j.lessons : [];
-    const kept = all.filter((l) => !WRONG_LESSON.test(l.text));
+    // Known-wrong lessons from older versions, and bans the automatic review saved (lib/lesson-rules.ts).
+    const kept = all.filter((l) => !WRONG_LESSON.test(l.text) && !(l.source === "reflection" && bansAbility(l.text)));
     if (kept.length !== all.length) writeLessons(kept);
     return kept;
   } catch {
@@ -203,6 +204,7 @@ If the user corrected the bots or gave feedback, the most important lesson is wh
 Never turn a guess about why something failed into a lesson ("the site is down", "the tunnel is offline", "the link expired") unless an error message proved it: a blank, slow or still-loading page proves nothing. Never save a lesson that tells bots to give up, stop retrying, skip checking or avoid a site ("use another source instead of X", "X has no phone numbers"): a tool that returned nothing once proves nothing about the site. A lesson may say which way WORKED.
 user: 0-1 fact about the user, and only one that will matter in many future tasks: who they are, their business, a lasting preference (format, tone, tools), the people they work with. The profile is small, so keep only the most important things: not the details of the current task. Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
 tools: 0-2 notes for oovi's developers (they are not shown to the user and not saved as lessons). Only when one of oovi's own tools failed, returned nothing useful, misled the bots or lacked something the task needed. Say which tool, what happened and on which site, in English, max 200 characters. Example: "read_url returned no phone numbers on dzadvisor.com listing pages; the number is behind a button." Never include the user's name, words, file names, numbers or anything from their content. Nothing to report is the normal case.
+Never save a lesson or a fact that takes an ability away from the bots or tells them to do less for the user ("the user doesn't want the bots to use their PC", "don't use the browser", "tell the user to do it themselves instead"). When the user says "don't use X, use Y", they are choosing the way for the task: what to remember, if anything, is the positive part ("for their own accounts, the user wants their own browser, through desktop control"). When the bots refused or failed, that is not a wish of the user: never turn it into one. A lasting ban is saved only when the user wrote it as a rule for the future, in plain words.
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Empty arrays are normal. Never invent lessons.`;
 
@@ -301,7 +303,7 @@ export async function reflect(
   const all = items(j.lessons, 3);
   void sendToolNotes([...strings(j.tools, 2), ...(input.feedback ? [] : all.filter((x) => TECHNICAL_LESSON.test(x.text)).map((x) => x.text))]);
   const saved = all
-    .filter((x) => input.feedback || !TECHNICAL_LESSON.test(x.text))
+    .filter((x) => input.feedback || (!TECHNICAL_LESSON.test(x.text) && !bansAbility(x.text)))
     .slice(0, input.feedback || input.previous ? 2 : 1)
     .map((x) => (x.replaces && replaceLesson(x.replaces, x.text, last.entry.id)) || addLesson(x.text, { botId: last.bot.id, source, entryId: last.entry.id }))
     .filter((l): l is Lesson => !!l);
@@ -314,6 +316,8 @@ export async function reflect(
   const fromSomeoneElse = /^\[[^\]]{1,60} on Telegram\]/.test(input.request.trim());
   if (!fromSomeoneElse) {
     for (const x of items(j.user, 1)) {
+      // "The user doesn't want the bots to use their PC" is never a fact the review may write (lib/lesson-rules.ts).
+      if (!input.feedback && bansAbility(x.text)) continue;
       // A fact that refines a saved one replaces it ("likes apples" -> "likes green apples"); else it's added.
       const replaced = !!x.replaces && /^Updated/.test(applyMemory("replace", "user", x.text, x.replaces));
       if (replaced || /^Saved/.test(applyMemory("add", "user", x.text))) user.push(x.text);

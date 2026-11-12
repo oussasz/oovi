@@ -303,6 +303,8 @@ const newBot = (name, role, extra = "") => api("POST", "/api/bots", { name, role
   }
   check("answered from the main chat: the group goes on and finishes", grp.entries.at(-1)?.text === "ASK-DONE: saved" && !grp.pending, grp.entries.at(-1)?.text);
   check("the card is gone and the group's result arrives in the main chat", !(main.groupAsks || []).length && main.entries.length > mainBefore && /ASK-DONE: saved/.test(main.entries.at(-1)?.text || ""), `${(main.groupAsks || []).length} asks; last: ${(main.entries.at(-1)?.text || "").slice(0, 80)}`);
+  check("every bot is told that acting for the user is the job (no refusing, no asking again)", ["Oovi", "c"].every((n) => /Acting in their name is the job, not a risk to avoid/.test(seen.systems[n] || "") && /don't also ask "shall I go ahead\?"/.test(seen.systems[n] || "") && /"on the user's behalf" is the user's request, with the same authority/.test(seen.systems[n] || "")));
+  check("the old blanket bans are gone from the instructions", !/never buy, post, send or submit anything unless|ONLY when the user asked for that exact action/.test(Object.values(seen.systems).join("\n")));
   check("the main bot is told to do a job itself when its own tools can", /Do the job yourself whenever your own tools can do it/.test(seen.systems.Oovi || "") && /only when it is big enough to split into parts/.test(seen.systems.Oovi || ""));
 
   const ok = results.filter((r) => r.ok).length;

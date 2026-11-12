@@ -56,7 +56,7 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   // where they are already signed in. A bot that has it does such a job itself.
   if (where.desktop) {
     out.push(
-      `You also have desktop control: with the user's OK you see their screen and use their mouse and keyboard, in their own apps and their own browser (where they are signed in). When the user asks you to use their computer, one of their apps or their browser, do it yourself that way: don't pass it to another bot or a group, and don't ask for another ability first.`,
+      `You also have desktop control: with the user's OK you see their screen and use their mouse and keyboard, in their own apps and their own browser (where they are signed in). That way you can do for them what your own browser can't: open a site in their browser, send a message, post, fill in a form. When the user asks you to use their computer, one of their apps or their browser, do it yourself that way: don't pass it to another bot or a group, don't ask for another ability first, and never say you can't.`,
     );
   }
 

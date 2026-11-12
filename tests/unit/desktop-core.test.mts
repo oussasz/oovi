@@ -250,3 +250,26 @@ test("internal names", () => {
   assert.equal(c.isDesktopName("type"), false);
   assert.equal(c.memberOf("desktop_left_click"), "left_click");
 });
+
+import { glidePath } from "../../lib/desktop-core.ts";
+
+test("the pointer glides: it ends exactly on the target and never jumps far in one step", () => {
+  const p = glidePath({ x: 100, y: 100 }, { x: 1500, y: 800 });
+  assert.equal(p.length, 24); // a long way takes the most steps, and no more
+  assert.deepEqual(p.at(-1), { x: 1500, y: 800 });
+  let prev = { x: 100, y: 100 };
+  let longest = 0;
+  for (const q of p) {
+    longest = Math.max(longest, Math.hypot(q.x - prev.x, q.y - prev.y));
+    prev = q;
+  }
+  assert.ok(longest < 150, `longest step ${longest}`);
+  // It starts and ends slowly (the first step is much shorter than the middle ones).
+  assert.ok(Math.hypot(p[0]!.x - 100, p[0]!.y - 100) < 20);
+});
+
+test("a tiny or impossible move is one step to the target", () => {
+  assert.deepEqual(glidePath({ x: 10, y: 10 }, { x: 11, y: 12 }), [{ x: 11, y: 12 }]);
+  assert.deepEqual(glidePath({ x: Number.NaN, y: 0 }, { x: 5, y: 5 }), [{ x: 5, y: 5 }]);
+  assert.equal(glidePath({ x: 0, y: 0 }, { x: 100, y: 0 }).length, 4);
+});

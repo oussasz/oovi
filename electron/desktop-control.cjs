@@ -113,6 +113,104 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       }
     }
   }
+  // ---- what the user sees while a bot controls the computer: glowing screen edges and a large pointer ----
+  // Small click-through windows, never a full-screen one: oovi refuses to act on its own windows, so
+  // nothing of oovi's may sit under the point the bot clicks. The edges are thin strips at the screen
+  // border; the pointer window sits just beside the real pointer's tip. All are kept out of the bot's
+  // screenshots (content protection) and are a bonus: if one can't be made, control goes on without it.
+  const EDGE = 8; // DIP
+  const POINTER = 56; // DIP
+  let edges = [];
+  let pointerWin = null;
+  const decoPage = (body, css) =>
+    `data:text/html;charset=utf-8,${encodeURIComponent(`<!doctype html><html><head><meta charset="utf-8"><title></title><style>html,body{margin:0;width:100%;height:100%;background:transparent;overflow:hidden}${css}</style></head><body>${body}</body></html>`)}`;
+  function decoWindow(bounds, url) {
+    const w = new BrowserWindow({
+      ...bounds,
+      frame: false,
+      transparent: true,
+      resizable: false,
+      movable: false,
+      minimizable: false,
+      maximizable: false,
+      fullscreenable: false,
+      skipTaskbar: true,
+      alwaysOnTop: true,
+      focusable: false,
+      hasShadow: false,
+      show: false,
+      title: "",
+      webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true, devTools: false },
+    });
+    w.setAlwaysOnTop(true, "screen-saver");
+    w.setIgnoreMouseEvents(true); // clicks and hit-testing pass through to what is underneath
+    try {
+      w.setContentProtection(true);
+    } catch {
+      /* older Windows: it shows in screenshots */
+    }
+    w.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+    w.webContents.on("will-navigate", (e) => e.preventDefault());
+    w.once("ready-to-show", () => {
+      try {
+        if (!w.isDestroyed()) w.showInactive();
+      } catch {
+        /* a bonus */
+      }
+    });
+    void w.loadURL(url).catch(() => {});
+    return w;
+  }
+  function showDeco() {
+    hideDeco();
+    try {
+      const b = screen.getPrimaryDisplay().bounds;
+      const glow = (dir) =>
+        decoPage(
+          '<div class="g"></div>',
+          `.g{width:100%;height:100%;background:linear-gradient(${dir},rgba(185,167,255,.95),rgba(124,160,255,.55) 45%,rgba(255,140,120,0) 100%);animation:p 2.4s ease-in-out infinite}@keyframes p{0%,100%{opacity:.55}50%{opacity:1}}@media (prefers-reduced-motion:reduce){.g{animation:none;opacity:.8}}`,
+        );
+      edges = [
+        decoWindow({ x: b.x, y: b.y, width: b.width, height: EDGE }, glow("to bottom")),
+        decoWindow({ x: b.x, y: b.y + b.height - EDGE, width: b.width, height: EDGE }, glow("to top")),
+        decoWindow({ x: b.x, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to right")),
+        decoWindow({ x: b.x + b.width - EDGE, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to left")),
+      ];
+      // The pointer: oovi's lilac, with a ring that pulses on a click.
+      pointerWin = decoWindow(
+        { x: b.x + Math.round(b.width / 2), y: b.y + Math.round(b.height / 2), width: POINTER, height: POINTER },
+        decoPage(
+          '<div class="r" id="r"></div><svg viewBox="0 0 32 32" width="40" height="40"><path d="M5 3.5 26.5 14.2c1 .5.9 2-.2 2.3l-8.300 2.300-3.600 8.200c-.500 1.100-2 1-2.400-.100z" fill="#b9a7ff" stroke="#171717" stroke-width="2" stroke-linejoin="round"/></svg>',
+          "svg{position:absolute;left:0;top:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}.r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ffb199;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}",
+        ),
+      );
+    } catch {
+      hideDeco();
+    }
+  }
+  function hideDeco() {
+    for (const w of [...edges, pointerWin]) {
+      try {
+        if (w && !w.isDestroyed()) w.destroy();
+      } catch {
+        /* already gone */
+      }
+    }
+    edges = [];
+    pointerWin = null;
+  }
+  /** Physical pixels of the primary display -> the DIP point Electron places windows with. */
+  function toDip(x, y) {
+    try {
+      if (typeof screen.screenToDipPoint === "function") return screen.screenToDipPoint({ x: Math.round(x), y: Math.round(y) });
+    } catch {
+      /* fall through */
+    }
+    const d = screen.getPrimaryDisplay();
+    const k = d.scaleFactor || 1;
+    return { x: Math.round(d.bounds.x + x / k), y: Math.round(d.bounds.y + y / k) };
+  }
+
   /** Start-menu shortcuts (this user's and everyone's): the apps a bot may be allowed to open. */
   let appCache = { at: 0, list: [] };
   function startMenuApps() {
@@ -206,8 +304,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   /** Marks the banner, so it's never treated as a window to hide or to avoid. */
   const tag = (w) => {
     if (!w) return null;
-    const ov = overlay && !overlay.isDestroyed() ? hwndOf(overlay) : -2;
-    return w.handle === ov ? { ...w, overlay: true } : w;
+    const mine = [overlay, pointerWin, ...edges].filter((x) => x && !x.isDestroyed()).map(hwndOf);
+    return mine.includes(w.handle) ? { ...w, overlay: true } : w;
   };
 
   const bridge = {
@@ -330,6 +428,20 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       lockListeners.add(fn);
       return () => lockListeners.delete(fn);
     },
+    /**
+     * Shows the user where the bot's pointer is (x, y in physical pixels); click: pulse a ring there.
+     * The window sits just right of and below the real pointer's tip, never on it.
+     */
+    pointer(x, y, click) {
+      try {
+        if (!pointerWin || pointerWin.isDestroyed()) return;
+        const p = toDip(x, y);
+        pointerWin.setBounds({ x: p.x + 2, y: p.y + 2, width: POINTER, height: POINTER });
+        if (click) void pointerWin.webContents.executeJavaScript('(()=>{const r=document.getElementById("r");r.classList.remove("on");void r.offsetWidth;r.classList.add("on")})()').catch(() => {});
+      } catch {
+        /* a bonus: the real pointer still moves */
+      }
+    },
     /** Installed apps from the Start menu: [{ name, path, target }]. Windows only. */
     apps() {
       return process.platform === "win32" ? startMenuApps() : [];
@@ -362,6 +474,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       if (!app.isReady()) return Promise.resolve(false);
       if (overlay && !overlay.isDestroyed()) {
         stepAside();
+        if (!pointerWin || pointerWin.isDestroyed()) showDeco();
         return Promise.resolve(overlay.isVisible());
       }
       const code = langOf(app, lang);
@@ -446,6 +559,7 @@ button:hover{background:#dc2626}
             if (!win.isVisible()) return finish(false);
             // oovi's own window gets out of the way; a moment for it to finish minimizing before the first screenshot.
             stepAside();
+            showDeco();
             setTimeout(() => finish(true), 400);
           } catch {
             finish(false);
@@ -459,6 +573,7 @@ button:hover{background:#dc2626}
     hideOverlay() {
       if (overlay && !overlay.isDestroyed()) overlay.destroy();
       overlay = null;
+      hideDeco();
       comeBack();
     },
   };

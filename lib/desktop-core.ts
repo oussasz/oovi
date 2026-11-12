@@ -654,3 +654,24 @@ export function desktopNeedsOk(member: string, o: { granted: boolean; askEvery: 
   if (!o.granted) return o.first ? "grant" : o.askEvery && !LOOK_ONLY.has(member) ? "action" : null;
   return o.askEvery && !LOOK_ONLY.has(member) ? "action" : null;
 }
+
+// ---------- a pointer the user can follow ----------
+
+/**
+ * The points the pointer passes through on its way (the last one is exactly `to`): it speeds up,
+ * then slows down, so the user can follow it instead of seeing it jump. Longer ways take more steps,
+ * up to 24 (about a third of a second).
+ */
+export function glidePath(from: Point, to: Point): Point[] {
+  const dist = Math.hypot(to.x - from.x, to.y - from.y);
+  if (!Number.isFinite(dist) || dist < 4) return [{ x: Math.round(to.x), y: Math.round(to.y) }];
+  const steps = Math.min(24, Math.max(4, Math.round(dist / 60)));
+  const out: Point[] = [];
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    const k = t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2; // ease in, ease out
+    out.push({ x: Math.round(from.x + (to.x - from.x) * k), y: Math.round(from.y + (to.y - from.y) * k) });
+  }
+  out[out.length - 1] = { x: Math.round(to.x), y: Math.round(to.y) };
+  return out;
+}

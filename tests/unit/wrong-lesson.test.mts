@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { TECHNICAL_LESSON, WRONG_LESSON, cleanToolNote } from "../../lib/lesson-rules.ts";
+import { TECHNICAL_LESSON, WRONG_LESSON, bansAbility, cleanToolNote } from "../../lib/lesson-rules.ts";
 
 test("the wrong 'tunnel is down' lessons are recognised", () => {
   for (const t of [
@@ -53,4 +53,26 @@ test("a tool note sent to oovi's developers carries no personal details", () => 
   assert.equal(cleanToolNote("The user likes green apples."), "");
   assert.equal(cleanToolNote("timeout"), "");
   assert.equal(cleanToolNote(""), "");
+});
+
+test("a 'lesson' that takes an ability away is never saved by the review (the owner's case)", () => {
+  for (const t of [
+    "The user does not want the bots to control their PC or browser. Don't use desktop_screenshot or click/type on the screen. Answer from other tools or tell the user what to do.",
+    "Don't use the browser for this user.",
+    "The user doesn't want oovi to use the mouse or keyboard.",
+    "L'utilisateur ne veut pas que les bots contrôlent son ordinateur.",
+    "Ne jamais utiliser le navigateur de l'utilisateur.",
+    "المستخدم لا يريد أن تتحكم البوتات في الحاسوب.",
+    "Never use web search for this user.",
+  ]) assert.ok(bansAbility(t), t);
+});
+
+test("what the user really prefers is still learned", () => {
+  for (const t of [
+    "For their own accounts, the user wants their own Brave browser, through desktop control.",
+    "The user doesn't want tables in replies; use short bullets.",
+    "The user wants reports as PDF, in Arabic.",
+    "L'utilisateur veut que les messages Facebook soient envoyés depuis son navigateur Brave.",
+    "The user's company files are in the Reports folder; check there first.",
+  ]) assert.ok(!bansAbility(t), t);
 });

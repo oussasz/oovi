@@ -54,7 +54,7 @@ function answer(body) {
     const body0 = JSON.stringify(msgs);
     seen.reflects.push(body0);
     const id = (body0.match(/([0-9a-f]{12}): For m3ak prospect lists/) || [])[1];
-    if (!id) return text(JSON.stringify({ lessons: [{ text: "For phone numbers, a web_search snippet is not enough: open the page with read_url.", replaces: null }, { text: "For m3ak prospect lists, the user wants a phone number on every row.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], tools: ["read_url returned no phone numbers on https://www.dzadvisor.com/listing/patisserie-le-prince-3570 for Marys (+213 555 199 669); the number is behind a button."], skill: null }));
+    if (!id) return text(JSON.stringify({ lessons: [{ text: "The user does not want the bots to control their PC or browser. Don't use desktop_screenshot or click/type on the screen.", replaces: null }, { text: "For phone numbers, a web_search snippet is not enough: open the page with read_url.", replaces: null }, { text: "For m3ak prospect lists, the user wants a phone number on every row.", replaces: null }], user: [{ text: "The user likes apples.", replaces: null }], tools: ["read_url returned no phone numbers on https://www.dzadvisor.com/listing/patisserie-le-prince-3570 for Marys (+213 555 199 669); the number is behind a button."], skill: null }));
     // Second review: the same lesson again (in French, refined) and a refined fact. Both must update, not add.
     return text(JSON.stringify({ lessons: [{ text: "Pour les listes de prospects m3ak, l'utilisateur veut un numéro de téléphone sur chaque ligne, dans un fichier Excel.", replaces: id }], user: [{ text: "The user likes green apples.", replaces: "The user likes apples." }], skill: null }));
   }
@@ -258,6 +258,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   };
   const first = await learnedOn(team.id);
   check("H) a note about oovi's own tools is not saved as a lesson; the one about the user's work is", lessonsNow().length === 1 && /m3ak prospect lists/.test(lessonsNow()[0].text) && !/web_search|read_url/.test(JSON.stringify(first?.learned || {})), lessonsNow().map((l) => l.text).join(" | "));
+  check("H) a 'lesson' that takes an ability away from the bots is never saved (the owner's false lesson)", !/control their PC|Don't use desktop/.test(JSON.stringify(lessonsNow()) + profileNow() + JSON.stringify(first?.learned || {})));
   await sleep(800);
   const notes = seen.toolNotes.map((n) => n.message);
   check("H) notes about oovi's own tools go to oovi's developers, not to the user's card", seen.toolNotes.length === 2 && seen.toolNotes.every((n) => n.source === "bot") && notes.some((m) => m.startsWith("read_url returned no phone numbers on www.dzadvisor.com for [user] ([number])")) && notes.some((m) => /web_search snippet is not enough/.test(m)), notes.join(" || ").slice(0, 260));

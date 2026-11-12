@@ -33,3 +33,17 @@ export function cleanToolNote(text: string): string {
   t = t.slice(0, 300).trim();
   return t.length >= 15 && TECHNICAL_LESSON.test(t) ? t : "";
 }
+
+/**
+ * A "lesson" that takes an ability away from the bots. One was saved from a conversation where the user
+ * said "don't use your browser, use control of my PC": "The user does not want the bots to control their
+ * PC or browser. Don't use desktop_screenshot or click/type on the screen." It is the opposite of what
+ * the user wanted, and it would have made every bot refuse from then on. The automatic review can't be
+ * trusted with bans: it never saves one, and those it saved before are dropped. (A ban the user really
+ * wants is kept when they write it themselves: thumbs-down with a note, or "remember: never…".)
+ */
+const ABILITY_WORD =
+  /(desktop|screen|mouse|keyboard|\bpc\b|computer|browser|brave|chrome|firefox|edge|click|control|screenshot|\btools?\b|web ?search|ordinateur|navigateur|souris|clavier|écran|ecran|contr[ôo]l|outils?|الحاسوب|الكمبيوتر|المتصفح|الفأرة|لوحة المفاتيح|الشاشة|التحكم)/i;
+const BAN_WORD =
+  /(does(?:n't|n’t| not) want|do(?:n't|n’t| not) (?:use|control|click|type|open|take|touch)|never (?:use|control|click|type|open|touch)|not allowed|must not|mustn't|should not|shouldn't|avoid (?:using|the|any)|stop using|no longer (?:use|wants?)|refuses? (?:that|to let)|ne (?:veut|souhaite) (?:pas|plus)|ne (?:pas|jamais|plus) (?:utiliser|contr[ôo]ler|ouvrir|cliquer|toucher)|n['’]utilise[zr]? (?:pas|jamais|plus)|interdit|لا يريد|لا تستخدم|لا تتحكم|ممنوع)/i;
+export const bansAbility = (text: string): boolean => ABILITY_WORD.test(text) && BAN_WORD.test(text);
