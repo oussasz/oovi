@@ -31,7 +31,7 @@ const cell = (v: unknown): string => {
   return s.replace(/\s+/g, " ").trim().slice(0, MAX_CELL);
 };
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, "");
-const PHONE_COL = /phone|t[ée]l|mobile|portable|gsm|whats ?app|num[ée]ro|number|هاتف|جوال|رقم/i;
+export const PHONE_COL = /phone|t[ée]l|mobile|portable|gsm|whats ?app|num[ée]ro|number|هاتف|جوال|رقم/i;
 /** Empty-looking values bots write when they found nothing. */
 const BLANK = /^(?:-+|—|n\/?a|none|null|unknown|inconnu|aucun|vide|à vérifier|a verifier|to (?:verify|check|confirm)|tbd|\?+|غير معروف|لا يوجد)$/i;
 export const isBlank = (v: string | undefined) => !v || !v.trim() || BLANK.test(v.trim());
@@ -230,4 +230,74 @@ export function progressMark(store: WorkStore): number {
 export function tableMarkdown(name: string, t: WorkTable): string {
   const esc = (c: string) => c.replace(/\|/g, "\\|");
   return [`# ${name}`, "", `| ${t.columns.map(esc).join(" | ")} |`, `| ${t.columns.map(() => "---").join(" | ")} |`, ...t.rows.map((r) => `| ${r.map(esc).join(" | ")} |`)].join("\n");
+}
+
+// ---------- contact details must have been read somewhere ----------
+
+export const EMAIL_COL = /e-?mail|courriel|بريد/i;
+/** Was this phone number or email in something the team read (a page, a search result, a file, the user's words)? */
+export type Seen = (kind: "phone" | "email", value: string) => boolean;
+
+/** Everything read, ready to be searched: a number is found however it was spaced or prefixed. */
+export function seenIn(texts: Iterable<string>): Seen {
+  let squeezed = "";
+  let lower = "";
+  for (const t of texts) {
+    // Each run of digits with its own separators ("+213 540 72 92 70", "(021) 23-45-67") is kept as one
+    // number; two numbers that only stand near each other are never glued into a third.
+    for (const m of t.matchAll(/\+?\d[\d ().\-–\u00a0/]{4,28}\d/g)) squeezed += `${m[0].replace(/\D/g, "")}\n`;
+    lower += `${t.toLowerCase()}\n`;
+  }
+  return (kind, value) => {
+    if (kind === "email") return lower.includes(value.trim().toLowerCase());
+    const d = value.replace(/\D/g, "");
+    // The last 8 digits: "021 23 45 67" and "+213 21 23 45 67" are the same number.
+    return d.length >= 7 && squeezed.includes(d.slice(-8));
+  };
+}
+
+export type Dropped = { name: string; column: string; value: string };
+
+/**
+ * Before rows are saved: a phone number or an email that appears in nothing the team read is taken
+ * out of its cell (the rest of the row is kept). A model that "remembers" a number, or completes one
+ * from half a search snippet, writes a wrong number with full confidence; the table must not hold it.
+ * Only cells of phone and email columns are checked; a cell with several values keeps the ones that were read.
+ */
+export function dropUnseen(columns: string[], rowsIn: unknown, seen: Seen): { rows: unknown; dropped: Dropped[] } {
+  if (!Array.isArray(rowsIn)) return { rows: rowsIn, dropped: [] };
+  const dropped: Dropped[] = [];
+  const check = (column: string, v: unknown, name: string): unknown => {
+    const kind = PHONE_COL.test(column) ? "phone" : EMAIL_COL.test(column) ? "email" : null;
+    if (!kind || (typeof v !== "string" && typeof v !== "number")) return v;
+    const parts = String(v).split(/\s*[\/;,|]\s*/).filter((x) => x.trim());
+    const kept = parts.filter((part) => {
+      const isValue = kind === "phone" ? part.replace(/\D/g, "").length >= 7 : /\S@\S/.test(part);
+      if (!isValue || seen(kind, part)) return true;
+      dropped.push({ name, column, value: part.trim() });
+      return false;
+    });
+    return kept.length === parts.length ? v : kept.join(" / ");
+  };
+  const rows = rowsIn.map((raw) => {
+    if (Array.isArray(raw)) {
+      const name = cell(raw[0]);
+      return raw.map((v, i) => check(columns[i] ?? "", v, name));
+    }
+    if (raw && typeof raw === "object") {
+      const entries = Object.entries(raw as Record<string, unknown>);
+      const first = columns[0] ? entries.find(([k]) => columnIndex(columns, k) === 0)?.[1] : entries[0]?.[1];
+      const name = cell(first ?? entries[0]?.[1]);
+      return Object.fromEntries(entries.map(([k, v]) => [k, check(k, v, name)]));
+    }
+    return raw;
+  });
+  return { rows, dropped };
+}
+
+/** What the bot is told about the values that were not saved. */
+export function droppedNote(dropped: Dropped[]): string {
+  if (!dropped.length) return "";
+  const list = dropped.slice(0, 8).map((d) => `${d.value} (${d.column}${d.name ? ` of "${d.name}"` : ""})`).join("; ");
+  return `NOT SAVED: ${list}${dropped.length > 8 ? `; and ${dropped.length - 8} more` : ""}. ${dropped.length === 1 ? "This value appears" : "These values appear"} in nothing read in this chat (pages, search results, tool results, files, the user's messages), so ${dropped.length === 1 ? "it was" : "they were"} left out; the rest of each row is saved. A phone number or an email is written only after it was read somewhere: open the page that shows it (or find it with find_places / scrape_list), then add it with work_table update. Never write one from memory, and never complete one that was cut off.`;
 }

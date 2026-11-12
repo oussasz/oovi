@@ -10,6 +10,7 @@ import type { ToolSpec } from "./llm";
 import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { rowsForTable, type ListRow } from "./page-list-core";
+import { dropUnseen, droppedNote, type Seen } from "./workfiles-core";
 import { addRows, cleanFileName, emptyStore, readRows, removeRows, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
 
 const ID_RE = /^[\w-]{1,64}$/;
@@ -138,14 +139,31 @@ async function asDocument(call: ToolCall, filename: string, content: string, ws:
   return { ...r, name: call.name };
 }
 
+/** A value a model sent as JSON text where a list or an object was expected. */
+const fromText = (v: unknown): unknown => {
+  if (typeof v !== "string" || !/^\s*[[{]/.test(v)) return v;
+  try {
+    return JSON.parse(v);
+  } catch {
+    return v;
+  }
+};
+
+const loose = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
 const nameOf = (store: WorkStore, wanted: string, kind: "tables" | "notes"): string | null => {
   const clean = cleanFileName(wanted);
   if (store[kind][clean]) return clean;
+  const keys = Object.keys(store[kind]);
   const lower = clean.toLowerCase();
-  return Object.keys(store[kind]).find((k) => k.toLowerCase() === lower) ?? null;
+  const same = keys.find((k) => k.toLowerCase() === lower) ?? keys.find((k) => loose(k) === loose(clean));
+  if (same || loose(clean).length < 4) return same ?? null;
+  // A name given from memory ("Market study" for "Market study 2026"): accepted when exactly one file fits.
+  const near = keys.filter((k) => loose(k).includes(loose(clean)) || loose(clean).includes(loose(k)));
+  return near.length === 1 ? near[0]! : null;
 };
 
-export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace | undefined, browser: BrowserConfig): Promise<ToolResult> {
+/** seen: what the team has read in this chat; contact details found nowhere in it are not saved (null: can't be checked, e.g. after reading images). */
+export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace | undefined, browser: BrowserConfig, seen: Seen | null = null): Promise<ToolResult> {
   const ok = (content: string): ToolResult => ({ id: call.id, name: call.name, content });
   const bad = (content: string): ToolResult => ({ id: call.id, name: call.name, content, isError: true });
   const i = call.input;
@@ -159,12 +177,16 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
       const wanted = String(i.table ?? "");
       const existing = nameOf(store, wanted, "tables");
       if (i.action === "add") {
-        const r = addRows(store, existing ?? wanted, i.columns, i.rows);
+        // Models sometimes send the rows as text (a JSON string) instead of a list: read it as the list it is.
+        const given = fromText(i.rows);
+        const cols = existing ? store.tables[existing]!.columns : (Array.isArray(fromText(i.columns)) ? (fromText(i.columns) as unknown[]) : []).map(String);
+        const checked = seen ? dropUnseen(cols, given, seen) : { rows: given, dropped: [] };
+        const r = addRows(store, existing ?? wanted, fromText(i.columns), checked.rows);
         if (r.error) return bad(r.error);
         saveWork(chatId, store);
         const name = existing ?? cleanFileName(wanted);
         const parts = [`${r.added} added`, r.merged ? `${r.merged} already there and completed` : "", r.skipped ? `${r.skipped} skipped (already there with nothing new, or empty)` : ""].filter(Boolean);
-        return ok(`${parts.join(", ")}. Now: ${tableLine(name, store.tables[name]!)}.`);
+        return ok([`${parts.join(", ")}. Now: ${tableLine(name, store.tables[name]!)}.`, droppedNote(checked.dropped)].filter(Boolean).join("\n"));
       }
       if (!existing) return bad(`There is no table "${cleanFileName(wanted)}".${others()}`);
       const t = store.tables[existing]!;
@@ -173,10 +195,13 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
         return ok(`${tableLine(existing, t)}\n${typeof i.missing === "string" ? `${r.matching} rows have no ${i.missing}. ` : ""}Showing ${r.shown}:\n${r.text}`);
       }
       if (i.action === "update") {
-        const err = updateRow(t, Number(i.row), i.values);
+        const values = fromText(i.values);
+        const checked = seen && values && typeof values === "object" && !Array.isArray(values) ? dropUnseen(t.columns, [{ [t.columns[0] ?? "Name"]: t.rows[Math.floor(Number(i.row)) - 1]?.[0] ?? "", ...(values as object) }], seen) : null;
+        const safe = checked ? Object.fromEntries(Object.entries((checked.rows as Record<string, unknown>[])[0]!).filter(([k]) => k in (values as object))) : values;
+        const err = updateRow(t, Number(i.row), safe);
         if (err) return bad(err);
         saveWork(chatId, store);
-        return ok(`Row ${Math.floor(Number(i.row))} updated.`);
+        return ok([`Row ${Math.floor(Number(i.row))} updated.`, droppedNote(checked?.dropped ?? [])].filter(Boolean).join("\n"));
       }
       if (i.action === "remove") {
         const n = removeRows(t, i.rows_to_remove);

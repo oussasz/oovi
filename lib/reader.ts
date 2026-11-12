@@ -288,7 +288,7 @@ async function research(s: Settings, question: string, queries: string[], count:
   ];
   for (const [i, { hit, art }] of sources.entries()) {
     out.push(`[${i + 1}] ${art?.title || hit.title}`, `URL: ${art?.url || hit.url}${art?.published ? ` · published ${art.published.slice(0, 10)}` : ""}`);
-    out.push(art ? [bestPassages(art.text, q, budget), contactBlock(art)].filter(Boolean).join("\n\n") : `(not readable; search snippet: a snippet is a lead, not a source. Open the page to confirm) ${hit.snippet}`, "");
+    out.push(art ? [bestPassages(art.text, q, budget), contactBlock(art)].filter(Boolean).join("\n\n") : `(not readable; search snippet: open the page in the browser to confirm. If it can't be opened, a detail shown here may be kept with this result as its source, marked "to confirm") ${hit.snippet}`, "");
   }
   return out.join("\n");
 }

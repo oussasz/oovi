@@ -16,7 +16,9 @@
 //   H) scrape_list does a whole site in one call, like a scraping script: every page of the list,
 //      each item's own page for its phone number and address, the site's own footer number left out,
 //   I) find_places answers from the open places data (a stand-in bucket and geocoders served here),
-//   J) find_papers merges the open publication catalogues (stand-ins served here).
+//   J) find_papers merges the open publication catalogues (stand-ins served here),
+//   K) a phone number or an email is saved only when it was read somewhere in the chat,
+//   L) forms: checkbox names, dropdown choices, a switched-off button, a dead address.
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -84,6 +86,14 @@ const PAGES = {
     "App",
     `<h1>Produits</h1><div id="list"></div><button id="nx" aria-label="Next page">›</button>
      <script>let p=1;const draw=()=>{document.getElementById("list").innerHTML=Array.from({length:10},(_,i)=>{const n=(p-1)*10+i+1;return '<div class="prod"><h3>Produit '+n+'</h3><p>Référence P-'+n+' en stock</p></div>'}).join("");if(p>=3)document.getElementById("nx").disabled=true;};draw();document.getElementById("nx").onclick=()=>{p++;draw();};</script>`,
+  ),
+  // A form like the owner's dashboard: a project to choose, a box to tick, a button that stays off until then.
+  "/form": page(
+    "Import",
+    `<h1>Liste prospection</h1><label>Projet <select id="p" onchange="go()"><option value="">Choisir…</option><option value="1">m3ak (Alger)</option><option value="2">Autre projet</option></select></label>
+     <div><input type="checkbox" id="c" onchange="go()"><label for="c">Projet prioritaire</label></div><div><input type="checkbox" id="d"><label for="d">Envoyer une copie</label></div>
+     <button id="b" disabled onclick="document.getElementById('out').textContent='AJOUTÉ au projet '+document.getElementById('p').selectedOptions[0].text+(document.getElementById('c').checked?' (prioritaire)':'')">Ajouter</button><p id="out">rien</p>
+     <script>function go(){document.getElementById("b").disabled=!document.getElementById("p").value;}</script>`,
   ),
   "/article": page("Un article", `<h1>Les cafés d'Alger</h1><p>${"Un long texte sur les cafés de la ville, sans aucune liste. ".repeat(30)}</p>`),
 };
@@ -178,7 +188,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -209,6 +219,36 @@ function answer(body) {
     const n = (all.split("PLACES:").pop().match(/"type":"tool_use"/g) || []).length;
     if (lastTool) seen.out[`places${n}`] = out;
     return n < steps.length ? call("find_places", steps[n]) : text("PLACES-RESULT: done");
+  }
+  if (scene === "TRUTH") {
+    // The bot reads a page with real numbers, then writes rows: some as read, some from "memory".
+    const steps = [
+      ["read_url", { url: `${SITE}/salons` }],
+      // rows sent as JSON text, as models sometimes do
+      ["work_table", { action: "add", table: "Vérifiés", columns: ["Nom", "Quartier", "Téléphone", "Email"], rows: JSON.stringify([["Salon Lina 1", "Kouba", "021 23 45 01", ""], ["Or noir", "Dely Brahim", "0561 06 30 53", "contact@ornoir.example"], ["Salon Lina 2", "Kouba", "+213 21 23 45 02 / 0555 43 21 09", ""]]) }],
+      ["work_table", { action: "update", table: "vérifiés", row: 2, values: { "Téléphone": "0770 05 94 77", Quartier: "Chéraga" } }],
+      ["work_table", { action: "update", table: "Vérifiés", row: 2, values: { "Téléphone": "021 23 45 03" } }],
+      ["work_notes", { action: "write", file: "Étude de marché 2026", text: "Notes." }],
+      ["work_notes", { action: "read", file: "etude de marche" }],
+    ];
+    const n = (all.split("TRUTH:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`truth${n}`] = out;
+    return n < steps.length ? call(steps[n][0], steps[n][1]) : text("TRUTH-RESULT: done");
+  }
+  if (scene === "FORM") {
+    const n = (all.split("FORM:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`form${n}`] = out;
+    // The numbers come from the latest element list (a refused click returns none).
+    if (/INTERACTIVE ELEMENTS/.test(out)) seen.formList = out;
+    const num = (label) => Number(((seen.formList || "").match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`)) || [])[1]);
+    if (n === 0) return call("open_url", { url: `${SITE}/form` });
+    if (n === 1) return call("click", { element: num("Ajouter") }); // the button is switched off
+    if (n === 2) return call("type", { element: num("select"), text: "Sport" }); // not a choice
+    if (n === 3) return call("type", { element: num("select"), text: "m3ak" });
+    if (n === 4) return call("click", { element: num("Projet prioritaire") });
+    if (n === 5) return call("click", { element: num("Ajouter") });
+    if (n === 6) return call("open_url", { url: "http://this-name-does-not-exist-oovi-test.invalid/saas" });
+    return text("FORM-RESULT: done");
   }
   if (scene === "PAPERS") {
     const steps = [
@@ -413,6 +453,28 @@ const check = (name, ok, detail = "") => {
   check("J) the bot is told a record is not the paper: read it before reporting its findings", /A record proves the paper exists, not what it shows/.test(j1));
   check("J) 'most cited' sorts the relevant results", /^1\. Study number 40 of[^\n]*cited 117/m.test(seen.out.papers2 || ""), (seen.out.papers2 || "").split("\n").slice(3, 4).join("").slice(0, 160));
   check("J) 'free full text only' keeps only papers with a free link (the 10 even-numbered ones)", /^10 publications/.test(seen.out.papers3 || "") && /10 have a free full text link/.test(seen.out.papers3 || ""), (seen.out.papers3 || "").split("\n")[0].slice(0, 200));
+
+  // K: a phone number or an email is saved only when it was read somewhere.
+  c = await run(dm, "TRUTH: make me a verified list from this page");
+  t = work(dm).tables["Vérifiés"];
+  const k2 = seen.out.truth2 || "";
+  check("K) rows sent as JSON text are read as the list they are (3 rows added)", !!t && t.rows.length === 3 && /3 added/.test(k2), `${t?.rows.length} rows | ${k2.split("\n")[0].slice(0, 120)}`);
+  if (t) {
+    const tel = col(t, "Téléphone");
+    check("K) a number read on the page is saved; one that was read nowhere is left out, and the row is kept", t.rows[0][tel] === "021 23 45 01" && t.rows[1][0] === "Or noir" && t.rows[1][col(t, "Email")] === "" && t.rows[2][tel] === "+213 21 23 45 02", `${t.rows[0][tel]} | Or noir: "${t.rows[1][tel]}" "${t.rows[1][col(t, "Email")]}" | ${t.rows[2][tel]}`);
+    check("K) the bot is told exactly what was not saved and what to do", /NOT SAVED: 0561 06 30 53 \(Téléphone of "Or noir"\); contact@ornoir\.example \(Email of "Or noir"\); 0555 43 21 09 \(Téléphone of "Salon Lina 2"\)\. These values appear in nothing read in this chat/.test(k2), k2.split("\n")[1]?.slice(0, 220));
+    check("K) the same holds for an update: the invented number is refused, the rest of the update is saved; a number from the page is accepted", /NOT SAVED: 0770 05 94 77/.test(seen.out.truth3 || "") && t.rows[1][col(t, "Quartier")] === "Chéraga" && t.rows[1][tel] === "021 23 45 03" && !/NOT SAVED/.test(seen.out.truth4 || ""), `${t.rows[1].join(" | ")}`);
+  }
+  check("K) a work file asked for by an approximate name is found when only one fits", /notes "Étude de marché 2026"/.test(seen.out.truth6 || ""), (seen.out.truth6 || "").slice(0, 100));
+
+  // L: forms. A box is named by the words beside it, a dropdown shows its choices, a switched-off button says why.
+  c = await run(dm, "FORM: add the list to the m3ak project");
+  const f1 = seen.out.form1 || "";
+  check("L) the bot sees what a dropdown offers, which boxes are ticked and that the button is switched off", /select "Projet[^"]*" \(chosen: Choisir…; choices: Choisir… \| m3ak \(Alger\) \| Autre projet\)/.test(f1) && /input:checkbox "Projet prioritaire" \(not ticked\)/.test(f1) && /button "Ajouter" \(switched off\)/.test(f1), f1.split("INTERACTIVE")[1]?.replace(/\n/g, " / ").slice(0, 330));
+  check("L) clicking a switched-off button explains what the page is waiting for (no 10-second timeout)", /is switched off: the page is waiting for something first/.test(seen.out.form2 || ""), (seen.out.form2 || "").slice(0, 120));
+  check("L) a choice the dropdown doesn't have is refused with the real choices", /has no choice "Sport"\. Its choices: Choisir… \| m3ak \(Alger\) \| Autre projet/.test(seen.out.form3 || ""), (seen.out.form3 || "").slice(0, 140));
+  check("L) the bot chooses in the dropdown, ticks the box and the page's own button then works", /Chose "m3ak \(Alger\)" in the dropdown/.test(seen.out.form4 || "") && /"Projet prioritaire" \(ticked\)/.test(seen.out.form5 || "") && /AJOUTÉ au projet m3ak \(Alger\) \(prioritaire\)/.test(seen.out.form6 || ""), `${(seen.out.form4 || "").slice(0, 50)} | ${((seen.out.form6 || "").match(/AJOUTÉ[^\n]*/) || [""])[0]}`);
+  check("L) an address that no longer exists is explained in plain words (a tunnel address changes)", /No website answers at this address: the name doesn't exist/.test(seen.out.form7 || ""), (seen.out.form7 || "").slice(0, 140));
 
   // F: one job, one table.
   const newBot = (name) => api("POST", "/api/bots", { name, role: "", instructions: `You are ${name}, a teammate.`, face: scout.face, tools: { web: false, browser: false } });

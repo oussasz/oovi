@@ -39,7 +39,11 @@ const systemOf = (b) => (typeof b.system === "string" ? b.system : Array.isArray
 const COLS = ["Name", "Type", "Area", "Phone", "Source"];
 const seen = { systems: {}, tools: {}, turns: {}, calls: {}, leaderAskedToContinue: 0, memberSteps: 0, wrapUp: 0, reflects: [], toolNotes: [] };
 let serial = 0;
-const phone = () => `+213 5${String(50 + (serial % 40))} ${String(100000 + serial).slice(-6)}`;
+const phoneAt = (n) => `+213 5${String(50 + (n % 40))} ${String(100000 + n).slice(-6)}`;
+const phone = () => phoneAt(serial);
+// oovi saves a phone number only when it was read somewhere in the chat. These scripted bots have no
+// web tools, so the user hands them the source: an old directory export, pasted with the request.
+const DIRECTORY = `\n\n[Notre ancien annuaire, numéros seulement: ${Array.from({ length: 900 }, (_, k) => phoneAt(k + 1)).join(", ")}]`;
 /** n new businesses for this bot; `withPhone` of them have a number. */
 const rows = (who, n, withPhone) => Array.from({ length: n }, (_, k) => { serial++; return [`${who} shop ${serial}`, "Café", "Hydra", k < withPhone ? phone() : "à vérifier", `https://dir.example/${serial}`]; });
 
@@ -69,6 +73,17 @@ function answer(body) {
   const status = (sys.match(/Status right now: (\d+) of (\d+) rows/) || []).slice(1).map(Number);
   const stale = /STALE:/.test(sys + JSON.stringify(msgs));
   const solo = /SOLO:/.test(JSON.stringify(msgs));
+
+  // ---- a bot alone that finds nothing and keeps asking (the owner's case: the job ended on a question) ----
+  if (me === "Lone") {
+    seen.loneTurns = (seen.loneTurns || 0) + (results.length ? 0 : 1);
+    if (/WRAP UP NOW/.test(sys)) {
+      seen.loneWrap = sys;
+      return text("LONE-FINAL: the goal is not reached: 0 of 20. Tried the directory; nothing matched.");
+    }
+    if (!/BIG JOB MODE/.test(sys)) return call("start_big_job", { goal: "20 rare suppliers with a phone", table: "Rare", target_rows: 20, required_columns: ["Phone"] });
+    return text("I found nothing yet. Shall I continue, or would you prefer the team?");
+  }
 
   // ---- a bot working alone ----
   if (me === "Solo" && solo) {
@@ -214,7 +229,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const massil = await newBot("Massil", "Chercheur");
   const team = await api("POST", "/api/chats", { name: "m3ak", memberIds: [yacine.id, oussama.id, ouadi.id, massil.id], leadId: yacine.id });
 
-  await api("POST", `/api/chats/${team.id}/run`, { text: "cherche en alger, travaille avec l'equipe et donne moi une liste de 60 prospects avec numéro" });
+  await api("POST", `/api/chats/${team.id}/run`, { text: "cherche en alger, travaille avec l'equipe et donne moi une liste de 60 prospects avec numéro" + DIRECTORY });
   const t = await idle(team.id, 240000);
   const bots = t.entries.filter((e) => e.kind === "bot");
   const lastText = bots.at(-1)?.text ?? "";
@@ -269,14 +284,14 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
 
   // F: rounds that add nothing end the job by themselves.
   const before = (await api("GET", `/api/chats/${team.id}`)).entries.length;
-  await api("POST", `/api/chats/${team.id}/run`, { text: "STALE: find 50 rare items" });
+  await api("POST", `/api/chats/${team.id}/run`, { text: "STALE: find 50 rare items" + DIRECTORY });
   const st = await idle(team.id, 120000);
   const added = st.entries.slice(before).filter((e) => e.kind === "bot");
   check("F) a job whose rounds add nothing stops by itself with a final answer", seen.wrapUp === 1 && /^FINAL-STALE/.test(added.at(-1)?.text ?? "") && added.length <= 14 && !st.pending, `${added.length} bot messages; last: ${(added.at(-1)?.text ?? "").slice(0, 50)}`);
 
   // G: a bot alone.
   const solo = await newBot("Solo", "");
-  await api("POST", `/api/chats/dm-${solo.id}/run`, { text: "SOLO: find 12 suppliers with a phone" });
+  await api("POST", `/api/chats/dm-${solo.id}/run`, { text: "SOLO: find 12 suppliers with a phone" + DIRECTORY });
   const so = await idle(`dm-${solo.id}`, 120000);
   const sb = so.entries.filter((e) => e.kind === "bot");
   check("G) the goal enters the bot's instructions as soon as the job starts (same turn)", /BIG JOB MODE\. You own the result: keep working/.test(seen.soloSys || "") && /The job's goal: 12 suppliers with a phone/.test(seen.soloSys || ""));
@@ -298,6 +313,14 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   check("H) Forget on the card removes the saved lesson", (rm.entry?.learned?.lessons || []).length === 0 && lessonsNow().length === 0);
   const gone = await api("POST", `/api/chats/${dmId}/learn`, { entryId: second.id, change: { kind: "lesson", index: 5, action: "remove" } });
   check("H) a line that is no longer there gives a clear error, not a crash", typeof gone.error === "string");
+
+  // I: a job that stops adding anything ends with a report, never on a question.
+  const lone = await newBot("Lone", "");
+  await api("POST", `/api/chats/dm-${lone.id}/run`, { text: "LONE: find 20 rare suppliers" });
+  const lc = await idle(`dm-${lone.id}`);
+  const lb = lc.entries.filter((e) => e.kind === "bot");
+  check("I) a bot alone whose rounds add nothing gets one last turn to report; the job doesn't end on 'shall I continue?'", /^LONE-FINAL/.test(lb.at(-1)?.text ?? "") && lb.length <= 4 && !lc.pending, `${lb.length} turns; last: ${(lb.at(-1)?.text ?? "").slice(0, 70)}`);
+  check("I) that last turn is told to say plainly the goal isn't reached and not to ask whether to continue", /If the goal isn't reached, say so plainly in the first line\. Don't ask the user whether to continue/.test(seen.loneWrap || ""));
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

@@ -46,7 +46,7 @@ export const TOOL_SPECS: ToolSpec[] = [
   },
   {
     name: "type",
-    description: "Type text into a numbered input element (replaces its contents). Set submit=true to press Enter afterwards.",
+    description: "Type text into a numbered input element (replaces its contents). Set submit=true to press Enter afterwards. On a dropdown (select), give the text of the choice you want: it is chosen. Tick a checkbox with click.",
     parameters: { type: "object", properties: { element: { type: "integer" }, text: { type: "string" }, submit: { type: "boolean" } }, required: ["element", "text"] },
   },
   { name: "go_back", description: "Go back to the previous page.", parameters: { type: "object", properties: {} } },
@@ -165,16 +165,29 @@ const SNAPSHOT_JS = `(() => {
     n++;
     el.setAttribute("data-oc-id", String(n));
     const tag = el.tagName.toLowerCase();
-    const label = (el.getAttribute("aria-label") || el.placeholder || el.innerText || (el.type === "password" ? "" : el.value) || el.getAttribute("title") || el.getAttribute("name") || "").replace(/\\s+/g, " ").trim().slice(0, 80);
+    const tick = tag === "input" && (el.type === "checkbox" || el.type === "radio");
+    // A checkbox or a field is named by its <label> (the words beside it), not by its own text.
+    const named = el.labels && el.labels.length ? el.labels[0].innerText : "";
+    const beside = tick && !named && el.parentElement ? el.parentElement.innerText : "";
+    let label = (el.getAttribute("aria-label") || named || beside || el.placeholder || (tag === "select" ? "" : el.innerText) || (el.type === "password" || tick ? "" : el.value) || el.getAttribute("title") || el.getAttribute("name") || "").replace(/\\s+/g, " ").trim().slice(0, 80);
     const role = el.getAttribute("role");
     const kind = tag === "a" ? "link" : tag === "input" ? "input:" + (el.type || "text") : role || tag;
-    els.push({ n, kind, label, href: tag === "a" ? el.href : "" });
+    // What the model can't see in the page text: whether a box is ticked, what a dropdown offers, what is switched off.
+    let state = "";
+    if (tick || role === "checkbox") state = (tick ? el.checked : el.getAttribute("aria-checked") === "true") ? "ticked" : "not ticked";
+    if (tag === "select") {
+      const opts = Array.from(el.options).filter((o) => !o.disabled).map((o) => o.text.replace(/\\s+/g, " ").trim()).filter(Boolean);
+      const cur = el.selectedOptions.length ? el.selectedOptions[0].text.replace(/\\s+/g, " ").trim() : "";
+      state = "chosen: " + (cur || "nothing") + "; choices: " + opts.slice(0, 25).join(" | ") + (opts.length > 25 ? " | … " + (opts.length - 25) + " more" : "");
+    }
+    if (el.disabled || el.getAttribute("aria-disabled") === "true") state = (state ? state + "; " : "") + "switched off";
+    els.push({ n, kind, label, href: tag === "a" ? el.href : "", state });
   }
   const text = (document.body ? document.body.innerText : "").replace(/\\n{3,}/g, "\\n\\n").trim();
   return { title: document.title, text, els };
 })()`;
 
-type Snap = { title: string; text: string; els: { n: number; kind: string; label: string; href: string }[] };
+type Snap = { title: string; text: string; els: { n: number; kind: string; label: string; href: string; state?: string }[] };
 
 async function settle(page: Page) {
   await page.waitForLoadState("domcontentloaded", { timeout: 15_000 }).catch(() => {});
@@ -281,7 +294,7 @@ async function snapshotResult(call: ToolCall, sess: Session, offset: number, wit
   if (end < s.text.length) lines.push(`--- more text available: call read_page with offset=${end} ---`);
   if (withElements) {
     lines.push(`--- INTERACTIVE ELEMENTS (${s.els.length}${s.els.length > MAX_ELEMENTS_SHOWN ? `, first ${MAX_ELEMENTS_SHOWN} shown` : ""}) ---`);
-    for (const e of s.els.slice(0, MAX_ELEMENTS_SHOWN)) lines.push(`[${e.n}] ${e.kind} "${e.label}"${e.href ? ` -> ${e.href.slice(0, 120)}` : ""}`);
+    for (const e of s.els.slice(0, MAX_ELEMENTS_SHOWN)) lines.push(`[${e.n}] ${e.kind} "${e.label}"${e.state ? ` (${e.state.slice(0, 400)})` : ""}${e.href ? ` -> ${e.href.slice(0, 120)}` : ""}`);
   }
   const files = await takeDownloads(sess, 30_000);
   if (files.length) lines.push("--- DOWNLOADED FILES (saved to the user's computer, not opened) ---", ...files);
@@ -296,6 +309,10 @@ function hint(e: unknown, s: Settings): string {
   } else if (s.browser.mode === "docker" && /connect|ECONNREFUSED|WebSocket/i.test(msg)) {
     extra = `\nCould not reach the sandbox browser at ${s.browser.wsEndpoint}. Start it with \`docker compose up -d\`.`;
   }
+  if (/ERR_NAME_NOT_RESOLVED/i.test(msg)) {
+    return "No website answers at this address: the name doesn't exist (any more). Check the spelling. A temporary address (a trycloudflare, ngrok or similar tunnel) changes every time it is restarted: tell the user in one line that this address is no longer live and ask for the current one. This isn't a problem with oovi or with the internet connection; don't save it as a lesson.";
+  }
+  if (/ERR_INTERNET_DISCONNECTED|ERR_NETWORK_CHANGED|ERR_ADDRESS_UNREACHABLE/i.test(msg)) return "This computer has no internet connection right now (or it just changed). Try again in a moment; if it keeps failing, tell the user their connection is down.";
   return (msg.split("\n")[0] ?? msg).slice(0, 600) + extra;
 }
 
@@ -435,7 +452,14 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       const n = Number(input.element);
       const loc = page.locator(`[data-oc-id="${n}"]`);
       if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. The page may have changed; call open_url or read_page to get a fresh element list.`);
-      await loc.first().click({ timeout: 10_000 });
+      // A button the page has switched off never answers a click: say what that means instead of timing out.
+      if (await loc.first().isDisabled().catch(() => false)) return fail(call, `Element ${n} is switched off: the page is waiting for something first (a required field, a box to tick, a choice in a dropdown). Read the element list, do that, then click again.`);
+      try {
+        await loc.first().click({ timeout: 10_000 });
+      } catch (e) {
+        if (!/timeout/i.test(e instanceof Error ? e.message : String(e))) throw e;
+        return fail(call, `Element ${n} didn't take the click within 10 seconds: something covers it (a pop-up, a banner, a menu still open) or the page is still busy. Call read_page for a fresh element list, close what is in the way, then click again.`);
+      }
       await settle(sess.page);
       {
         const blank = await waitForContent(sess.page);
@@ -446,6 +470,18 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       const n = Number(input.element);
       const loc = page.locator(`[data-oc-id="${n}"]`);
       if ((await loc.count()) === 0) return fail(call, `Element ${n} not found. Get a fresh element list first.`);
+      // A dropdown isn't typed into: the option whose text matches is chosen.
+      if ((await loc.first().evaluate((el) => el.tagName).catch(() => "")) === "SELECT") {
+        const want = String(input.text ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+        const opts = (await loc.first().evaluate((el) => Array.from((el as HTMLSelectElement).options).map((o) => ({ value: o.value, text: o.text.replace(/\s+/g, " ").trim(), off: o.disabled })))) as { value: string; text: string; off: boolean }[];
+        const usable = opts.filter((o) => !o.off && o.text);
+        const hit = usable.find((o) => o.text.toLowerCase() === want) ?? ((m) => (m.length === 1 ? m[0] : undefined))(usable.filter((o) => want && o.text.toLowerCase().includes(want)));
+        if (!hit) return fail(call, `That dropdown has no choice "${String(input.text ?? "")}". Its choices: ${usable.map((o) => o.text).slice(0, 40).join(" | ") || "none"}. Call type again with one of them, written as shown.`);
+        await loc.first().selectOption({ value: hit.value }, { timeout: 10_000 });
+        await settle(sess.page);
+        const res = await pageResult(call, sess, 0, true, sessionId, ctx);
+        return { ...res, content: `Chose "${hit.text}" in the dropdown.\n${res.content}` };
+      }
       await loc.first().fill(String(input.text ?? ""), { timeout: 10_000 });
       if (input.submit === true) {
         await loc.first().press("Enter");

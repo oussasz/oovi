@@ -43,7 +43,7 @@ import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
-import { cleanFileName, countComplete, progressMark } from "./workfiles-core";
+import { cleanFileName, countComplete, progressMark, seenIn, type Seen } from "./workfiles-core";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
@@ -185,7 +185,7 @@ Don't redo a teammate's work yourself. Never give the user work the team can do:
 /** A big job, for the bot that answers the user and has teammates. */
 const JOB_LEAD = `BIG JOB MODE. You own the result: the job ends when the goal is reached, not when a round ends.
 1. Split the work so the parts don't overlap (by area, category, source, chapter) and hand each part to a teammate with an @mention: what to produce, how much, which work file it goes in, and what counts as done.
-2. All results go into the work files (work_table for lists, work_notes for long text). Chat messages stay short.
+2. All results go into the work files (work_table for lists, work_notes for long text). Chat messages stay short. Collect in bulk before anyone reads one by one: places of a city or district with find_places, publications with find_papers, a website's list with scrape_list. Do the bulk calls yourself when you have these tools, or name them in the task you hand out; teammates then fill what the bulk result lacks.
 3. When the turn comes back to you, look at the work files (the status below is live). While the goal isn't reached, send teammates out again with NEW instructions: other areas, sources, search words or methods than the ones already tried, and say what failed so they don't repeat it. Never send the same instruction twice. Complete weak rows (work_table read with \`missing\`), check a sample of the work yourself, and when quality matters have one teammate review and correct another's part.
 4. Never ask the user whether to continue, and never give them work the team can do. Ask the user only for what only they can give (a decision, an approval, a sign-in).
 5. Stop when the goal is reached, or when the team has truly run out of ways (then say exactly what was tried and what is missing). To finish: work_export the result, then one short message with what was done, the numbers, the file name and what is still open.`;
@@ -252,6 +252,36 @@ const exported = (entry: BotEntry) => entry.steps.some((st) => st.role === "tool
 export function workHome(chat: Chat): string {
   const last = [...chat.entries].reverse().find((e): e is UserEntry => e.kind === "user");
   return last?.via && last.workChat && getChat(last.workChat) ? last.workChat : chat.id;
+}
+
+/**
+ * Everything the team has read in this chat, for the check that keeps unread phone numbers and emails
+ * out of the work tables: tool results (pages, searches, files, lists), the user's messages, the work
+ * tables themselves. Null when the bots also read pictures in this chat (a screenshot of the user's
+ * screen, a photo the user attached): what a picture showed can't be checked, so nothing is refused.
+ */
+function readSoFar(chat: Chat): Seen | null {
+  const texts: string[] = [];
+  for (const e of chat.entries) {
+    if (e.kind === "user") {
+      if (e.attachments?.some((a) => a.kind === "image" || a.kind === "pdf")) return null;
+      texts.push(e.text, e.userWords ?? "");
+    } else {
+      for (const st of e.steps) {
+        if (st.role !== "tool") continue;
+        for (const r of st.results) {
+          if (r.shot || r.attach?.length) return null;
+          if (!r.isError) texts.push(r.content);
+        }
+      }
+    }
+  }
+  if (chat.summary) texts.push(chat.summary.text);
+  const store = loadWork(workHome(chat));
+  // Rows already in the tables were checked when they came in (or were put there by a collecting tool).
+  // Notes are free text anyone can write, so they prove nothing.
+  for (const t of Object.values(store.tables)) for (const row of t.rows) texts.push(row.join(" | "));
+  return seenIn(texts);
 }
 
 /** Where a list job stands: complete rows against the target (null when the job has no number). */
@@ -404,7 +434,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     if (bot.tools.web || bot.tools.browser) {
       lines.push(
         `For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser).${bot.tools.browser ? " When read_url can't read a page, or the detail you need (a phone number, a price, a table) isn't in what it returned, open the page with open_url and read it there, clicking \"show number\" or \"see more\" if needed." : ""}`,
-        `Opening and reading pages is your job, never the user's: don't tell the user to open, visit or check a page you (or a teammate) can open. A search snippet is a lead, not a source: open the page before you report a detail from it. Only what can't be known from any page (for example whether a phone number still answers) is left to the user.${bot.tools.browser ? "" : " If a page only works in a browser, pass it to a teammate who has one or ask for the browser with request_abilities, and go on with the rest meanwhile."}`,
+        `Opening and reading pages is your job, never the user's: don't tell the user to open, visit or check a page you (or a teammate) can open. A search snippet is a lead: open the page to confirm a detail whenever the page can be read. When it can't, a detail the snippet itself shows may be kept with the search result as its source, marked "to confirm" and never presented as confirmed. Only what can't be known from any page (for example whether a phone number still answers) is left to the user.${bot.tools.browser ? "" : " If a page only works in a browser, pass it to a teammate who has one or ask for the browser with request_abilities, and go on with the rest meanwhile."}`,
         "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
         "Where to do a job on a website, in this order. (1) The user asks for it in their own browser (whichever it is), in one of their apps, or on their computer: work there with desktop control when you have it (open_in_user_browser opens a page in their default browser); that is where they are signed in. (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.",
       );
@@ -528,7 +558,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     lines.push("", "A big job (a long list, many items to find or check, deep research, a large document, anything that needs many steps or reviewing and improving until it's right): call start_big_job first. It lifts the limits so you can work as long as the job needs. You decide this from the task; the user doesn't have to ask for it.");
   }
   if (extra.wrapUp) {
-    lines.push("", job ? "WRAP UP NOW: the last rounds added nothing new to the team's work. Write the final answer for the user: what was done, the numbers, the file (work_export it if that isn't done yet), exactly what was tried, and what is still missing. Don't @mention anyone." : "WRAP UP NOW: the team has used its hand-offs for this request. Write the final answer for the user from what the team found, in short paragraphs or bullets. Don't @mention anyone and don't start new work. If something is still open, say what and suggest one next step.");
+    lines.push("", job ? "WRAP UP NOW: the last rounds added nothing new to the team's work. Write the final answer for the user: what was done, the numbers, the file (work_export it if that isn't done yet), exactly what was tried, and what is still missing and why. If the goal isn't reached, say so plainly in the first line. Don't ask the user whether to continue and don't promise more work: this turn is the end of the job; the user will say what comes next. Don't @mention anyone." : "WRAP UP NOW: the team has used its hand-offs for this request. Write the final answer for the user from what the team found, in short paragraphs or bullets. Don't @mention anyone and don't start new work. If something is still open, say what and suggest one next step.");
   }
   if (lastUser(chat)?.routine) lines.push("", ROUTINE_RUN);
   if (chat.pending?.planMode) lines.push("", PLAN_MODE);
@@ -1032,7 +1062,7 @@ async function* runBot(
             results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {
             // Exports always go to Downloads/oovi (never into a project folder, where a new file needs the user's OK).
-            results.push(await runWorkTool(c, workHome(chat), undefined, s.browser));
+            results.push(await runWorkTool(c, workHome(chat), undefined, s.browser, readSoFar(chat)));
           } else if (c.name === "start_big_job") {
             const goal = String(c.input.goal ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
             if (!goal) results.push({ id: c.id, name: c.name, content: "goal is required: what must exist at the end, in one sentence.", isError: true });
@@ -1366,6 +1396,13 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
         // It stopped before the goal: it goes again (its instructions show the live count and what's missing).
         // Or the goal was reached during this turn and nothing was delivered yet: one more turn to check and export.
         p.awaitingLead = false;
+        p.queue.push(bot.id);
+      } else if (round?.spent && round.met === false && !p.wrapUpFor) {
+        // The rounds stopped adding anything and the goal isn't reached: the job doesn't end on whatever
+        // the last message happened to say (a question, a promise to continue). Its owner gets one last
+        // turn to report where it stands.
+        p.awaitingLead = false;
+        p.wrapUpFor = bot.id;
         p.queue.push(bot.id);
       } else if (lead && bot.id === lead.id) {
         p.awaitingLead = false;
