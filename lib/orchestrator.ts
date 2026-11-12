@@ -62,6 +62,8 @@ export type RunInput = {
   alwaysEdit?: boolean;
   alwaysFolders?: boolean;
   via?: string;
+  /** With `via`: the user's own message that led to this task, passed on unchanged. */
+  userWords?: string;
   effort?: Effort;
   deep?: boolean;
   /** Plan mode: the bot proposes a plan first; nothing changes until the user approves it. */
@@ -378,7 +380,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
         `For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser).${bot.tools.browser ? " When read_url can't read a page, or the detail you need (a phone number, a price, a table) isn't in what it returned, open the page with open_url and read it there, clicking \"show number\" or \"see more\" if needed." : ""}`,
         `Opening and reading pages is your job, never the user's: don't tell the user to open, visit or check a page you (or a teammate) can open. A search snippet is a lead, not a source: open the page before you report a detail from it. Only what can't be known from any page (for example whether a phone number still answers) is left to the user.${bot.tools.browser ? "" : " If a page only works in a browser, pass it to a teammate who has one or ask for the browser with request_abilities, and go on with the rest meanwhile."}`,
         "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
-        "A website or web app the user names (ChatGPT, Gmail, Canva, a dashboard…) is used in the browser, even when they say \"on my PC\": open its address. If that needs their account and you can't use it yet, offer the one-click card (request_abilities) instead of saying you can't.",
+        "Where to do a job on a website, in this order. (1) The user names their own browser or app, or says to use their computer (\"in Brave\", \"in my Chrome\", \"on my PC\"): work there with desktop control when you have it; that is where they are signed in. (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.",
       );
     }
     if (bot.tools.browser) {
@@ -402,7 +404,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       ...abilityLines(
         bot,
         extra.bots,
-        { kind: chat.kind === "group" ? "group" : "direct", isMain: tools.some((t) => t.name === "message_group"), canRequest: tools.some((t) => t.name === "request_abilities"), groupsWith: groupsOf },
+        { kind: chat.kind === "group" ? "group" : "direct", isMain: tools.some((t) => t.name === "message_group"), canRequest: tools.some((t) => t.name === "request_abilities"), desktop: tools.some((t) => t.name === DESKTOP_MARKER), groupsWith: groupsOf },
         { abilities: translateFor("bot.abilities"), web: translateFor("bot.web"), browser: translateFor("bot.browser"), accounts: translateFor("bot.accounts"), accountsPlace: translateFor("bot.accountsLink") },
       ),
     );
@@ -425,9 +427,9 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       "",
       "You run the user's groups: you're the admin of every group, and the user talks only to you.",
       "- list_groups shows the groups, who's in them and what they're doing. read_group catches you up on one.",
-      "- message_group gives a group a task on the user's behalf and brings back its final answer. Write a complete task; don't ask the user to talk to the group themselves.",
-      "- When a group answers, tell the user the result in your own words: short, with the key points. Look through the group's earlier messages too: a link, file or figure a member gave is part of the answer, so never say a member didn't answer when they did. If a group needs the user's approval, say which group and what it wants.",
-      "- Handle simple things yourself. For bigger jobs, work as a team: give the job to the group whose members fit it (message_group).",
+      "- message_group gives a group a task on the user's behalf and brings back its final answer. Write a complete task; the user's own message is passed on with it, word for word, so add context but never reword it into something smaller. Don't ask the user to talk to the group themselves.",
+      "- When a group answers, tell the user the result in your own words: short, with the key points. Look through the group's earlier messages too: a link, file or figure a member gave is part of the answer, so never say a member didn't answer when they did. If a group needs the user's approval, the request appears as a card in this chat: say in one line what it is for, and never send the user to the group.",
+      "- Do the job yourself whenever your own tools can do it, whatever its topic: one bot is faster, cheaper and keeps the user in one conversation. That includes anything on the user's own computer or in their own apps when you have desktop control. Give a job to a group (message_group) only when it is big enough to split into parts that run side by side, or when it needs an ability you don't have and the user can't give you with one click.",
       "- When the user asks for a team for a job (\"make me a team and run it\") or no group fits, propose one with propose_team: pick fitting bots from the list below and add new ones the job needs; after the user agrees, give it the job with message_group. Prefer an existing group when one fits.",
       "- If the user asks you to improve something a specialist would do better (e.g. a social media post, a translation, a legal text), or a job needs a skill none of the bots have, propose that specialist with propose_specialist: it joins the group you lead (or the one you name), then give that group the work. Never propose a role a bot already has.",
     );
@@ -596,7 +598,9 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
       const attachments = e.attachments?.length
         ? e.attachments.map((att) => ({ chatId: chat.id, att, ...(recentUsers.has(e.id) ? {} : { brief: true }), ...(pdfAsDocument(att, pdfs, hostedMax) ? { doc: true } : {}) }))
         : undefined;
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}` : text, ...(attachments ? { attachments } : {}) });
+      // A task passed on by the main bot carries the user's own message: that message is the task.
+      const own = e.via && e.userWords ? `\n\n[The user's own message, word for word. It is the task: the wording above only adds context, and never asks for less than this]: ${e.userWords}` : "";
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}` : `${text}${own}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
@@ -891,7 +895,9 @@ async function* runBot(
           ? deskAsk(c) !== null
           : c.name === "open_app"
             ? // Starting an app always asks (unless it can't be opened: then it runs and returns why).
-              tools.some((t) => t.name === c.name) && "app" in appFor(c)
+              // Once the user allowed the mouse and keyboard for this task (and didn't choose "ask before every
+              // action"), opening an app is part of that OK: its card says so. Otherwise it asks.
+              tools.some((t) => t.name === c.name) && "app" in appFor(c) && !(deskGranted && !s.desktopControl.askEvery)
             : c.name === "propose_routine"
               ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string"
             : SPECIALIST_TOOLS.has(c.name)
@@ -1008,7 +1014,7 @@ async function* runBot(
             results.push(r);
             // This bot just got a new ability: its turn restarts with the new tools and instructions.
             if (!r.isError && c.name === "request_abilities" && JSON.stringify(listBots().find((b) => b.id === bot.id)?.tools) !== JSON.stringify(bot.tools)) selfChanged = true;
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
@@ -1159,6 +1165,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       text,
       at: Date.now(),
       ...(input.via ? { via: input.via } : {}),
+      ...(input.via && input.userWords?.trim() ? { userWords: input.userWords.trim().slice(0, 4000) } : {}),
       ...(input.routine ? { routine: input.routine } : {}),
       ...(effort && effort !== "auto" ? { effort } : {}),
       ...(deep && !plan ? { deep: true } : {}),

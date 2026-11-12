@@ -2,7 +2,9 @@ import { closeSession } from "@/lib/browser";
 import { guard } from "@/lib/guard";
 import { stopVm } from "@/lib/sandbox";
 import { isRunning, stopRun, whenIdle } from "@/lib/runner";
-import { deleteChat, getChat, saveChat, validateGroup } from "@/lib/store";
+import { groupAsksFor } from "@/lib/delegations";
+import { deleteChat, dmId, getChat, listBots, saveChat, validateGroup } from "@/lib/store";
+import { mainBot } from "@/lib/team";
 import type { ChatWithState } from "@/lib/types";
 import { validateWorkspace } from "@/lib/workspace";
 
@@ -18,6 +20,9 @@ export async function GET(req: Request, { params }: Ctx) {
   const chat = getChat((await params).id);
   if (!chat) return notFound();
   const out: ChatWithState = { ...chat, running: isRunning(chat.id) };
+  // In the main bot's chat: what the groups it gave tasks to are waiting on the user for.
+  const main = mainBot(listBots());
+  if (main && chat.id === dmId(main.id)) out.groupAsks = groupAsksFor(main.id);
   return Response.json(out);
 }
 

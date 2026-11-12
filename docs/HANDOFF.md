@@ -1,5 +1,14 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## On main, not released (2026-11-12, after 0.10.1): the user's chat is where things happen
+From a real conversation on the owner's PC ("use my pc and check my gmail in brave": the Chief gave it to a group, the OK was asked in the group, the task was reworded, the bot opened Gmail in its own signed-out browser and stopped).
+- **Approvals come to the user** (`groupAsksFor` in `lib/delegations.ts`, `GET /api/chats/[id]` adds `groupAsks` for the main bot's chat only, `components/ApprovalCard.tsx` is now the one card for own and group requests, `answerGroup` in `components/ChatView.tsx` posts the answer to the group's run). It reuses `waitingGroupTasks()` (what Telegram's /yes already used). A group's plan uses the existing `PlanReview`.
+- **The user's words travel with the task**: `UserEntry.userWords`, set by `message_group` from the main chat's last user message (harness, not prompt), shown to the group's bots as "the task" and in the group's chat under the passed-on message.
+- **Do it yourself first**: the main bot's rules, the `message_group` description and `abilityLines` (new `desktop` flag) say a job its own tools can do is done by itself; a group is for jobs that split into parts.
+- **The user's apps and sessions first**: the 0.10.1 rule "websites: use the browser tools, not the desktop" was wrong and is removed. Order now: the browser/app the user names (desktop control) > the bot's browser with signed-in accounts > private browser.
+- **Act before asking** on the desktop: look, act, check; open what is missing with `open_app` (no second card once the task has the mouse-and-keyboard OK, unless "ask before every action" is on; the grant card says so).
+- **Still not run on Windows**: `open_app`, the minimize/restore of oovi's window and the whole desktop loop. The engine paths are tested with a scripted model (`tests/e2e/group-scenario.cjs` 29 checks); how the real model behaves with these rules is not tested. Owner declined nothing yet about a real-model test set (item 6 of the proposal): ask again.
+
 ## 0.10.1 (2026-11-11): desktop control, honesty, learning, tool notes
 From a real conversation ("open ChatGPT on my PC and make a tiger picture": the bot said it couldn't, made a stock-photo card, then saw a black screen).
 - **Black screen**: oovi's own window is blacked out in screenshots and covered the screen. Now `electron/desktop-control.cjs` minimizes oovi's windows when the control banner shows (`stepAside`) and restores them when it hides (`comeBack`: task end, Stop, or a pause for the user's OK).

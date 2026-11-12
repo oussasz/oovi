@@ -59,6 +59,23 @@ function answer(body) {
   if (mgSpec) seen.messageGroup = mgSpec;
   seen.turns[me] = (seen.turns[me] || 0) + 1;
 
+  // The owner's "use my pc and check my gmail" case: the Chief gives the group a job that needs the user's OK.
+  // The request must come back to the chat the user is in, and the user's own words must reach the group.
+  if (/ASKME:/.test(all)) {
+    if (me === "Oovi" && (body.tools || []).some((t) => t.name === "message_group")) {
+      if (results.length) {
+        seen.askResult = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
+        return text("ASK-RELAYED");
+      }
+      // The Chief rewords the task into something smaller, as it did in the real conversation.
+      return reply([{ type: "tool_use", id: `toolu_ask_${Date.now()}`, name: "message_group", input: { group: "Business", message: "@c check whether a method exists; if not, stop." } }], "tool_use");
+    }
+    if (me === "c") {
+      seen.askView = all;
+      if (results.length) return text(`ASK-DONE: ${/declined/i.test(JSON.stringify(results)) ? "not saved" : "saved"}`);
+      return reply([{ type: "tool_use", id: `toolu_sk_${Date.now()}`, name: "save_skill", input: { name: "Inbox check", description: "How to check the inbox", instructions: "1. Open the inbox." } }], "tool_use");
+    }
+  }
   // The Chief, in its direct chat: ask the group, then report what came back.
   if (me === "Oovi" && /DASH:/.test(all) && (body.tools || []).some((t) => t.name === "message_group")) {
     if (results.length) {
@@ -261,6 +278,32 @@ const newBot = (name, role, extra = "") => api("POST", "/api/bots", { name, role
   check("every bot is told: answer first, a few lines", /Be short and practical/.test(seen.systems.Oovi || ""));
   const mg = seen.messageGroup;
   check("the Chief writes to groups in the user's language", /language of the user's latest message/.test(mg?.description || ""));
+
+  // G: a group's request for the user's OK comes to the chat the user is in, and is answered there.
+  const WORDS = "ASKME: use my pc and save the inbox method, exactly as I say";
+  await api("PUT", "/api/main", { botId: chief.id }); // an earlier scene made another bot the main one
+  await api("POST", `/api/chats/dm-${chief.id}/run`, { text: WORDS });
+  let main = await idle(`dm-${chief.id}`);
+  let grp = await idle(biz.id);
+  const asks = main.groupAsks || [];
+  const ask = asks[0];
+  check("the group's request appears in the main bot's chat as a card", asks.length === 1 && ask.kind === "approval" && ask.groupName === "Business" && ask.approval.items.length === 1 && ask.approval.items[0].call.name === "save_skill" && ask.approval.botId === c.id, JSON.stringify(asks).slice(0, 200));
+  check("the main bot is told the card is in this chat, never to send the user to the group", /shown to them as a card right here in this chat/.test(seen.askResult || "") && !/answer in the group|Open the group/.test(seen.askResult || ""), (seen.askResult || "").slice(0, 160));
+  const sentTask = grp.entries.filter((e) => e.kind === "user").at(-1);
+  check("the user's own words reach the group unchanged, next to the main bot's wording", sentTask?.userWords === WORDS && /check whether a method exists/.test(sentTask?.text || "") && (seen.askView || "").includes(`The user's own message, word for word. It is the task`) && (seen.askView || "").includes(WORDS), `${sentTask?.userWords} | ${sentTask?.text}`);
+  check("other chats don't get the card (only the main bot's chat does)", !(grp.groupAsks || []).length && !((await api("GET", `/api/chats/dm-${scout.id}`)).groupAsks || []).length);
+  // Answer from the main bot's chat: the decision goes to the group's run.
+  const mainBefore = main.entries.length;
+  await api("POST", `/api/chats/${biz.id}/run`, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, true])) });
+  grp = await idle(biz.id);
+  for (let i = 0; i < 40; i++) {
+    main = await api("GET", `/api/chats/dm-${chief.id}`);
+    if (main.entries.length > mainBefore && !main.running) break;
+    await sleep(300);
+  }
+  check("answered from the main chat: the group goes on and finishes", grp.entries.at(-1)?.text === "ASK-DONE: saved" && !grp.pending, grp.entries.at(-1)?.text);
+  check("the card is gone and the group's result arrives in the main chat", !(main.groupAsks || []).length && main.entries.length > mainBefore && /ASK-DONE: saved/.test(main.entries.at(-1)?.text || ""), `${(main.groupAsks || []).length} asks; last: ${(main.entries.at(-1)?.text || "").slice(0, 80)}`);
+  check("the main bot is told to do a job itself when its own tools can", /Do the job yourself whenever your own tools can do it/.test(seen.systems.Oovi || "") && /only when it is big enough to split into parts/.test(seen.systems.Oovi || ""));
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

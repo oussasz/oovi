@@ -14,7 +14,7 @@ import { translateFor } from "./i18n-server";
 import { isRunning, onRunEnd } from "./runner";
 import { dataDir } from "./settings";
 import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
-import type { Bot, BotEntry, Chat } from "./types";
+import type { Bot, BotEntry, Chat, GroupAsk } from "./types";
 
 export type Delegation = {
   id: string;
@@ -167,9 +167,9 @@ export function reportText(state: GroupTaskState, group: string, bots: Bot[], fr
 export function toolText(state: GroupTaskState, group: string, bots: Bot[], fromTelegram: boolean): string {
   switch (state.kind) {
     case "approval":
-      return `The group "${group}" is waiting for the user's OK: ${nameOf(bots, state.botId)} wants to ${state.items.map((x) => x.summary).join("; ")}. Tell the user what it wants. ${fromTelegram ? "They can reply /yes or /no right here in Telegram, or answer in the group in oovi." : `They answer in the group "${group}" in oovi (or with /yes or /no in Telegram).`} Its final answer will be posted to the user automatically when it's done.`;
+      return `The group "${group}" is waiting for the user's OK: ${nameOf(bots, state.botId)} wants to ${state.items.map((x) => x.summary).join("; ")}. Tell the user in one short line what it's for. ${fromTelegram ? "They can reply /yes or /no right here in Telegram." : "The request is shown to them as a card right here in this chat, with Allow and Deny buttons: never tell them to go to the group or to another place."} Its final answer will be posted to the user automatically when it's done.`;
     case "plan":
-      return `The group "${group}" proposes a plan and waits for the user: ${state.goal ? `${state.goal}. ` : ""}Steps: ${state.steps.join("; ")}. Tell the user the plan in short. ${fromTelegram ? "They can reply /yes to run it or /no to cancel, right here in Telegram." : `They review it in the group "${group}" in oovi.`} Its final answer will be posted automatically when it's done.`;
+      return `The group "${group}" proposes a plan and waits for the user: ${state.goal ? `${state.goal}. ` : ""}Steps: ${state.steps.join("; ")}. Tell the user the plan in short. ${fromTelegram ? "They can reply /yes to run it or /no to cancel, right here in Telegram." : "The plan is shown to them as a card right here in this chat, with Run and Cancel buttons: never tell them to go to the group."} Its final answer will be posted automatically when it's done.`;
     case "done":
       return `Final answer from ${nameOf(bots, state.botId)} in "${group}":\n${clip(state.text, 8000)}${earlierBlock(state, bots, true)}`;
     case "error":
@@ -290,6 +290,28 @@ export function waitingGroupTasks(): { delegation: Delegation; group: Chat; kind
     if (!group) continue;
     const state = groupTaskState(group, d.sentEntryId, false);
     if ((state.kind === "approval" || state.kind === "plan") && state.key === d.notified) out.push({ delegation: d, group, kind: state.kind });
+  }
+  return out;
+}
+
+/**
+ * The same waiting requests, for the main bot's chat in the app: the user answers them there, on a
+ * card, instead of being sent to the group (the group's chat still shows them too).
+ */
+export function groupAsksFor(mainBotId: string): GroupAsk[] {
+  const out: GroupAsk[] = [];
+  for (const w of waitingGroupTasks()) {
+    if (w.delegation.mainBotId !== mainBotId) continue;
+    const groupName = w.delegation.groupName || w.group.name;
+    if (w.kind === "approval") {
+      const approval = w.group.pending?.approval;
+      if (approval?.items.length) out.push({ kind: "approval", groupId: w.group.id, groupName, approval });
+    } else {
+      const review = w.group.pending?.planReview;
+      const entry = review ? w.group.entries.find((e): e is BotEntry => e.kind === "bot" && e.id === review.entryId) : undefined;
+      const steps = (entry?.plan ?? []).map((p) => p.text).filter(Boolean);
+      if (review && entry && steps.length) out.push({ kind: "plan", groupId: w.group.id, groupName, botId: review.botId, ...(entry.text ? { goal: entry.text } : {}), steps });
+    }
   }
   return out;
 }

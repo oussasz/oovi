@@ -96,3 +96,15 @@ test("secrets in a bot's description don't reach the Chief, links and facts do",
   assert.doesNotMatch(t, /sk-ant-api03|hunter2|AAHdqTcv/);
   assert.match(t, /password: \[hidden\]/);
 });
+
+test("a bot with desktop control does the user's-own-computer job itself (the Gmail-in-Brave case)", () => {
+  // The owner's case: Quill (the Chief, web search only) was asked "use my pc and check my gmail in brave".
+  const withDesk = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith, canRequest: true, desktop: true }, L));
+  assert.match(withDesk, /You also have desktop control/);
+  assert.match(withDesk, /do it yourself that way: don't pass it to another bot or a group/);
+  assert.match(withDesk, /You can't open websites, click, type or sign in with a browser of your own\./); // not a flat "you can't"
+  // Without desktop control nothing about it is claimed.
+  const without = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith, canRequest: true }, L));
+  assert.doesNotMatch(without, /desktop control/);
+  assert.match(without, /You can't open websites, click, type or sign in\./);
+});

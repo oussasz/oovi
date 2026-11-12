@@ -108,7 +108,8 @@ export type Usage = { input: number; output: number };
 /** command: the slash command the message started with ("/zapier", "/effort high"); text is the rest. */
 /** plan: sent in Plan mode (the bot proposes a plan the user edits and approves before any work). */
 /** routine: sent by a scheduled routine (its id), never by the user or the HTTP API. */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string };
+/** userWords: with `via` (a task the main bot passed on), the user's own message, word for word. */
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; userWords?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string };
 /** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
 export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
@@ -222,7 +223,16 @@ export type Chat = {
   routine?: string;
 };
 
-export type ChatWithState = Chat & { running: boolean };
+/**
+ * A request for the user's OK (or a plan to review) from a group the main bot gave a task to.
+ * It is shown and answered in the main bot's chat, where the user is: answering starts the group's run.
+ */
+export type GroupAsk =
+  | { kind: "approval"; groupId: string; groupName: string; approval: Approval }
+  | { kind: "plan"; groupId: string; groupName: string; botId: string; goal?: string; steps: string[] };
+
+/** groupAsks: only in the main bot's own chat. */
+export type ChatWithState = Chat & { running: boolean; groupAsks?: GroupAsk[] };
 
 export type ChatSummary = {
   id: string;

@@ -17,6 +17,7 @@ import { useI18n } from "./I18n";
 import Icon, { type IconName } from "./Icon";
 import LiveBrowser from "./LiveBrowser";
 import type { LiveSessionInfo } from "@/lib/browser-live";
+import ApprovalCard from "./ApprovalCard";
 import PlanReview from "./PlanReview";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
@@ -167,6 +168,9 @@ function rowsOf(e: BotEntry): Row[] {
   for (const s of e.steps) if (s.role === "assistant") for (const c of s.toolCalls) rows.push({ call: c, result: results.get(c.id) });
   return rows;
 }
+
+/** Which group requests are waiting (to notice a new or answered one when the chat itself didn't change). */
+const asksKey = (asks?: ChatWithState["groupAsks"]) => (asks ?? []).map((a) => `${a.groupId}:${a.kind === "approval" ? `${a.approval.entryId}:${a.approval.items.map((i) => i.call.id).join(",")}` : a.steps.join("|")}`).join(";");
 
 const urlOf = (r?: ToolResult) => r?.content.match(/^URL: (.*)$/m)?.[1] ?? "";
 
@@ -801,6 +805,8 @@ export default function ChatView({ id }: { id: string }) {
   };
   const [status, setStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  /** The group whose request is being answered from this chat (its card's buttons wait). */
+  const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [input, setInput] = useState("");
   // Files for the next message: uploaded right away, sent by id with the text.
   const [uploads, setUploads] = useState<Upload[]>([]);
@@ -905,6 +911,7 @@ export default function ChatView({ id }: { id: string }) {
   // Pick up work that starts elsewhere: the main bot giving this group a task,
   // a group's report arriving in the main bot's chat, or a Telegram message.
   const updatedAt = chat?.updatedAt;
+  const asksKeyNow = asksKey(chat?.groupAsks);
   useEffect(() => {
     if (running || missing) return;
     const timer = setInterval(() => {
@@ -912,12 +919,12 @@ export default function ChatView({ id }: { id: string }) {
       api<ChatWithState>(`/api/chats/${id}`)
         .then((c) => {
           if (c.running) void stream();
-          else if (c.updatedAt !== updatedAt) setChat(c);
+          else if (c.updatedAt !== updatedAt || asksKey(c.groupAsks) !== asksKeyNow) setChat(c);
         })
         .catch(() => {});
     }, 5000);
     return () => clearInterval(timer);
-  }, [id, running, missing, updatedAt, stream]);
+  }, [id, running, missing, updatedAt, asksKeyNow, stream]);
 
   useEffect(() => {
     const el = scrollRef.current;
@@ -1165,6 +1172,33 @@ export default function ChatView({ id }: { id: string }) {
     void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders" }) });
   }
 
+  /**
+   * Answer a request from a group, from this chat. The answer starts the group's run; its final
+   * answer arrives here by itself (lib/delegations.ts), so this chat is reloaded, not streamed.
+   */
+  async function answerGroup(groupId: string, body: Record<string, unknown>) {
+    if (groupBusy) return;
+    setError(null);
+    setGroupBusy(groupId);
+    try {
+      const res = await fetch(`/api/chats/${groupId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!res.ok) {
+        const msg = ((await res.json().catch(() => null)) as { error?: string } | null)?.error;
+        throw new Error(msg || t("chat.groupAnswerFailed"));
+      }
+      // The group works on its own from here: this chat doesn't need its event stream.
+      void res.body?.cancel().catch(() => {});
+      await reload();
+      refreshSidebar();
+    } catch (e) {
+      setError((e as Error).message);
+      // The request may have been answered elsewhere meanwhile (in the group, on Telegram): show what is true now.
+      await reload().catch(() => {});
+    } finally {
+      setGroupBusy(null);
+    }
+  }
+
   async function stop() {
     await fetch(`/api/chats/${id}/run`, { method: "DELETE" }).catch(() => {});
   }
@@ -1390,6 +1424,12 @@ export default function ChatView({ id }: { id: string }) {
                       <Rich text={e.text} bots={members} />
                     </div>
                   )}
+                  {e.via && e.userWords && (
+                    <blockquote className="user-words">
+                      <small>{t("chat.userWords")}</small>
+                      {e.userWords}
+                    </blockquote>
+                  )}
                   {(e.command || e.deep || e.routine || (e.effort && e.effort !== "auto")) && (
                     <div className="msg-mode">
                       {e.routine && (
@@ -1420,88 +1460,34 @@ export default function ChatView({ id }: { id: string }) {
               ),
             )}
 
-            {approval && !running && approval.items.length > 0 && approval.items.every((i) => i.specialist) && (
-              <div className="approval specialist-card" role="alert">
-                {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
-                <div>
-                  <strong>{t("spec.title", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
-                  {approval.items.map((it) => {
-                    const sp = it.specialist!;
-                    return (
-                      <div key={it.call.id} className="spec">
-                        <Face face={sp.face} mood="happy" size={64} />
-                        <div className="spec-body">
-                          <div className="spec-name">
-                            {sp.name} <span className="spec-role">{sp.role}</span>
-                          </div>
-                          {sp.why && <p className="spec-why">{sp.why}</p>}
-                          <div className="spec-meta">
-                            {sp.group && <span>{t("spec.joins", { group: sp.group })}</span>}
-                            {sp.web && <span>{t("spec.web")}</span>}
-                          </div>
-                          <details className="approval-detail">
-                            <summary>{t("spec.instructions")}</summary>
-                            <pre>{sp.instructions}</pre>
-                          </details>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  <div className="row wrap">
-                    <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="plus" size={16} /> {t("spec.create")}
-                    </button>
-                    <button className="btn" onClick={() => decide(false)}>{t("spec.notNow")}</button>
+            {approval && !running && <ApprovalCard approval={approval} bot={approvalBot} onDecide={decide} />}
+            {/* What the groups this bot gave tasks to are waiting on the user for: answered here, where the user is. */}
+            {!running &&
+              (chat.groupAsks ?? []).map((ask) =>
+                ask.kind === "approval" ? (
+                  <ApprovalCard
+                    key={`${ask.groupId}:${ask.approval.entryId}:${ask.approval.items.map((i) => i.call.id).join(",")}`}
+                    approval={ask.approval}
+                    bot={bots.find((b) => b.id === ask.approval.botId)}
+                    group={ask.groupName}
+                    busy={groupBusy === ask.groupId}
+                    onDecide={(ok, always) => void answerGroup(ask.groupId, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders" })}
+                  />
+                ) : (
+                  <div key={`${ask.groupId}:plan:${ask.steps.join("|")}`} className="approval group-plan" role="alert">
+                    {(() => {
+                      const b = bots.find((x) => x.id === ask.botId);
+                      return b ? <Face face={b.face} mood="asking" size={44} /> : null;
+                    })()}
+                    <div>
+                      <span className="approval-from">{t("chat.inGroup", { group: ask.groupName })}</span>
+                      <strong>{t("chat.groupPlan", { name: bots.find((x) => x.id === ask.botId)?.name ?? t("chat.aBot") })}</strong>
+                      {ask.goal && <p className="group-plan-goal">{ask.goal}</p>}
+                      <PlanReview key={ask.steps.join("\n")} steps={ask.steps} busy={groupBusy === ask.groupId} onDecide={(approve, items) => void answerGroup(ask.groupId, { planDecision: { approve, items } })} />
+                    </div>
                   </div>
-                </div>
-              </div>
-            )}
-            {approval && !running && !(approval.items.length > 0 && approval.items.every((i) => i.specialist)) && (
-              <div className="approval" role="alert">
-                {approvalBot && <Face face={approvalBot.face} mood="asking" size={44} />}
-                <div>
-                  <strong>{approval.items.some((i) => i.desktop === "grant") ? t("desk.grantQ", { name: approvalBot?.name ?? t("chat.aBot") }) : t("chat.wantsTo", { name: approvalBot?.name ?? t("chat.aBot") })}</strong>
-                  <ul>
-                    {approval.items.map((it) => (
-                      <li key={it.call.id}>
-                        {it.summary}
-                        {it.desktop === "grant" && <span className="dc-grant-note">{t(it.askEvery ? "desk.grant.asks" : "desk.grant.noAsk")}</span>}
-                        {it.desktop && it.window && (
-                          <span className="dc-window" title={t("desk.windowHint")}>
-                            {t("desk.window")} “{it.window.title}”
-                          </span>
-                        )}
-                        {it.desktop && it.text !== undefined && (
-                          <pre className="dc-typed" aria-label={t("desk.typed")}>
-                            {markWhitespace(it.text)}
-                          </pre>
-                        )}
-                        {!it.desktop && it.detail && (
-                          <details className="approval-detail" open={it.call.name === "run_command" || it.detail.length < 600}>
-                            <summary>{t("chat.details")}</summary>
-                            <pre>{it.detail}</pre>
-                          </details>
-                        )}
-                      </li>
-                    ))}
-                  </ul>
-                  <div className="row wrap">
-                    <button className="btn primary" onClick={() => decide(true)}>
-                      <Icon name="check" size={16} /> {approval.items.some((i) => i.desktop === "grant") ? t("desk.allowTask") : approval.items.some((i) => i.always || i.folder) ? t("chat.allowOnce") : t("chat.allow")}
-                    </button>
-                    {approval.items.some((i) => i.folder) && (
-                      <button className="btn" onClick={() => decide(true, "folders")} title={[...new Set(approval.items.map((i) => i.folder).filter(Boolean))].join(" · ")}>
-                        {new Set(approval.items.map((i) => i.folder).filter(Boolean)).size > 1 ? t("files.alwaysFolders") : t("files.alwaysFolder")}
-                      </button>
-                    )}
-                    {approval.items.some((i) => i.always) && (
-                      <button className="btn" onClick={() => decide(true, "edits")}>{t("chat.alwaysEdits")}</button>
-                    )}
-                    <button className="btn" onClick={() => decide(false)}>{t("chat.deny")}</button>
-                  </div>
-                </div>
-              </div>
-            )}
+                ),
+              )}
             {error && <div className="notice error">{error}</div>}
           </div>
         </div>

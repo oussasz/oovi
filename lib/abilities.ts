@@ -34,6 +34,8 @@ type Where = {
   groupsWith?: (botId: string) => string[];
   /** request_abilities is offered: the bot shows a one-click card instead of explaining menus. */
   canRequest?: boolean;
+  /** Desktop control is offered to this bot: it can work in the user's own apps and browser, with their OK. */
+  desktop?: boolean;
 };
 
 export function abilityLines(self: Named, bots: Named[], where: Where, L: AbilityLabels): string[] {
@@ -44,12 +46,19 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   // 1. The facts, one per ability.
   const cant = [
     !me.web && !me.browser ? "search or read the web" : "",
-    !me.browser ? "open websites, click, type or sign in" : "",
-    !me.accounts ? "post, comment, reply or send messages as the user on their accounts" : "",
+    !me.browser ? `open websites, click, type or sign in${where.desktop ? " with a browser of your own" : ""}` : "",
+    !me.accounts ? `post, comment, reply or send messages as the user on their accounts${where.desktop ? " with a browser of your own" : ""}` : "",
   ].filter(Boolean);
   out.push(
     `Your abilities, from your settings right now: ${abilityWords(me)}.${cant.map((c) => ` You can't ${c}.`).join("")} Never claim an ability you don't have, and never tell the user oovi can't do something when another bot or a setting can.`,
   );
+  // Desktop control reaches what a bot's own browser can't: the user's own apps and their own browser,
+  // where they are already signed in. A bot that has it does such a job itself.
+  if (where.desktop) {
+    out.push(
+      `You also have desktop control: with the user's OK you see their screen and use their mouse and keyboard, in their own apps and their own browser (where they are signed in). When the user asks you to use their computer, one of their apps or their browser, do it yourself that way: don't pass it to another bot or a group, and don't ask for another ability first.`,
+    );
+  }
 
   // 2. How to turn an ability on, for this bot or for another one (exact places in the app).
   const settingsOf = (name: string, own: boolean) =>

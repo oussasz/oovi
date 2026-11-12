@@ -463,6 +463,10 @@ a.tag { text-decoration: none; }
 .approval { display: flex; gap: 14px; background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: var(--radius); padding: 14px 16px; }
 /* A proposed specialist: a friendly "new teammate" card, not a warning. */
 .approval.specialist-card { background: var(--panel); border-color: var(--border); }
+/* A request that comes from a group, shown in the main bot's chat */
+.approval-from { display: block; margin-bottom: 2px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.approval.group-plan > div { flex: 1; min-width: 0; }
+.group-plan-goal { margin: 4px 0 8px; }
 .specialist-card .spec { display: flex; gap: 14px; align-items: flex-start; margin: 12px 0; }
 .specialist-card .spec-body { min-width: 0; flex: 1; }
 .specialist-card .spec-name { font-weight: 700; font-size: 16px; }
@@ -878,3 +882,7 @@ a.tag { text-decoration: none; }
 .for-all-row .tag.on { background: color-mix(in srgb, var(--ok) 18%, transparent); color: var(--text); }
 
 .step-detail-title { display: block; margin: 4px 0 2px; color: var(--muted); font-size: 11.5px; }
+
+/* A task the main bot passed to a group: the user's own message under it */
+.user-words { margin: 6px 0 0; padding: 6px 10px; border-inline-start: 3px solid var(--border); color: var(--muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 560px; }
+.user-words small { display: block; font-weight: 700; margin-bottom: 2px; }
