@@ -560,6 +560,30 @@ function fileOf(call: ToolCall): { t: Target; size: number } | ToolResult {
   }
 }
 
+/** The largest file a bot may attach to a web page. */
+const MAX_UPLOAD = 100 * 1024 * 1024;
+
+/**
+ * A file a bot wants to attach to a web page (an email attachment, an import field). The same hard
+ * blocks as reading a file (system folders, keys, browser profiles…), and "Files on this computer"
+ * must be on for anything outside oovi's own output folder (Downloads/oovi).
+ */
+export function uploadSource(raw: unknown, s: Settings): { real: string; name: string; size: number; own: boolean; allowed: boolean } | { error: string } {
+  const t = target(raw);
+  if ("error" in t) return t;
+  const own = within(blockers().outputs, t.real);
+  if (!own && !computerFilesOn(s)) return { error: "Files on this computer are switched off, so only files in the user's Downloads/oovi folder can be attached. The user can turn it on in [Settings > Safety](oovi://settings/safety)." };
+  let st: fs.Stats;
+  try {
+    st = fs.statSync(t.real);
+  } catch (e) {
+    return { error: fsError(e, t.abs) };
+  }
+  if (st.isDirectory()) return { error: `${t.abs} is a folder: give one file.` };
+  if (st.size > MAX_UPLOAD) return { error: `${path.basename(t.abs)} is ${sizeLabel(st.size)}; bots can attach files up to ${MAX_UPLOAD / 1048576} MB.` };
+  return { real: t.real, name: path.basename(t.abs), size: st.size, own, allowed: own || inAllowed(t.real, s) };
+}
+
 /** A new, unused file name in Downloads/oovi. */
 function downloadsTarget(name: string): string {
   const dir = downloadsDir();

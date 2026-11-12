@@ -15,7 +15,7 @@ import { DOC_TOOLS, DOC_WRITE_TOOLS, describeDocCall, runDocTool } from "./files
 import { READER_SPECS, READER_TOOLS, runReaderTool } from "./reader";
 import { VM_TOOLS, runVmTool } from "./sandbox";
 import { ALWAYS_ASK_TOOLS, EDIT_TOOLS, FILE_TOOLS, describeFileCall, runFileTool } from "./workspace";
-import { COMPUTER_TOOLS, computerNeedsApproval, describeComputerCall } from "./computer";
+import { COMPUTER_TOOLS, computerNeedsApproval, describeComputerCall, uploadSource } from "./computer";
 import { translateFor, type Tr } from "./i18n-server";
 
 export const TOOL_SPECS: ToolSpec[] = [
@@ -49,6 +49,12 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: "download_file",
     description: "Download a file (PDF, image, document…) from a direct URL into the user's Downloads/oovi folder. The file is saved, never opened.",
     parameters: { type: "object", properties: { url: { type: "string" } }, required: ["url"] },
+  },
+  {
+    name: "upload_file",
+    description:
+      "Attach a file from the user's computer to the current page: an email attachment, an import or upload field, a profile picture. Give the file's full path (files you made are in the user's Downloads/oovi folder) and, when the page shows one, the number of the file field or of the button that opens the file chooser (\"Attach\", \"Choose file\", \"Import\"). Without a number, the page's file field is used. The file is only attached: click the page's own Send, Add or Upload button afterwards. Never ask the user to pick the file themselves.",
+    parameters: { type: "object", properties: { path: { type: "string", description: "The file's full path on the user's computer" }, element: { type: "integer", description: "The file field or the button that opens the file chooser, from the latest element list (optional)" } }, required: ["path"] },
   },
   {
     name: "request_user_takeover",
@@ -171,7 +177,7 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "download_file", "request_user_takeover"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "download_file", "upload_file", "request_user_takeover"];
 
 /** What runTool needs from the run: its stop signal, and where the user is writing from. */
 export type RunCtx = { signal?: AbortSignal; channel?: "telegram" };
@@ -403,6 +409,16 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
         return withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
       }
     }
+    case "upload_file": {
+      const src = uploadSource(input.path, settings);
+      if ("error" in src) return fail(call, src.error);
+      if (page.url() === "about:blank") return fail(call, "Open the page with the file field first (open_url), then call upload_file.");
+      const attached = await attachFile(page, src.real, input.element === undefined ? null : Number(input.element));
+      if (attached !== "ok") return fail(call, attached);
+      await settle(page);
+      const res = await pageResult(call, sess, 0, true, sessionId, ctx);
+      return { ...res, content: `Attached ${src.name} (${Math.max(1, Math.round(src.size / 1024))} KB) to the page. It isn't sent yet: use the page's own button (Send, Add, Upload, Import) to finish, then check the page shows it.\n\n${res.content}` };
+    }
     case "download_file": {
       const url = String(input.url ?? "").trim();
       const err = checkUrl(url, settings.browser.allowPrivateNetwork);
@@ -414,6 +430,37 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
     }
   }
   return fail(call, `Unknown tool: ${call.name}`);
+}
+
+/**
+ * Put a local file into the page: into a file field, through the file chooser a button opens, or into
+ * the page's (often hidden) file field when no element is named. Returns "ok" or what to tell the bot.
+ */
+async function attachFile(page: Session["page"], file: string, element: number | null): Promise<string> {
+  const fileInputs = page.locator('input[type="file"]');
+  if (element !== null) {
+    const loc = page.locator(`[data-oc-id="${element}"]`);
+    if ((await loc.count()) === 0) return `Element ${element} not found. The page may have changed; call read_page to get a fresh element list, or call upload_file without an element.`;
+    const isFileInput = await loc.first().evaluate((el) => el instanceof HTMLInputElement && el.type === "file");
+    if (isFileInput) {
+      await loc.first().setInputFiles(file, { timeout: 15_000 });
+      return "ok";
+    }
+    // A button, a label or a drop zone: it opens the file chooser, which gets the file.
+    try {
+      const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 8_000 }), loc.first().click({ timeout: 8_000 })]);
+      await chooser.setFiles(file);
+      return "ok";
+    } catch (e) {
+      if (!/timeout/i.test(e instanceof Error ? e.message : String(e))) throw e;
+      // It opened no chooser (some pages show a menu first): fall back to the page's own file field.
+    }
+  }
+  const count = await fileInputs.count();
+  if (count === 0) return element !== null ? `Element ${element} didn't open a file chooser, and this page has no file field yet. Click the page's "Attach", "Upload" or "Import" button first (click), then call upload_file again.` : "This page has no file field yet. Click its \"Attach\", \"Upload\" or \"Import\" button first (click), or give the number of the button that opens the file chooser.";
+  if (count > 1 && element === null) return `This page has ${count} file fields. Call upload_file again with the number of the one you mean (the file field itself or the button next to it).`;
+  await fileInputs.first().setInputFiles(file, { timeout: 15_000 });
+  return "ok";
 }
 
 /** request_user_takeover: show the request in the live view and wait for the user to finish. */
@@ -456,8 +503,15 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
   if (call.name === "use_skill") return false;
   // MCP servers can do anything; ask unless the user marked the server as trusted.
   if (call.name.startsWith("mcp_")) return !mcpServerOf(call.name)?.trusted;
+  // Attaching a file sends it to a website: a file outside Downloads/oovi and outside the folders the user
+  // allowed always asks; a file the bots may already read follows the same setting as typing.
+  if (call.name === "upload_file") {
+    const src = uploadSource(call.input.path, settings);
+    if ("error" in src) return false; // refused when it runs: nothing to ask
+    if (!src.allowed) return true;
+  }
   if (!settings.approvals.clicksAndTyping && !usesAccounts) return false;
-  if (call.name === "type" || call.name === "download_file") return true;
+  if (call.name === "type" || call.name === "download_file" || call.name === "upload_file") return true;
   if (call.name === "click") {
     if (usesAccounts) return true;
     const el = peekSession(sessionId)?.elements.get(Number(call.input.element));
@@ -488,6 +542,7 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
   const target = el ? `${el.kind} "${el.label}"` : `element ${String(call.input.element)}`;
   if (call.name === "click") return tr("ok.click", { target, where });
   if (call.name === "type") return `${tr("ok.type", { text: String(call.input.text ?? ""), target, where })}${call.input.submit ? tr("ok.typeEnter") : ""}`;
+  if (call.name === "upload_file") return tr("ok.upload", { file: String(call.input.path ?? ""), where });
   if (call.name === "download_file") return tr("ok.download", { url: String(call.input.url ?? "") });
   if (call.name === "save_skill") return tr("ok.saveSkill", { name: String(call.input.name ?? ""), description: String(call.input.description ?? "") });
   if (call.name.startsWith("mcp_")) {

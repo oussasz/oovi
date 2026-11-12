@@ -399,6 +399,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
       lines.push(
         "Element numbers for click/type come from the latest element list.",
         "To get a file, use download_file with a direct link, or click its download button. Files are saved to the user's Downloads/oovi folder. Never try to open or run downloaded files.",
+        "To put a file into a page (attach it to an email, import it into a dashboard, upload a document or picture), use upload_file with the file's full path: it works with file fields and with buttons that open the file chooser. Never tell the user to choose the file themselves.",
       );
     }
     if (bot.tools.accounts) {
@@ -755,6 +756,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "type": return tr("st.typing");
     case "go_back": return tr("st.goingBack");
     case "download_file": return tr("st.downloading");
+    case "upload_file": return tr("st.uploading", { what: baseName(i.path) });
     case "request_user_takeover": return tr("st.waitingBrowser");
     case "use_skill": return tr("st.loadingSkill", { name: v(i.name) });
     case "save_skill": return tr("st.savingSkill");
