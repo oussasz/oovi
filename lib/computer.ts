@@ -165,7 +165,7 @@ const SECRET_FILES = [
   /^(\.netrc|_netrc|\.npmrc|\.pypirc|\.git-credentials|\.pgpass|credentials|credentials\.json|known_hosts|authorized_keys|login data|cookies|web data|key3\.db|key4\.db|logins\.json|signons\.sqlite|wallet\.dat|secrets?\.(json|ya?ml|toml))$/i,
 ];
 
-type Blockers = { system: string[]; own: string[]; outputs: string; appData: { dir: string; except: string[] }[]; home: string; at: number };
+type Blockers = { system: string[]; temp: string[]; own: string[]; outputs: string; appData: { dir: string; except: string[] }[]; home: string; at: number };
 let cache: Blockers | null = null;
 
 function blockers(): Blockers {
@@ -185,6 +185,10 @@ function blockers(): Blockers {
   }
   cache = {
     system: systemDirs().map(realOf),
+    // The user's own temporary folder is theirs on every system (Windows: AppData\Local\Temp, excepted
+    // above; Linux: /tmp). On a Mac it sits under /var/folders, a system folder: without this, every file
+    // there was refused on a Mac only.
+    temp: isMac ? [realOf(os.tmpdir())] : [],
     own: [baseDir(), dataDir()].map(realOf),
     outputs: realOf(downloadsDir()),
     appData,
@@ -199,7 +203,7 @@ export function blockReason(p: string): string | null {
   if (/^\\\\[?.]\\/.test(p)) return "a device path";
   if (isWin && p.slice(2).includes(":")) return "a hidden data stream";
   const b = blockers();
-  if (b.system.some((d) => within(d, p))) return "a system folder";
+  if (b.system.some((d) => within(d, p)) && !b.temp.some((t) => within(t, p))) return "a system folder";
   if (!within(b.outputs, p) && b.own.some((d) => within(d, p))) return "oovi's own data folder";
   if (b.appData.some((a) => within(a.dir, p) && !a.except.some((e) => within(e, p)))) return "an app data folder (browser profiles, passwords and app settings live there)";
   if (within(b.home, p)) {
