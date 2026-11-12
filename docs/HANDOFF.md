@@ -1,6 +1,6 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## After 0.10.2, not released yet: "must end with a user message" (2026-11-12)
+## 0.10.3 (2026-11-12): two errors that stopped teams, lists taken from pages in one step, one table per job
 - Seen by the owner in a team chat: the leader's turn failed with "This model does not support assistant message prefill. The conversation must end with a user message."
 - Cause (in the app since 0.10.0): a bot given the turn right after its own message (a big job's next round, `settle()` `p.queue.push(bot.id)`; a last turn to conclude; teammates who added nothing) was sent a conversation ending with its own words. The service refuses that.
 - Fix: `viewFor()` in `lib/orchestrator.ts` ends such a view with a short user-side line (`AGAIN`).
@@ -13,6 +13,7 @@
   - Source rule in `workPrompt`: a row found on a directory is kept, with its source, marked "to confirm"; the user is never asked to copy from a page.
   - `tests/e2e/list-scenario.cjs` (16 checks, real browser, local pages). Also run by hand on real sites from the cloud machine: Google Maps results 6 -> 19 after scrolling (names and addresses, no phones: "limited view"), dzadvisor.com listings 16 items per page (names and links; phones are on each item's page), Wikipedia table 172 rows, a scroll-to-load page 10 -> 40.
   - Known limits: sites that block automated browsers (pagesjaunes.fr, yelp.com, a Cloudflare check) still block; a page with one item per row of mixed layout may need `selector`; no "find places" tool yet (owner to decide on a Google Places key).
+- Next (owner said no to a paid Google key, asked for a free open source): Overture Maps places (open data, CDLA-Permissive-2.0, GeoParquet on a public bucket, no key). Measured 2026-11-12 for the Algiers area: 21,931 places, 18,679 with a phone; cafés and coffee shops 162 (112 with a phone); beauty 849 (767 with a phone); most rows carry a Facebook page link. A bounding-box query over the 16 files took about 2 seconds with DuckDB. Not built yet.
 
 ## 0.10.2 (2026-11-12): the user's chat is where things happen; bots act for the user
 Second conversation the same night ("use brave, go to facebook.com and send a message to me: test"): the bot refused ("sending messages from your accounts is outside what I can do"), asked "should I go ahead?" after being told to, sent the user to do it himself, and the review saved the false lesson "The user does not want the bots to control their PC or browser".
