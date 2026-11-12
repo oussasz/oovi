@@ -133,6 +133,8 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      if (refused) return send(400, { error: refused });
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
           return send(200, answer(JSON.parse(raw)));

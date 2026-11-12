@@ -625,8 +625,16 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
     // A teammate whose turn failed: the others (and the leader) know that part wasn't done.
     else if (e.status === "error") out.push({ role: "user", content: `[${bots.find((b) => b.id === e.botId)?.name ?? "Teammate"} couldn't finish this part: an error stopped it.]` });
   }
+  // The bot is given the turn again right after its own message (a big job's next round, a last turn to
+  // conclude, teammates who added nothing). A model answers a message: a conversation that ends with the
+  // bot's own words is refused by the service ("must end with a user message"), so say whose turn it is.
+  const last = out.at(-1);
+  if (last?.role === "assistant" && !last.toolCalls.length) out.push({ role: "user", content: AGAIN });
   return out;
 }
+
+/** Said to a bot whose turn comes right after its own message. Its instructions say what the turn is for. */
+const AGAIN = "[oovi]: It's your turn again; nobody has written since your message above. Go on from there, following your instructions for this turn. Don't repeat what you already said.";
 
 /** What a group said is an answer, not raw tool output: it stays (almost) whole. */
 const KEEP_LONGER = new Set(["message_group", "read_group"]);

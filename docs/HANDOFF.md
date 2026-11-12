@@ -1,5 +1,11 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## After 0.10.2, not released yet: "must end with a user message" (2026-11-12)
+- Seen by the owner in a team chat: the leader's turn failed with "This model does not support assistant message prefill. The conversation must end with a user message."
+- Cause (in the app since 0.10.0): a bot given the turn right after its own message (a big job's next round, `settle()` `p.queue.push(bot.id)`; a last turn to conclude; teammates who added nothing) was sent a conversation ending with its own words. The service refuses that.
+- Fix: `viewFor()` in `lib/orchestrator.ts` ends such a view with a short user-side line (`AGAIN`).
+- Why tests missed it: the scripted model accepted anything. `tests/e2e/model-rules.cjs` now refuses what the real service refuses, in every scenario; bigjob failed 3 checks before the fix, 27/27 after.
+
 ## 0.10.2 (2026-11-12): the user's chat is where things happen; bots act for the user
 Second conversation the same night ("use brave, go to facebook.com and send a message to me: test"): the bot refused ("sending messages from your accounts is outside what I can do"), asked "should I go ahead?" after being told to, sent the user to do it himself, and the review saved the false lesson "The user does not want the bots to control their PC or browser".
 - **Acting for the user is the job** (`FOR_THE_USER` in `lib/orchestrator.ts`, placed before `SAFETY`): the request is the authorization, the card is the confirmation, a task passed on by the main bot has the user's authority, never "do it yourself". The blanket bans ("never … send … unless the user asked for that exact action", "ONLY when…") are reworded to "do what was asked and no more". `abilityLines` no longer tells a bot with desktop control that it can't send messages.
