@@ -15,6 +15,23 @@ const validPhone = (x: string) => {
   return d.length >= 8 && d.length <= 15 && !/^(\d)\1+$/.test(d);
 };
 
+/** A number as people write it inside one country: a leading 0, then 7 to 13 more digits ("0550 12 34 56", "021 23 45 67"). */
+const LOCAL = /(?<![\d.,:/+-])((?:\+|00)?0?\d(?:[ .\-()]{0,2}\d){7,13})(?![\d.,:/-]*\d)/g;
+
+/**
+ * Phone numbers written without a label in a short piece of text (one item of a list, where a bare
+ * "0550 12 34 56" is a phone number). Not for whole pages: there, dates, prices and references would match.
+ */
+export function phonesInText(text: string): string[] {
+  const out: string[] = [];
+  for (const m of text.matchAll(LOCAL)) {
+    const v = m[1]!.trim();
+    if (!/^(?:\+|00|0)/.test(v) || !validPhone(v)) continue;
+    if (!out.some((x) => digitsOf(x) === digitsOf(v))) out.push(v);
+  }
+  return out.slice(0, 5);
+}
+
 function jsonLdContacts(node: unknown, out: string[], depth = 0): void {
   if (!node || depth > 6) return;
   if (Array.isArray(node)) {

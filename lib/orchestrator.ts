@@ -42,7 +42,7 @@ import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import { WORK_SPECS, WORK_TOOLS, loadWork, runWorkTool, workPrompt } from "./workfiles";
+import { WORK_SPECS, WORK_TOOLS, addListRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark } from "./workfiles-core";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
@@ -65,6 +65,8 @@ export type RunInput = {
   via?: string;
   /** With `via`: the user's own message that led to this task, passed on unchanged. */
   userWords?: string;
+  /** With `via`: the chat whose work files the task is done in (see workHome). */
+  workChat?: string;
   effort?: Effort;
   deep?: boolean;
   /** Plan mode: the bot proposes a plan first; nothing changes until the user approves it. */
@@ -112,7 +114,7 @@ const PROPOSE_PLAN_SPEC: ToolSpec = {
 
 /** Tools that only look (never change anything): allowed while a plan is being drafted. */
 const PLAN_MODE_TOOLS = new Set([
-  "web_search", "research", "read_url", "open_url", "read_page", "go_back",
+  "web_search", "research", "read_url", "open_url", "read_page", "go_back", "scroll",
   "list_files", "read_file", "search_files", "read_attachment", "read_document",
   "find_files", "list_folder", "read_computer_file", "list_groups", "read_group",
   "recall_history", "oovi_help", "use_skill", "list_routines",
@@ -192,13 +194,14 @@ const JOB_LEAD = `BIG JOB MODE. You own the result: the job ends when the goal i
 const JOB_MEMBER = `BIG JOB MODE: the team is on a big job. Do your whole part in this turn: keep working, step after step, until your part is complete or you have truly run out of ways. Don't stop to report a partial result, and don't ask whether to continue.
 - Put results into the team's work file as you go (work_table add in batches, work_notes append), never in the chat.
 - When one way fails (a page won't load, a site hides the detail, a search returns little), try another: other search words, other sites and directories, another language, the browser. Only give up on an item after several different ways failed.
-- Check before you record: a detail must come from a page you actually read, with its source.
+- A page that lists many items (a directory, a results page, a map's results): open it in the browser and take the whole list with extract_list, straight into the work table, instead of reading and retyping items one by one.
+- Record what you read, with where you read it. Never write a detail you read nowhere.
 - Your reply is at most three short lines: what you added (numbers), in which work file, and what you couldn't get and why. No tables or lists in the chat.`;
 
 /** A big job, for a bot working alone with the user. */
 const JOB_SOLO = `BIG JOB MODE. You own the result: keep working, step after step, until the goal is reached. Don't stop to report a partial result and don't ask the user whether to continue.
 - Put results into work files as you go (work_table for lists, work_notes for long text), not in the chat.
-- When one way fails, try another: other search words, other sites, another language, the browser. Review your own work and correct it before you finish.
+- When one way fails, try another: other search words, other sites, another language, the browser. A page that lists many items: open it and take the whole list with extract_list, straight into the work table. Review your own work and correct it before you finish.
 - Never give the user work you can do (opening pages, checking sources). Ask only for what only they can give.
 - To finish: work_export the result, then one short message with what was done, the numbers, the file name and what is still open.`;
 
@@ -240,6 +243,17 @@ const filesMade = (chat: Chat) => {
 /** This reply already delivered a work file to the user. */
 const exported = (entry: BotEntry) => entry.steps.some((st) => st.role === "tool" && st.results.some((r) => r.name === "work_export" && !!r.file && !r.isError));
 
+/**
+ * The chat whose work files this chat's bots use right now. A task the main bot passed to a group is
+ * done in the main bot's work files, so the job has one table: without this the group filled a table
+ * of its own and the two counts disagreed. A message the user writes in the group itself (the latest
+ * user message then has no workChat) uses the group's own files, as before.
+ */
+export function workHome(chat: Chat): string {
+  const last = [...chat.entries].reverse().find((e): e is UserEntry => e.kind === "user");
+  return last?.via && last.workChat && getChat(last.workChat) ? last.workChat : chat.id;
+}
+
 /** Where a list job stands: complete rows against the target (null when the job has no number). */
 function jobCount(chatId: string, job: Job): { done: number; target: number } | null {
   if (!job.table || !job.target) return null;
@@ -250,17 +264,17 @@ function jobCount(chatId: string, job: Job): { done: number; target: number } | 
 
 /** The job's owner just finished a turn: did the team's work grow since its last one? */
 function jobRound(chat: Chat, job: Job): { met: boolean | null; spent: boolean } {
-  const mark = progressMark(loadWork(chat.id)) + filesMade(chat) * 1_000_000;
+  const mark = progressMark(loadWork(workHome(chat))) + filesMade(chat) * 1_000_000;
   job.stale = mark === job.mark ? job.stale + 1 : 0;
   job.mark = mark;
   job.rounds++;
-  const c = jobCount(chat.id, job);
+  const c = jobCount(workHome(chat), job);
   return { met: c ? c.done >= c.target : null, spent: job.stale >= JOB_STALE || job.rounds >= JOB_MAX_ROUNDS };
 }
 
 /** The live status every bot on the job sees. */
 function jobLines(chat: Chat, job: Job, owner: boolean): string[] {
-  const c = jobCount(chat.id, job);
+  const c = jobCount(workHome(chat), job);
   const need = job.require?.length ? ` with ${job.require.join(", ")} filled in` : "";
   const out = [`The job's goal: ${job.goal}`];
   if (c) {
@@ -451,7 +465,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   } else if (tools.some((t) => t.name === "propose_specialist") && chat.kind !== "group") {
     lines.push("", "If the user asks you to improve something a specialist would do better, or a job needs a skill you don't have, propose that specialist with propose_specialist.");
   }
-  if (tools.some((t) => t.name === "work_table")) lines.push(...workPrompt(chat.id, chat.kind === "group" && mates.length > 0));
+  if (tools.some((t) => t.name === "work_table")) lines.push(...workPrompt(workHome(chat), chat.kind === "group" && mates.length > 0, workHome(chat) !== chat.id));
   lines.push(...attachmentsPrompt(chat, tools.some((t) => t.name === "vm_upload_attachment")));
   lines.push(...extra.files);
   if (chat.workspace) {
@@ -760,6 +774,8 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "web_search": return tr("st.searching", { q: v(i.query) });
     case "open_url": { const h = host(i.url); return h ? tr("st.opening", { host: h }) : tr("st.openingPage"); }
     case "read_page": return tr("st.readingPage");
+    case "scroll": return tr("st.scrolling");
+    case "extract_list": return tr("st.extracting");
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
     case "go_back": return tr("st.goingBack");
@@ -1013,7 +1029,7 @@ async function* runBot(
             results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {
             // Exports always go to Downloads/oovi (never into a project folder, where a new file needs the user's OK).
-            results.push(await runWorkTool(c, chat.id, undefined, s.browser));
+            results.push(await runWorkTool(c, workHome(chat), undefined, s.browser));
           } else if (c.name === "start_big_job") {
             const goal = String(c.input.goal ?? "").replace(/\s+/g, " ").trim().slice(0, 400);
             if (!goal) results.push({ id: c.id, name: c.name, content: "goal is required: what must exist at the end, in one sentence.", isError: true });
@@ -1045,7 +1061,7 @@ async function* runBot(
             results.push(r);
             // This bot just got a new ability: its turn restarts with the new tools and instructions.
             if (!r.isError && c.name === "request_abilities" && JSON.stringify(listBots().find((b) => b.id === bot.id)?.tools) !== JSON.stringify(bot.tools)) selfChanged = true;
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source) }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
@@ -1197,6 +1213,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       at: Date.now(),
       ...(input.via ? { via: input.via } : {}),
       ...(input.via && input.userWords?.trim() ? { userWords: input.userWords.trim().slice(0, 4000) } : {}),
+      ...(input.via && input.workChat && /^[\w-]{1,64}$/.test(input.workChat) && input.workChat !== chat.id ? { workChat: input.workChat } : {}),
       ...(input.routine ? { routine: input.routine } : {}),
       ...(effort && effort !== "auto" ? { effort } : {}),
       ...(deep && !plan ? { deep: true } : {}),
@@ -1512,7 +1529,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     yield { type: "entry", entry };
     // A big job: was the goal already reached when this turn started? (If it's reached during the turn,
     // the owner gets one more turn to check and deliver.)
-    const metBefore = ((c) => !!c && c.done >= c.target)(chat.pending?.job ? jobCount(chat.id, chat.pending.job) : null);
+    const metBefore = ((c) => !!c && c.done >= c.target)(chat.pending?.job ? jobCount(workHome(chat), chat.pending.job) : null);
     let outcome = yield* runBot(chat, entry, bot, bots, members, settings, decisions, signal, answered);
     // The bot's own abilities changed mid-turn: carry on with its fresh settings (same message, same history).
     for (let i = 0; outcome === "refresh" && i < 3; i++) {

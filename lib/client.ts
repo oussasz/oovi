@@ -79,9 +79,9 @@ export function fmtCost(usd: number, freeLabel: string): string {
 
 /** Face for the tool a bot is using: a book for searching/reading, a laptop for the browser. */
 export function toolMood(tool: string): Mood {
-  if (tool === "web_search" || tool === "research" || tool === "read_url" || tool === "read_document" || tool === "read_page" || tool === "use_skill" || tool === "memory" || tool === "read_file" || tool === "list_files" || tool === "search_files") return "reading";
+  if (tool === "web_search" || tool === "research" || tool === "read_url" || tool === "read_document" || tool === "read_page" || tool === "extract_list" || tool === "use_skill" || tool === "memory" || tool === "read_file" || tool === "list_files" || tool === "search_files") return "reading";
   if (tool.startsWith("vm_")) return "computer";
-  if (tool === "open_url" || tool === "click" || tool === "type" || tool === "go_back" || tool === "download_file" || tool.startsWith("mcp_")) return "computer";
+  if (tool === "open_url" || tool === "click" || tool === "type" || tool === "go_back" || tool === "scroll" || tool === "download_file" || tool.startsWith("mcp_")) return "computer";
   return "working";
 }
 

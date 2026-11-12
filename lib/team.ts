@@ -22,7 +22,7 @@ export const TEAM_SPECS: ToolSpec[] = [
   {
     name: "message_group",
     description:
-      "Give one of the user's groups a task, on the user's behalf. Only for a job that is big enough to split into parts, or that needs an ability you don't have: a job your own tools can do, you do yourself. The user's own message is passed to the group with yours, word for word. The group works on it and you get its final answer back, with what its members said before it (for long jobs, the group's answer is posted to the user when it finishes). Write a complete, self-contained task, short, in the language of the user's latest message (the group answers in the language you write in).",
+      "Give one of the user's groups a task, on the user's behalf. Only for a job that is big enough to split into parts, or that needs an ability you don't have: a job your own tools can do, you do yourself. The user's own message is passed to the group with yours, word for word. The group works in your work files (the same tables and notes as this chat), so name the table it must add to and don't copy rows into your message. The group works on it and you get its final answer back, with what its members said before it (for long jobs, the group's answer is posted to the user when it finishes). Write a complete, self-contained task, short, in the language of the user's latest message (the group answers in the language you write in).",
     parameters: {
       type: "object",
       properties: { group: { type: "string", description: "Group name" }, message: { type: "string" } },
@@ -104,7 +104,8 @@ function waitForGroup(chatId: string, ms: number, signal?: AbortSignal): Promise
 
 /** Where the main bot's own turn came from: the group's run inherits it (files and approvals go back there). */
 /** userWords: the user's own message that this turn is working on; it goes to the group unchanged. */
-export type TeamCtx = { signal?: AbortSignal; channel?: "telegram"; telegramChatId?: number; userWords?: string };
+/** workChat: the chat whose work files the main bot is using; the group works in the same ones. */
+export type TeamCtx = { signal?: AbortSignal; channel?: "telegram"; telegramChatId?: number; userWords?: string; workChat?: string };
 
 export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}): Promise<ToolResult> {
   const ok = (content: string): ToolResult => ({ id: call.id, name: call.name, content });
@@ -158,7 +159,7 @@ export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}):
     }
     const telegram = ctx.channel === "telegram" && typeof ctx.telegramChatId === "number" ? { channel: "telegram" as const, telegramChatId: ctx.telegramChatId } : undefined;
     const sentEntryId = newId();
-    if (!startRun(group.id, { text: message, via: self.id, entryId: sentEntryId, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(telegram ?? {}) })) return bad(`"${group.name}" is busy right now.`);
+    if (!startRun(group.id, { text: message, via: self.id, entryId: sentEntryId, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(ctx.workChat ? { workChat: ctx.workChat } : {}), ...(telegram ?? {}) })) return bad(`"${group.name}" is busy right now.`);
     // On disk from the start: if this turn ends early (stop, crash, restart), the result still reaches the user.
     const task = addDelegation({ groupId: group.id, groupName: group.name, sentEntryId, mainBotId: self.id, ...(telegram ? { origin: telegram } : {}), startedAt: Date.now(), inline: true });
     await waitForGroup(group.id, WAIT_MS, ctx.signal);

@@ -9,6 +9,7 @@ import { runDocTool, saveOutput } from "./files";
 import type { ToolSpec } from "./llm";
 import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
+import { rowsForTable, type ListRow } from "./page-list-core";
 import { addRows, cleanFileName, emptyStore, readRows, removeRows, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
 
 const ID_RE = /^[\w-]{1,64}$/;
@@ -93,14 +94,27 @@ export const WORK_SPECS: ToolSpec[] = [
   },
 ];
 
+/** Rows pulled from a web page (extract_list) go into a work table, in the columns the table already has. */
+export function addListRows(chatId: string, wanted: string, rows: ListRow[], source: string): { text: string; isError?: boolean } {
+  if (!ID_RE.test(chatId)) return { text: "This chat has no work files.", isError: true };
+  const store = loadWork(chatId);
+  const name = nameOf(store, wanted, "tables") ?? cleanFileName(wanted);
+  const r = addRows(store, name, undefined, rowsForTable(store.tables[name]?.columns, rows, source));
+  if (r.error) return { text: r.error, isError: true };
+  saveWork(chatId, store);
+  const parts = [`${r.added} added`, r.merged ? `${r.merged} already there and completed` : "", r.skipped ? `${r.skipped} skipped (already there with nothing new)` : ""].filter(Boolean);
+  return { text: `${parts.join(", ")}. Now: ${tableLine(name, store.tables[name]!)}.` };
+}
+
 export const WORK_TOOLS: ReadonlySet<string> = new Set(WORK_SPECS.map((s) => s.name));
 
 /** For every bot's instructions: what the team already has. */
-export function workPrompt(chatId: string, group: boolean): string[] {
+export function workPrompt(chatId: string, group: boolean, fromMain = false): string[] {
   const lines = storeLines(loadWork(chatId));
   return [
     "",
-    `Work files${group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where. Deliver a work file to the user with work_export.`,
+    `Work files${fromMain ? " (the same ones as the main assistant who gave this task: what it already found is in them, and what you add it sees at once; add to its table, don't start another)" : group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where. Deliver a work file to the user with work_export.`,
+    "Sources for a list: a row needs a source, not a perfect one. A detail you read on any page (a directory, a listing, a map's results, a search result) goes into the table, with that page in the Source column; when you couldn't also see it on the item's own page, write \"to confirm\" in a Status column. Don't hold a found row back while you look for a better source, and never ask the user to copy from a page what a page shows. Only what you read nowhere stays empty. If the user asked for stricter proof, follow the user.",
     ...(lines.length ? ["The work files right now:", ...lines] : []),
   ];
 }
