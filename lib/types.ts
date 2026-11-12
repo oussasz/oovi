@@ -183,6 +183,8 @@ export type Pending = {
   planReview?: { entryId: string; botId: string };
   /** Plan mode: the user approved the plan, so deep work follows their steps. */
   planApproved?: boolean;
+  /** Rounds the done-check continued by itself since the user's message (MAX_AUTO_ROUNDS). */
+  autoRounds?: number;
   /** A slash command used in the message being worked on. */
   slash?: SlashUse;
   /**
@@ -192,7 +194,8 @@ export type Pending = {
    * the last round; stale: rounds in a row that added nothing.
    */
   /** carried: the job was picked up again by the user's next message (see Chat.openJob). */
-  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number; carried?: boolean };
+  /** missing: what the done-check found still to do after the owner's last turn (a job without a row count). */
+  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number; carried?: boolean; missing?: string; auto?: boolean };
   /**
    * Teammates worked at the same time and several needed the user's OK: one card is shown at a time.
    * These replies (entry ids) wait their turn to ask.

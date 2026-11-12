@@ -53,3 +53,9 @@ test("only phone and email columns are checked: a year, a price or a reference i
   assert.deepEqual(rows, [["A", "20241231", "12500000", "REF-99887766"]]);
   assert.equal(dropped.length, 0);
 });
+
+test("rows marked 'to confirm' (any language) don't count toward a goal", async () => {
+  const { countComplete } = await import("../../lib/workfiles-core.ts");
+  const t = { columns: ["Name", "Activity", "Status"], rows: [["A", "Briques", ""], ["B", "Plastique", "to confirm"], ["C", "", ""], ["D", "Lait", "à vérifier"], ["E", "Jus", "مؤكد"], ["F", "Huile", "غير مؤكد"]], updatedAt: 0 };
+  assert.equal(countComplete(t, ["Activity"]), 2); // A and E
+});

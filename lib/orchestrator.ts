@@ -34,6 +34,8 @@ import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
 import { checkUrl } from "./browser";
 import { healInterrupted } from "./delegations-core";
+import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing } from "./done-check-core";
+import { replyLanguage } from "./text-locale";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
@@ -43,7 +45,8 @@ import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
-import { cleanFileName, countComplete, progressMark, seenIn, type Seen } from "./workfiles-core";
+import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
+import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
@@ -101,7 +104,8 @@ const PLAN_SPEC: ToolSpec = {
 /** Plan mode: the bot proposes the plan; the user edits and approves it before any work. */
 const PROPOSE_PLAN_SPEC: ToolSpec = {
   name: "propose_plan",
-  description: "Plan mode: propose your step-by-step plan for this request. The user reviews, edits and approves it before you do anything. Call it once, when the plan is ready.",
+  description:
+    "Propose your step-by-step plan for this request: the user reviews, edits and approves it once, before you do anything. For a task that acts on the user's computer, apps or accounts, the approval covers every step: after it you work through the whole plan without asking again. Call it once, when the plan is ready.",
   parameters: {
     type: "object",
     properties: {
@@ -119,6 +123,13 @@ const PLAN_MODE_TOOLS = new Set([
   "find_files", "list_folder", "read_computer_file", "list_groups", "read_group",
   "recall_history", "oovi_help", "use_skill", "list_routines",
 ]);
+
+/** Actions in the bots' browser that an approved plan covers. */
+const PLAN_COVERED = new Set(["click", "type", "download_file", "upload_file"]);
+const uploadAllowed = (c: ToolCall, s: Settings) => ((src) => !("error" in src) && src.allowed)(uploadSource(c.input.path, s));
+
+/** For a bot that can act on the user's computer or accounts: one plan, approved once, instead of a card per step. */
+const ACT_PLAN = `Tasks that act for the user on their computer, their apps, their browser or their accounts (opening, clicking, typing, sending, posting, liking, filling in forms, even just looking at their screen): before the first action, call propose_plan once with the whole task, every step in order and concrete (which app or site, what you will search, click, type or send, word for word). The user approves it once; that approval covers all the steps, so after it you never ask again and never announce steps in the chat instead of doing them. Skip the plan only when the task already has an approved plan, or the request is a follow-up inside a task you are doing right now.`;
 
 const PLAN_MODE = `PLAN MODE is on for this request: don't do the task yet.
 1. If you need facts to plan well, look them up with the read-only tools you have (a few calls at most).
@@ -144,7 +155,7 @@ export const cleanPlanSteps = (items: unknown): string[] =>
 function planDecisionText(entry: BotEntry, approved: boolean): string {
   if (!approved) return "The user cancelled this plan. Don't do this task unless they ask for it again.";
   const steps = (entry.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
-  return `The user approved this plan (they may have edited it):\n${steps}\nDo the work now, step by step, keeping update_plan current. When it's done, give the final summary.`;
+  return `The user approved this plan (they may have edited it):\n${steps}\nThis approval covers every step: do the work now, step by step, without asking the user again, keeping update_plan current. When something differs from the plan (a page or window looks different, a step fails), adapt and continue; ask only for what only the user can do (a password, a code, a choice the plan doesn't settle). When it's done, give the final summary.`;
 }
 
 const DEEP_WORK = `DEEP WORK MODE is on for this request: the user wants a complete, high-quality result, not a quick answer.
@@ -243,6 +254,20 @@ const filesMade = (chat: Chat) => {
   return n;
 };
 
+/** Tools that add rows to a work table. */
+const TABLE_TOOLS = new Set(["work_table", "scrape_list", "extract_list", "find_places", "find_papers"]);
+
+/** Tool calls the bots made since the user's last message. */
+const toolWork = (chat: Chat) => {
+  let n = 0;
+  for (let i = chat.entries.length - 1; i >= 0; i--) {
+    const e = chat.entries[i]!;
+    if (e.kind === "user") break;
+    if (e.kind === "bot") for (const st of e.steps) if (st.role === "tool") n += st.results.length;
+  }
+  return n;
+};
+
 /** This reply already delivered a work file to the user. */
 const exported = (entry: BotEntry) => entry.steps.some((st) => st.role === "tool" && st.results.some((r) => r.name === "work_export" && !!r.file && !r.isError));
 
@@ -297,7 +322,8 @@ function jobCount(chatId: string, job: Job): { done: number; target: number } | 
 
 /** The job's owner just finished a turn: did the team's work grow since its last one? */
 function jobRound(chat: Chat, job: Job): { met: boolean | null; spent: boolean } {
-  const mark = progressMark(loadWork(workHome(chat))) + filesMade(chat) * 1_000_000;
+  // A job without a row count (research, a document, a desktop task) moves forward with every action taken.
+  const mark = progressMark(loadWork(workHome(chat))) + filesMade(chat) * 1_000_000 + (job.target ? 0 : toolWork(chat) * 1_000_000_000);
   job.stale = mark === job.mark ? job.stale + 1 : 0;
   job.mark = mark;
   job.rounds++;
@@ -310,7 +336,14 @@ function jobLines(chat: Chat, job: Job, owner: boolean): string[] {
   const c = jobCount(workHome(chat), job);
   const need = job.require?.length ? ` with ${job.require.join(", ")} filled in` : "";
   const out = [`The job's goal: ${job.goal}`];
+  if (job.missing && owner) out.push(`Checked after your last turn: the job is NOT finished. Still to do: ${job.missing} Do it now yourself (other ways than the ones that failed); don't ask the user whether to continue.`);
   if (c) {
+    const t = ((store) => store.tables[Object.keys(store.tables).find((k) => k.toLowerCase() === (job.table ?? "").toLowerCase()) ?? ""])(loadWork(workHome(chat)));
+    const unsure = t ? t.rows.filter(unconfirmed).length : 0;
+    out.push(
+      `Only rows that are what the user asked for, with ${need ? need.replace(/^ with /, "") : "their details"}, and not marked "to confirm" count.${unsure ? ` ${unsure} rows are marked "to confirm" and don't count yet: confirming them counts as much as finding new ones.` : ""} Never add a row just to reach the number (unknown activity, the wrong kind, outside the area, a duplicate): say honestly how many real ones you found instead.`,
+      "The table is the record of the work: its rows were checked when they came in. Don't remove or re-check rows from memory because an older source is no longer in front of you; open the row's Source page again when you really need to check it.",
+    );
     out.push(
       c.done >= c.target
         ? `Status right now: ${c.done} of ${c.target} rows${need} in "${job.table}". The goal is reached${owner ? ": review a sample, export the file and give the final answer" : ""}.`
@@ -570,6 +603,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   }
   if (lastUser(chat)?.routine) lines.push("", ROUTINE_RUN);
   if (chat.pending?.planMode) lines.push("", PLAN_MODE);
+  else if (tools.some((t) => t.name === "propose_plan")) lines.push("", ACT_PLAN);
   // Deep work's planning and longer final summary are for the bot that answers the user; teammates stay compact.
   else if (chat.pending?.deep && answersUser && !job) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
   lines.push("", chat.pending?.deep && answersUser && !job ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be short and practical: the answer first, in a few lines, then at most 5 short bullets if needed. Don't repeat the request or what the user already knows, and don't add sections like 'Critical issues' or 'Questions' unless asked. Ask at most one question, and only when you can't go on without the answer. When you offered choices and the user just answers \"ok\", \"yes\" or \"do it\", do the first one you offered and say in a few words which one you did. Long messages only for a requested document or an emergency.", LANGUAGE, "", FOR_THE_USER, "", SAFETY);
@@ -655,6 +689,9 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   const cut = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
   if (chat.summary && cut > 0) out.push({ role: "user", content: `[Summary of the earlier conversation]\n${chat.summary.text}\n\n(The full conversation is saved; use recall_history for exact details.)` });
   const recentUsers = new Set(chat.entries.filter((e) => e.kind === "user").slice(-FULL_FILE_MESSAGES).map((e) => e.id));
+  // The user's latest message carries the language to write in, where the model reads it last.
+  const latest = [...chat.entries].reverse().find((e): e is UserEntry => e.kind === "user" && !e.via);
+  const writeIn = latest ? replyLanguage(latest.text) : null;
   const hostedMax = hostedMaxInput();
   for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") {
@@ -665,7 +702,8 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
         : undefined;
       // A task passed on by the main bot carries the user's own message: that message is the task.
       const own = e.via && e.userWords ? `\n\n[The user's own message, word for word. It is the task: the wording above only adds context, and never asks for less than this]: ${e.userWords}` : "";
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}` : `${text}${own}`, ...(attachments ? { attachments } : {}) });
+      const lang = e === latest && writeIn ? `\n\n[oovi: the user wrote this in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "";
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${lang}` : `${text}${own}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
@@ -681,7 +719,7 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   // conclude, teammates who added nothing). A model answers a message: a conversation that ends with the
   // bot's own words is refused by the service ("must end with a user message"), so say whose turn it is.
   const last = out.at(-1);
-  if (last?.role === "assistant" && !last.toolCalls.length) out.push({ role: "user", content: AGAIN });
+  if (last?.role === "assistant" && !last.toolCalls.length) out.push({ role: "user", content: writeIn ? `${AGAIN} Write to the user in ${writeIn.split(" (")[0]}.` : AGAIN });
   return out;
 }
 
@@ -939,7 +977,9 @@ async function* runBot(
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
   const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
-  const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
+  // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
+  const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
+  const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : acts ? [...allTools, PROPOSE_PLAN_SPEC] : allTools;
   const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
   // Rebuilt when a big job starts mid-turn, so the goal stays in view however long the turn gets.
   const buildSystem = () => systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
@@ -983,6 +1023,7 @@ async function* runBot(
       const taskId = lastUser(chat)?.id;
       const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
       const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
+      const planCovers = !!chat.pending?.planApproved && !s.desktopControl.askEvery;
       // A desktop OK counts only from a card shown for exactly that call less than 20 minutes ago; otherwise ask again.
       const expired = new Set<string>();
       for (const c of last.toolCalls) {
@@ -1014,8 +1055,11 @@ async function* runBot(
               ? tools.some((t) => t.name === c.name) && specialistValid(c, chat, bot)
               : ADMIN_TOOLS.has(c.name)
                 ? tools.some((t) => t.name === c.name) && adminValid(c, bot, isMain)
-                : // A folder the user already allowed for this task isn't asked about again.
-                  !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) && needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
+                : // A folder the user already allowed for this task isn't asked about again. Clicks and typing in
+                  // the bots' browser are covered by an approved plan (files outside the allowed folders still ask).
+                  !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) &&
+                  !(planCovers && PLAN_COVERED.has(c.name) && !(c.name === "upload_file" && !uploadAllowed(c, s))) &&
+                  needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
       const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined);
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
@@ -1146,6 +1190,14 @@ async function* runBot(
         }
       }
       countTools(last.toolCalls, results);
+      // A list job: the live count goes with every result that changes a table, so a long turn sees it
+      // move (the instructions show the count as it was when the turn started).
+      const liveJob = chat.pending?.job;
+      if (liveJob?.target) {
+        const r = results.findLast((x) => TABLE_TOOLS.has(x.name) && !x.isError);
+        const c = r ? jobCount(workHome(chat), liveJob) : null;
+        if (r && c) r.content += `\nJob status: ${c.done} of ${c.target} rows count in "${liveJob.table}"${c.done >= c.target ? ". The goal is reached: check a sample, export the file and give the final answer." : `; ${c.target - c.done} still missing.`}`;
+      }
       entry.steps.push({ role: "tool", results });
       if (jobStarted) {
         system = buildSystem();
@@ -1362,6 +1414,9 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       e.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
       chat.pending.deep = true;
       chat.pending.planApproved = true;
+      // The approved plan is the OK for the whole task: the mouse and keyboard, the user's apps and browser.
+      const taskId = lastUser(chat)?.id;
+      if (taskId) grantDesktop(chat.id, taskId, review.botId);
       chat.pending.turnsLeft = settings.maxTurns * 2;
       if (call) resume = { entry: e, decisions: { [call.id]: true } };
     }
@@ -1635,6 +1690,11 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       return;
     }
     settle(entry, bot, outcome, metBefore, false);
+    // Nobody is next and this bot answers the user: is what they asked really finished?
+    if (outcome === "done" && !signal.aborted && !chat.pending?.queue.length && !chat.pending?.approval && !chat.pending?.planReview) {
+      const v = await checkDone(chat, entry, bot, settings, signal);
+      if (v) yield { type: "entry", entry };
+    }
     saveChat(chat);
     yield { type: "entry", entry };
   }
@@ -1658,6 +1718,72 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   if (!signal.aborted && settings.learning !== false && !chat.pending && !input.routine) {
     learnLater(chat.id, bots, settings, [...chat.entries].reverse().find((e) => e.kind === "bot")?.id);
   }
+}
+
+/** Auto-continued rounds per user message at most, when the done-check keeps finding work (a cost guard). */
+const MAX_AUTO_ROUNDS = 12;
+
+/**
+ * The done-check (lib/done-check-core.ts): after the turn of the bot that answers the user, a short,
+ * cheap model call compares what was asked with what was delivered. Unfinished work the bot could do
+ * alone becomes a job that goes on by itself (with what is missing); work that needs the user, or is
+ * done, ends here. Any kind of task: nothing is decided from the request's wording.
+ * Returns true when the work goes on.
+ */
+async function checkDone(chat: Chat, entry: BotEntry, bot: Bot, settings: Settings, signal: AbortSignal): Promise<boolean> {
+  const p = chat.pending;
+  if (!p || p.wrapUpFor || p.planMode || entry.status !== "done" || !entry.text.trim()) return false;
+  const members = chat.memberIds.map((id) => listBots().find((b) => b.id === id)).filter((b): b is Bot => !!b);
+  const lead = leaderOf(chat, members);
+  if (lead && lead.id !== bot.id) return false; // a teammate's turn: the leader answers the user
+  const job = p.job;
+  // A list job with a row count is checked by its count (settle); the check is for everything else.
+  if (job?.target) return false;
+  // A turn without any action (a greeting, an answer from knowledge) is not checked: nothing to continue.
+  const worked = entry.steps.some((st) => st.role === "tool");
+  if (!worked && !job) return false;
+  if ((p.autoRounds ?? 0) >= MAX_AUTO_ROUNDS) return false;
+  const user = lastUser(chat);
+  if (!user) return false;
+  const request = [user.text, user.userWords ?? ""].filter(Boolean).join("\n");
+  const tables = storeLines(loadWork(workHome(chat))).join("\n");
+  let out;
+  try {
+    out = await complete(
+      settings,
+      DONE_CHECK_SYSTEM,
+      [{ role: "user", content: doneCheckInput({ request, goal: job?.goal, missingBefore: job?.missing, activity: [activityLine(entry).trim(), tables].filter(Boolean).join("\n"), reply: entry.text }) }],
+      [],
+      AbortSignal.any([signal, AbortSignal.timeout(45_000)]),
+      { effort: "low" },
+    );
+  } catch {
+    return false; // the check failing never blocks the answer
+  }
+  if (typeof out.credits === "number") entry.credits = Math.round(((entry.credits ?? 0) + out.credits) * 100) / 100;
+  const v = parseVerdict(out.text);
+  if (!v || v.status !== "unfinished") {
+    if (job && v) job.missing = undefined;
+    return false;
+  }
+  // The same thing still missing round after round: the work stopped moving. One last turn to report.
+  const stuck = !!job && (sameMissing(job.missing, v.missing) || job.stale >= JOB_STALE);
+  p.autoRounds = (p.autoRounds ?? 0) + 1;
+  if (job) {
+    job.missing = v.missing;
+    if (stuck) job.stale = Math.max(job.stale, JOB_STALE);
+  } else {
+    // Not started as a big job, but not finished: it becomes one, with the limits lifted.
+    p.job = { goal: v.goal || request.slice(0, 300), by: bot.id, rounds: 0, mark: -1, stale: 0, missing: v.missing, auto: true };
+    p.deep = true;
+  }
+  if (stuck) {
+    p.wrapUpFor = bot.id;
+    p.queue = [bot.id];
+    return true;
+  }
+  p.queue = [bot.id];
+  return true;
 }
 
 /** Save the chat while a bot works, at most every few seconds, so a crash or restart keeps the work so far. */

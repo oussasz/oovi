@@ -97,6 +97,7 @@ http
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         // Like the real server: a call beyond the account's limit is refused as "busy".
         if (seen.inflight >= LIMIT) {

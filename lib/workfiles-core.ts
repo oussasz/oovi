@@ -147,10 +147,18 @@ export function addRows(store: WorkStore, name: string, columnsIn: unknown, rows
 }
 
 /** How many rows have a real value in each of these columns (all of them). */
+/** A row its own author marked as not confirmed ("to confirm", "à vérifier", "unverified"…) in any cell. */
+const UNCONFIRMED = /\b(to confirm|unconfirmed|not confirmed|unverified|not verified|to check|to verify)\b|à (confirmer|vérifier)|non (confirmé|vérifié)e?s?|غير مؤكد|للتأكيد|يجب التحقق/i;
+export const unconfirmed = (row: string[]) => row.some((c) => UNCONFIRMED.test(c));
+
+/**
+ * How many rows count toward a goal: every required column filled, and not marked "to confirm".
+ * A row added only to reach the number (activity unknown, not checked) is in the table, but doesn't count.
+ */
 export function countComplete(t: WorkTable | undefined, required: string[] = []): number {
   if (!t) return 0;
   const idx = required.map((c) => columnIndex(t.columns, c)).filter((i) => i >= 0);
-  return t.rows.filter((r) => idx.every((i) => !isBlank(r[i]))).length;
+  return t.rows.filter((r) => idx.every((i) => !isBlank(r[i])) && !unconfirmed(r)).length;
 }
 
 /** "Prospects": 47 rows (Phone filled in 31, Source in 47). */

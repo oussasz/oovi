@@ -18,3 +18,19 @@ export function localeOfText(text: string | undefined | null): "ar" | "fr" | nul
   if (fr >= 2 || (/[éèêàçù]/.test(t) && fr >= 1)) return "fr";
   return null;
 }
+
+const ENGLISH = new Set("the and you your i i'm it is are to of for in on with can please what how this that me my do does not but if".split(" "));
+
+/**
+ * The language to write the reply in, said plainly to the bot next to the user's message on every turn.
+ * Bots drifted into the language of earlier messages, sources or tables (French answers to an Arabic
+ * request). null: not clear enough to say (the general rule in the instructions then applies).
+ */
+export function replyLanguage(text: string | undefined | null): string | null {
+  const l = localeOfText(text);
+  if (l === "ar") return "Arabic (if the user wrote in Algerian Darija, Darija is welcome)";
+  if (l === "fr") return "French";
+  const words = String(text ?? "").toLowerCase().match(/[a-z']+/g) ?? [];
+  if (words.filter((w) => ENGLISH.has(w)).length >= 2) return "English";
+  return null;
+}

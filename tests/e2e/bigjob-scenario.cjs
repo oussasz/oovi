@@ -70,7 +70,8 @@ function answer(body) {
     return results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   })();
   if (!results.length) seen.turns[me] = (seen.turns[me] || 0) + 1;
-  const status = (sys.match(/Status right now: (\d+) of (\d+) rows/) || []).slice(1).map(Number);
+  // The count as the turn started (instructions), or as it is now (the latest table result).
+  const status = (lastResult.match(/Job status: (\d+) of (\d+) rows/) || sys.match(/Status right now: (\d+) of (\d+) rows/) || []).slice(1).map(Number);
   const stale = /STALE:/.test(sys + JSON.stringify(msgs));
   const solo = /SOLO:/.test(JSON.stringify(msgs));
 
@@ -82,6 +83,20 @@ function answer(body) {
     if (lastTool === "work_export") return text("LONE2-DONE: 20 of 20 rare suppliers, Rare.xlsx");
     if (status.length && status[0] >= status[1]) return call("work_export", { name: "Rare", format: "xlsx" });
     return call("work_table", { action: "add", table: "Rare", columns: COLS, rows: rows("lone", 20, 20) });
+  }
+  // ---- the done-check: any task, no row count ----
+  if (me === "Half") {
+    const m = JSON.stringify(msgs);
+    if (/HALF-HI:/.test(m)) return text("Hello!");
+    if (/HALF-ASK:/.test(m)) return lastTool ? text("Which city should the report cover?") : call("work_notes", { action: "read", file: "Nothing" });
+    seen.halfSys = sys;
+    if (/Checked after your last turn: the job is NOT finished\. Still to do: sections 2 and 3/.test(sys)) {
+      seen.halfMissingSeen = true;
+      if (lastTool === "work_notes") return text("HALF-DONE: all 3 sections are written in Report.");
+      return call("work_notes", { action: "append", file: "Report", text: "## Section 2\nB\n## Section 3\nC" });
+    }
+    if (lastTool === "work_notes") return text("I wrote section 1 in Report. I can continue with sections 2 and 3 if you want.");
+    return call("work_notes", { action: "write", file: "Report", text: "## Section 1\nA" });
   }
   if (me === "Drift") {
     const m = JSON.stringify(msgs);
@@ -180,6 +195,7 @@ http
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
           return send(200, answer(JSON.parse(raw)));
@@ -318,7 +334,7 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const so = await idle(`dm-${solo.id}`, 120000);
   const sb = so.entries.filter((e) => e.kind === "bot");
   check("G) the goal enters the bot's instructions as soon as the job starts (same turn)", /BIG JOB MODE\. You own the result: keep working/.test(seen.soloSys || "") && /The job's goal: 12 suppliers with a phone/.test(seen.soloSys || ""));
-  check("G) a bot alone gets the same mode and is sent back until the goal", /^SOLO-DONE/.test(sb.at(-1)?.text ?? "") && sb.length === 4, `${sb.length} turns; last: ${(sb.at(-1)?.text ?? "").slice(0, 50)}`);
+  check("G) a bot alone gets the same mode and is sent back until the goal (it sees the count reach the goal in its last turn and delivers there)", /^SOLO-DONE/.test(sb.at(-1)?.text ?? "") && sb.length === 3, `${sb.length} turns; last: ${(sb.at(-1)?.text ?? "").slice(0, 50)}`);
 
   // H (second half): the same lesson learned again updates the saved one; the card can correct and forget.
   const second = await learnedOn(`dm-${solo.id}`);
@@ -362,6 +378,32 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   await api("POST", `/api/chats/dm-${drift.id}/run`, { text: "DRIFT3: hello" });
   await idle(`dm-${drift.id}`, 60000);
   check("J) ...and the next message is an ordinary one again", !!seen.drift3Sys && !/BIG JOB MODE/.test(seen.drift3Sys));
+
+  // K: the done-check. A bot that stops halfway is sent back with what is missing (no row count, no
+  // "big job" asked for); a question only the user can answer ends the turn; small talk costs no check.
+  const rules = require("./model-rules.cjs");
+  const checks = [];
+  rules.doneCheck.verdict = (body) => {
+    const t = JSON.stringify(body.messages);
+    checks.push(t);
+    if (/I can continue with sections 2 and 3/.test(t)) return { status: "unfinished", missing: "sections 2 and 3 of the report", goal: "a report with 3 sections" };
+    if (/Which city should the report cover/.test(t)) return { status: "needs_user", missing: "the city", goal: "" };
+    return { status: "done", missing: "", goal: "" };
+  };
+  const half = await newBot("Half", "");
+  await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF: write a report in 3 sections" });
+  const h1 = await idle(`dm-${half.id}`, 120000);
+  const hb = h1.entries.filter((e) => e.kind === "bot");
+  check("K) a bot that stops halfway and offers to continue is sent back by the done-check, told what is missing", seen.halfMissingSeen === true && /BIG JOB MODE/.test(seen.halfSys || "") && hb.length === 2 && /^HALF-DONE/.test(hb.at(-1)?.text ?? ""), `${hb.length} turns; last: ${(hb.at(-1)?.text ?? "").slice(0, 60)}`);
+  check("K) the check read the user's request and the bot's reply", checks.some((t) => /HALF: write a report in 3 sections/.test(t) && /I can continue with sections 2 and 3/.test(t)));
+  const checksBefore = checks.length;
+  await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF-ASK: write the city report" });
+  const h2 = await idle(`dm-${half.id}`, 60000);
+  check("K) a question only the user can answer ends the turn: no extra round", h2.entries.slice(h2.entries.findLastIndex((e) => e.kind === "user")).filter((e) => e.kind === "bot").length === 1 && checks.length === checksBefore + 1);
+  await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF-HI: hello" });
+  await idle(`dm-${half.id}`, 60000);
+  check("K) small talk without any action costs no check", checks.length === checksBefore + 1, `${checks.length - checksBefore} checks`);
+  rules.doneCheck.verdict = () => ({ status: "done", missing: "", goal: "" });
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

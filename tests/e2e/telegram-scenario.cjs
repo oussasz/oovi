@@ -93,6 +93,7 @@ http
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Oussama", image: null } });
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
       if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       return send(204);

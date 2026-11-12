@@ -23,7 +23,7 @@ const CONSENT_TEXT = {
     title: "Let bots control this computer?",
     message: "Bots will see your screen and use your mouse and keyboard, like using your computer as you.",
     detail:
-      "Each task asks you first, and you can stop it any time with the Stop banner or by moving the mouse. oovi refuses password managers, banking windows, terminals and system settings, but these protections are best effort. Never use this for banking, payments or passwords.",
+      "Each task asks you first, and you can stop it any time with the Stop banner (you can keep using your mouse meanwhile). oovi refuses password managers, banking windows, terminals and system settings, but these protections are best effort. Never use this for banking, payments or passwords.",
     ok: "Turn on",
     cancel: "Cancel",
   },
@@ -31,7 +31,7 @@ const CONSENT_TEXT = {
     title: "Laisser les bots contrôler cet ordinateur ?",
     message: "Les bots verront votre écran et utiliseront votre souris et votre clavier, comme s'ils utilisaient votre ordinateur à votre place.",
     detail:
-      "Chaque tâche vous demande d'abord, et vous pouvez l'arrêter à tout moment avec le bandeau Arrêter ou en bougeant la souris. oovi refuse les gestionnaires de mots de passe, les fenêtres bancaires, les terminaux et les paramètres système, mais ces protections ne sont pas infaillibles. Ne l'utilisez jamais pour la banque, les paiements ou les mots de passe.",
+      "Chaque tâche vous demande d'abord, et vous pouvez l'arrêter à tout moment avec le bandeau Arrêter (vous pouvez continuer à utiliser votre souris). oovi refuse les gestionnaires de mots de passe, les fenêtres bancaires, les terminaux et les paramètres système, mais ces protections ne sont pas infaillibles. Ne l'utilisez jamais pour la banque, les paiements ou les mots de passe.",
     ok: "Activer",
     cancel: "Annuler",
   },
@@ -39,7 +39,7 @@ const CONSENT_TEXT = {
     title: "هل تسمح للبوتات بالتحكم في هذا الحاسوب؟",
     message: "سترى البوتات شاشتك وتستخدم الفأرة ولوحة المفاتيح، كأنها تستخدم حاسوبك باسمك.",
     detail:
-      "كل مهمة تطلب إذنك أولًا، ويمكنك إيقافها في أي وقت بشريط الإيقاف أو بتحريك الفأرة. يرفض oovi مديري كلمات المرور والنوافذ المصرفية والطرفيات وإعدادات النظام، لكن هذه الحماية ليست مضمونة تمامًا. لا تستخدمه أبدًا للخدمات المصرفية أو المدفوعات أو كلمات المرور.",
+      "كل مهمة تطلب إذنك أولًا، ويمكنك إيقافها في أي وقت بشريط الإيقاف (ويمكنك مواصلة استعمال الفأرة). يرفض oovi مديري كلمات المرور والنوافذ المصرفية والطرفيات وإعدادات النظام، لكن هذه الحماية ليست مضمونة تمامًا. لا تستخدمه أبدًا للخدمات المصرفية أو المدفوعات أو كلمات المرور.",
     ok: "تفعيل",
     cancel: "إلغاء",
   },
@@ -47,7 +47,7 @@ const CONSENT_TEXT = {
     title: "¿Dejar que los bots controlen este ordenador?",
     message: "Los bots verán tu pantalla y usarán tu ratón y teclado, como si usaran tu ordenador en tu lugar.",
     detail:
-      "Cada tarea te pregunta primero, y puedes pararla cuando quieras con el aviso Detener o moviendo el ratón. oovi rechaza gestores de contraseñas, ventanas bancarias, terminales y la configuración del sistema, pero estas protecciones no son infalibles. Nunca lo uses para banca, pagos o contraseñas.",
+      "Cada tarea te pregunta primero, y puedes pararla cuando quieras con el aviso Detener (puedes seguir usando el ratón). oovi rechaza gestores de contraseñas, ventanas bancarias, terminales y la configuración del sistema, pero estas protecciones no son infalibles. Nunca lo uses para banca, pagos o contraseñas.",
     ok: "Activar",
     cancel: "Cancelar",
   },
@@ -55,7 +55,7 @@ const CONSENT_TEXT = {
     title: "Bots diesen Computer steuern lassen?",
     message: "Bots sehen deinen Bildschirm und nutzen Maus und Tastatur, als würden sie deinen Computer als du benutzen.",
     detail:
-      "Jede Aufgabe fragt dich zuerst, und du kannst sie jederzeit mit dem Stopp-Banner oder durch Bewegen der Maus anhalten. oovi verweigert Passwortmanager, Banking-Fenster, Terminals und Systemeinstellungen, aber dieser Schutz ist nicht lückenlos. Nutze es nie für Banking, Zahlungen oder Passwörter.",
+      "Jede Aufgabe fragt dich zuerst, und du kannst sie jederzeit mit dem Stopp-Banner anhalten (die Maus kannst du weiter benutzen). oovi verweigert Passwortmanager, Banking-Fenster, Terminals und Systemeinstellungen, aber dieser Schutz ist nicht lückenlos. Nutze es nie für Banking, Zahlungen oder Passwörter.",
     ok: "Einschalten",
     cancel: "Abbrechen",
   },
@@ -63,7 +63,7 @@ const CONSENT_TEXT = {
     title: "Botların bu bilgisayarı kontrol etmesine izin verilsin mi?",
     message: "Botlar ekranını görecek ve fareni ve klavyeni kullanacak; bilgisayarını senin yerine kullanmak gibi.",
     detail:
-      "Her görev önce sana sorar ve Durdur bandıyla ya da fareyi oynatarak istediğin an durdurabilirsin. oovi şifre yöneticilerini, bankacılık pencerelerini, terminalleri ve sistem ayarlarını reddeder, ama bu korumalar kusursuz değildir. Bankacılık, ödemeler veya şifreler için asla kullanma.",
+      "Her görev önce sana sorar ve Durdur bandıyla istediğin an durdurabilirsin (fareni kullanmaya devam edebilirsin). oovi şifre yöneticilerini, bankacılık pencerelerini, terminalleri ve sistem ayarlarını reddeder, ama bu korumalar kusursuz değildir. Bankacılık, ödemeler veya şifreler için asla kullanma.",
     ok: "Aç",
     cancel: "İptal",
   },
