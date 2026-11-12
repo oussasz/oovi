@@ -84,7 +84,14 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   };
 
   // 3. Acting as the user on their accounts (posting on Facebook and the like).
-  if (!me.accounts) {
+  // With desktop control the bot needs nothing more: the user's own browser is signed in already.
+  // (Found by putting "go to facebook.com in my browser and send a message" to the model: it asked
+  // for "Use my signed-in accounts" because this paragraph said a bot "needs" it.)
+  if (!me.accounts && where.desktop) {
+    out.push(
+      `To post, comment or send messages on a site as the user (Facebook, Instagram, LinkedIn, X, email…), or to open a page that needs their account: do it in their own browser with desktop control. Open the page with open_in_user_browser, then use the screen, mouse and keyboard. They are already signed in there, so there is nothing to set up and no ability to ask for. "${L.accounts}" (a separate browser of yours, signed in under "${L.accountsPlace}") is only for when the user wants such jobs done without their own screen being used: offer it only if they ask for that.`,
+    );
+  } else if (!me.accounts) {
     const ready = others.filter((o) => o.a.accounts).map((o) => o.b.name);
     const oneStep = others.filter((o) => o.a.browser && !o.a.accounts).map((o) => o.b.name);
     const mine = fix(self.name, true, me.browser ? [L.accounts] : [L.browser, L.accounts]);
@@ -95,7 +102,9 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
   }
 
   // 4. Opening websites, and reading the web.
-  if (!me.browser) {
+  if (!me.browser && where.desktop) {
+    out.push(`If a task needs a website opened (a form, a dashboard, a page that only works in a browser): open it in the user's own browser with open_in_user_browser and work there with desktop control.`);
+  } else if (!me.browser) {
     out.push(`If a task needs a website opened (a form, a dashboard, a page that only works in a browser): ${fix(self.name, true, [L.browser])}.${routeTo(others.filter((o) => o.a.browser).map((o) => o.b.name))}`);
   }
   if (!me.web && !me.browser) {

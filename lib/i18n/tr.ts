@@ -1280,6 +1280,7 @@ const tr: Dict = {
   "ok.list": "{where} içeriğini gör (dosya adları, boyutları, tarihleri)",
   "ok.send": "{file} dosyasını sana gönder",
   "ok.openApp": "{bot}, bilgisayarında {app} uygulamasını açmak istiyor",
+  "ok.openBrowser": "{bot}, tarayıcında {site} sitesini açmak istiyor",
   "ok.copy": "{file} dosyasını İndirilenler/oovi klasörüne kopyala",
   "ok.editCopy": "{file} dosyasının düzenlenmiş bir kopyasını yap (asıl dosya değişmez)",
   "ok.read": "{file} dosyasını oku",

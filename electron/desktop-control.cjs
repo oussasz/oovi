@@ -453,6 +453,19 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       if (!known) return "That isn't an app from the Start menu.";
       return (await shell.openPath(file)) || "";
     },
+    /**
+     * Open a web address in the user's default browser, whichever it is (the system decides, as when the
+     * user clicks a link). Only http(s). Resolves "" or an error text.
+     */
+    async openInBrowser(url) {
+      if (!/^https?:\/\//i.test(String(url))) return "Only web addresses (http or https) can be opened.";
+      try {
+        await shell.openExternal(String(url));
+        return "";
+      } catch (e) {
+        return String((e && e.message) || e);
+      }
+    },
     /** The Stop button on the banner calls this (the server aborts the run). */
     setStopHandler(fn) {
       stopHandler = typeof fn === "function" ? fn : null;

@@ -32,6 +32,7 @@ import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from ".
 import { parseSlash } from "./slash";
 import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
+import { checkUrl } from "./browser";
 import { healInterrupted } from "./delegations-core";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -47,7 +48,7 @@ import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerF
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
-import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, appFor, openAppItem, runOpenApp, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
+import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /**
@@ -391,7 +392,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
         `For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser).${bot.tools.browser ? " When read_url can't read a page, or the detail you need (a phone number, a price, a table) isn't in what it returned, open the page with open_url and read it there, clicking \"show number\" or \"see more\" if needed." : ""}`,
         `Opening and reading pages is your job, never the user's: don't tell the user to open, visit or check a page you (or a teammate) can open. A search snippet is a lead, not a source: open the page before you report a detail from it. Only what can't be known from any page (for example whether a phone number still answers) is left to the user.${bot.tools.browser ? "" : " If a page only works in a browser, pass it to a teammate who has one or ask for the browser with request_abilities, and go on with the rest meanwhile."}`,
         "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
-        "Where to do a job on a website, in this order. (1) The user names their own browser or app, or says to use their computer (\"in Brave\", \"in my Chrome\", \"on my PC\"): work there with desktop control when you have it; that is where they are signed in. (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.",
+        "Where to do a job on a website, in this order. (1) The user asks for it in their own browser (whichever it is), in one of their apps, or on their computer: work there with desktop control when you have it (open_in_user_browser opens a page in their default browser); that is where they are signed in. (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.",
       );
     }
     if (bot.tools.browser) {
@@ -777,6 +778,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "work_export": return tr("st.workExport", { what: v(i.filename, v(i.name)) });
     case "start_big_job": return tr("st.bigJob");
     case "open_app": return tr("st.openApp", { app: v(i.name) });
+    case "open_in_user_browser": return tr("st.openApp", { app: host(i.url) ?? v(i.url) });
     case "research": return tr("st.researching", { q: v(i.question).slice(0, 60) });
     case "read_url": { const h = host(i.url); return h ? tr("st.reading", { what: h }) : tr("st.readingPage"); }
     case "create_document": return tr("st.writing", { what: v(i.filename) });
@@ -827,6 +829,8 @@ async function* runBot(
   // Keep the conversation small before every turn, including hand-offs between bots.
   if (!opts.together) await compactIfLong(chat, s, signal);
   const usesAccounts = !!bot.tools.accounts;
+  /** The same rule as the bots' own browser for which addresses may be opened (no local network unless allowed). */
+  const openable = (url: string) => checkUrl(url, s.browser.allowPrivateNetwork);
   const sessionId = `${chat.id}_${bot.id}`;
   // The bot's own connectors, plus one lent for this message by a /connector command
   // (only an installed, switched-on connector; mcpToolsFor skips anything else).
@@ -844,7 +848,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : allTools;
   const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
@@ -904,7 +908,10 @@ async function* runBot(
       const asks = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
-          : c.name === "open_app"
+          : c.name === "open_in_user_browser"
+            ? // Same rule as open_app: asks, unless the task already has the mouse-and-keyboard OK.
+              tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !s.desktopControl.askEvery)
+            : c.name === "open_app"
             ? // Starting an app always asks (unless it can't be opened: then it runs and returns why).
               // Once the user allowed the mouse and keyboard for this task (and didn't choose "ask before every
               // action"), opening an app is part of that OK: its card says so. Otherwise it asks.
@@ -922,6 +929,7 @@ async function* runBot(
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
           if (c.name === "open_app") return openAppItem(c, bot.name, translatorFor(lastUserText(chat)));
+          if (c.name === "open_in_user_browser") return openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat)));
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
@@ -991,6 +999,8 @@ async function* runBot(
             results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
           } else if (c.name === "open_app") {
             results.push(await runOpenApp(c));
+          } else if (c.name === "open_in_user_browser") {
+            results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {
             // Exports always go to Downloads/oovi (never into a project folder, where a new file needs the user's OK).
             results.push(await runWorkTool(c, chat.id, undefined, s.browser));

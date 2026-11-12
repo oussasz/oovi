@@ -1280,6 +1280,7 @@ const es: Dict = {
   "ok.list": "Ver el contenido de {where} (nombres, tamaños y fechas de archivos)",
   "ok.send": "Enviarte {file}",
   "ok.openApp": "{bot} quiere abrir {app} en tu ordenador",
+  "ok.openBrowser": "{bot} quiere abrir {site} en tu navegador",
   "ok.copy": "Copiar {file} a tu carpeta Descargas/oovi",
   "ok.editCopy": "Hacer una copia editada de {file} (el original no cambia)",
   "ok.read": "Leer {file}",

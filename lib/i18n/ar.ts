@@ -1295,6 +1295,7 @@ const ar: Dict = {
   "ok.list": "عرض محتوى {where} (أسماء الملفات وأحجامها وتواريخها)",
   "ok.send": "إرسال {file} إليك",
   "ok.openApp": "{bot} يريد فتح {app} على حاسوبك",
+  "ok.openBrowser": "{bot} يريد فتح {site} في متصفحك",
   "ok.copy": "نسخ {file} إلى مجلد التنزيلات/oovi",
   "ok.editCopy": "إنشاء نسخة معدّلة من {file} (لا يتغيّر الأصل)",
   "ok.read": "قراءة {file}",

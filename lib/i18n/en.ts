@@ -1299,6 +1299,7 @@ const en = {
   "ok.list": "See what's in {where} (file names, sizes, dates)",
   "ok.send": "Send {file} to you",
   "ok.openApp": "{bot} wants to open {app} on your computer",
+  "ok.openBrowser": "{bot} wants to open {site} in your browser",
   "ok.copy": "Copy {file} to your Downloads/oovi folder",
   "ok.editCopy": "Make an edited copy of {file} (the original isn't changed)",
   "ok.read": "Read {file}",

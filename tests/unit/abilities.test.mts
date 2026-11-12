@@ -103,6 +103,11 @@ test("a bot with desktop control does the user's-own-computer job itself (the Gm
   assert.match(withDesk, /You also have desktop control/);
   assert.match(withDesk, /do it yourself that way: don't pass it to another bot or a group/);
   assert.match(withDesk, /You can't open websites, click, type or sign in with a browser of your own\./); // not a flat "you can't"
+  // Sending a message for the user goes through their own browser: no ability to ask for first.
+  assert.match(withDesk, /To post, comment or send messages on a site as the user[^\n]*do it in their own browser with desktop control\. Open the page with open_in_user_browser/);
+  assert.doesNotMatch(withDesk, /a bot needs "Use my signed-in accounts"/);
+  assert.doesNotMatch(withDesk, /call request_abilities for "Browser"/);
+  assert.match(withDesk, /If a task needs a website opened[^\n]*open_in_user_browser/);
   // Without desktop control nothing about it is claimed.
   const without = all(abilityLines(quill, bots, { kind: "direct", isMain: true, groupsWith, canRequest: true }, L));
   assert.doesNotMatch(without, /desktop control/);
