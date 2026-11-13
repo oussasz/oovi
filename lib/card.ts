@@ -9,7 +9,7 @@ import type { ChartData } from "./charts";
 
 export type CardStyle = "post" | "poster" | "quote" | "infographic";
 export type PhotoLayout = "background" | "top" | "side" | "none";
-export type CardPoint = { value?: string; label: string };
+export type CardPoint = { value?: string; label: string; icon?: string };
 export type CardSpec = {
   style: CardStyle;
   width: number;
@@ -121,7 +121,10 @@ function pointsOf(v: unknown): CardPoint[] {
       const o = p as Record<string, unknown>;
       const label = txt(o.label ?? o.text ?? o.title, 160);
       const value = txt(o.value ?? o.number ?? o.stat, 24);
-      if (label || value) out.push(value ? { value, label } : { label });
+      // An icon is one emoji (or a symbol): anything longer is dropped, never drawn as text.
+      const iconRaw = txt(o.icon ?? o.emoji, 16);
+      const icon = iconRaw && [...iconRaw].length <= 4 && !/[\p{L}\p{N}]/u.test(iconRaw.replace(/[\u{1F1E6}-\u{1F1FF}]/gu, "")) ? iconRaw : "";
+      if (label || value) out.push({ ...(value ? { value } : {}), label, ...(icon ? { icon } : {}) });
     } else {
       const label = txt(p, 160);
       if (label) out.push({ label });
@@ -232,6 +235,43 @@ export function chartHtml(c: ChartData, colors: { text: string; accent: string }
   return `<div class="chart">${title}<div class="vbars">${bars}</div></div>`;
 }
 
+/**
+ * The infographic: a heading with an accent underline, then the content filling the space: steps as
+ * a timeline (numbered or icon circles joined by a line, across the image when it's wide), stats as
+ * big numbers with their icon, on a background with a soft glow and a faint dot grid.
+ */
+function infographicCss(o: { px: (n: number) => string; accent: string; onAccent: string; text: string; bg: string; center: boolean; arabic: boolean; onPhoto: boolean; wide: boolean; steps: number }): string {
+  const { px, accent, onAccent, bg, center, arabic, onPhoto } = o;
+  const across = o.wide && o.steps >= 2 && o.steps <= 5;
+  const soft = onPhoto ? "rgba(255,255,255,.16)" : `${accent}22`;
+  return `
+.dots{position:absolute;inset:0;background-image:radial-gradient(${accent}38 ${px(2.2)},transparent ${px(2.6)});background-size:${px(34)} ${px(34)};-webkit-mask-image:linear-gradient(160deg,#000 0%,transparent 55%);mask-image:linear-gradient(160deg,#000 0%,transparent 55%);opacity:.7;pointer-events:none}
+.glow{position:absolute;border-radius:50%;pointer-events:none;filter:blur(${px(10)})}
+.g1{width:${px(760)};height:${px(760)};background:radial-gradient(circle,${accent}2e 0%,${accent}00 70%);top:${px(-260)};inset-inline-end:${px(-260)}}
+.g2{width:${px(560)};height:${px(560)};background:radial-gradient(circle,${accent}24 0%,${accent}00 70%);bottom:${px(-220)};inset-inline-start:${px(-200)}}
+.head{flex:0 0 auto;position:relative;display:flex;flex-direction:column;gap:${px(16)};margin-bottom:${px(26)};${center ? "align-items:center;text-align:center" : "align-items:flex-start;text-align:start"}}
+.head h1::after{content:"";display:block;width:${px(120)};height:${px(10)};border-radius:${px(5)};background:${accent};margin-top:${px(22)};${center ? "margin-inline:auto" : ""}}
+.head .badge{background:${soft};color:${onPhoto ? "#FFFFFF" : accent};letter-spacing:.06em;text-transform:uppercase;font-size:calc(${px(26)} * var(--fit))}
+.stack.info{flex:1 0 auto;justify-content:center;margin:0;gap:${px(30)}}
+.steps{position:relative;gap:0;background:none;${across ? `flex-direction:row;align-items:flex-start` : `flex:1 0 auto;max-height:${px(o.steps * 230)}`}}
+.steps li{position:relative;background:none;border-radius:0;padding:${across ? `0 ${px(10)}` : `${px(14)} 0`};${across ? `flex:1;flex-direction:column;align-items:center;text-align:center;gap:${px(20)}` : `flex:1 1 auto;align-items:flex-start;gap:${px(30)}`}}
+.steps li:not(:last-child)::before{content:"";position:absolute;background:${accent};opacity:.35;${across ? `height:${px(5)};top:calc(${px(44)} - ${px(2.5)});inset-inline-start:calc(50% + ${px(52)});inset-inline-end:calc(-50% + ${px(52)})` : `width:${px(5)};inset-inline-start:calc(${px(44)} - ${px(2.5)});top:calc(${px(14)} + ${px(96)});bottom:calc(${px(-14)} + ${px(6)})`}}
+.steps .num{width:${px(88)};height:${px(88)};font-size:calc(${px(40)} * var(--fit));box-shadow:0 0 0 ${px(10)} ${onPhoto ? "rgba(0,0,0,.25)" : bg}, 0 ${px(10)} ${px(24)} ${accent}44;position:relative;z-index:1}
+.st{display:flex;flex-direction:column;gap:${px(6)};min-width:0;padding-top:${across ? "0" : px(8)}}
+.stt{font-size:calc(${px(44)} * var(--fit));line-height:${arabic ? 1.4 : 1.15};font-weight:800}
+.stl{font-size:calc(${px(31)} * var(--fit));line-height:${arabic ? 1.6 : 1.35};opacity:.82}
+.st.only .stl{font-size:calc(${px(40)} * var(--fit));font-weight:600;opacity:1;padding-top:${px(10)}}
+.stats{gap:${px(40)} ${px(36)};align-content:center;flex:1 0 auto}
+.stats.many{grid-template-columns:repeat(${o.wide ? 4 : 2},1fr)}
+.stat{background:none;border:0;border-radius:0;padding:0;display:flex;flex-direction:column;align-items:${center ? "center" : "flex-start"};text-align:${center ? "center" : "start"};gap:${px(8)}}
+.stat .ic{width:${px(92)};height:${px(92)};border-radius:50%;background:${soft};display:flex;align-items:center;justify-content:center;font-size:calc(${px(48)} * var(--fit));margin-bottom:${px(10)}}
+.stat .sv{font-size:calc(${px(104)} * var(--fit));letter-spacing:-0.02em;color:${onPhoto ? "#FFFFFF" : accent}}
+.stat .sl{font-size:calc(${px(32)} * var(--fit));opacity:.82}
+.stat + .stat{position:relative}
+.cta{align-self:${center ? "center" : "flex-start"}}
+`;
+}
+
 const QUOTE_SVG = `<svg viewBox="0 0 64 48" class="qmark" aria-hidden="true"><path fill="currentColor" d="M0 48V28C0 12 8 3 24 0l3 6C18 9 14 14 13 22h11v26H0zm37 0V28C37 12 45 3 61 0l3 6c-9 3-13 8-14 16h11v26H37z"/></svg>`;
 
 export type CardExtras = { photo?: { dataUri: string; credit?: string }; chart?: ChartData };
@@ -257,13 +297,15 @@ export function cardHtml(spec: CardSpec, extras: CardExtras = {}): string {
   const rule = style !== "quote" && style !== "infographic" ? `<div class="rule"></div>` : "";
   const sub = spec.subheadline ? (style === "quote" ? `<div class="author"><span class="dash"></span><bdi>${escHtml(spec.subheadline)}</bdi></div>` : `<div class="sub">${lines(spec.subheadline)}</div>`) : "";
   const body = spec.body ? `<div class="body">${lines(spec.body)}</div>` : "";
-  const stats = spec.points.length && spec.points.every((p) => p.value);
+  // Stats: every item has a value that is a number ("45%", "12,400", "4.8★", "3x"). Words as values ("Plan", "Menu") are steps.
+  const numeric = (v?: string) => !!v && /\d/.test(v) && v.replace(/[\d\s.,%+×x★*~<>≈$€£¥/:-]|DA|DZD|k|K|M|bn/g, "").length <= 3;
+  const stats = spec.points.length && spec.points.every((p) => p.value) && (style !== "infographic" || spec.points.every((p) => numeric(p.value)));
   const points = !spec.points.length
     ? ""
     : stats
-      ? `<div class="stats n${Math.min(spec.points.length, 4)}">${spec.points.map((p) => `<div class="stat"><div class="sv" dir="auto">${escHtml(p.value!)}</div><div class="sl">${lines(p.label)}</div></div>`).join("")}</div>`
+      ? `<div class="stats n${Math.min(spec.points.length, 4)}${spec.points.length > 4 ? " many" : ""}">${spec.points.map((p) => `<div class="stat">${p.icon ? `<div class="ic">${escHtml(p.icon)}</div>` : ""}<div class="sv" dir="auto">${escHtml(p.value!)}</div><div class="sl">${lines(p.label)}</div></div>`).join("")}</div>`
       : style === "infographic"
-        ? `<ol class="steps">${spec.points.map((p, i) => `<li><span class="num">${i + 1}</span><span>${p.value ? `<bdi><b>${escHtml(p.value)}</b></bdi> ` : ""}${lines(p.label)}</span></li>`).join("")}</ol>`
+        ? `<ol class="steps">${spec.points.map((p, i) => `<li><span class="num">${p.icon ? escHtml(p.icon) : i + 1}</span><span class="st${p.value ? "" : " only"}">${p.value ? `<b class="stt" dir="auto">${escHtml(p.value)}</b>` : ""}<span class="stl">${lines(p.label)}</span></span></li>`).join("")}</ol>`
         : `<ul class="points">${spec.points.map((p) => `<li><span class="tick"></span><span>${p.value ? `<bdi><b>${escHtml(p.value)}</b></bdi> ` : ""}${lines(p.label)}</span></li>`).join("")}</ul>`;
   const chart = extras.chart ? chartHtml(extras.chart, { text, accent }) : "";
   const cta = spec.cta ? `<div class="cta" dir="auto">${escHtml(spec.cta)}</div>` : "";
@@ -294,7 +336,7 @@ body{position:relative;background:${colors.bg};color:${text};font-family:${spec.
 .d2{width:${px(260)};height:${px(260)};border:${px(26)} solid ${accent};opacity:.22;bottom:${px(-80)};inset-inline-start:${px(-70)}}
 .wrap{position:absolute;inset:0;display:flex;flex-direction:${layout === "top" ? "column" : "row"}}
 .pic{flex:0 0 ${layout === "top" ? (style === "infographic" ? "34%" : "48%") : "46%"};${layout === "side" ? "order:2" : ""}}
-.pane{flex:1;min-width:0;min-height:0;position:relative;display:flex;flex-direction:column;padding:${px(pad)}${style === "infographic" ? ";padding-top:0" : ""}}
+.pane{flex:1;min-width:0;min-height:0;position:relative;display:flex;flex-direction:column;padding:${px(pad)}}
 #content{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .stack{display:flex;flex-direction:column;gap:${px(26)};margin-block:${vAlign === "end" ? "auto 0" : "auto"};${center ? "align-items:center;text-align:center" : "align-items:flex-start;text-align:start"}}
 h1{font-size:calc(${px(hSize)} * var(--fit));line-height:${arabic ? 1.35 : 1.08};font-weight:800;${arabic ? "" : `letter-spacing:${len <= 36 ? "-0.02em" : "-0.01em"};`}max-width:100%${onPhoto ? ";text-shadow:0 2px 18px rgba(0,0,0,.35)" : ""}}
@@ -319,7 +361,7 @@ footer{display:flex;align-items:center;gap:${px(14)};margin-top:${px(30)};font-s
 .qmark{width:${px(130)};height:${px(98)};color:${accent}}
 .author{display:flex;align-items:center;gap:${px(18)};font-size:calc(${px(38)} * var(--fit));font-weight:600;opacity:.9;font-family:${SANS}}
 .dash{width:${px(56)};height:${px(4)};background:${accent};border-radius:2px}
-${style === "infographic" ? `.head{flex:0 0 auto;background:${accent};color:${onAccent};margin:0 ${px(-pad)} ${px(30)};padding:${px(pad * 0.9)} ${px(pad)} ${px(pad * 0.65)};display:flex;flex-direction:column;gap:${px(18)};${center ? "align-items:center;text-align:center" : "align-items:flex-start;text-align:start"}}.head .badge{background:${onAccent};color:${accent}}` : ""}
+${style === "infographic" ? infographicCss({ px, accent, onAccent, text, bg: colors.bg, center, arabic, onPhoto, wide: W / H > 1.3, steps: spec.points.length }) : ""}
 .chart{align-self:stretch;display:flex;flex-direction:column;gap:${px(14)};font-family:${SANS}}
 .ch-title{font-size:calc(${px(32)} * var(--fit));font-weight:700;opacity:.9}
 .hbars{display:flex;flex-direction:column;gap:${px(14)}}
@@ -339,7 +381,7 @@ ${style === "infographic" ? `.head{flex:0 0 auto;background:${accent};color:${on
 .credit{position:absolute;bottom:${px(14)};inset-inline-end:${px(20)};font-size:${px(16)};color:#fff;opacity:.78;text-shadow:0 1px 4px rgba(0,0,0,.7);font-family:${SANS};max-width:60%;direction:ltr}
 `;
   const headBlock = style === "infographic" ? `<div class="head">${badge}${headline}${sub}</div>` : "";
-  const mainStack = style === "infographic" ? `<div class="stack" style="margin-block:${px(20)} auto">${body}${chart}${points}${cta}</div>` : `<div class="stack">${stack}</div>`;
+  const mainStack = style === "infographic" ? `<div class="stack info">${body}${chart}${points}${cta}</div>` : `<div class="stack">${stack}</div>`;
   const fit = `
 (function(){
   var root=document.documentElement, box=document.getElementById('content'), stacks=box.children;
@@ -347,5 +389,6 @@ ${style === "infographic" ? `.head{flex:0 0 auto;background:${accent};color:${on
   function run(){var f=1,n=0;while(over()&&n<45){f*=0.94;root.style.setProperty('--fit',f.toFixed(4));n++}document.body.setAttribute('data-ready','1')}
   (document.fonts&&document.fonts.ready?document.fonts.ready:Promise.resolve()).then(run,run);
 })();`;
-  return `<!doctype html><html lang="${spec.lang}" dir="${dir}"><head><meta charset="utf-8"><style>${css}</style></head><body>${photoBg}${deco}<div class="wrap">${photoPane}<div class="pane">${headBlock}<div id="content">${mainStack}</div>${footer}</div></div>${credit}<script>${fit}</script></body></html>`;
+  const infoDeco = style === "infographic" && !onPhoto ? `<div class="dots"></div><div class="glow g1"></div><div class="glow g2"></div>` : "";
+  return `<!doctype html><html lang="${spec.lang}" dir="${dir}"><head><meta charset="utf-8"><style>${css}</style></head><body>${photoBg}${deco}${infoDeco}<div class="wrap">${photoPane}<div class="pane">${headBlock}<div id="content">${mainStack}</div>${footer}</div></div>${credit}<script>${fit}</script></body></html>`;
 }

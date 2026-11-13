@@ -13,7 +13,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
-import { dataDir, type BrowserConfig } from "./settings";
+import { chosenSaveFolder, dataDir, type BrowserConfig } from "./settings";
 
 export type ElementInfo = { kind: string; label: string };
 export type Session = {
@@ -48,7 +48,12 @@ if (!g.__ooviSweep) {
 }
 
 export const profileDir = () => path.join(dataDir(), "browser-profile");
-export const downloadsDir = () => process.env.OOVI_DOWNLOADS || path.join(dataDir(), "downloads");
+/** Where files bots make and download go: the folder the user chose, else Downloads/oovi (set by the desktop app). */
+export const downloadsDir = () => chosenSaveFolder() || process.env.OOVI_DOWNLOADS || path.join(dataDir(), "downloads");
+/** How prompts and cards name that folder. */
+export const saveFolderLabel = () => chosenSaveFolder() ?? "Downloads/oovi";
+/** The default place, shown in Settings next to the user's choice. */
+export const defaultDownloadsDir = () => process.env.OOVI_DOWNLOADS || path.join(dataDir(), "downloads");
 const accountsFile = () => path.join(dataDir(), "accounts.json");
 
 // ---------- network rules ----------
@@ -90,7 +95,7 @@ function requestAllowed(url: string): boolean {
   }
 }
 
-const blockPrivate = (c: BrowserContext) => c.route("**/*", (route) => (requestAllowed(route.request().url()) ? route.continue() : route.abort("blockedbyclient")));
+export const blockPrivate = (c: BrowserContext) => c.route("**/*", (route) => (requestAllowed(route.request().url()) ? route.continue() : route.abort("blockedbyclient")));
 
 // ---------- launching ----------
 

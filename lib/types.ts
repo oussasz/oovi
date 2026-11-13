@@ -86,6 +86,8 @@ export type Bot = {
   /** One word, used for @mentions. */
   name: string;
   role: string;
+  /** Role description: how the bot works and its style, in the user's words (shown to it and to its teammates). */
+  about?: string;
   instructions: string;
   face: Face;
   /** Model provider for this bot; empty = the default from Settings. */

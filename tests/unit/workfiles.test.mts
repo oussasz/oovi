@@ -68,7 +68,10 @@ test("update, remove, notes, progress and export text", () => {
   assert.equal(updateRow(s.tables.P!, 2, { phone: "0555 00 00 01" }), null);
   assert.ok(progressMark(s) > before); // filling a cell is progress
   assert.match(updateRow(s.tables.P!, 9, { phone: "x" })!, /doesn't exist/);
-  assert.match(updateRow(s.tables.P!, 1, { nope: "x" })!, /no column "nope"/);
+  // A column that isn't there yet (a Status) is added; the other rows get an empty cell.
+  assert.equal(updateRow(s.tables.P!, 1, { Status: "checked" }), null);
+  assert.equal(s.tables.P!.columns.at(-1), "Status");
+  assert.deepEqual(s.tables.P!.rows.map((r) => [r.length, r.at(-1)]), [[COLS.length + 1, "checked"], [COLS.length + 1, ""], [COLS.length + 1, ""]]);
   assert.equal(removeRows(s.tables.P!, [1, 3, 99]), 2);
   assert.deepEqual(s.tables.P!.rows.map((r) => r[0]), ["B"]);
   assert.equal(writeNote(s, "Study", "# Part 1", false).size, 8);

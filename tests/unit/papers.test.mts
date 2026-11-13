@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { fromArxiv, fromCrossref, fromEuropePmc, keepPaper, mergePapers, paperRow, sortPapers } from "../../lib/papers-core.ts";
+import { fromArxiv, fromCrossref, fromEuropePmc, keepPaper, mergePapers, onTopicFirst, paperRow, sortPapers, topicMatch, topicWords } from "../../lib/papers-core.ts";
 
 // Shaped like the catalogues' real answers (fields trimmed).
 const CROSSREF = {
@@ -67,4 +67,17 @@ test("a table row: the abstract is last and can be left out", () => {
   assert.deepEqual(Object.keys(row), ["Title", "Authors", "Year", "Journal", "Type", "Citations", "DOI", "Link", "Free full text", "Source", "Abstract"]);
   assert.equal(row.Source, "Crossref + Europe PMC");
   assert.ok(!("Abstract" in paperRow(fromArxiv(ARXIV)[0]!, false)));
+});
+
+test("records holding every word of one phrasing come first; start-up and startup are one word", () => {
+  const P = (title: string, abstract = "") => ({ title, abstract, authors: "", year: 2020, venue: "", type: "", doi: "", link: "", open: "", citations: null, sources: [] });
+  const ph = [topicWords("startup readiness"), topicWords("entrepreneurial readiness")];
+  assert.deepEqual(topicWords("the role of membrane fouling in desalination"), ["membrane", "foul", "desalin"]);
+  assert.equal(topicMatch(P("Start-up readiness of student founders"), ph), 2);
+  assert.equal(topicMatch(P("A survey", "Entrepreneurial readiness among graduates"), ph), 2);
+  assert.equal(topicMatch(P("Readiness for surgery in the elderly"), ph), 1);
+  assert.equal(topicMatch(P("Thermal stress in turbines"), ph), 0);
+  const { papers, full } = onTopicFirst([P("Readiness for surgery"), P("Reactor cooling"), P("Startup readiness index"), P("Entrepreneurial readiness of women")], ph);
+  assert.equal(full, 2);
+  assert.deepEqual(papers.map((p) => p.title), ["Startup readiness index", "Entrepreneurial readiness of women", "Readiness for surgery", "Reactor cooling"]);
 });

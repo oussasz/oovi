@@ -8,7 +8,7 @@ import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
 type Mode = "off" | "ask" | "folders";
-type State = { mode: Mode; folders: string[]; usual: string[] };
+type State = { mode: Mode; folders: string[]; usual: string[]; saveFolder: string; saveDefault: string; custom: boolean };
 
 const MODES: Mode[] = ["off", "ask", "folders"];
 
@@ -24,7 +24,9 @@ export default function ComputerFilesSettings() {
     api<State>("/api/computer-files").then(setS).catch((e) => setErr((e as Error).message));
   }, []);
 
-  async function post(body: Record<string, string>) {
+  const [savePath, setSavePath] = useState("");
+
+  async function post(body: Record<string, string | null>) {
     setErr(null);
     try {
       setS(await api<State>("/api/computer-files", { method: "POST", body: JSON.stringify(body) }));
@@ -43,6 +45,11 @@ export default function ComputerFilesSettings() {
   async function pick() {
     const picked = await window.oovi?.pickFolder();
     if (picked) await add(picked);
+  }
+
+  async function chooseSave() {
+    const picked = await window.oovi?.pickFolder(s?.saveFolder);
+    if (picked) await post({ saveFolder: picked });
   }
 
   if (!s) return null;
@@ -104,6 +111,34 @@ export default function ComputerFilesSettings() {
           {t("files.searches")} {s.usual.map((u) => u.split(/[\\/]/).pop()).join(", ")}
         </p>
       )}
+      <div className="cf-save">
+        <b>{t("files.saveTitle")}</b>
+        <small className="note">{t("files.saveHint")}</small>
+        <div className="cf-save-row">
+          <Icon name="folder" size={16} />
+          <span className="cf-path" title={s.saveFolder}>{s.saveFolder}</span>
+          {!s.custom && <span className="cf-default">{t("files.default")}</span>}
+        </div>
+        <div className="cf-add">
+          {native ? (
+            <button className="btn sm" onClick={() => void chooseSave()}>
+              {t("files.saveChange")}
+            </button>
+          ) : (
+            <>
+              <input value={savePath} onChange={(e) => setSavePath(e.target.value)} placeholder={t("files.pathPlaceholder")} aria-label={t("files.saveTitle")} onKeyDown={(e) => e.key === "Enter" && savePath.trim() && void post({ saveFolder: savePath.trim() }).then((ok) => ok && setSavePath(""))} />
+              <button className="btn sm" onClick={() => void post({ saveFolder: savePath.trim() }).then((ok) => ok && setSavePath(""))} disabled={!savePath.trim()}>
+                {t("common.save")}
+              </button>
+            </>
+          )}
+          {s.custom && (
+            <button className="btn sm ghost" onClick={() => void post({ saveFolder: null })}>
+              {t("files.saveReset")}
+            </button>
+          )}
+        </div>
+      </div>
       <p className="note">{t("files.never")}</p>
       {err && <div className="notice error">{err}</div>}
     </div>

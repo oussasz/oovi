@@ -25,6 +25,8 @@ type RawCompletion = {
   toolCalls: ToolCall[];
   usage: { input: number; output: number };
   reasoning?: string;
+  /** The answer stopped at the output limit: a tool call in it may be incomplete. */
+  cutOff?: boolean;
   /** theOovi only: credits this call used, and the name to show for the model. */
   credits?: number;
   hostedName?: string;
@@ -465,6 +467,7 @@ function anthropicParts(r: Req, wire: Wire = "anthropic", desktop = false) {
 
 type AnthropicReply = {
   model?: string;
+  stop_reason?: string | null;
   content?: { type: string; text?: string; thinking?: string; id?: string; name?: string; toolset_name?: string; input?: Record<string, unknown> }[];
   usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number };
   oovi?: HostedLive & { credits?: number };
@@ -483,6 +486,7 @@ function readAnthropic(j: AnthropicReply): RawCompletion {
     // Thinking blocks are kept for the UI only and never replayed: oovi trims old
     // history to save tokens, and replayed thinking requires an unedited history.
     reasoning: content.filter((b) => b.type === "thinking" && b.thinking).map((b) => b.thinking).join("\n\n") || undefined,
+    ...(j.stop_reason === "max_tokens" ? { cutOff: true } : {}),
   };
 }
 
@@ -604,7 +608,7 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
     },
     r.signal,
   )) as {
-    choices?: { message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
+    choices?: { finish_reason?: string | null; message?: { content?: string | null; reasoning?: string | null; reasoning_content?: string | null; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[];
     usage?: { prompt_tokens?: number; completion_tokens?: number };
     error?: { message?: string; code?: number };
   };
@@ -627,5 +631,6 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
     }),
     usage: { input: j.usage?.prompt_tokens ?? 0, output: j.usage?.completion_tokens ?? 0 },
     reasoning: (msg.reasoning ?? msg.reasoning_content ?? "").trim() || undefined,
+    ...(j.choices[0]?.finish_reason === "length" ? { cutOff: true } : {}),
   };
 }

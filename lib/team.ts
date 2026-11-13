@@ -44,6 +44,8 @@ export const TEAM_TOOLS: ReadonlySet<string> = new Set(TEAM_SPECS.map((s) => s.n
 
 /** How long message_group waits for a quick answer before the task is followed in the background (delegations.ts). */
 const WAIT_MS = 2 * 60 * 1000;
+/** How long message_group waits for a busy group to finish before queuing the new task. */
+const BUSY_WAIT_MS = Number(process.env.OOVI_BUSY_WAIT_MS) || 30 * 1000;
 const LEADERISH = /lead|assistant|chef|leader|boss|قائد|مساعد/i;
 
 const pinFile = () => path.join(dataDir(), "main.json");
@@ -151,14 +153,27 @@ export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}):
   if (call.name === "message_group") {
     const message = String(call.input.message ?? "").trim();
     if (!message) return bad("message is required");
-    if (isRunning(group.id)) return bad(`"${group.name}" is still working on something. Check it with read_group, or try again in a minute.`);
-    // A new message would cancel what the group is waiting for the user to answer.
-    if (group.pending?.approval || group.pending?.planReview) {
-      const what = group.pending.approval ? `its OK for: ${group.pending.approval.items.map((x) => x.summary).join("; ")}` : "their review of its plan";
-      return bad(`"${group.name}" is waiting for the user's answer on its last task (${what}). Tell the user; send it a new task only after they've answered.`);
-    }
     const telegram = ctx.channel === "telegram" && typeof ctx.telegramChatId === "number" ? { channel: "telegram" as const, telegramChatId: ctx.telegramChatId } : undefined;
     const sentEntryId = newId();
+    // Busy with an earlier task: a quick one may end in a moment; otherwise this one waits its turn
+    // (delegations.ts sends it when the group is free) instead of being refused.
+    if (isRunning(group.id)) await waitForGroup(group.id, BUSY_WAIT_MS, ctx.signal);
+    if (ctx.signal?.aborted) return bad("Stopped by the user.");
+    const now = getChat(group.id) ?? group;
+    if (isRunning(group.id) || now.pending?.approval || now.pending?.planReview) {
+      const what = now.pending?.approval ? `waits for the user's OK on its last task (${now.pending.approval.items.map((x) => x.summary).join("; ")})` : now.pending?.planReview ? "waits for the user to review its plan" : "is still working on its current task";
+      addDelegation({
+        groupId: group.id,
+        groupName: group.name,
+        sentEntryId,
+        mainBotId: self.id,
+        ...(telegram ? { origin: telegram } : {}),
+        startedAt: Date.now(),
+        inline: false,
+        queued: { text: message, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(ctx.workChat ? { workChat: ctx.workChat } : {}) },
+      });
+      return ok(`"${group.name}" ${what}. Your message is queued: it goes to the group as soon as ${now.pending?.approval || now.pending?.planReview ? "the user has answered" : "it's free"}, and the group's answer is posted to the user automatically. Tell the user that in one sentence${now.pending?.approval || now.pending?.planReview ? ", and that the group needs their answer first" : ""}. Don't send the same task again.`);
+    }
     if (!startRun(group.id, { text: message, via: self.id, entryId: sentEntryId, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(ctx.workChat ? { workChat: ctx.workChat } : {}), ...(telegram ?? {}) })) return bad(`"${group.name}" is busy right now.`);
     // On disk from the start: if this turn ends early (stop, crash, restart), the result still reaches the user.
     const task = addDelegation({ groupId: group.id, groupName: group.name, sentEntryId, mainBotId: self.id, ...(telegram ? { origin: telegram } : {}), startedAt: Date.now(), inline: true });

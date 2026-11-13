@@ -55,6 +55,8 @@ const card = (n, kind = "Café") =>
   `<a href="https://cafe${n}.example/">Site web</a><p>Ouvert · Ferme à 22:00 · 4,${n % 10} (1${n} avis)</p></div>`;
 const range = (a, b) => Array.from({ length: b - a + 1 }, (_, i) => a + i);
 const PAGES = {
+  // A documentation chapter that is only an introduction: its content is in the pages it links to.
+  "/docs/ddl.html": page("Chapter 5. Data Definition", `<div class="toc"><ul><li><a href="ddl-basics.html">5.1. Table Basics</a></li><li><a href="ddl-default.html">5.2. Default Values</a></li><li><a href="ddl-constraints.html">5.3. Constraints</a></li><li><a href="/about.html">About</a></li></ul></div><p>This chapter covers how one creates the database structures that will hold one's data.</p>`),
   // 20 cards at first; 15 more each time the panel is scrolled to its end, up to 50.
   "/cafes": page(
     "Cafés à Alger",
@@ -188,7 +190,7 @@ function answer(body) {
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   const all = JSON.stringify(msgs);
-  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN):)/) || [])[1] || "";
+  const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
   seen.tools[me] = (body.tools || []).map((t) => t.name);
@@ -235,6 +237,12 @@ function answer(body) {
     if (n === 4) return call("click", { element: num("Ajouter") });
     return text(`PLAN-RESULT: ${((out.match(/AJOUTÉ[^\n]*/) || [""])[0])}`);
   }
+  if (scene === "READ") {
+    const steps = [`${SITE}/salon/5`, `${SITE}/docs/ddl.html`];
+    const n = (all.split("READ:").pop().match(/"type":"tool_use"/g) || []).length;
+    if (lastTool) seen.out[`read${n}`] = out;
+    return n < steps.length ? call("read_url", { url: steps[n] }) : text("READ-RESULT: done");
+  }
   if (scene === "HINT") {
     if (lastTool) seen.out[`hint:${me}`] = out;
     return lastTool ? text("HINT-RESULT: read") : call("read_url", { url: `${SITE}/annuaire` });
@@ -274,6 +282,7 @@ function answer(body) {
       { query: "membrane fouling desalination", year_from: 2016, limit: 40, table: "Littérature" },
       { query: "membrane fouling desalination", sort: "most_cited", limit: 3 },
       { query: "membrane fouling desalination", free_full_text: true, limit: 50 },
+      { query: "startup readiness", also: ["entrepreneurial readiness"], sources: ["crossref"], limit: 5 },
     ];
     const n = (all.split("PAPERS:").pop().match(/"type":"tool_use"/g) || []).length;
     if (lastTool) seen.out[`papers${n}`] = out;
@@ -480,6 +489,8 @@ const check = (name, ok, detail = "") => {
   check("J) a catalogue that doesn't answer (arXiv, limiting requests) is named, and the others still answer", /arXiv couldn't be read \(it is limiting how often it can be asked right now\): the answer comes from the others/.test(j1), j1.split("\n")[1]?.slice(0, 160));
   check("J) the bot is told a record is not the paper: read it before reporting its findings", /A record proves the paper exists, not what it shows/.test(j1));
   check("J) 'most cited' sorts the relevant results", /^1\. Study number 40 of[^\n]*cited 117/m.test(seen.out.papers2 || ""), (seen.out.papers2 || "").split("\n").slice(3, 4).join("").slice(0, 160));
+  const j4 = seen.out.papers4 || "";
+  check("J) other phrasings are searched in the same call, and off-topic records are named as such", papers.crossref.some((q) => /startup(\+|%20)readiness/.test(q)) && papers.crossref.some((q) => /entrepreneurial(\+|%20)readiness/.test(q)) && /\(also: "entrepreneurial readiness"\)/.test(j4) && /0 contain every word of one of the phrasings[^\n]*may be from another field/.test(j4), j4.split("\n").slice(0, 2).join(" | ").slice(0, 300));
   check("J) 'free full text only' keeps only papers with a free link (the 10 even-numbered ones)", /^10 publications/.test(seen.out.papers3 || "") && /10 have a free full text link/.test(seen.out.papers3 || ""), (seen.out.papers3 || "").split("\n")[0].slice(0, 200));
 
   // N: a bot acting with the user's accounts proposes one plan; once approved, its clicks and typing don't ask again.
@@ -516,6 +527,13 @@ const check = (name, ok, detail = "") => {
   const hint = seen.out["hint:Webby"] || "";
   check("M) reading a directory page tells the bot it is a list and gives the exact scrape_list call", /This page is a list of about 12 items \(2 show a phone number\), and it has more pages\. To keep them all, call scrape_list with url="http:\/\/127\.0\.0\.1:\d+\/annuaire"/.test(hint), hint.split("This page is a list")[1]?.slice(0, 200) || hint.slice(-200));
   check("M) a bot with web search but no browser has scrape_list (collecting public pages is reading)", (seen.tools.Webby || []).includes("scrape_list") && !(seen.tools.Webby || []).includes("click"), (seen.tools.Webby || []).join(","));
+
+  // O: read_url reads a page that refuses plain downloads in a hidden browser by itself, and a chapter that is only an intro lists its pages.
+  await run(`dm-${webby.id}`, "READ: read these pages");
+  const r1 = seen.out.read1 || "";
+  const r2 = seen.out.read2 || "";
+  check("O) a page that refuses plain downloads is read in a hidden browser, without the bot asking", /read in a hidden browser/.test(r1) && /Salon Beauté 5/.test(r1) && /\+213555000005/.test(r1), r1.slice(0, 220));
+  check("O) a chapter that is only an introduction lists its pages to read next", /mostly an introduction[^\n]*\n- 5\.1\. Table Basics: http:\/\/127\.0\.0\.1:\d+\/docs\/ddl-basics\.html\n- 5\.2\. Default Values/.test(r2) && !/About: /.test(r2), r2.slice(-300));
 
   // K: a phone number or an email is saved only when it was read somewhere.
   c = await run(dm, "TRUTH: make me a verified list from this page");

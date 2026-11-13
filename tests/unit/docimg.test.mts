@@ -385,3 +385,23 @@ test("Downloads/oovi prefixes are stripped from bot paths", () => {
   assert.equal(stripDownloadsPrefix("Brief.docx"), "Brief.docx");
 });
 function stripDoublesafe(s: string) { return stripDownloadsPrefix(s); }
+
+test("infographic: word values make a timeline of steps, number values make stat figures; an icon is one emoji", () => {
+  const steps = normalizeCard({ headline: "Open a café", style: "infographic", points: [{ value: "Plan", label: "Write the plan", icon: "📝" }, { value: "Open", label: "First day", icon: "not an icon" }] });
+  assert.ok(typeof steps !== "string");
+  assert.deepEqual(steps.points.map((p) => p.icon ?? null), ["📝", null]);
+  const h = cardHtml(steps);
+  assert.match(h, /<ol class="steps">/);
+  assert.match(h, /<span class="num">📝<\/span><span class="st"><b class="stt" dir="auto">Plan<\/b>/);
+  assert.match(h, /<span class="num">2<\/span>/); // no icon: the step's number
+  assert.doesNotMatch(h, /class="stats/);
+  const stats = normalizeCard({ headline: "2026", style: "infographic", points: [{ value: "12,400", label: "cups", icon: "☕" }, { value: "4.8★", label: "rating" }, { value: "38%", label: "regulars" }] });
+  assert.ok(typeof stats !== "string");
+  const hs = cardHtml(stats);
+  assert.match(hs, /class="stats n3"/);
+  assert.match(hs, /<div class="ic">☕<\/div><div class="sv" dir="auto">12,400<\/div>/);
+  // A wide image lays a short list of steps across it.
+  const wide = normalizeCard({ headline: "Hiring", style: "infographic", size: "landscape", points: [{ value: "Apply", label: "a" }, { value: "Call", label: "b" }, { value: "Start", label: "c" }] });
+  assert.ok(typeof wide !== "string");
+  assert.match(cardHtml(wide), /\.steps\{position:relative;gap:0;background:none;flex-direction:row/);
+});

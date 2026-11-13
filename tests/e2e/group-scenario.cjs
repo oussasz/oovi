@@ -59,6 +59,16 @@ function answer(body) {
   if (mgSpec) seen.messageGroup = mgSpec;
   seen.turns[me] = (seen.turns[me] || 0) + 1;
 
+  // A task for a group that is still busy: queued, sent when the group is free, its answer reported.
+  if (me === "c" && /SLOWJOB:/.test(ask)) return { __wait: 8000, reply: text("SLOW-DONE: finished the long job.") };
+  if (me === "c" && /QUEUED-TASK:/.test(ask)) return text("QUEUE-ANSWER: the weekly figures are 120 orders.");
+  if (me === "Oovi" && /QUEUE:/.test(ask) && (body.tools || []).some((t) => t.name === "message_group")) {
+    if (results.length) {
+      seen.queueResult = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
+      return text("QUEUED-SEEN");
+    }
+    return reply([{ type: "tool_use", id: `toolu_q_${Date.now()}`, name: "message_group", input: { group: "Business", message: "QUEUED-TASK: @c send the weekly figures." } }], "tool_use");
+  }
   // The owner's "use my pc and check my gmail" case: the Chief gives the group a job that needs the user's OK.
   // The request must come back to the chat the user is in, and the user's own words must reach the group.
   if (/ASKME:/.test(all)) {
@@ -138,7 +148,10 @@ http
       if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          return send(200, answer(JSON.parse(raw)));
+          const out = answer(JSON.parse(raw));
+          // A slow model answer, so a group stays busy for a while.
+          if (out && out.__wait) return void setTimeout(() => send(200, out.reply), out.__wait);
+          return send(200, out);
         } catch (e) {
           return send(400, { error: String(e) });
         }
@@ -152,7 +165,7 @@ http
 let server = null;
 function startServer() {
   server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
-    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
+    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_BUSY_WAIT_MS: "1500", OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
     stdio: ["ignore", "pipe", "pipe"],
   });
   server.stdout.on("data", (d) => fs.appendFileSync(LOG, `   [server] ${d}`));
@@ -215,6 +228,30 @@ const newBot = (name, role, extra = "") => api("POST", "/api/bots", { name, role
   check("c's link reaches the Chief although mouloud spoke last", seen.chiefResult.includes(LINK) && /Earlier messages in the group/.test(seen.chiefResult));
   const dm = await api("GET", `/api/chats/dm-${chief.id}`);
   check("the Chief reports the link instead of 'c didn't answer'", dm.entries.at(-1)?.text === "CHIEF-SAW: the link", dm.entries.at(-1)?.text);
+
+  // G: a new task for a group that is still busy is queued (not refused), sent once it's free, and its answer reported.
+  // The run's answer is its event stream: not awaited, so the group is still busy when the Chief writes.
+  const slowRun = api("POST", `/api/chats/${biz.id}/run`, { text: "SLOWJOB: @c take your time" });
+  await sleep(800);
+  await api("POST", `/api/chats/dm-${chief.id}/run`, { text: "QUEUE: ask the group for the weekly figures" });
+  const queuedDm = await idle(`dm-${chief.id}`, 20_000);
+  check("a task for a busy group is queued, not refused, and the Chief is told", /Your message is queued: it goes to the group as soon as it's free/.test(seen.queueResult || "") && queuedDm.entries.at(-1)?.text === "QUEUED-SEEN", (seen.queueResult || "").slice(0, 160));
+  await slowRun;
+  let qg = null;
+  for (let i = 0; i < 100; i++) {
+    qg = await api("GET", `/api/chats/${biz.id}`);
+    if (!qg.running && qg.entries.some((e) => e.kind === "bot" && /QUEUE-ANSWER/.test(e.text))) break;
+    await sleep(300);
+  }
+  const order = qg.entries.filter((e) => /SLOW-DONE|QUEUED-TASK|QUEUE-ANSWER/.test(e.text)).map((e) => e.text.slice(0, 12));
+  check("the queued task reaches the group after its current job, and the group answers it", order.join(",") === "SLOW-DONE: f,QUEUED-TASK:,QUEUE-ANSWER", order.join(","));
+  let qr = "";
+  for (let i = 0; i < 60 && !/QUEUE-ANSWER/.test(qr); i++) {
+    const d = await api("GET", `/api/chats/dm-${chief.id}`);
+    qr = d.entries.filter((e) => e.kind === "bot").at(-1)?.text || "";
+    if (!/QUEUE-ANSWER/.test(qr)) await sleep(500);
+  }
+  check("the group's answer to the queued task is reported in the Chief's chat", /QUEUE-ANSWER: the weekly figures are 120 orders/.test(qr), qr.slice(0, 120));
 
   // C: a led group; the leader's thank-you mention doesn't send Scout back to work.
   const team = await api("POST", "/api/chats", { name: "Team", memberIds: [chief.id, scout.id], leadId: chief.id });

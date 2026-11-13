@@ -45,7 +45,7 @@ export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_table",
     description:
-      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty). update: change cells of one row. remove: delete rows by number. Add rows as you find them, in batches, rather than all at the end.",
+      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty). update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. Add rows as you find them, in batches, rather than all at the end.",
     parameters: {
       type: "object",
       properties: {
@@ -54,7 +54,7 @@ export const WORK_SPECS: ToolSpec[] = [
         columns: { type: "array", items: { type: "string" }, description: "add, new table only: the header row. Put the name first; include a Source column for where each row was found." },
         rows: { type: "array", items: {}, description: "add: rows as arrays in column order, or objects keyed by column name. Leave a cell empty when you don't have the value; never invent one." },
         row: { type: "integer", description: "update: the row number" },
-        values: { type: "object", description: "update: {column name: new value}" },
+        values: { type: "object", description: "update: {column name: new value}. A new column name adds that column." },
         rows_to_remove: { type: "array", items: { type: "integer" }, description: "remove: row numbers" },
         from: { type: "integer", description: "read: first row number (default 1)" },
         limit: { type: "integer", description: "read: how many rows (default 100, max 500)" },
@@ -159,7 +159,19 @@ const nameOf = (store: WorkStore, wanted: string, kind: "tables" | "notes"): str
   if (same || loose(clean).length < 4) return same ?? null;
   // A name given from memory ("Market study" for "Market study 2026"): accepted when exactly one file fits.
   const near = keys.filter((k) => loose(k).includes(loose(clean)) || loose(clean).includes(loose(k)));
-  return near.length === 1 ? near[0]! : null;
+  if (near.length === 1) return near[0]!;
+  // Words in another order or with one word different ("Notes marché Alger" for "Alger notes de marché"):
+  // the one file that shares clearly the most words, when it shares at least two thirds of them.
+  const words = (x: string) => new Set(x.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 3));
+  const want = words(clean);
+  if (want.size < 2) return null;
+  const scored = keys.map((k) => {
+    const have = words(k);
+    const shared = [...want].filter((w) => have.has(w)).length;
+    return { k, score: shared / Math.max(want.size, have.size) };
+  }).sort((a, b) => b.score - a.score);
+  const [best, next] = scored;
+  return best && best.score >= 2 / 3 && (!next || next.score < best.score) ? best.k : null;
 };
 
 /** seen: what the team has read in this chat; contact details found nowhere in it are not saved (null: can't be checked, e.g. after reading images). */
@@ -198,10 +210,12 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
         const values = fromText(i.values);
         const checked = seen && values && typeof values === "object" && !Array.isArray(values) ? dropUnseen(t.columns, [{ [t.columns[0] ?? "Name"]: t.rows[Math.floor(Number(i.row)) - 1]?.[0] ?? "", ...(values as object) }], seen) : null;
         const safe = checked ? Object.fromEntries(Object.entries((checked.rows as Record<string, unknown>[])[0]!).filter(([k]) => k in (values as object))) : values;
+        const before = t.columns.length;
         const err = updateRow(t, Number(i.row), safe);
         if (err) return bad(err);
         saveWork(chatId, store);
-        return ok([`Row ${Math.floor(Number(i.row))} updated.`, droppedNote(checked?.dropped ?? [])].filter(Boolean).join("\n"));
+        const added = t.columns.slice(before);
+        return ok([`Row ${Math.floor(Number(i.row))} updated.${added.length ? ` New column${added.length > 1 ? "s" : ""} ${added.map((c) => `"${c}"`).join(", ")} added to the table (empty in the other rows).` : ""}`, droppedNote(checked?.dropped ?? [])].filter(Boolean).join("\n"));
       }
       if (i.action === "remove") {
         const n = removeRows(t, i.rows_to_remove);

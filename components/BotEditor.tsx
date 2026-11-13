@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { ABOUT_MAX, ROLE_MAX } from "@/lib/bot-limits";
 import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
 import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import { chainOf, enabledRefs, priceText, refKey, type ModelInfo } from "@/lib/model-list";
@@ -178,6 +179,11 @@ export default function BotEditor({ id }: { id: string }) {
             )}
           </div>
           <div className="preview-role" style={{ background: FACE_COLORS[d.face.color] }}>{d.role || t("bot.noRole")}</div>
+          {d.about?.trim() && (
+            <p className="preview-about" dir="auto">
+              {d.about.trim()}
+            </p>
+          )}
           <p className="hint">{t("bot.squishHint")}</p>
           <div className="mood-row" role="group" aria-label={t("bot.previewMood")}>
             {MOODS.map((m) => (
@@ -227,10 +233,17 @@ export default function BotEditor({ id }: { id: string }) {
             </label>
             <label className="field">
               {t("bot.role")}
-              <input value={d.role} maxLength={40} placeholder={t("bot.rolePh")} onChange={(e) => set({ role: e.target.value })} />
+              <input value={d.role} maxLength={ROLE_MAX} placeholder={t("bot.rolePh")} onChange={(e) => set({ role: e.target.value })} />
               <span className="hint">{t("bot.roleHint")}</span>
             </label>
           </div>
+          <label className="field">
+            {t("bot.roleAbout")}
+            <textarea rows={2} dir="auto" value={d.about ?? ""} maxLength={ABOUT_MAX} placeholder={t("bot.aboutPh")} onChange={(e) => set({ about: e.target.value })} />
+            <span className="hint">
+              {t("bot.aboutHint")} ({(d.about ?? "").length}/{ABOUT_MAX})
+            </span>
+          </label>
           <label className="field">
             {t("bot.instructions")}
             <textarea rows={5} value={d.instructions} placeholder={t("bot.instructionsPh")} onChange={(e) => set({ instructions: e.target.value })} />

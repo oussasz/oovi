@@ -5,6 +5,7 @@
 // edit there), otherwise into the user's Downloads/oovi folder. Google Docs and
 // Sheets open .docx / .xlsx directly, and a Drive connector can upload them.
 
+import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { AlignmentType, BorderStyle, Document, ExternalHyperlink, HeadingLevel, LevelFormat, Packer, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
@@ -12,13 +13,13 @@ import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { marked, type Token, type Tokens } from "marked";
 import PptxGenJS from "pptxgenjs";
-import { downloadsDir, launchLocal } from "./browser";
+import { downloadsDir, launchLocal, saveFolderLabel } from "./browser";
 import { cardHtml, normalizeCard, onColor, PALETTES } from "./card";
 import { chartAnchor, chartDataRows, CHART_KINDS, injectXlsxCharts, inlineXlsxChart, isRtlText, normalizeChart, pptxChart, resolveRangeChart, type ChartData, type SheetData, type XlsxChart, type ZipIO } from "./charts";
 import type { ToolSpec } from "./llm";
 import { fitContain, orientationFor, type Orientation } from "./media";
 import { aiPhoto, aiPhotoProvider, findPhoto, loadLocalPicture, pictureDataUri, renderHtml, resolveInDownloads, type Picture } from "./render";
-import type { BrowserConfig } from "./settings";
+import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { resolveInWorkspace } from "./workspace";
 import { translateFor, type Tr } from "./i18n-server";
@@ -51,13 +52,14 @@ export const DOC_SPECS: ToolSpec[] = [
   {
     name: "create_document",
     description:
-      "Create a real document file from Markdown: Word (.docx), PDF (.pdf), Markdown (.md), web page (.html) or text (.txt) — the file extension decides. Supports headings, bold/italic, links, bullet and numbered lists, tables, quotes and code. For Google Docs, create a .docx (Google Docs opens it).",
+      "Create a real document file from Markdown: Word (.docx), PDF (.pdf), Markdown (.md), web page (.html) or text (.txt) — the file extension decides. Supports headings, bold/italic, links, bullet and numbered lists, tables, quotes and code. For Google Docs, create a .docx (Google Docs opens it). A long document (a report, a thesis chapter, more than about 2,500 words) is written in parts, never in one call: the first call with the title and the first sections, then the same filename with append: true and the next sections, a few per call, until it's complete. The file is rebuilt complete after each part. Code and configuration files (.py, .js, .toml, .json, .env.example, .gitignore…) are not documents: they go in a project folder with write_file (ask for the folder with use_project_folder).",
     parameters: {
       type: "object",
       properties: {
         filename: { type: "string", description: "e.g. 'Quarterly report.docx'. In a project folder this can include a subfolder." },
         title: { type: "string", description: "Document title (shown at the top and in the file's properties)" },
-        content: { type: "string", description: "The full content in Markdown" },
+        content: { type: "string", description: "The content in Markdown (with append: the next sections only)" },
+        append: { type: "boolean", description: "true: add this content at the end of the document you already made with this filename in this chat (the title stays)." },
       },
       required: ["filename", "content"],
     },
@@ -148,12 +150,12 @@ export const DOC_SPECS: ToolSpec[] = [
       type: "object",
       properties: {
         filename: { type: "string", description: "e.g. 'Facebook post.png' (.png or .jpg)" },
-        style: { type: "string", enum: ["post", "poster", "quote", "infographic"], description: "post (default): headline + short text; poster: big centered headline, photo on top; quote: a quotation, author in subheadline; infographic: stats, steps or a chart" },
+        style: { type: "string", enum: ["post", "poster", "quote", "infographic"], description: "post (default): headline + short text; poster: big centered headline, photo on top; quote: a quotation, author in subheadline; infographic: big stat figures, a timeline of steps, or a chart, with icons" },
         size: { type: "string", enum: ["square", "portrait", "landscape", "story"], description: "square 1080x1080 (Facebook/Instagram post, default), portrait 1080x1350 (Instagram), landscape 1920x1080 (slides, YouTube, X), story 1080x1920 (stories, reels, WhatsApp status)" },
         headline: { type: "string", description: "The main text (short)" },
         subheadline: { type: "string", description: "Second line; for quotes, the author" },
         body: { type: "string", description: "Optional short paragraph" },
-        points: { type: "array", items: { type: "object", properties: { value: { type: "string", description: "e.g. '45%', '3x', '120 DA' (optional)" }, label: { type: "string" } } }, description: "Up to 8: bullet points, steps, menu items, or stats when every item has a value" },
+        points: { type: "array", items: { type: "object", properties: { value: { type: "string", description: "e.g. '45%', '3x', '120 DA' for a stat, or a step's short title ('Plan', 'Launch') (optional)" }, label: { type: "string" }, icon: { type: "string", description: "One emoji for this point, e.g. '☕' (optional; infographics show it in a circle)" } } }, description: "Up to 8: bullet points, steps, menu items, or stats. Infographic: every value a number makes big stat figures; otherwise the points are a timeline of steps (across the image when it's wide)." },
         chart: CHART_INLINE,
         cta: { type: "string", description: "Call-to-action button, e.g. 'Order now'" },
         badge: { type: "string", description: "Small tag at the top, e.g. 'NEW', '-20%'" },
@@ -194,6 +196,48 @@ function cleanName(name: string, fallbackExt: string): string {
   if (!n) n = `oovi file${fallbackExt}`;
   if (!path.extname(n)) n += fallbackExt;
   return n.slice(0, 180);
+}
+
+const DOC_EXTS = [".docx", ".pdf", ".html", ".htm", ".md", ".txt"];
+
+/** A document's Markdown, kept beside oovi's data so a document made in parts can be rebuilt complete. */
+type DocSource = { title?: string; md: string };
+const docSourceFile = (abs: string) => path.join(dataDir(), "doc-sources", `${crypto.createHash("sha1").update(path.resolve(abs)).digest("hex")}.json`);
+function readDocSource(abs: string): DocSource | null {
+  try {
+    const j = JSON.parse(fs.readFileSync(docSourceFile(abs), "utf8")) as DocSource & { size?: number };
+    // The file was changed or replaced since (by the user or another tool): its text can't be extended safely.
+    if (typeof j.size === "number" && fs.statSync(abs).size !== j.size) return null;
+    return typeof j.md === "string" ? { title: j.title, md: j.md } : null;
+  } catch {
+    return null;
+  }
+}
+function writeDocSource(abs: string, src: DocSource): void {
+  try {
+    const dir = path.dirname(docSourceFile(abs));
+    fs.mkdirSync(dir, { recursive: true });
+    // Documents are made in parts within a task: sources older than a month are of no use any more.
+    const old = Date.now() - 30 * 24 * 60 * 60 * 1000;
+    for (const f of fs.readdirSync(dir)) {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).mtimeMs < old) fs.rmSync(p, { force: true });
+    }
+    fs.writeFileSync(docSourceFile(abs), JSON.stringify({ ...src, size: fs.statSync(abs).size }));
+  } catch {
+    // Without it, a later append asks for a new document: nothing else depends on it.
+  }
+}
+
+/** The file a bot named, where it would have been created: inside the project folder, or in Downloads/oovi. */
+function existingOutput(filename: string, ws: Workspace | undefined): { abs: string; shown: string } | null {
+  const name = cleanName(filename, ".docx");
+  if (ws) {
+    const { abs, rel } = resolveInWorkspace(ws, name);
+    return fs.existsSync(abs) ? { abs, shown: rel } : null;
+  }
+  const abs = path.join(downloadsDir(), path.basename(name.replace(/\\/g, "/")));
+  return fs.existsSync(abs) ? { abs, shown: abs } : null;
 }
 
 /** Absolute output path: inside the project folder, or a new file in Downloads/oovi. */
@@ -838,19 +882,44 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
 
     const filename = String(i.filename ?? "");
     if (call.name === "create_document") {
-      const content = String(i.content ?? "");
-      if (!content.trim()) return fail("content is required");
-      if (content.length > MAX_TEXT) return fail("That's too long for one document. Split it into parts.");
-      const title = typeof i.title === "string" ? i.title.slice(0, 200) : undefined;
-      const { abs, shown } = outputPath(filename, ws, ".docx");
+      const part = String(i.content ?? "");
+      if (!part.trim()) return fail("content is required");
+      const base = path.basename(filename.trim().replace(/\\/g, "/"));
+      // ".gitignore", ".env" and "Dockerfile" have no document extension: they'd become "…docx" files.
+      const codeName = /^\.[^.]+$/.test(base) || /^(dockerfile|makefile|procfile|gemfile|rakefile|vagrantfile|jenkinsfile)$/i.test(base);
+      const asked = codeName ? base : path.extname(cleanName(filename, ".docx")).toLowerCase();
+      if (codeName || !DOC_EXTS.includes(asked)) {
+        return fail(
+          `create_document makes .docx, .pdf, .md, .html or .txt documents, not ${asked || "files without an extension"}. ` +
+            (ws
+              ? "Code and configuration files go in the project folder: use write_file."
+              : "Code and configuration files go in the user's project folder: ask for it with use_project_folder (the folder they named), then use write_file. Don't save them, or a README instead, anywhere else meanwhile."),
+        );
+      }
+      const append = i.append === true;
+      let prev: DocSource | null = null;
+      let target: { abs: string; shown: string };
+      if (append) {
+        const found = existingOutput(filename, ws);
+        prev = found ? readDocSource(found.abs) : null;
+        if (!found || !prev) return fail(`There's no document called ${path.basename(filename.replace(/\\/g, "/"))} made in parts here to add to${found ? " (it wasn't made by create_document, so its text can't be extended)" : ""}. Create it first without append, with the same filename.`);
+        target = found;
+      } else target = outputPath(filename, ws, ".docx");
+      const content = prev ? `${prev.md.replace(/\s+$/, "")}\n\n${part}` : part;
+      if (content.length > MAX_TEXT) return fail("That's too long for one document. Make the rest a second document (Part 2).");
+      const title = prev ? prev.title : typeof i.title === "string" ? i.title.slice(0, 200) : undefined;
+      const { abs, shown } = target;
       const ext = path.extname(abs).toLowerCase();
-      if (![".docx", ".pdf", ".html", ".htm", ".md", ".txt"].includes(ext)) return fail(`create_document makes .docx, .pdf, .md, .html or .txt files, not ${ext}.`);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       if (ext === ".docx") fs.writeFileSync(abs, await toDocx(content, title));
       else if (ext === ".pdf") fs.writeFileSync(abs, await toPdf(toHtml(content, title), browser));
       else if (ext === ".html" || ext === ".htm") fs.writeFileSync(abs, toHtml(content, title));
       else fs.writeFileSync(abs, title && ext === ".md" ? `# ${title}\n\n${content}` : content);
-      return done(call, abs, shown, ext === ".docx" ? "a Word document" : ext === ".pdf" ? "a PDF" : "a document");
+      writeDocSource(abs, { title, md: content });
+      const res = done(call, abs, shown, ext === ".docx" ? "a Word document" : ext === ".pdf" ? "a PDF" : "a document");
+      const sections = (content.match(/^#{1,3} /gm) ?? []).length;
+      const words = content.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
+      return { ...res, content: `${prev ? `Added to ${shown}: it now has` : `${res.content} It has`} ${words} words${sections ? ` in ${sections} headed sections` : ""}. To add more sections, call create_document again with this filename and append: true.${prev ? " The user can open it from the chat." : ""}` };
     }
 
     if (call.name === "create_spreadsheet") {
@@ -894,7 +963,7 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
 /** What the approval card shows when a bot creates a file inside a project folder. */
 export function describeDocCall(call: ToolCall, ws: Workspace | undefined, tr: Tr = translateFor): { summary: string; detail?: string } {
   const name = String(call.input.filename ?? "file");
-  const where = ws ? path.basename(ws.path) : "Downloads/oovi";
+  const where = ws ? path.basename(ws.path) : saveFolderLabel();
   if (call.name === "create_document") return { summary: tr("ok.docCreate", { name, where }), detail: String(call.input.content ?? "").slice(0, 4000) };
   if (call.name === "create_spreadsheet") return { summary: tr("ok.sheetCreate", { name, where }) };
   if (call.name === "create_image") return { summary: tr("ok.imageCreate", { name, where }), detail: String(call.input.headline ?? "").slice(0, 400) };

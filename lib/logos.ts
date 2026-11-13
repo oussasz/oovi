@@ -46,6 +46,7 @@ const FILES: Record<string, string> = {
   "neon": "neon.png",
   "netlify": "netlify.png",
   "notion": "notion.png",
+  "trello": "trello.svg",
   "paypal": "paypal.png",
   "pipedream": "pipedream.svg",
   "plaid": "plaid.png",

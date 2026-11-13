@@ -25,6 +25,7 @@ import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
 import { listServers, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
+import { USE_FOLDER_SPEC, folderTarget, runUseFolder, useFolderItem } from "./project-folder";
 import { ADMIN_TOOLS, PROPOSE_TEAM_SPEC, REQUEST_ABILITIES_SPEC, adminItem, adminValid, runAdminTool } from "./team-admin";
 import { translateFor, translatorFor, type Tr } from "./i18n-server";
 import { loadSettings, usesHosted, type Settings } from "./settings";
@@ -32,7 +33,7 @@ import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from ".
 import { parseSlash } from "./slash";
 import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
-import { checkUrl } from "./browser";
+import { checkUrl, saveFolderLabel } from "./browser";
 import { healInterrupted } from "./delegations-core";
 import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
@@ -255,6 +256,10 @@ const filesMade = (chat: Chat) => {
 };
 
 /** Tools that add rows to a work table. */
+/** What a bot is told when its message stopped at the output limit before its tool call was complete. */
+export const CUT_OFF =
+  "Not run: your message reached the length limit for one answer before this call was complete, so it was cut. Send less in one call: a long document in parts (create_document with the first sections, then append: true with the next ones, a few sections per call), a long code file as several smaller files (or write_file with the first part, then edit_file to add the rest), long lists into work_table a few dozen rows at a time.";
+
 const TABLE_TOOLS = new Set(["work_table", "scrape_list", "extract_list", "find_places", "find_papers"]);
 
 /** Tool calls the bots made since the user's last message. */
@@ -430,6 +435,7 @@ function groupsOf(botId: string): string[] {
 function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
+  if (bot.about) lines.push(`How the user describes your role (keep its spirit and tone in how you work and talk): ${bot.about}`);
   if (bot.instructions) lines.push("", bot.instructions);
   const me = currentUser();
   if (me?.name) {
@@ -454,7 +460,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     lines.push(
       "",
       `You are in the group chat "${chat.name}" with the user and these teammates:`,
-      ...mates.map((m) => `- @${m.name}${m.role ? `, ${m.role}` : ""}${lead?.id === m.id ? " (team leader)" : ""}: ${abilityWords(abilitiesOf(m))}`),
+      ...mates.map((m) => `- @${m.name}${m.role ? `, ${m.role}` : ""}${lead?.id === m.id ? " (team leader)" : ""}: ${abilityWords(abilitiesOf(m))}${m.about ? `. Role: ${m.about.replace(/\s+/g, " ").slice(0, 200)}` : ""}`),
       "",
       'Messages from others appear as "[Name]: text". Write only your own reply, without prefixing your name. Never @mention yourself.',
     );
@@ -509,7 +515,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     "",
     "You can create real files: create_document (Word, PDF, Markdown, HTML), create_spreadsheet (Excel with formulas and native charts via `charts`, or CSV), create_presentation (PowerPoint with native `chart`s and `image`s: free photos via `{search}` or your own pictures), and create_image (a designed PNG: social post, poster, quote card, infographic; Arabic right-to-left supported). When asked for a chart, add one; when asked for a visual, flyer, poster or post image, use create_image. read_document reads Office files.",
     "Be exact about create_image: it designs an image from text, shapes and free stock photos. It does not draw or generate a new picture with AI. When the user asks for a picture of something (\"a tiger picture\", \"draw me…\", \"generate an image\"), say that in one short line and offer what fits: a free photo of it, a designed card or poster with that photo, or, if they want AI-generated art, getting it from an image generator they use (ChatGPT, Canva…) through your browser. Never present a stock photo as a picture you created.",
-    `When the user asks for a document, report, table, budget, plan or slides, make the actual file instead of only pasting text. Files go ${chat.workspace ? "into the project folder" : "into the user's Downloads/oovi folder"}; mention the file name in your reply.`,
+    `When the user asks for a document, report, table, budget, plan or slides, make the actual file instead of only pasting text. Files go ${chat.workspace ? "into the project folder" : `into ${saveFolderLabel() === "Downloads/oovi" ? "the user's Downloads/oovi folder" : `the folder the user chose for your files, ${saveFolderLabel()} (tools call it Downloads/oovi)`}`}; mention the file name in your reply. Files for a project the user names in another folder (code, configuration, a site) go in that folder only: with a project folder use write_file; without one, ask for it with use_project_folder. Never put them somewhere else meanwhile.`,
     "For Google Docs, Sheets or Slides: create .docx / .xlsx / .pptx (Google opens them). If a Google Drive, Zapier or Pipedream tool is available, you can upload it there when the user asks.",
   );
   if (tools.some((t) => t.name === "vm_run")) {
@@ -899,6 +905,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "list_routines": return tr("st.routines");
     case "propose_routine": return tr("st.routine", { name: v(i.name) });
     case "request_abilities": return tr("st.abilities");
+    case "use_project_folder": return tr("st.folder");
     case "propose_team": return tr("st.team", { name: v(i.name) });
     case "propose_specialist": return tr("st.specialist", { name: v(i.name), role: v(i.role, "") });
     case "create_image": return tr("st.designing", { name: v(i.filename) });
@@ -986,7 +993,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1070,6 +1077,8 @@ async function* runBot(
               ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string"
             : SPECIALIST_TOOLS.has(c.name)
               ? tools.some((t) => t.name === c.name) && specialistValid(c, chat, bot)
+              : c.name === USE_FOLDER_SPEC.name
+                ? tools.some((t) => t.name === c.name) && typeof folderTarget(c.input, chat.workspace) !== "string"
               : ADMIN_TOOLS.has(c.name)
                 ? tools.some((t) => t.name === c.name) && adminValid(c, bot, isMain)
                 : // A folder the user already allowed for this task isn't asked about again. Clicks and typing in
@@ -1087,6 +1096,7 @@ async function* runBot(
           if (c.name === "open_in_user_browser") return openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat)));
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
+          if (c.name === USE_FOLDER_SPEC.name) return useFolderItem(c, chat, bot.name, translatorFor(lastUserText(chat)));
           const kind = isDesktopName(c.name) ? deskAsk(c) : null;
           // The card speaks the user's language: their latest message's, else the app's.
           if (kind) {
@@ -1190,6 +1200,11 @@ async function* runBot(
             results.push(runRoutineTool(c, bot));
           } else if (SPECIALIST_TOOLS.has(c.name)) {
             results.push(runSpecialistTool(c, chat, bot, members, bots, answered?.items.find((it) => it.call.id === c.id)));
+          } else if (c.name === USE_FOLDER_SPEC.name) {
+            const r = tools.some((t) => t.name === c.name) ? runUseFolder(c, chat) : { id: c.id, name: c.name, content: "That tool isn't available here.", isError: true };
+            results.push(r);
+            // The chat has a project folder now: the turn restarts with the file tools.
+            if (!r.isError) selfChanged = true;
           } else if (ADMIN_TOOLS.has(c.name)) {
             // Not offered to this bot (e.g. propose_team outside the Chief's chat): refuse instead of running.
             const r = tools.some((t) => t.name === c.name) ? runAdminTool(c, bot, isMain) : { id: c.id, name: c.name, content: "That tool isn't available here.", isError: true };
@@ -1268,6 +1283,9 @@ async function* runBot(
       if (out.ref.provider !== "oovi") countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
       if (out.note) entry.note = out.note;
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, ...(out.reasoning ? { reasoning: out.reasoning.slice(0, 20_000) } : {}) });
+      // The answer hit the output limit: its last tool call may hold half a document or half a file.
+      // Nothing is run from it (a cut file would be saved as if complete); the bot is told how to go on.
+      if (out.cutOff && out.toolCalls.length) entry.steps.push({ role: "tool", results: out.toolCalls.map((c) => ({ id: c.id, name: c.name, content: CUT_OFF, isError: true })) });
       saveProgress(chat);
       yield { type: "entry", entry };
     } catch (e) {

@@ -50,6 +50,8 @@ export type Settings = {
   learning: boolean;
   /** Send daily usage counts (no content) so oovi can see what's used. */
   usageStats: boolean;
+  /** Where bots save the files they make when a chat has no project folder (default: Downloads/oovi). */
+  saveFolder?: string;
   /** Cloud computer for the bots (E2B virtual machines, the user's own key). */
   sandbox?: { e2bKey?: string };
   /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
@@ -174,6 +176,25 @@ function cleanDesktopControl(v: unknown): DesktopControl {
 export function setDesktopControl(next: DesktopControl): void {
   const raw = readRaw();
   raw.desktopControl = cleanDesktopControl(next);
+  writeRaw(raw);
+}
+
+/** The folder the user chose for the files bots make (Settings > Files on this computer), if it still exists. */
+export function chosenSaveFolder(): string | undefined {
+  const p = readRaw().saveFolder;
+  if (typeof p !== "string" || !p) return undefined;
+  try {
+    return fs.statSync(p).isDirectory() ? p : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** Save the folder for the files bots make (already checked by the caller), or null for the default. */
+export function setSaveFolder(p: string | null): void {
+  const raw = readRaw();
+  if (p) raw.saveFolder = p;
+  else delete raw.saveFolder;
   writeRaw(raw);
 }
 

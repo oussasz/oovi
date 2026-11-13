@@ -11,7 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { groupTaskState, healInterrupted, INTERRUPTED, plainText, type Earlier, type GroupTaskState } from "./delegations-core";
 import { translateFor } from "./i18n-server";
-import { isRunning, onRunEnd } from "./runner";
+import { isRunning, onRunEnd, startRun } from "./runner";
 import { dataDir } from "./settings";
 import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
 import type { Bot, BotEntry, Chat, GroupAsk } from "./types";
@@ -36,6 +36,8 @@ export type Delegation = {
   report?: string;
   /** The same result as the main bot sees it (with the other members' messages). */
   reportForModel?: string;
+  /** A task given while the group was busy: sent (as entry sentEntryId) as soon as its current run ends. */
+  queued?: { text: string; userWords?: string; workChat?: string };
 };
 
 const MAX_AGE = 48 * 60 * 60 * 1000;
@@ -237,6 +239,18 @@ export function checkDelegations(): void {
       const chat = getChat(d.groupId);
       if (!chat || chat.kind !== "group") {
         changed = true;
+        continue;
+      }
+      // A task given while the group was busy goes out once the group is free and not waiting for the user.
+      if (d.queued) {
+        const telegram = d.origin ? { channel: "telegram" as const, telegramChatId: d.origin.telegramChatId } : {};
+        const free = !isRunning(d.groupId) && !chat.pending?.approval && !chat.pending?.planReview;
+        if (free && startRun(d.groupId, { text: d.queued.text, via: d.mainBotId, entryId: d.sentEntryId, ...(d.queued.userWords ? { userWords: d.queued.userWords } : {}), ...(d.queued.workChat ? { workChat: d.queued.workChat } : {}), ...telegram })) {
+          delete d.queued;
+          d.startedAt = now;
+          changed = true;
+        }
+        keep.push(d);
         continue;
       }
       const state = groupTaskState(chat, d.sentEntryId, isRunning(d.groupId));

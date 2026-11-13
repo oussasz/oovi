@@ -189,16 +189,19 @@ export function readRows(t: WorkTable, from = 1, limit = 100, onlyMissing?: stri
   return { text: [`# | ${t.columns.join(" | ")}`, ...part.map((x) => `${x.n}. ${x.r.map((c) => c.slice(0, 300)).join(" | ")}`)].join("\n"), shown: part.length, matching: all.length };
 }
 
-/** Change cells of one row (1-based), by column name. */
+/** Change cells of one row (1-based), by column name. A new column name (a Status, a Checked on…) becomes a new column. */
 export function updateRow(t: WorkTable, rowNumber: number, values: unknown, now = Date.now()): string | null {
   const r = t.rows[Math.floor(rowNumber) - 1];
   if (!r) return `Row ${rowNumber} doesn't exist (the table has ${t.rows.length} rows).`;
   if (!values || typeof values !== "object" || Array.isArray(values)) return "values must be an object: {column name: new value}.";
-  for (const [k, v] of Object.entries(values as Record<string, unknown>)) {
-    const i = columnIndex(t.columns, k);
-    if (i < 0) return `There is no column "${k}". Columns: ${t.columns.join(", ")}.`;
-    r[i] = cell(v);
+  const entries = Object.entries(values as Record<string, unknown>).filter(([k]) => cell(k));
+  const fresh = [...new Set(entries.filter(([k]) => columnIndex(t.columns, k) < 0).map(([k]) => cell(k)))];
+  if (t.columns.length + fresh.length > MAX_COLUMNS) return `The table can't have more than ${MAX_COLUMNS} columns. Columns: ${t.columns.join(", ")}.`;
+  for (const name of fresh) {
+    t.columns.push(name);
+    for (const row of t.rows) while (row.length < t.columns.length) row.push("");
   }
+  for (const [k, v] of entries) r[columnIndex(t.columns, k)] = cell(v);
   t.updatedAt = now;
   return null;
 }

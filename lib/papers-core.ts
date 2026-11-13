@@ -145,6 +145,48 @@ export function mergePapers(lists: Paper[][]): Paper[] {
   return out;
 }
 
+// ---------- on topic ----------
+// The catalogues match words loosely: "startup readiness" also brings reactor start-up and surgical
+// readiness. A record whose title or abstract holds every word of one of the asked phrasings comes
+// first; the others follow, and the bot is told how many there are.
+
+const STOP = new Set(["the", "and", "for", "with", "from", "into", "onto", "over", "under", "about", "between", "among", "of", "in", "on", "to", "a", "an", "or", "by", "at", "as", "is", "are", "its", "their", "via", "vs", "versus", "using", "based", "study", "studies", "review", "effect", "effects", "role", "impact", "analysis"]);
+/** Lower case, accents and hyphens away ("start-up" and "startup" are one word). */
+const plain = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/(\p{L})[-‐‑](?=\p{L})/gu, "$1");
+/** The start of a word without its usual English ending, matched as a word start: "fouling" finds "fouled", "membranes" finds "membrane". */
+const stem = (w: string) => {
+  if (w.length <= 4) return w;
+  const cut = w.replace(/(ations?|ings?|ness|ments?|ies|es|s|ed|al|ity)$/, "");
+  return cut.length >= 3 ? cut : w;
+};
+
+/** The words that make a phrasing (no stop words, at least 2 letters, quotes and brackets ignored). */
+export function topicWords(phrase: string): string[] {
+  const words = plain(phrase).split(/[^\p{L}\p{N}]+/u).filter((w) => w.length >= 2 && !STOP.has(w));
+  return [...new Set(words.map(stem).filter((w) => w.length >= 2))];
+}
+
+/** 2: every word of one phrasing is in the title or abstract; 1: at least one word; 0: none. */
+export function topicMatch(p: Paper, phrasings: string[][]): 0 | 1 | 2 {
+  const text = plain(`${p.title} ${p.abstract}`).replace(/[^\p{L}\p{N}]+/gu, " ");
+  const has = (w: string) => new RegExp(`(^| )${w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(text);
+  let some = false;
+  for (const words of phrasings) {
+    if (!words.length) continue;
+    const hits = words.filter(has).length;
+    if (hits === words.length) return 2;
+    if (hits) some = true;
+  }
+  return some ? 1 : 0;
+}
+
+/** Records holding a whole phrasing first, then the partial ones, then the rest; each group keeps its order. */
+export function onTopicFirst(papers: Paper[], phrasings: string[][]): { papers: Paper[]; full: number } {
+  const scored = papers.map((p, i) => ({ p, i, m: topicMatch(p, phrasings) }));
+  scored.sort((a, b) => b.m - a.m || a.i - b.i);
+  return { papers: scored.map((x) => x.p), full: scored.filter((x) => x.m === 2).length };
+}
+
 export type PaperFilter = { yearFrom?: number; yearTo?: number; openOnly?: boolean };
 export const keepPaper = (p: Paper, f: PaperFilter) => (!f.yearFrom || (p.year !== null && p.year >= f.yearFrom)) && (!f.yearTo || (p.year !== null && p.year <= f.yearTo)) && (!f.openOnly || !!p.open);
 

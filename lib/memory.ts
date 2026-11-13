@@ -15,7 +15,7 @@ import { WRONG_LESSON } from "./lesson-rules";
 // KNOWLEDGE.md is different: reference notes the user writes in Settings > Memory & soul
 // (company facts, product details, writing style). Bots read it but the memory tool can't change it.
 export type MemoryTarget = "user" | "memory" | "knowledge";
-export const LIMITS: Record<MemoryTarget, number> = { user: 1500, memory: 2500, knowledge: 2000 };
+export const LIMITS: Record<MemoryTarget, number> = { user: 1500, memory: 2500, knowledge: 5000 };
 const FILES: Record<MemoryTarget, string> = { user: "USER.md", memory: "MEMORY.md", knowledge: "KNOWLEDGE.md" };
 export const isMemoryTarget = (x: unknown): x is MemoryTarget => x === "user" || x === "memory" || x === "knowledge";
 const SEP = "\n§\n";

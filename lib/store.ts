@@ -3,6 +3,7 @@
 //   data/chats/<id>.json    one file per chat (groups and 1:1 chats)
 //   data/shots/<id>.jpg     browser screenshots
 
+import { ABOUT_MAX, ROLE_MAX } from "./bot-limits";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -115,7 +116,8 @@ export function validateBot(input: unknown, selfId?: string): BotInput | string 
   const tools = (o.tools && typeof o.tools === "object" ? o.tools : {}) as Record<string, unknown>;
   return {
     name,
-    role: String(o.role ?? "").trim().slice(0, 40),
+    role: String(o.role ?? "").trim().slice(0, ROLE_MAX),
+    ...(typeof o.about === "string" && o.about.trim() ? { about: o.about.replace(/\r\n?/g, "\n").trim().slice(0, ABOUT_MAX) } : {}),
     instructions: String(o.instructions ?? "").trim().slice(0, 6000),
     face: cleanFace(o.face),
     provider,

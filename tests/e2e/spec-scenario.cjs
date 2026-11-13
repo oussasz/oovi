@@ -28,6 +28,8 @@ const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assi
 const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
 const systemOf = (b) => (typeof b.system === "string" ? b.system : JSON.stringify(b.system || ""));
 const seen = { tools: {}, systems: [] };
+const PROJECT = path.join(os.tmpdir(), "oovi-spec-project", "shop");
+const SAVE_DIR = path.join(os.tmpdir(), "oovi-spec-save");
 
 function answer(body) {
   const tools = (body.tools || []).map((t) => t.name || t.type);
@@ -39,6 +41,46 @@ function answer(body) {
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.tools[me] = tools;
   seen.systems.push({ me, collab: /work with it, not alone/.test(sys), language: /language of the user's latest message/.test(sys) });
+  // Coder: files of a project go in the folder the user names; long documents in parts; a cut-off answer runs nothing.
+  if (me === "Coder") {
+    seen.coderSys = sys;
+    const latest = (() => {
+      for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "user" && textOf(msgs[i]).trim()) return i;
+      return 0;
+    })();
+    const after = msgs.slice(latest);
+    const n = after.reduce((k, m) => k + (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").length : 0), 0);
+    const ask = textOf(msgs[latest]);
+    const out = results[0] ? (typeof results[0].content === "string" ? results[0].content : JSON.stringify(results[0].content)) : "";
+    const use = (name, input, stop = "tool_use") => reply([{ type: "tool_use", id: `toolu_${name}_${Date.now()}_${n}`, name, input }], stop);
+    if (/FILES:/.test(ask)) {
+      seen.files = seen.files || {};
+      if (n) seen.files[n] = out;
+      seen.filesTools = tools;
+      if (n === 0) return use("create_document", { filename: "app.py", content: "print(1)" });
+      if (n === 1) return use("use_project_folder", { path: PROJECT, why: "To create the app files you asked for." });
+      if (n === 2) return use("write_file", { path: "app.py", content: "print('hi')\n" });
+      return reply([{ type: "text", text: "FILES-DONE" }], "end_turn");
+    }
+    if (/LONGDOC:/.test(ask)) {
+      seen.doc = seen.doc || {};
+      if (n) seen.doc[n] = out;
+      if (n === 0) return use("create_document", { filename: "Rapport.md", title: "Rapport", content: "## Partie 1\nAAA" });
+      if (n === 1) return use("create_document", { filename: "Rapport.md", append: true, content: "## Partie 2\nBBB" });
+      return reply([{ type: "text", text: "DOC-DONE" }], "end_turn");
+    }
+    if (/CUT:/.test(ask)) {
+      if (n === 0) return use("create_document", { filename: "Long.docx", content: "Only the first half of a long rep" }, "max_tokens");
+      seen.cut = out;
+      return reply([{ type: "text", text: "CUT-SEEN" }], "end_turn");
+    }
+    if (/SAVEHERE:/.test(ask)) {
+      if (n === 0) return use("create_document", { filename: "Note.txt", content: "saved where the user chose" });
+      seen.saved = out;
+      return reply([{ type: "text", text: "SAVE-DONE" }], "end_turn");
+    }
+    return reply([{ type: "text", text: "ok" }], "end_turn");
+  }
   if (me === "Lina") return reply([{ type: "text", text: "LINA-POST: ☕ Nouveau menu chez Café Zitouna !" }], "end_turn");
   if (!tools.includes("propose_specialist")) return reply([{ type: "text", text: "ok" }], "end_turn");
   const r = results[0] ? JSON.stringify(results[0].content) : "";
@@ -214,6 +256,51 @@ const check = (name, ok, detail = "") => {
   check("a new code can be asked for", again.sent === true && seen.resent === 1);
   const ok = await api("POST", "/api/account", { action: "verify", email: "nadia@example.test", code: "123456" });
   check("the right code opens the account (signed in as the new user)", ok.loggedIn === true && ok.user?.email === "nadia@example.test", JSON.stringify(ok).slice(0, 160));
+
+  // Files: code goes in the folder the user names (asked on a card), long documents in parts, cut-off calls run nothing.
+  fs.rmSync(path.dirname(PROJECT), { recursive: true, force: true });
+  fs.mkdirSync(path.dirname(PROJECT), { recursive: true });
+  const coder = await api("POST", "/api/bots", { name: "Coder", role: "Back-end developer who ships small Python apps for shops", about: "I don't write all the code. I decide who suffers writing it.", instructions: "You are Coder.", face: tarik.face, tools: { web: false, browser: false } });
+  check("a longer role and a role description are kept", coder.role === "Back-end developer who ships small Python apps for shops" && coder.about === "I don't write all the code. I decide who suffers writing it.", `${coder.role} | ${coder.about}`);
+  const cd = `dm-${coder.id}`;
+  await api("POST", `/api/chats/${cd}/run`, { text: "FILES: make me a small Flask app in my shop folder" });
+  let cc = await idle(cd);
+  check("the bot is told its role description", /How the user describes your role[^\n]*I decide who suffers writing it/.test(seen.coderSys || ""));
+  check("a code file isn't made as a 'document': the bot is pointed to the project folder", /not \.py/.test(seen.files?.[1] || "") && /use_project_folder/.test(seen.files?.[1] || ""), (seen.files?.[1] || "").slice(0, 200));
+  const fcard = cc.pending?.approval?.items?.[0];
+  check("asking to work in a folder shows a card naming it, and that it will be created", !!fcard && fcard.summary.includes(PROJECT) && /will be created/.test(fcard.detail || ""), `${fcard?.summary} | ${(fcard?.detail || "").slice(0, 120)}`);
+  await api("POST", `/api/chats/${cd}/run`, { decisions: { [fcard.call.id]: true } });
+  cc = await idle(cd);
+  const wcard = cc.pending?.approval?.items?.[0];
+  check("once allowed, the chat has that project folder and the bot gets write_file", cc.workspace?.path === PROJECT && fs.existsSync(PROJECT) && (seen.filesTools || []).includes("write_file") && !!wcard, `${cc.workspace?.path} | ${wcard?.summary}`);
+  if (wcard) {
+    await api("POST", `/api/chats/${cd}/run`, { decisions: { [wcard.call.id]: true } });
+    cc = await idle(cd);
+  }
+  check("the code file is written in the user's folder, nowhere else", fs.existsSync(path.join(PROJECT, "app.py")) && fs.readFileSync(path.join(PROJECT, "app.py"), "utf8") === "print('hi')\n" && cc.entries.at(-1)?.text === "FILES-DONE", cc.entries.at(-1)?.text);
+  await api("PUT", `/api/chats/${cd}`, { workspace: null });
+
+  await api("POST", `/api/chats/${cd}/run`, { text: "LONGDOC: write the long report" });
+  await idle(cd);
+  const where = (seen.doc?.[2] || "").match(/Added to (.+?\.md)/)?.[1] || "";
+  const md = where && fs.existsSync(where) ? fs.readFileSync(where, "utf8") : "";
+  check("a long document is written in parts: the second part is added to the same file", /^# Rapport\n\n## Partie 1\nAAA\n\n## Partie 2\nBBB/.test(md) && !fs.existsSync(where.replace(/\.md$/, " (2).md")), `${where} | ${JSON.stringify(md).slice(0, 120)}`);
+  check("the bot is told how big the document is now and how to add more", /now has 6 words in 2 headed sections\. To add more sections, call create_document again with this filename and append: true/.test(seen.doc?.[2] || ""), (seen.doc?.[2] || "").slice(0, 200));
+
+  await api("POST", `/api/chats/${cd}/run`, { text: "CUT: write a very long report" });
+  await idle(cd);
+  const dl = where ? path.dirname(where) : "";
+  check("a call cut at the length limit isn't run (no half file) and the bot is told to send less per call", /reached the length limit for one answer/.test(seen.cut || "") && /append: true/.test(seen.cut || "") && !!dl && !fs.readdirSync(dl).some((f) => f.startsWith("Long")), (seen.cut || "").slice(0, 160));
+
+  fs.rmSync(SAVE_DIR, { recursive: true, force: true });
+  fs.mkdirSync(SAVE_DIR, { recursive: true });
+  const sv = await api("POST", "/api/computer-files", { saveFolder: SAVE_DIR });
+  check("the user can choose where bots save their files", sv.custom === true && sv.saveFolder === fs.realpathSync(SAVE_DIR), JSON.stringify(sv).slice(0, 200));
+  await api("POST", `/api/chats/${cd}/run`, { text: "SAVEHERE: save a note" });
+  await idle(cd);
+  check("files bots make go to the chosen folder", fs.existsSync(path.join(fs.realpathSync(SAVE_DIR), "Note.txt")), (seen.saved || "").slice(0, 160));
+  const back = await api("POST", "/api/computer-files", { saveFolder: null });
+  check("and back to the default folder", back.custom === false && back.saveFolder === back.saveDefault, JSON.stringify(back).slice(0, 200));
 
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();
