@@ -454,6 +454,14 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       need().keyToggle(key, down ? "down" : "up", modifiers && modifiers.length ? modifiers : []);
     },
     type(text) {
+      // Unicode input on Windows: the same for every keyboard layout. libnut's typeString pressed keys as
+      // if the keyboard were American, so French (AZERTY) and Arabic keyboards got garbled text.
+      const w = windows();
+      if (w && typeof w.typeText === "function") {
+        const err = w.typeText(String(text));
+        if (err) throw new Error(err);
+        return;
+      }
       need().typeString(String(text));
     },
     locked() {

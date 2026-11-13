@@ -50,6 +50,8 @@ function load(koffi) {
       GetWindow: user32.func("void * __stdcall GetWindow(void *hwnd, uint32_t cmd)"),
       GetWindowLongW: user32.func("int32_t __stdcall GetWindowLongW(void *hwnd, int index)"),
       keybd_event: user32.func("void __stdcall keybd_event(uint8_t vk, uint8_t scan, uint32_t flags, uintptr_t extra)"),
+      // Typing text as characters (KEYEVENTF_UNICODE), whatever the keyboard layout: Arabic, French, emoji.
+      SendInput: user32.func("uint32_t __stdcall SendInput(uint32_t count, uint8_t *inputs, int size)"),
     });
   } catch (e) {
     moreError = String((e && e.message) || e);
@@ -163,10 +165,58 @@ function load(koffi) {
     }, 0);
     return handles;
   }
+  // ---- typing text ----
+  // One INPUT structure per key event, as 64-bit Windows lays it out: 40 bytes, type at 0, then the
+  // KEYBDINPUT at 8 (wVk 8, wScan 10, dwFlags 12, time 16, dwExtraInfo 24).
+  const INPUT_SIZE = 40;
+  const INPUT_KEYBOARD = 1;
+  const KEYEVENTF_UNICODE = 0x4;
+  const KEYEVENTF_KEYUP_ = 0x2;
+  const VK_RETURN = 0x0d;
+  const VK_TAB = 0x09;
+  /** Key events for some text: characters as Unicode units (a surrogate pair is two), Enter and Tab as keys. */
+  function keyEvents(text) {
+    const out = [];
+    for (const ch of String(text).replace(/\r\n?/g, "\n")) {
+      if (ch === "\n" || ch === "\t") {
+        const vk = ch === "\n" ? VK_RETURN : VK_TAB;
+        out.push({ vk, scan: 0, flags: 0 }, { vk, scan: 0, flags: KEYEVENTF_KEYUP_ });
+        continue;
+      }
+      for (let i = 0; i < ch.length; i++) {
+        const unit = ch.charCodeAt(i);
+        out.push({ vk: 0, scan: unit, flags: KEYEVENTF_UNICODE }, { vk: 0, scan: unit, flags: KEYEVENTF_UNICODE | KEYEVENTF_KEYUP_ });
+      }
+    }
+    return out;
+  }
+  const pause = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  /** Types the text into the window that has the keyboard. Returns "" or an error text. */
+  function typeText(text) {
+    const events = keyEvents(text);
+    // In small batches: some apps (web pages above all) drop characters that arrive all at once.
+    for (let at = 0; at < events.length; at += 32) {
+      const batch = events.slice(at, at + 32);
+      const buf = Buffer.alloc(INPUT_SIZE * batch.length);
+      batch.forEach((e, i) => {
+        const o = i * INPUT_SIZE;
+        buf.writeUInt32LE(INPUT_KEYBOARD, o);
+        buf.writeUInt16LE(e.vk, o + 8);
+        buf.writeUInt16LE(e.scan, o + 10);
+        buf.writeUInt32LE(e.flags, o + 12);
+      });
+      const sent = need().SendInput(batch.length, buf, INPUT_SIZE);
+      if (sent !== batch.length) return "Windows refused the typing (the window may run as administrator, or a protected screen is in front).";
+      pause(8);
+    }
+    return "";
+  }
+
   /** The live handle behind a number from a list (handles are never taken from outside as pointers). */
   const find = (handle) => appWindows().find((h) => num(h) === Number(handle)) || null;
 
   return {
+    typeText,
     /** Windows the user could switch to, top of the z-order first, with minimized: true for those in the taskbar only. */
     appWindows() {
       return appWindows()
