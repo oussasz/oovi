@@ -48,7 +48,7 @@ function htmlBlock(b: Block): string {
 }
 
 const strip = (s: string) =>
-  s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&rsquo;/g, "’");
 
 function textBlock(b: Block): string {
   if (b.kind === "p") return strip(b.text);
@@ -229,6 +229,33 @@ export function pilotApproved(to: string, name: string, credits: number, days: n
   );
 }
 
+/** A personal invitation to the pilot, for someone who has already tried oovi. Not sent automatically. */
+export function pilotInvite(to: string, name: string): Mail {
+  return render(
+    {
+      preheader: "Thanks for trying oovi. We’d love to give you more credits.",
+      title: "Thanks for trying oovi",
+      hello: `Hi ${firstName(name)},`,
+      blocks: [
+        {
+          kind: "p",
+          text: "I&rsquo;m the founder of oovi. I saw that you tried theOovi and used your free credits in your first day, so thank you. That tells me you gave it a real go.",
+        },
+        {
+          kind: "p",
+          text: "oovi is in an early pilot, and I&rsquo;d like to give you <b>more credits</b> to keep testing, for free. In return I only ask for your honest opinion:",
+        },
+        { kind: "list", items: ["What worked well for you", "What was confusing or didn&rsquo;t work", "What you wish oovi could do"] },
+        { kind: "p", text: "You can apply with the button below, or simply reply to this email and tell me what you were trying to do." },
+      ],
+      button: { label: "Apply to the pilot", url: `${siteUrl()}/pilot` },
+      note: "Thank you for your time. Your feedback shapes what we build next.",
+    },
+    to,
+    "Thanks for trying oovi: more credits for you",
+  );
+}
+
 export function testEmail(to: string): Mail {
   return render(
     {
@@ -257,6 +284,7 @@ export function previews(to: string): Record<string, Mail> {
     reset: resetPassword(to, "Sara Benali", `${base}/reset-password?token=example`),
     changed: passwordChanged(to, "Sara Benali"),
     pilot: pilotApproved(to, "Sara Benali", 10_000, 60, 5_000),
+    invite: pilotInvite(to, "Sara Benali"),
     test: testEmail(to),
   };
 }
