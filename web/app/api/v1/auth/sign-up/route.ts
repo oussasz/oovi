@@ -36,8 +36,10 @@ export async function POST(req: Request) {
   }
 
   try {
+    const via = authHeaders(req);
+    via.set("x-oovi-via", "v1");
     const result = await auth.api.signUpEmail({
-      headers: authHeaders(req),
+      headers: via,
       body: {
         name: (name as string).trim(),
         email: email.trim().toLowerCase(),

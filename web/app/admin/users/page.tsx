@@ -3,6 +3,8 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { listUsers, USERS_PAGE_SIZE, type UserListRow } from "@/lib/admin-stats";
 import { getPlans, type Plan } from "@/lib/ai-config";
+import { assess, countryLabel, getSignals } from "@/lib/user-signals";
+import { VerdictBadge } from "@/components/admin/Verdict";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo, fmtDate, fmtInt, fmtNumber, platformLabel } from "@/components/admin/format";
 
@@ -40,6 +42,10 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
   const page = Math.min(10_000, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
   const [{ rows, total }, planList] = await Promise.all([listUsers(q, page), getPlans()]);
   const plans = new Map(planList.map((p) => [p.id, p]));
+  // Country and "does it look like a person?". Null if the signal columns can't be read: the list still works.
+  const signals = await getSignals(rows.map((r) => r.id));
+  const verdicts = new Map(rows.map((r) => [r.id, signals?.get(r.id) ? assess(r, signals.get(r.id)!) : null]));
+  const flagged = [...verdicts.values()].filter((v) => v?.level === "suspicious").length;
   const pages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
   const from = total ? (page - 1) * USERS_PAGE_SIZE + 1 : 0;
   const to = Math.min(total, page * USERS_PAGE_SIZE);
@@ -48,7 +54,7 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
     <>
       <PageHead
         title="Users"
-        sub="Everyone with an oovi account, newest first. Credits are theOovi credits; “–” means they haven’t used theOovi or opened their account page yet. * = daily limit set by hand."
+        sub={`Everyone with an oovi account, newest first. Credits are theOovi credits; “–” means they haven’t used theOovi or opened their account page yet. * = daily limit set by hand.${flagged ? ` ${flagged} on this page look suspicious.` : ""}`}
       />
       <Section
         title={q ? `Results for “${q}”` : "All accounts"}
@@ -79,6 +85,8 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                   <th>Email</th>
                   <th>Name</th>
                   <th>Status</th>
+                  <th>Check</th>
+                  <th>Country</th>
                   <th>Plan</th>
                   <th className="num">Balance</th>
                   <th className="num">Today used / limit</th>
@@ -99,6 +107,10 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                     <td>
                       <StatusBadge u={u} />
                     </td>
+                    <td>
+                      <VerdictBadge v={verdicts.get(u.id) ?? null} />
+                    </td>
+                    <td>{signals?.get(u.id) ? countryLabel(signals.get(u.id)!.lastCountry ?? signals.get(u.id)!.signupCountry) : "–"}</td>
                     <td>{u.credits ? (plans.get(u.credits.plan)?.name ?? u.credits.plan) : "–"}</td>
                     <td className="num">{u.credits ? credits(u.credits.balance) : "–"}</td>
                     <td className="num">{todayCell(u, plans)}</td>

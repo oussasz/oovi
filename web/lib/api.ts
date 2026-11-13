@@ -58,7 +58,7 @@ export async function readJson(req: Request, maxBytes = 512 * 1024): Promise<Rec
 /** Headers for calling auth.api without forwarding unrelated request headers. */
 export function authHeaders(req: Request, opts: { withAuthorization?: boolean } = {}): Headers {
   const h = new Headers();
-  for (const name of ["user-agent", "x-forwarded-for", "x-real-ip"]) {
+  for (const name of ["user-agent", "x-forwarded-for", "x-real-ip", "x-vercel-ip-country", "x-oovi-version", "x-oovi-platform"]) {
     const v = req.headers.get(name);
     if (v) h.set(name, v);
   }

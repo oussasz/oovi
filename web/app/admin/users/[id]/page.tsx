@@ -4,6 +4,9 @@ import { notFound } from "next/navigation";
 import { requireAdmin } from "@/lib/admin";
 import { getUserDetail } from "@/lib/admin-stats";
 import { USAGE_COUNT_KEYS } from "@/lib/telemetry";
+import { assess, countryLabel, getSignals } from "@/lib/user-signals";
+import { isDisposableEmail } from "@/lib/signup-guard";
+import { VerdictBadge } from "@/components/admin/Verdict";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/components/admin/format";
 import { USAGE_LABELS } from "@/components/admin/usage-labels";
@@ -42,6 +45,14 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
   const detail = await getUserDetail(userId);
   if (!detail) notFound();
   const { user, events, crashes, usage, counts } = detail;
+  const signals = (await getSignals([user.id]))?.get(user.id) ?? null;
+  const verdict = signals ? assess(user, signals) : null;
+  const gap = (a: string | null, b: string | null) => {
+    if (!a || !b) return "–";
+    const m = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60_000));
+    return m < 60 ? `${m} min` : m < 2880 ? `${Math.round(m / 60)} h` : `${Math.round(m / 1440)} days`;
+  };
+  const viaLabel: Record<string, string> = { web: "The website", app: "The desktop app", api: "Directly through the API (not the app)" };
 
   return (
     <>
@@ -106,6 +117,63 @@ Only do this when you know the address belongs to them.`}
               <input type="hidden" name="userId" value={user.id} />
             </ActionForm>
           </div>
+        )}
+      </Section>
+
+      <Section
+        title="Where they come from and how they use theOovi"
+        sub="Hints to tell real people from scripts. Nothing here blocks anyone; you decide."
+        actions={<VerdictBadge v={verdict} />}
+      >
+        {!signals ? (
+          <Empty>Not available yet. It appears after the next sign-in or theOovi request.</Empty>
+        ) : (
+          <>
+            {verdict && verdict.reasons.length > 0 && (
+              <ul className="adm-list" style={{ marginBottom: 16 }}>
+                {verdict.reasons.map((r) => (
+                  <li key={r}>{r}</li>
+                ))}
+              </ul>
+            )}
+            <dl className="adm-dl">
+              <dt>Country</dt>
+              <dd>
+                {countryLabel(signals.lastCountry ?? signals.signupCountry)}
+                {signals.signupCountry && signals.lastCountry && signals.signupCountry !== signals.lastCountry
+                  ? ` (signed up from ${countryLabel(signals.signupCountry)})`
+                  : ""}
+              </dd>
+              <dt>Signed up through</dt>
+              <dd>{signals.signupVia ? (viaLabel[signals.signupVia] ?? signals.signupVia) : "Not recorded (account is older)"}</dd>
+              <dt>Came from</dt>
+              <dd>{signals.signupRef ?? "–"}</dd>
+              <dt>Email</dt>
+              <dd>
+                {user.email.split("@")[1] ?? "–"}
+                {isDisposableEmail(user.email) ? " · temporary email provider" : ""}
+                {signals.emailConfirmedAt ? ` · confirmed ${gap(user.createdAt, signals.emailConfirmedAt)} after signing up` : ""}
+              </dd>
+              <dt>First theOovi request</dt>
+              <dd>
+                {signals.firstAiAt ? `${fmtDateTime(signals.firstAiAt)} (${gap(user.createdAt, signals.firstAiAt)} after signing up)` : "–"}
+              </dd>
+              <dt>Latest theOovi request</dt>
+              <dd>{signals.lastAiAt ? `${fmtDateTime(signals.lastAiAt)} (${fmtAgo(signals.lastAiAt)})` : "–"}</dd>
+              <dt>Requests from the app</dt>
+              <dd>{fmtInt(signals.appCalls)}</dd>
+              <dt>Requests without the app’s headers</dt>
+              <dd>{fmtInt(signals.directCalls)}</dd>
+              <dt>Requests that used tools</dt>
+              <dd>{fmtInt(signals.toolCalls)}</dd>
+              <dt>Credits used</dt>
+              <dd>
+                {fmtInt(signals.creditsUsed)} over {fmtInt(signals.usageDays)} {signals.usageDays === 1 ? "day" : "days"}
+              </dd>
+              <dt>Accounts from the same network</dt>
+              <dd>{signals.sameNetwork ? `${fmtInt(signals.sameNetwork)} other (last 30 days)` : "None"}</dd>
+            </dl>
+          </>
         )}
       </Section>
 

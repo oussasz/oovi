@@ -4,6 +4,7 @@ import { bearer, emailOTP } from "better-auth/plugins";
 import { checkSignup } from "./signup-guard";
 import { pool } from "./db";
 import { isBlocked } from "./credits";
+import { hookHeaders, later, recordCountry, recordEmailConfirmed, recordSignup } from "./user-signals";
 import { sendInBackground } from "./mail";
 import { passwordChanged, resetPassword, verifyCode, verifyEmail } from "./mail-templates";
 import { TERMS_VERSION } from "./legal";
@@ -58,6 +59,9 @@ export const auth = betterAuth({
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
+    afterEmailVerification: async (user) => {
+      later(() => recordEmailConfirmed(user.id));
+    },
     expiresIn: 60 * 60 * 24,
     sendVerificationEmail: async ({ user, url }) => {
       const link = new URL(url);
@@ -92,10 +96,21 @@ export const auth = betterAuth({
           }
           return { data: session };
         },
+        // Remember the country of each sign-in. Never blocks or fails the sign-in.
+        after: async (session, ctx) => {
+          const h = hookHeaders(ctx);
+          const userId = (session as { userId: string }).userId;
+          later(() => recordCountry(userId, h));
+        },
       },
     },
     user: {
       create: {
+        // Where a new account came from: country, web/app/api, and the page that sent them (first visit).
+        after: async (user, ctx) => {
+          const h = hookHeaders(ctx);
+          later(() => recordSignup(user.id, h, h.get("x-oovi-ref")));
+        },
         before: async (user, ctx) => {
           const u = user as typeof user & { termsVersion?: string | null };
           // Fake and mass sign-ups (lib/signup-guard.ts).
