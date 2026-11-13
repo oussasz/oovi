@@ -519,7 +519,18 @@ const check = (name, ok, detail = "") => {
   }
   const lastPlan = pc.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? "";
   check("N) after the one approval, every click and typing runs without another card, and the job gets done", cards.length === 0 && /PLAN-RESULT: AJOUTÉ au projet m3ak \(Alger\) \(prioritaire\)/.test(lastPlan), `${cards.length} cards: ${cards.join(" | ").slice(0, 160)} || ${lastPlan.slice(0, 120)}`);
-  await api("POST", "/api/settings", { approvals: { clicksAndTyping: false } });
+
+  // N with Auto mode: the plan isn't shown for approval, it runs at once (and its clicks and typing too).
+  await api("POST", "/api/settings", { approvals: { auto: true } });
+  await api("POST", `/api/chats/${ach}/run`, { text: "PLAN: add my list to the m3ak project on the dashboard" });
+  for (let i = 0; i < 100; i++) {
+    pc = await api("GET", `/api/chats/${ach}`);
+    if (!pc.running) break;
+    await sleep(300);
+  }
+  const autoLast = pc.entries.filter((e) => e.kind === "bot").at(-1);
+  check("N) in Auto mode the plan runs without waiting for the user, and no card is shown", !pc.pending?.planReview && !pc.pending?.approval && /PLAN-RESULT: AJOUTÉ au projet m3ak/.test(autoLast?.text ?? "") && autoLast?.planReview === "approved", `${JSON.stringify(pc.pending || {}).slice(0, 100)} || ${(autoLast?.text ?? "").slice(0, 100)}`);
+  await api("POST", "/api/settings", { approvals: { auto: false, clicksAndTyping: false } });
 
   // M: a page that is a list says so where the bot reads it, and every bot that can search can collect it.
   const webby = await api("POST", "/api/bots", { name: "Webby", role: "", instructions: "You are Webby, a researcher.", face: scout.face, tools: { web: true, browser: false } });

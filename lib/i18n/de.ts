@@ -208,6 +208,13 @@ const de: Dict = {
   "settings.browser.privateNet": "Lokales Netzwerk erlauben (localhost, 192.168.x.x…). Standardmäßig aus, damit eine Webseite einen Bot nicht zu deinem Router oder lokalen Diensten schicken kann.",
 
   "settings.safety.lead": "Wann Bots dich zuerst fragen müssen und wie weit sie allein gehen dürfen.",
+  "auto.chip": "Auto",
+  "auto.title": "Automodus",
+  "auto.desc": "Bots halten nicht an, um zu fragen: Sie führen ihre eigenen Pläne, Klicks, Eingaben, Desktop-Aktionen, Dateizugriffe und Connector-Aktionen selbst aus. Jede Aufgabe lässt sich mit Stopp anhalten.",
+  "auto.still": "Auch im Automodus wird gefragt: Dateien löschen, Befehle ausführen, neue Routinen sowie neue Fähigkeiten oder Bots. Gesperrte Orte (Systemordner, Schlüssel und Passwörter) bleiben gesperrt.",
+  "auto.confirm": "Automodus einschalten?\n\nBots handeln, ohne dich vorher zu fragen: Sie genehmigen ihre eigenen Pläne, klicken, tippen, nutzen deinen Computer, lesen und senden deine Dateien und nutzen deine Connectoren. Dateien löschen, Befehle ausführen, Routinen und Teamänderungen fragen weiterhin.\n\nDu kannst jede Aufgabe mit Stopp anhalten und den Modus jederzeit ausschalten.",
+  "auto.onHint": "Automodus ist an: Bots halten nicht an, um zu fragen. Klicken zum Ausschalten.",
+  "auto.offHint": "Automodus: Bots fragen nicht vor jedem Schritt. Klicken zum Einschalten.",
   "settings.safety.ask": "Frag mich, bevor ein Bot in eine Seite tippt, etwas herunterlädt oder Buttons klickt (normale Links fragen nicht). Bots mit deinen Konten fragen immer; auch das Speichern eines Skills und MCP-Aktionen fragen immer.",
   "settings.safety.maxSteps": "Max. Schritte pro Bot-Antwort",
   "settings.safety.maxStepsHint": "Ein Schritt = ein Modellaufruf. Stoppt Endlosschleifen.",

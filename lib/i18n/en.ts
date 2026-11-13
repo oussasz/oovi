@@ -221,6 +221,13 @@ const en = {
   "settings.browser.privateNet": "Allow local network (localhost, 192.168.x.x…). Off by default so a web page can't make a bot reach your router or local services.",
 
   "settings.safety.lead": "When bots must ask you first, and how far they can go on their own.",
+  "auto.chip": "Auto",
+  "auto.title": "Auto mode",
+  "auto.desc": "Bots don't stop to ask: they run their own plans, clicks, typing, desktop actions, file access and connector actions on their own. You can stop any task with Stop.",
+  "auto.still": "Still asked, even in Auto mode: deleting files, running commands, new routines, and new abilities or bots. Places oovi never goes (system folders, keys and passwords) stay blocked.",
+  "auto.confirm": "Turn on Auto mode?\n\nBots will act without asking you first: they approve their own plans, click, type, use your desktop, read and send your files and use your connectors. Deleting files, running commands, routines and team changes still ask.\n\nYou can stop any task with Stop and turn this off at any time.",
+  "auto.onHint": "Auto mode is on: bots don't stop to ask. Click to turn it off.",
+  "auto.offHint": "Auto mode: bots don't stop to ask you before each step. Click to turn it on.",
   "settings.safety.ask": "Ask me before a bot types into a page, downloads, or clicks buttons (plain links don't ask). Bots using your accounts always ask; saving a skill and MCP actions always ask too.",
   "settings.safety.maxSteps": "Max steps per bot reply",
   "settings.safety.maxStepsHint": "One step = one model call. Stops runaway loops.",

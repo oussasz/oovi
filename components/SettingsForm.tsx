@@ -364,9 +364,29 @@ export default function SettingsForm() {
   const safetySection = (
     <>
       <p className="lead">{t("settings.safety.lead")}</p>
+      <div className={`card auto-card${s.approvals.auto ? " on" : ""}`}>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={s.approvals.auto === true}
+            onChange={(e) => {
+              if (e.target.checked && !window.confirm(t("auto.confirm"))) return;
+              setS({ ...s, approvals: { ...s.approvals, auto: e.target.checked } });
+            }}
+          />
+          <span>
+            <b>
+              <Icon name="bolt" size={14} /> {t("auto.title")}
+            </b>
+            <br />
+            {t("auto.desc")}
+          </span>
+        </label>
+        <p className="note">{t("auto.still")}</p>
+      </div>
       <div className="card">
         <label className="check">
-          <input type="checkbox" checked={s.approvals.clicksAndTyping} onChange={(e) => setS({ ...s, approvals: { clicksAndTyping: e.target.checked } })} />
+          <input type="checkbox" checked={s.approvals.clicksAndTyping} onChange={(e) => setS({ ...s, approvals: { ...s.approvals, clicksAndTyping: e.target.checked } })} />
           <span>{t("settings.safety.ask")}</span>
         </label>
         <div className="grid">

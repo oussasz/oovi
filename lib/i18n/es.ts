@@ -208,6 +208,13 @@ const es: Dict = {
   "settings.browser.privateNet": "Permitir la red local (localhost, 192.168.x.x…). Desactivado por defecto para que una página web no pueda hacer que un bot llegue a tu router o a tus servicios locales.",
 
   "settings.safety.lead": "Cuándo deben preguntarte los bots y hasta dónde pueden llegar solos.",
+  "auto.chip": "Auto",
+  "auto.title": "Modo automático",
+  "auto.desc": "Los bots no se detienen a preguntar: ejecutan sus propios planes, clics, escritura, acciones en el ordenador, acceso a archivos y acciones de conectores. Puedes detener cualquier tarea con Detener.",
+  "auto.still": "Se sigue preguntando, incluso en modo automático: borrar archivos, ejecutar comandos, nuevas rutinas y nuevas capacidades o bots. Los lugares prohibidos (carpetas del sistema, claves y contraseñas) siguen bloqueados.",
+  "auto.confirm": "¿Activar el modo automático?\n\nLos bots actuarán sin preguntarte antes: aprueban sus propios planes, hacen clic, escriben, usan tu ordenador, leen y envían tus archivos y usan tus conectores. Borrar archivos, ejecutar comandos, las rutinas y los cambios de equipo siguen preguntando.\n\nPuedes detener cualquier tarea con Detener y desactivarlo cuando quieras.",
+  "auto.onHint": "Modo automático activado: los bots no se detienen a preguntar. Haz clic para desactivarlo.",
+  "auto.offHint": "Modo automático: los bots no te preguntan antes de cada paso. Haz clic para activarlo.",
   "settings.safety.ask": "Preguntarme antes de que un bot escriba en una página, descargue o haga clic en botones (los enlaces normales no preguntan). Los bots que usan tus cuentas siempre preguntan; guardar una habilidad y las acciones MCP también.",
   "settings.safety.maxSteps": "Pasos máximos por respuesta",
   "settings.safety.maxStepsHint": "Un paso = una llamada al modelo. Evita bucles sin fin.",

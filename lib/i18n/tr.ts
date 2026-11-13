@@ -208,6 +208,13 @@ const tr: Dict = {
   "settings.browser.privateNet": "Yerel ağa izin ver (localhost, 192.168.x.x…). Bir web sayfası botu modemine veya yerel servislerine yönlendiremesin diye varsayılan olarak kapalı.",
 
   "settings.safety.lead": "Botların önce sana ne zaman sorması gerektiği ve kendi başlarına ne kadar ileri gidebilecekleri.",
+  "auto.chip": "Otomatik",
+  "auto.title": "Otomatik mod",
+  "auto.desc": "Botlar sormak için durmaz: kendi planlarını, tıklamalarını, yazmalarını, masaüstü işlemlerini, dosya erişimini ve bağlayıcı işlemlerini kendileri yürütür. Herhangi bir görevi Durdur ile durdurabilirsin.",
+  "auto.still": "Otomatik modda bile sorulur: dosya silmek, komut çalıştırmak, yeni rutinler ve yeni yetenekler ya da botlar. Yasak yerler (sistem klasörleri, anahtarlar ve parolalar) engelli kalır.",
+  "auto.confirm": "Otomatik mod açılsın mı?\n\nBotlar sana sormadan işlem yapacak: kendi planlarını onaylar, tıklar, yazar, bilgisayarını kullanır, dosyalarını okur ve gönderir, bağlayıcılarını kullanır. Dosya silmek, komut çalıştırmak, rutinler ve ekip değişiklikleri yine sorulur.\n\nHerhangi bir görevi Durdur ile durdurabilir ve bu modu istediğin zaman kapatabilirsin.",
+  "auto.onHint": "Otomatik mod açık: botlar sormak için durmaz. Kapatmak için tıkla.",
+  "auto.offHint": "Otomatik mod: botlar her adımdan önce sormaz. Açmak için tıkla.",
   "settings.safety.ask": "Bir bot sayfaya yazmadan, bir şey indirmeden veya düğmelere tıklamadan önce bana sor (düz bağlantılar sormaz). Hesaplarını kullanan botlar her zaman sorar; beceri kaydetmek ve MCP işlemleri de her zaman sorar.",
   "settings.safety.maxSteps": "Bot yanıtı başına en fazla adım",
   "settings.safety.maxStepsHint": "Bir adım = bir model çağrısı. Sonsuz döngüleri durdurur.",

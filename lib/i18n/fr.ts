@@ -208,6 +208,13 @@ const fr: Dict = {
   "settings.browser.privateNet": "Autoriser le réseau local (localhost, 192.168.x.x…). Désactivé par défaut pour qu'une page web ne puisse pas pousser un bot vers votre box ou vos services locaux.",
 
   "settings.safety.lead": "Quand les bots doivent vous demander, et jusqu'où ils peuvent aller seuls.",
+  "auto.chip": "Auto",
+  "auto.title": "Mode auto",
+  "auto.desc": "Les bots ne s'arrêtent plus pour demander : ils lancent leurs propres plans, clics, saisies, actions sur l'ordinateur, accès aux fichiers et actions des connecteurs. Vous pouvez arrêter toute tâche avec Stop.",
+  "auto.still": "Toujours demandé, même en mode auto : supprimer des fichiers, lancer des commandes, les nouvelles routines, et les nouvelles capacités ou nouveaux bots. Les endroits interdits (dossiers système, clés et mots de passe) restent bloqués.",
+  "auto.confirm": "Activer le mode auto ?\n\nLes bots agiront sans vous demander : ils approuvent leurs propres plans, cliquent, écrivent, utilisent votre ordinateur, lisent et envoient vos fichiers et utilisent vos connecteurs. Supprimer des fichiers, lancer des commandes, les routines et les changements d'équipe demandent toujours.\n\nVous pouvez arrêter toute tâche avec Stop et désactiver ce mode à tout moment.",
+  "auto.onHint": "Mode auto activé : les bots ne s'arrêtent pas pour demander. Cliquez pour le désactiver.",
+  "auto.offHint": "Mode auto : les bots ne vous demandent pas avant chaque étape. Cliquez pour l'activer.",
   "settings.safety.ask": "Me demander avant qu'un bot écrive dans une page, télécharge ou clique sur des boutons (les simples liens ne demandent pas). Les bots qui utilisent vos comptes demandent toujours ; l'enregistrement d'une compétence et les actions MCP aussi.",
   "settings.safety.maxSteps": "Étapes max par réponse de bot",
   "settings.safety.maxStepsHint": "Une étape = un appel au modèle. Évite les boucles sans fin.",

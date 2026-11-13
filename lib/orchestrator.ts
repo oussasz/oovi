@@ -256,6 +256,13 @@ const filesMade = (chat: Chat) => {
 };
 
 /** Tools that add rows to a work table. */
+/**
+ * What still asks in Auto mode: deleting files and running commands (can't be undone), routines
+ * (they run later with nobody watching), and changes to the team (new abilities, new bots).
+ * Everything else a bot does runs without a card; the user can still press Stop at any time.
+ */
+export const AUTO_STILL_ASKS = (name: string) => name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
+
 /** What a bot is told when its message stopped at the output limit before its tool call was complete. */
 export const CUT_OFF =
   "Not run: your message reached the length limit for one answer before this call was complete, so it was cut. Send less in one call: a long document in parts (create_document with the first sections, then append: true with the next ones, a few sections per call), a long code file as several smaller files (or write_file with the first part, then edit_file to add the rest), long lists into work_table a few dozen rows at a time.";
@@ -1020,8 +1027,23 @@ async function* runBot(
         countUsage({ botReplies: 1 });
         return "done";
       }
-      // Plan mode: a proposed plan waits for the user to edit and approve (or cancel) it.
+      // Auto mode (Settings > Safety): the bot's own plan is approved at once, exactly as if the user had
+      // pressed Run, and shown in the chat. A plan asked for with Plan mode still waits for the user.
+      const auto = s.approvals.auto === true;
       const proposal = last.toolCalls.find((c) => c.name === "propose_plan");
+      if (proposal && decisions[proposal.id] === undefined && auto && !chat.pending?.planMode) {
+        const steps = cleanPlanSteps(proposal.input.steps);
+        if (steps.length) {
+          entry.plan = steps.map((text): PlanItem => ({ text, status: "pending" }));
+          entry.planReview = "approved";
+          chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), deep: true, planApproved: true };
+          chat.pending.turnsLeft = Math.max(chat.pending.turnsLeft, settings.maxTurns * 2);
+          const tid = lastUser(chat)?.id;
+          if (tid) grantDesktop(chat.id, tid, bot.id);
+          decisions[proposal.id] = true;
+        }
+      }
+      // Plan mode: a proposed plan waits for the user to edit and approve (or cancel) it.
       if (proposal && decisions[proposal.id] === undefined) {
         const steps = cleanPlanSteps(proposal.input.steps);
         if (!steps.length) {
@@ -1040,11 +1062,13 @@ async function* runBot(
       // "Ask before every action", so does every action that does more than look.
       const taskId = lastUser(chat)?.id;
       const deskOn = tools.some((t) => t.name === DESKTOP_MARKER);
+      // Auto mode: the task has the mouse-and-keyboard OK from its start, as after "Allow for this task".
+      if (auto && deskOn && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
       const deskGranted = deskOn && desktopGranted(chat.id, taskId, bot.id);
       // An approved plan covers its steps: no card per action, even with "Ask before every action" on
       // (that setting applies to work without a plan). The owner's rule: one plan, approved once.
       const planCovers = !!chat.pending?.planApproved;
-      const askEvery = s.desktopControl.askEvery && !planCovers;
+      const askEvery = s.desktopControl.askEvery && !planCovers && !auto;
       // A desktop OK counts only from a card shown for exactly that call less than 20 minutes ago; otherwise ask again.
       const expired = new Set<string>();
       for (const c of last.toolCalls) {
@@ -1056,7 +1080,9 @@ async function* runBot(
       const firstDesk = last.toolCalls.find((c) => isDesktopName(c.name))?.id;
       const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
-      const asks = (c: ToolCall) =>
+      // Auto mode: only what can't be undone or changes the team asks (AUTO_STILL_ASKS).
+      const asks = (c: ToolCall) => (auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c));
+      const asksNormally = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
           : c.name === "open_in_user_browser"

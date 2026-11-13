@@ -506,6 +506,10 @@ a.tag { text-decoration: none; }
 .composer-tools { display: flex; gap: 6px; align-items: center; margin-top: 8px; padding-inline-start: 6px; }
 .composer-tools .chip { font-size: 12.5px; padding: 4px 10px; display: inline-flex; align-items: center; gap: 5px; }
 .deep-chip.on { background: color-mix(in srgb, var(--blue, #a9bcf7) 40%, var(--panel)); color: var(--text); border-color: transparent; }
+.auto-chip.on { background: color-mix(in srgb, #f5c542 55%, var(--panel)); }
+.auto-card.on { border-color: color-mix(in srgb, #f5c542 70%, var(--border)); background: color-mix(in srgb, #f5c542 12%, var(--panel)); }
+.auto-card .check b { display: inline-flex; align-items: center; gap: 6px; }
+.auto-card .note { margin: 8px 0 0; }
 .effort { position: relative; }
 .effort-pop { position: absolute; bottom: calc(100% + 6px); inset-inline-start: 0; z-index: 30; width: 270px; display: grid; padding: 6px; background: var(--panel); border: 1px solid var(--border); border-radius: 14px; box-shadow: var(--shadow); }
 .effort-pop button { display: grid; gap: 1px; text-align: start; font: inherit; padding: 8px 10px; border: none; border-radius: 10px; background: none; color: var(--text); cursor: pointer; }

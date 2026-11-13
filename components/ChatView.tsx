@@ -805,6 +805,16 @@ export default function ChatView({ id }: { id: string }) {
       /* storage unavailable */
     }
   };
+  // Auto mode is one setting for all chats (Settings > Safety); the chip shows it and switches it.
+  const autoOn = settings?.approvals.auto === true;
+  const pickAuto = async (on: boolean) => {
+    if (on && !window.confirm(t("auto.confirm"))) return;
+    try {
+      setSettings(await api<PublicSettings>("/api/settings", { method: "POST", body: JSON.stringify({ approvals: { auto: on } }) }));
+    } catch {
+      /* the chip keeps showing the saved state */
+    }
+  };
   const pickPlan = (on: boolean) => {
     setPlanMode(on);
     try {
@@ -1619,6 +1629,11 @@ export default function ChatView({ id }: { id: string }) {
             <button type="button" className={`chip deep-chip${deep ? " on" : ""}`} aria-pressed={deep} onClick={() => pickDeep(!deep)} title={t("chat.deepHint")}>
               <Icon name="spark" size={14} /> {t("chat.deep")}
             </button>
+            {settings && (
+              <button type="button" className={`chip deep-chip auto-chip${autoOn ? " on" : ""}`} aria-pressed={autoOn} onClick={() => void pickAuto(!autoOn)} title={t(autoOn ? "auto.onHint" : "auto.offHint")}>
+                <Icon name="bolt" size={14} /> {t("auto.chip")}
+              </button>
+            )}
           </div>
         </div>
       </section>

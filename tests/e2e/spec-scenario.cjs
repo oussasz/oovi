@@ -76,6 +76,14 @@ function answer(body) {
       seen.cut = out;
       return reply([{ type: "text", text: "CUT-SEEN" }], "end_turn");
     }
+    if (/AUTOMODE:/.test(ask)) {
+      seen.auto = seen.auto || {};
+      if (n) seen.auto[n] = out;
+      if (n === 0) return use("use_project_folder", { path: path.join(HOME_TEST, "auto"), why: "For the files." });
+      if (n === 1) return use("write_file", { path: "notes.txt", content: "auto\n" });
+      if (n === 2) return use("run_command", { command: "echo hi" });
+      return reply([{ type: "text", text: "AUTO-DONE" }], "end_turn");
+    }
     if (/SAVEHERE:/.test(ask)) {
       if (n === 0) return use("create_document", { filename: "Note.txt", content: "saved where the user chose" });
       seen.saved = out;
@@ -304,6 +312,18 @@ const check = (name, ok, detail = "") => {
   const back = await api("POST", "/api/computer-files", { saveFolder: null });
   check("and back to the default folder", back.custom === false && back.saveFolder === back.saveDefault, JSON.stringify(back).slice(0, 200));
 
+  // Auto mode: no card for the folder or the file; running a command still asks.
+  await api("POST", "/api/settings", { approvals: { auto: true } });
+  await api("POST", `/api/chats/${cd}/run`, { text: "AUTOMODE: set up my notes" });
+  let ac = await idle(cd);
+  const acard = ac.pending?.approval?.items || [];
+  check("Auto mode: the folder and the file need no card; running a command still asks", ac.workspace?.path === path.join(fs.realpathSync(HOME_TEST), "auto") && fs.existsSync(path.join(HOME_TEST, "auto", "notes.txt")) && acard.length === 1 && acard[0].call.name === "run_command", `${ac.workspace?.path} | ${acard.map((x) => x.call.name).join(",")}`);
+  if (acard[0]) {
+    await api("POST", `/api/chats/${cd}/run`, { decisions: { [acard[0].call.id]: false } });
+    ac = await idle(cd);
+  }
+  await api("POST", "/api/settings", { approvals: { auto: false } });
+  await api("PUT", `/api/chats/${cd}`, { workspace: null });
   fs.rmSync(HOME_TEST, { recursive: true, force: true });
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();
