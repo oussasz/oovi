@@ -85,6 +85,10 @@ function answer(body) {
     return call("work_table", { action: "add", table: "Rare", columns: COLS, rows: rows("lone", 20, 20) });
   }
   // ---- the done-check: any task, no row count ----
+  if (me === "Lang") {
+    seen.langLast = JSON.stringify(msgs[msgs.length - 1]);
+    return text("ok");
+  }
   if (me === "Loop") {
     // Tries (one action), then reports the same failure again, as the owner's bot did 15 times.
     return lastTool ? text("The message wasn't sent: the box shows garbled characters. Type it yourself, or I send it in English.") : call("work_notes", { action: "read", file: "Nothing" });
@@ -415,6 +419,14 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const lb2 = lc2.entries.filter((e) => e.kind === "bot");
   check("K) a round that repeats the previous reply ends the work: 2 turns, not one per automatic round", lb2.length === 2, `${lb2.length} turns`);
   rules.doneCheck.verdict = () => ({ status: "done", missing: "", goal: "" });
+
+  // L: a message with no clear language (a name) is answered in the language of the one before it.
+  const lang = await newBot("Lang", "");
+  await api("POST", `/api/chats/dm-${lang.id}/run`, { text: "ابحث عن شخص في فيسبوك وابعثلو رسالة" });
+  await idle(`dm-${lang.id}`, 60000);
+  await api("POST", `/api/chats/dm-${lang.id}/run`, { text: "Tigrine Marys" });
+  await idle(`dm-${lang.id}`, 60000);
+  check("L) a message that is only a name gets the language of the user's previous message (Arabic)", /Tigrine Marys[^"]*\[oovi: the user writes in Arabic/.test(seen.langLast || ""), (seen.langLast || "").slice(0, 200));
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

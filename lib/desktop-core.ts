@@ -31,7 +31,7 @@ export const NOT_EXECUTED = "Not executed: an earlier computer action in this tu
 export const USER_MOVED = "The user moved the mouse; stopped. Ask before continuing.";
 export const PROTECTED = "This window is protected (passwords/banking): ask the user to do this part.";
 export const SYSTEM_WINDOW = "This window can run programs or change the system (a terminal, Run, Settings, Task Manager, the taskbar or Start…): ask the user to do this part.";
-export const OWN_WINDOW = "That is oovi's own window, and bots can't control oovi itself. Ask the user to minimize oovi or move it aside, then take a new screenshot.";
+export const OWN_WINDOW = "That is oovi's own window, and bots can't control oovi itself. oovi moves its window aside by itself: take a new screenshot and go on.";
 export const UNKNOWN_WINDOW = "oovi can't tell which window this would reach, so it won't act there. Take a new screenshot, or ask the user.";
 export const ELEVATED_WINDOW =
   "This window runs as administrator. Windows doesn't let apps control it (nor User Account Control prompts or the lock screen): ask the user to do this part.";

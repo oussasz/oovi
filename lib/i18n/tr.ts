@@ -693,6 +693,7 @@ const tr: Dict = {
   "chat.call.openApp": "{app} açıldı",
   "chat.call.windowsList": "Açık pencerelere baktı",
   "chat.call.window": "Bir pencereyi düzenledi: {window}",
+  "chat.call.screenshot": "Ekran görüntüsü aldı",
   "chat.call.upload": "{name} sayfaya eklendi",
   "chat.call.readUrl": "{host} okundu",
   "chat.call.createFile": "{name} oluşturuldu",
@@ -1296,6 +1297,7 @@ const tr: Dict = {
   "ok.list": "{where} içeriğini gör (dosya adları, boyutları, tarihleri)",
   "ok.send": "{file} dosyasını sana gönder",
   "ok.openApp": "{bot}, bilgisayarında {app} uygulamasını açmak istiyor",
+  "ok.screenshot": "{bot} ekranının görüntüsünü alıp sana göndermek istiyor",
   "ok.window.switch": "{bot}, “{title}” penceresini öne getirmek istiyor",
   "ok.window.minimize": "{bot}, “{title}” penceresini simge durumuna küçültmek istiyor",
   "ok.window.maximize": "{bot}, “{title}” penceresini büyütmek istiyor",
@@ -1414,6 +1416,7 @@ const tr: Dict = {
   "st.bigJob": "Büyük bir işe başlıyor",
   "st.openApp": "{app} açılıyor",
   "st.window": "Açık pencerelere bakıyor",
+  "st.screenshot": "Ekran görüntüsü alıyor",
   "ok.expired": "Önceki onayın 20 dakika sonra geçersiz oldu (ekran değişmiş olabilir), bu yüzden yeniden soruluyor.",
   "chat.interrupted": "oovi bu iş bitmeden kapandı. Devam etmek için bir mesaj gönder.",
 };

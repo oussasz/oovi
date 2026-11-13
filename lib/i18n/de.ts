@@ -693,6 +693,7 @@ const de: Dict = {
   "chat.call.openApp": "{app} geöffnet",
   "chat.call.windowsList": "Offene Fenster angesehen",
   "chat.call.window": "Ein Fenster angepasst: {window}",
+  "chat.call.screenshot": "Bildschirmfoto gemacht",
   "chat.call.upload": "{name} an die Seite angehängt",
   "chat.call.readUrl": "{host} gelesen",
   "chat.call.createFile": "{name} erstellt",
@@ -1296,6 +1297,7 @@ const de: Dict = {
   "ok.list": "Inhalt von {where} ansehen (Dateinamen, Größen, Daten)",
   "ok.send": "Dir {file} senden",
   "ok.openApp": "{bot} möchte {app} auf deinem Computer öffnen",
+  "ok.screenshot": "{bot} möchte ein Bildschirmfoto machen und es dir schicken",
   "ok.window.switch": "{bot} möchte „{title}“ in den Vordergrund holen",
   "ok.window.minimize": "{bot} möchte „{title}“ minimieren",
   "ok.window.maximize": "{bot} möchte „{title}“ maximieren",
@@ -1414,6 +1416,7 @@ const de: Dict = {
   "st.bigJob": "Startet einen großen Auftrag",
   "st.openApp": "Öffnet {app}",
   "st.window": "Sieht sich die offenen Fenster an",
+  "st.screenshot": "Macht ein Bildschirmfoto",
   "ok.expired": "Dein früheres OK ist nach 20 Minuten abgelaufen (der Bildschirm kann sich geändert haben), daher wird erneut gefragt.",
   "chat.interrupted": "oovi wurde geschlossen, bevor das fertig war. Schick eine Nachricht, um weiterzumachen.",
 };

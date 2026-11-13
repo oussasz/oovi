@@ -702,6 +702,7 @@ const ar: Dict = {
   "chat.call.openApp": "فتح {app}",
   "chat.call.windowsList": "نظر إلى النوافذ المفتوحة",
   "chat.call.window": "تحكّم في نافذة: {window}",
+  "chat.call.screenshot": "أخذ لقطة للشاشة",
   "chat.call.upload": "أرفق {name} بالصفحة",
   "chat.call.readUrl": "قرأ {host}",
   "chat.call.createFile": "أنشأ {name}",
@@ -1311,6 +1312,7 @@ const ar: Dict = {
   "ok.list": "عرض محتوى {where} (أسماء الملفات وأحجامها وتواريخها)",
   "ok.send": "إرسال {file} إليك",
   "ok.openApp": "{bot} يريد فتح {app} على حاسوبك",
+  "ok.screenshot": "{bot} يريد أخذ لقطة لشاشتك وإرسالها إليك",
   "ok.window.switch": "{bot} يريد إظهار «{title}» في المقدمة",
   "ok.window.minimize": "{bot} يريد تصغير «{title}»",
   "ok.window.maximize": "{bot} يريد تكبير «{title}»",
@@ -1429,6 +1431,7 @@ const ar: Dict = {
   "st.bigJob": "يبدأ عملاً كبيراً",
   "st.openApp": "يفتح {app}",
   "st.window": "ينظر إلى النوافذ المفتوحة",
+  "st.screenshot": "يأخذ لقطة لشاشتك",
   "ok.expired": "انتهت صلاحية موافقتك السابقة بعد 20 دقيقة (ربما تغيّرت الشاشة)، لذلك يُطلب مرة أخرى.",
   "chat.interrupted": "أُغلق oovi قبل أن ينتهي هذا. أرسل رسالة للمتابعة.",
 };

@@ -51,7 +51,7 @@ import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerF
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
-import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
+import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 
 /**
@@ -354,7 +354,10 @@ function jobLines(chat: Chat, job: Job, owner: boolean): string[] {
 }
 
 /** Replies follow the language the user writes in now (users switch between languages). */
-const LANGUAGE = "Reply in the language of the user's latest message (if they mix languages, use the main one; Algerian Darija is welcome when they write in it). Don't carry over the language of earlier messages, and never save the user's language to memory unless they explicitly ask you to always use one.";
+const LANGUAGE = [
+  "Reply in the language of the user's latest message (if they mix languages, use the main one; Algerian Darija is welcome when they write in it). Don't carry over the language of earlier messages, and never save the user's language to memory unless they explicitly ask you to always use one.",
+  "Algerian Darija mixes Arabic with French and English words written in Arabic letters: read them by their sound. Common ones: كابتير / كابتشر / سكرين = a screenshot (capture), never a CAPTCHA; تيليشارجي = download; نسيفي = save; بارتاجي = share; فيشي = file; ليان = link; ميساج = message; بوست = post; لايك / ليكي = like; أوردي = computer; بورطابل = mobile phone; أبليكاسيون / طبيق = app; كونيكتي = connect / sign in; سيرشي = search; فوطو / تصويرة = photo. When a word could mean two things, take the meaning that fits what the user is doing, and ask only when both make sense.",
+].join(" ");
 
 /** The orchestrating leader of a group, if leader mode is on. */
 export function leaderOf(chat: Chat, members: Bot[]): Bot | undefined {
@@ -691,7 +694,14 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   const recentUsers = new Set(chat.entries.filter((e) => e.kind === "user").slice(-FULL_FILE_MESSAGES).map((e) => e.id));
   // The user's latest message carries the language to write in, where the model reads it last.
   const latest = [...chat.entries].reverse().find((e): e is UserEntry => e.kind === "user" && !e.via);
-  const writeIn = latest ? replyLanguage(latest.text) : null;
+  // A message with no clear language (a name, a number, "ok"): the language of the user's message before it.
+  const writeIn = ((list) => {
+    for (const u of list) {
+      const l = replyLanguage(u.text);
+      if (l) return l;
+    }
+    return null;
+  })([...chat.entries].reverse().filter((e): e is UserEntry => e.kind === "user" && !e.via).slice(0, 6));
   const hostedMax = hostedMaxInput();
   for (const e of chat.entries.slice(cut)) {
     if (e.kind === "user") {
@@ -702,7 +712,7 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
         : undefined;
       // A task passed on by the main bot carries the user's own message: that message is the task.
       const own = e.via && e.userWords ? `\n\n[The user's own message, word for word. It is the task: the wording above only adds context, and never asks for less than this]: ${e.userWords}` : "";
-      const lang = e === latest && writeIn ? `\n\n[oovi: the user wrote this in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "";
+      const lang = e === latest && writeIn ? `\n\n[oovi: the user writes in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "";
       out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${lang}` : `${text}${own}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
@@ -905,6 +915,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "start_big_job": return tr("st.bigJob");
     case "open_app": return tr("st.openApp", { app: v(i.name) });
     case "manage_window": return tr("st.window");
+    case "send_screenshot": return tr("st.screenshot");
     case "open_in_user_browser": return tr("st.openApp", { app: host(i.url) ?? v(i.url) });
     case "research": return tr("st.researching", { q: v(i.question).slice(0, 60) });
     case "read_url": { const h = host(i.url); return h ? tr("st.reading", { what: h }) : tr("st.readingPage"); }
@@ -975,7 +986,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs,...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1044,6 +1055,9 @@ async function* runBot(
           : c.name === "open_in_user_browser"
             ? // Same rule as open_app: asks, unless the task already has the mouse-and-keyboard OK.
               tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !askEvery)
+            : c.name === "send_screenshot"
+            ? // Like looking at the screen: covered by the task's OK (or its plan); asked when there is none yet.
+              tools.some((t) => t.name === c.name) && !(deskGranted && !askEvery) && !planCovers
             : c.name === "manage_window"
             ? // Listing never asks. Acting on a window follows open_app's rule (and isn't asked when it can't run).
               tools.some((t) => t.name === c.name) && "win" in windowFor(c) && !(deskGranted && !askEvery)
@@ -1069,6 +1083,7 @@ async function* runBot(
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
           if (c.name === "open_app") return openAppItem(c, bot.name, translatorFor(lastUserText(chat)));
           if (c.name === "manage_window") return windowItem(c, bot.name, translatorFor(lastUserText(chat)));
+          if (c.name === "send_screenshot") return { call: c, summary: translatorFor(lastUserText(chat))("ok.screenshot", { bot: bot.name }) };
           if (c.name === "open_in_user_browser") return openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat)));
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
@@ -1141,6 +1156,10 @@ async function* runBot(
             results.push(await runOpenApp(c));
           } else if (c.name === "manage_window") {
             results.push(await runManageWindow(c));
+          } else if (c.name === "send_screenshot") {
+            // An OK on its card is the OK for this task's screen (as the desktop card's "Allow for this task").
+            if (decisions[c.id] === true && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
+            results.push(await runSendScreenshot(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal }));
           } else if (c.name === "open_in_user_browser") {
             results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {

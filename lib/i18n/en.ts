@@ -709,6 +709,7 @@ const en = {
   "chat.call.openApp": "Opened {app}",
   "chat.call.windowsList": "Looked at the open windows",
   "chat.call.window": "Arranged a window: {window}",
+  "chat.call.screenshot": "Took a screenshot of the screen",
   "chat.call.upload": "Attached {name} to the page",
   "chat.call.readUrl": "Read {host}",
   "chat.call.createFile": "Created {name}",
@@ -1315,6 +1316,7 @@ const en = {
   "ok.list": "See what's in {where} (file names, sizes, dates)",
   "ok.send": "Send {file} to you",
   "ok.openApp": "{bot} wants to open {app} on your computer",
+  "ok.screenshot": "{bot} wants to take a screenshot of your screen and send it to you",
   "ok.window.switch": "{bot} wants to bring “{title}” to the front",
   "ok.window.minimize": "{bot} wants to minimize “{title}”",
   "ok.window.maximize": "{bot} wants to maximize “{title}”",
@@ -1433,6 +1435,7 @@ const en = {
   "st.bigJob": "Starting a big job",
   "st.openApp": "Opening {app}",
   "st.window": "Looking at the open windows",
+  "st.screenshot": "Taking a screenshot of your screen",
   "ok.expired": "Your earlier OK expired after 20 minutes (the screen may have changed), so it's asked again.",
   "chat.interrupted": "oovi closed before this finished. Send a message to continue.",
 } as const;
