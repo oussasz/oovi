@@ -23,3 +23,16 @@ test("a 'still missing' note that repeats means the rounds stopped moving", () =
   assert.ok(!sameMissing("22 factories still to find", "Send the message and like the latest post"));
   assert.ok(!sameMissing(undefined, "x"));
 });
+
+test("a reply that says the same as the previous one is recognized, even reworded", async () => {
+  const { sameReply } = await import("../../lib/done-check-core.ts");
+  const a = "The message was not sent to Tigrine Marys. The Messenger box shows garbled characters, so I won't send. Type it yourself, or I send it in English.";
+  const b = "The message wasn't sent to Tigrine Marys. The Messenger box still shows garbled characters, so I won't send. Type it yourself, or I send it in English instead.";
+  assert.ok(sameReply(a, b));
+  assert.ok(!sameReply(a, "Both are done: the message is sent and the latest post is liked."));
+});
+
+test("the check is told that a real choice after failed attempts belongs to the user", async () => {
+  const { DONE_CHECK_SYSTEM } = await import("../../lib/done-check-core.ts");
+  assert.match(DONE_CHECK_SYSTEM, /offers the user a real choice between different ways forward/);
+});

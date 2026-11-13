@@ -45,8 +45,8 @@ const findPad = () => win32.appWindows().find((w) => /notepad/i.test(w.exe) || /
   const SendMessageNum = user32.func("intptr_t __stdcall SendMessageW(void *hwnd, uint32_t msg, uintptr_t wp, intptr_t lp)");
   const LoadKeyboardLayoutW = user32.func("void * __stdcall LoadKeyboardLayoutW(str16 id, uint32_t flags)");
   const PostMessageW = user32.func("bool __stdcall PostMessageW(void *hwnd, uint32_t msg, uintptr_t wp, intptr_t lp)");
-  const EnumWindows = user32.func("bool __stdcall EnumWindows(OoviEnumProc2 *cb, intptr_t lparam)");
   koffi.proto("bool __stdcall OoviEnumProc2(void *hwnd, intptr_t lparam)");
+  const EnumWindows = user32.func("bool __stdcall EnumWindows(OoviEnumProc2 *cb, intptr_t lparam)");
   let padHwnd = null;
   EnumWindows((h) => {
     if (Number(koffi.address(h)) === w.handle) padHwnd = h;

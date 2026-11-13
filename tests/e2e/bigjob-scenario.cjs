@@ -85,6 +85,10 @@ function answer(body) {
     return call("work_table", { action: "add", table: "Rare", columns: COLS, rows: rows("lone", 20, 20) });
   }
   // ---- the done-check: any task, no row count ----
+  if (me === "Loop") {
+    // Tries (one action), then reports the same failure again, as the owner's bot did 15 times.
+    return lastTool ? text("The message wasn't sent: the box shows garbled characters. Type it yourself, or I send it in English.") : call("work_notes", { action: "read", file: "Nothing" });
+  }
   if (me === "Half") {
     const m = JSON.stringify(msgs);
     if (/HALF-HI:/.test(m)) return text("Hello!");
@@ -403,6 +407,13 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF-HI: hello" });
   await idle(`dm-${half.id}`, 60000);
   check("K) small talk without any action costs no check", checks.length === checksBefore + 1, `${checks.length - checksBefore} checks`);
+  // The same failure reported again stops the rounds at once (the check always says "unfinished" here).
+  rules.doneCheck.verdict = () => ({ status: "unfinished", missing: "send the message", goal: "message sent" });
+  const loop = await newBot("Loop", "");
+  await api("POST", `/api/chats/dm-${loop.id}/run`, { text: "LOOP: send my message" });
+  const lc2 = await idle(`dm-${loop.id}`, 120000);
+  const lb2 = lc2.entries.filter((e) => e.kind === "bot");
+  check("K) a round that repeats the previous reply ends the work: 2 turns, not one per automatic round", lb2.length === 2, `${lb2.length} turns`);
   rules.doneCheck.verdict = () => ({ status: "done", missing: "", goal: "" });
 
   const ok = results.filter((r) => r.ok).length;

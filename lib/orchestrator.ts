@@ -34,7 +34,7 @@ import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
 import { checkUrl } from "./browser";
 import { healInterrupted } from "./delegations-core";
-import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing } from "./done-check-core";
+import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -1724,7 +1724,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
 }
 
 /** Auto-continued rounds per user message at most, when the done-check keeps finding work (a cost guard). */
-const MAX_AUTO_ROUNDS = 12;
+const MAX_AUTO_ROUNDS = 4;
 
 /**
  * The done-check (lib/done-check-core.ts): after the turn of the bot that answers the user, a short,
@@ -1746,6 +1746,12 @@ async function checkDone(chat: Chat, entry: BotEntry, bot: Bot, settings: Settin
   const worked = entry.steps.some((st) => st.role === "tool");
   if (!worked && !job) return false;
   if ((p.autoRounds ?? 0) >= MAX_AUTO_ROUNDS) return false;
+  // The same reply as after the previous round: nothing new came out of it, so the reply stands as the
+  // answer (no check, no report round on top). The owner saw a bot repeat one failure 15 times.
+  if (job?.lastReply && sameReply(job.lastReply, entry.text)) {
+    job.missing = undefined;
+    return false;
+  }
   const user = lastUser(chat);
   if (!user) return false;
   const request = [user.text, user.userWords ?? ""].filter(Boolean).join("\n");
@@ -1769,15 +1775,16 @@ async function checkDone(chat: Chat, entry: BotEntry, bot: Bot, settings: Settin
     if (job && v) job.missing = undefined;
     return false;
   }
-  // The same thing still missing round after round: the work stopped moving. One last turn to report.
+  // The same thing still missing round after round: the work stopped moving.
   const stuck = !!job && (sameMissing(job.missing, v.missing) || job.stale >= JOB_STALE);
   p.autoRounds = (p.autoRounds ?? 0) + 1;
   if (job) {
     job.missing = v.missing;
+    job.lastReply = entry.text.slice(0, 2000);
     if (stuck) job.stale = Math.max(job.stale, JOB_STALE);
   } else {
     // Not started as a big job, but not finished: it becomes one, with the limits lifted.
-    p.job = { goal: v.goal || request.slice(0, 300), by: bot.id, rounds: 0, mark: -1, stale: 0, missing: v.missing, auto: true };
+    p.job = { goal: v.goal || request.slice(0, 300), by: bot.id, rounds: 0, mark: -1, stale: 0, missing: v.missing, auto: true, lastReply: entry.text.slice(0, 2000) };
     p.deep = true;
   }
   if (stuck) {

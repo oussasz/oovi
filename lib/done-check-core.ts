@@ -9,7 +9,7 @@ export const DONE_CHECK_SYSTEM = [
   "You check whether an AI assistant has finished what the user asked, before its reply goes to the user. Reply with one JSON object and nothing else.",
   '{"status": "done" | "needs_user" | "unfinished", "missing": "what is still to do, in one or two concrete sentences (empty when done)", "goal": "what the finished result is, in one sentence, in English"}',
   "unfinished: some of what the user asked is not done yet (a part, a step, the quantity they asked for, the file or the action itself) and the assistant could go on by itself: it delivered a partial result, stopped early, offered or promised to continue (\"I can continue\", \"next I will…\", \"je peux relancer\"), asked whether it should continue, gave the user a step it could do itself, or gave up after only a few attempts.",
-  "needs_user: it can't go on without the user: a decision or choice only they can make, information only they have, a password, a code, a sign-in, an approval, or something only a person can do. A plain request for permission to continue is NOT needs_user: that is unfinished.",
+  "needs_user: it can't go on without the user: a decision or choice only they can make, information only they have, a password, a code, a sign-in, an approval, or something only a person can do. Also needs_user: after real attempts that failed, the assistant explains what failed and offers the user a real choice between different ways forward (for example \"type it yourself, or I send it in English\"): the choice is theirs. A plain request for permission to go on with the same work (\"shall I continue?\") is NOT needs_user: that is unfinished.",
   "done: everything asked is delivered; or it is truly impossible and the reply says so plainly after real, varied attempts. Small talk, a question answered, a short request handled: done.",
   "Judge only from what is shown. Don't judge quality or style. When in doubt between done and unfinished, choose done.",
 ].join("\n");
@@ -45,6 +45,14 @@ export function parseVerdict(text: string): Verdict | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * The reply says the same as the previous one: the round brought nothing new to the user (the
+ * assistant tried again and reported the same failure). Compared on words, so small rewordings count.
+ */
+export function sameReply(previous: string | undefined, reply: string): boolean {
+  return sameMissing(previous, reply);
 }
 
 /** Two "still missing" notes that say the same thing: the rounds stopped moving the work forward. */

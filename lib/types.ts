@@ -195,7 +195,7 @@ export type Pending = {
    */
   /** carried: the job was picked up again by the user's next message (see Chat.openJob). */
   /** missing: what the done-check found still to do after the owner's last turn (a job without a row count). */
-  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number; carried?: boolean; missing?: string; auto?: boolean };
+  job?: { goal: string; by: string; table?: string; target?: number; require?: string[]; rounds: number; mark: number; stale: number; carried?: boolean; missing?: string; auto?: boolean; lastReply?: string };
   /**
    * Teammates worked at the same time and several needed the user's OK: one card is shown at a time.
    * These replies (entry ids) wait their turn to ask.
