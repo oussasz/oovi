@@ -28,8 +28,10 @@ const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assi
 const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
 const systemOf = (b) => (typeof b.system === "string" ? b.system : JSON.stringify(b.system || ""));
 const seen = { tools: {}, systems: [] };
-const PROJECT = path.join(os.tmpdir(), "oovi-spec-project", "shop");
-const SAVE_DIR = path.join(os.tmpdir(), "oovi-spec-save");
+// Inside the user's home, as a real user's folders are (a Mac's temp folder is under /var, a system folder oovi refuses).
+const HOME_TEST = path.join(os.homedir(), `oovi-spec-${process.pid}`);
+const PROJECT = path.join(HOME_TEST, "project", "shop");
+const SAVE_DIR = path.join(HOME_TEST, "save");
 
 function answer(body) {
   const tools = (body.tools || []).map((t) => t.name || t.type);
@@ -302,6 +304,7 @@ const check = (name, ok, detail = "") => {
   const back = await api("POST", "/api/computer-files", { saveFolder: null });
   check("and back to the default folder", back.custom === false && back.saveFolder === back.saveDefault, JSON.stringify(back).slice(0, 200));
 
+  fs.rmSync(HOME_TEST, { recursive: true, force: true });
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();
   process.exit(results.every((r) => r.ok) ? 0 : 1);
