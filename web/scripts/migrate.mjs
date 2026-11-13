@@ -96,6 +96,20 @@ await pool.query(`
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ NULL;
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_app_version TEXT NULL;
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_platform TEXT NULL;
+  -- Signals about each account (lib/user-signals.ts creates these on first use too): country, how and where
+  -- they signed up, theOovi call counts by kind, and when the email was confirmed. No IP addresses.
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS signup_country TEXT NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_country TEXT NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS signup_via TEXT NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS signup_ref TEXT NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS signup_net TEXT NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS first_ai_at TIMESTAMPTZ NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS last_ai_at TIMESTAMPTZ NULL;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS ai_app_calls INT NOT NULL DEFAULT 0;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS ai_direct_calls INT NOT NULL DEFAULT 0;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS ai_tool_calls INT NOT NULL DEFAULT 0;
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS email_verified_at TIMESTAMPTZ NULL;
+  CREATE INDEX IF NOT EXISTS user_signup_net_idx ON "user" (signup_net) WHERE signup_net IS NOT NULL;
 `);
 console.log("app_events, usage_daily, catalog_items, user activity columns: ok");
 

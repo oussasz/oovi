@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Caveat, Nunito } from "next/font/google";
 import { DownloadProvider } from "@/components/download/DownloadProvider";
+import { FirstTouch } from "@/components/FirstTouch";
 import { siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${nunito.variable} ${caveat.variable}`}>
       <body>
+        <FirstTouch />
         <DownloadProvider>{children}</DownloadProvider>
       </body>
     </html>

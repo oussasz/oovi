@@ -28,6 +28,8 @@ import {
   type Usage,
 } from "@/lib/credits";
 import { verificationRequired } from "@/lib/mail";
+import { recordAiCall } from "@/lib/user-signals";
+import { after as runAfter } from "next/server";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 300;
@@ -257,6 +259,8 @@ export async function POST(req: Request) {
   const system = cleanSystem(raw.system);
   const tools = cleanTools(raw.tools);
   if (!messages || system === null || tools === null) return fail(400, "bad_request", "Invalid request.");
+  // Who is calling: counted after the answer is on its way, and it can never fail the request.
+  runAfter(() => recordAiCall(userId, req.headers, tools.length > 0));
   const requestedOut = typeof raw.max_tokens === "number" && raw.max_tokens > 0 ? Math.floor(raw.max_tokens) : 8192;
   const maxOut = Math.min(requestedOut, cfg.maxOutputTokens);
   const effort = effortOf(raw.effort, cfg);

@@ -1,6 +1,7 @@
 import { apiError, getRequestSession, json, loadPublicUser, readJson, toPublicUser } from "@/lib/api";
 import { pool } from "@/lib/db";
 import { parsePlatform, parseVersion, recordAppOpen } from "@/lib/telemetry";
+import { recordCountry } from "@/lib/user-signals";
 import { validateImage, validateName } from "@/lib/validation";
 import { after } from "next/server";
 
@@ -16,6 +17,7 @@ export async function GET(req: Request) {
     const platform = parsePlatform(req.headers.get("x-oovi-platform"));
     const userId = session.user.id;
     after(() => recordAppOpen(userId, version, platform));
+    after(() => recordCountry(userId, req.headers));
   }
   return json({ user: toPublicUser(session.user) });
 }

@@ -60,7 +60,7 @@ export const mcToCredits = (mc: number | string) => Number(mc) / MC;
 
 // ---------- accounts ----------
 
-function networkHash(ip: string | null): string | null {
+export function networkHash(ip: string | null): string | null {
   if (!ip || ip === "unknown") return null;
   const secret = process.env.BETTER_AUTH_SECRET ?? "";
   return crypto.createHash("sha256").update(`oovi-net:${secret}:${ip}`).digest("hex").slice(0, 32);

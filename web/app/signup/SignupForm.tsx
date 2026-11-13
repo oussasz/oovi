@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 import { TERMS_VERSION } from "@/lib/legal";
+import { firstTouch } from "@/components/FirstTouch";
 
 export function SignupForm({ next = null }: { next?: string | null }) {
   const router = useRouter();
@@ -32,6 +33,8 @@ export function SignupForm({ next = null }: { next?: string | null }) {
       email: email.trim().toLowerCase(),
       password,
       termsVersion: TERMS_VERSION,
+      // Where this person came from, for the admin console. Only sent here, once, when they sign up.
+      fetchOptions: { headers: firstTouch() ? { "x-oovi-ref": firstTouch()! } : {} },
     });
     if (error) {
       setBusy(false);
