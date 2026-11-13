@@ -89,15 +89,29 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
   const [agree, setAgree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // The email must be confirmed before the account opens: the 6-digit code from the email.
+  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [sent, setSent] = useState(false);
   const { t, rich } = useI18n();
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setSent(false);
     try {
-      const body = mode === "signin" ? { action: "signin", email, password } : { action: "signup", name, email, password, acceptTerms: agree };
-      const next = await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify(body) });
+      const body = codeFor
+        ? { action: "verify", email: codeFor, code }
+        : mode === "signin"
+          ? { action: "signin", email, password }
+          : { action: "signup", name, email, password, acceptTerms: agree };
+      const next = await api<AccountState & { verify?: { email: string } }>("/api/account", { method: "POST", body: JSON.stringify(body) });
+      if (next.verify) {
+        setCodeFor(next.verify.email);
+        setCode("");
+        return;
+      }
       try {
         localStorage.setItem(SIGNED_IN_BEFORE, "1");
       } catch {
@@ -110,6 +124,59 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
     } finally {
       setBusy(false);
     }
+  }
+
+  async function resend() {
+    if (!codeFor) return;
+    setError(null);
+    setSent(false);
+    try {
+      await api("/api/account", { method: "POST", body: JSON.stringify({ action: "resend", email: codeFor }) });
+      setSent(true);
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  if (codeFor) {
+    return (
+      <div className="gate">
+        <div className="gate-card">
+          <LanguagePick />
+          <div className="gate-hero">
+            <Logo size={92} />
+            <h1>{t("auth.codeTitle")}</h1>
+            <p className="muted">{rich("auth.codeSub", { email: <b>{codeFor}</b> })}</p>
+          </div>
+          <form onSubmit={submit} className="gate-form">
+            <label className="field">
+              {t("auth.code")}
+              <input
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                pattern="[0-9]*"
+                maxLength={6}
+                required
+                autoFocus
+                dir="ltr"
+                className="code-input"
+              />
+            </label>
+            {error && <div className="notice error small">{error}</div>}
+            {sent && <div className="notice small" role="status">{t("auth.codeSent")}</div>}
+            <button className="btn primary" type="submit" disabled={busy || code.length !== 6}>
+              {busy ? t("auth.oneMoment") : t("auth.codeConfirm")}
+            </button>
+            <div className="gate-links">
+              <button type="button" className="linkish" onClick={() => void resend()}>{t("auth.codeResend")}</button>
+              <button type="button" className="linkish" onClick={() => { setCodeFor(null); setError(null); setSent(false); }}>{t("auth.codeBack")}</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
   }
 
   return (

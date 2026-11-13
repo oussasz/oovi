@@ -1,16 +1,21 @@
 import { betterAuth } from "better-auth";
 import { APIError } from "better-auth/api";
-import { bearer } from "better-auth/plugins";
+import { bearer, emailOTP } from "better-auth/plugins";
 import { checkSignup } from "./signup-guard";
 import { pool } from "./db";
 import { isBlocked } from "./credits";
 import { sendInBackground } from "./mail";
-import { passwordChanged, resetPassword, verifyEmail } from "./mail-templates";
+import { passwordChanged, resetPassword, verifyCode, verifyEmail } from "./mail-templates";
 import { TERMS_VERSION } from "./legal";
 import { siteUrl } from "./site";
 import { validateImage, MIN_PASSWORD, MAX_PASSWORD } from "./validation";
 
 export const SESSION_LIFETIME_SECONDS = 60 * 60 * 24 * 60; // 60 days
+/** How long the 6-digit email code works. */
+export const CODE_LIFETIME_SECONDS = 60 * 60;
+
+/** The confirmation email's 6-digit code, made by the email-OTP plugin (set once auth exists below). */
+const codes: { make?: (email: string) => Promise<string> } = {};
 
 function trustedOrigins(): string[] {
   // Both addresses: the site moved to oovi.conuron.com, older links and apps may use the old one.
@@ -47,9 +52,9 @@ export const auth = betterAuth({
       sendInBackground(passwordChanged(user.email, user.name));
     },
   },
-  // Email confirmation: sent on sign-up and on request ("Resend email" in the app).
-  // People can still sign in before confirming; free theOovi credits wait for it
-  // when the console says so.
+  // Email confirmation: sent on sign-up and on request. The email carries a 6-digit code (typed in
+  // the sign-up form of the app or the website: the account opens once it is confirmed, when the
+  // console requires it) and a link (older app versions, and anyone who prefers to click).
   emailVerification: {
     sendOnSignUp: true,
     autoSignInAfterVerification: true,
@@ -57,7 +62,13 @@ export const auth = betterAuth({
     sendVerificationEmail: async ({ user, url }) => {
       const link = new URL(url);
       link.searchParams.set("callbackURL", "/verified");
-      sendInBackground(verifyEmail(user.email, user.name, link.toString()));
+      let code: string | null = null;
+      try {
+        code = codes.make ? await codes.make(user.email) : null;
+      } catch (err) {
+        console.error("verification code failed", err instanceof Error ? err.message : "unknown error");
+      }
+      sendInBackground(verifyEmail(user.email, user.name, link.toString(), code));
     },
   },
   session: {
@@ -117,7 +128,22 @@ export const auth = betterAuth({
   advanced: {
     ipAddress: { ipAddressHeaders: ["x-forwarded-for", "x-real-ip"] },
   },
-  plugins: [bearer()],
+  plugins: [
+    bearer(),
+    emailOTP({
+      otpLength: 6,
+      expiresIn: CODE_LIFETIME_SECONDS,
+      allowedAttempts: 5,
+      // Codes for confirming an email are made with the link email above; this sends a code on its own
+      // only if the plugin's own endpoint is used.
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type === "email-verification") sendInBackground(verifyCode(email, otp));
+      },
+    }),
+  ],
 });
+
+codes.make = (email: string) => auth.api.createVerificationOTP({ body: { email, type: "email-verification" } });
+
 
 export type Session = typeof auth.$Infer.Session;

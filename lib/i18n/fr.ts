@@ -51,6 +51,13 @@ const fr: Dict = {
   "auth.agree": "J'accepte les {terms} et la {privacy}.",
   "auth.oneMoment": "Un instant…",
   "auth.forgot": "Mot de passe oublié ?",
+  "auth.codeTitle": "Confirmez votre adresse e-mail",
+  "auth.codeSub": "Nous avons envoyé un code à 6 chiffres à {email}. Saisissez-le ici pour ouvrir votre compte.",
+  "auth.code": "Code",
+  "auth.codeConfirm": "Confirmer",
+  "auth.codeResend": "Envoyer un nouveau code",
+  "auth.codeBack": "Utiliser une autre adresse",
+  "auth.codeSent": "Un nouveau code est en route. Regardez votre boîte de réception et vos spams.",
   "gate.cantStart": "Impossible de démarrer.",
   "gate.tryAgain": "Réessayer",
 

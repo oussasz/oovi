@@ -886,3 +886,9 @@ a.tag { text-decoration: none; }
 /* A task the main bot passed to a group: the user's own message under it */
 .user-words { margin: 6px 0 0; padding: 6px 10px; border-inline-start: 3px solid var(--border); color: var(--muted); font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; max-width: 560px; }
 .user-words small { display: block; font-weight: 700; margin-bottom: 2px; }
+/* Sign-up: the 6-digit code from the confirmation email. */
+.code-input { font-size: 26px; letter-spacing: 10px; text-align: center; font-variant-numeric: tabular-nums; font-family: ui-monospace, Menlo, Consolas, monospace; }
+.gate-links { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: 4px; }
+.linkish { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.linkish:hover { color: var(--text); text-decoration: underline; }
+.linkish:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; border-radius: 4px; }

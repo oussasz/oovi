@@ -75,6 +75,17 @@ http
       };
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
+      // Sign-up with email confirmation (the account service asks for the 6-digit code first).
+      if (url === "/api/v1/auth/sign-up" && req.method === "POST") return send(201, { verify: true, email: JSON.parse(raw).email });
+      if (url === "/api/v1/auth/resend-code" && req.method === "POST") {
+        seen.resent = (seen.resent || 0) + 1;
+        return send(204);
+      }
+      if (url === "/api/v1/auth/verify-email" && req.method === "POST") {
+        const b = JSON.parse(raw);
+        if (b.code !== "123456") return send(400, { error: "That code isn't right. Check the latest email from oovi." });
+        return send(200, { token: "verified-token", user: { id: "new1", email: b.email, name: "Nadia", image: null } });
+      }
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null } });
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
@@ -193,6 +204,16 @@ const check = (name, ok, detail = "") => {
   const tarik = (await api("GET", "/api/bots")).find((b) => b.name === "Tarik");
   const g5 = await api("GET", `/api/chats/${group.id}`);
   check("created from the direct chat, it joins the Chief's group", !!tarik && g5.memberIds.includes(tarik.id) && tarik.hidden === true);
+
+  // Email confirmed while the account is being opened, not after the first message.
+  const su = await api("POST", "/api/account", { action: "signup", name: "Nadia", email: "nadia@example.test", password: "a-long-password", acceptTerms: true });
+  check("a new account asks for the 6-digit email code before it opens", su.verify?.email === "nadia@example.test", JSON.stringify(su).slice(0, 160));
+  const bad = await api("POST", "/api/account", { action: "verify", email: "nadia@example.test", code: "000000" });
+  check("a wrong code says so plainly", /That code isn't right/.test(bad.error || ""), JSON.stringify(bad).slice(0, 160));
+  const again = await api("POST", "/api/account", { action: "resend", email: "nadia@example.test" });
+  check("a new code can be asked for", again.sent === true && seen.resent === 1);
+  const ok = await api("POST", "/api/account", { action: "verify", email: "nadia@example.test", code: "123456" });
+  check("the right code opens the account (signed in as the new user)", ok.loggedIn === true && ok.user?.email === "nadia@example.test", JSON.stringify(ok).slice(0, 160));
 
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();

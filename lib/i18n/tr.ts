@@ -51,6 +51,13 @@ const tr: Dict = {
   "auth.agree": "{terms} ve {privacy} metinlerini kabul ediyorum.",
   "auth.oneMoment": "Bir saniye…",
   "auth.forgot": "Şifreni mi unuttun?",
+  "auth.codeTitle": "E-postanı onayla",
+  "auth.codeSub": "{email} adresine 6 haneli bir kod gönderdik. Hesabını açmak için buraya yaz.",
+  "auth.code": "Kod",
+  "auth.codeConfirm": "Onayla",
+  "auth.codeResend": "Yeni kod gönder",
+  "auth.codeBack": "Başka bir e-posta kullan",
+  "auth.codeSent": "Yeni kod yolda. Gelen kutunu ve spam klasörünü kontrol et.",
   "gate.cantStart": "Başlatılamadı.",
   "gate.tryAgain": "Tekrar dene",
 

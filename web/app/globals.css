@@ -2953,3 +2953,22 @@ textarea.input {
 
 /* The showcase's floating cards are decoration: they may hang past the content edge, never past the screen. */
 .showcase { overflow-x: clip; }
+
+/* A link-looking button (actions inside a sentence, e.g. "Send a new code"). */
+.link-button {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.link-button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+.switch-line .link-button {
+  color: var(--ink);
+  font-weight: 800;
+}

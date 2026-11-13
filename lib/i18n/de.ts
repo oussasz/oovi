@@ -51,6 +51,13 @@ const de: Dict = {
   "auth.agree": "Ich stimme den {terms} und der {privacy} zu.",
   "auth.oneMoment": "Einen Moment…",
   "auth.forgot": "Passwort vergessen?",
+  "auth.codeTitle": "Bestätige deine E-Mail",
+  "auth.codeSub": "Wir haben einen 6-stelligen Code an {email} geschickt. Gib ihn hier ein, um dein Konto zu öffnen.",
+  "auth.code": "Code",
+  "auth.codeConfirm": "Bestätigen",
+  "auth.codeResend": "Neuen Code senden",
+  "auth.codeBack": "Andere E-Mail verwenden",
+  "auth.codeSent": "Ein neuer Code ist unterwegs. Sieh in deinen Posteingang und Spam-Ordner.",
   "gate.cantStart": "Start fehlgeschlagen.",
   "gate.tryAgain": "Erneut versuchen",
 

@@ -28,7 +28,11 @@ export async function GET(req: Request) {
   return Response.json(state());
 }
 
-/** {action: "signin" | "signup" | "onboarded", ...} */
+/**
+ * {action: "signin" | "signup" | "verify" | "resend" | "onboarded", ...}
+ * signin/signup answer {..., verify: {email}} when the email must be confirmed first: the app then asks
+ * for the 6-digit code from the email (verify: {email, code}; resend: {email} sends a new one).
+ */
 export async function POST(req: Request) {
   const denied = guard(req, { account: false });
   if (denied) return denied;
@@ -39,9 +43,20 @@ export async function POST(req: Request) {
         b.action === "signin"
           ? { email: String(b.email ?? "").trim(), password: String(b.password ?? "") }
           : { name: String(b.name ?? "").trim(), email: String(b.email ?? "").trim(), password: String(b.password ?? ""), acceptTerms: b.acceptTerms === true };
-      const r = await cloud<{ token: string; user: AccountUser }>(`/api/v1/auth/${b.action === "signin" ? "sign-in" : "sign-up"}`, { method: "POST", body });
+      const r = await cloud<{ token?: string; user?: AccountUser; verify?: boolean; email?: string }>(`/api/v1/auth/${b.action === "signin" ? "sign-in" : "sign-up"}`, { method: "POST", body });
+      if (r.verify) return Response.json({ ...state(), verify: { email: String(r.email ?? body.email) } });
+      if (!r.token || !r.user) return Response.json({ error: "The account service gave an unexpected answer. Please try again." }, { status: 502 });
       saveSession(r.token, r.user);
       return Response.json(state());
+    }
+    if (b.action === "verify") {
+      const r = await cloud<{ token: string; user: AccountUser }>("/api/v1/auth/verify-email", { method: "POST", body: { email: String(b.email ?? "").trim(), code: String(b.code ?? "").trim() } });
+      saveSession(r.token, r.user);
+      return Response.json(state());
+    }
+    if (b.action === "resend") {
+      await cloud("/api/v1/auth/resend-code", { method: "POST", body: { email: String(b.email ?? "").trim() } });
+      return Response.json({ ...state(), sent: true });
     }
     if (b.action === "onboarded") {
       if (!currentSession()) return Response.json({ error: "Sign in first." }, { status: 401 });

@@ -61,6 +61,13 @@ const en = {
   "auth.agree": "I agree to the {terms} and the {privacy}.",
   "auth.oneMoment": "One moment…",
   "auth.forgot": "Forgot password?",
+  "auth.codeTitle": "Confirm your email",
+  "auth.codeSub": "We sent a 6-digit code to {email}. Type it here to open your account.",
+  "auth.code": "Code",
+  "auth.codeConfirm": "Confirm",
+  "auth.codeResend": "Send a new code",
+  "auth.codeBack": "Use another email",
+  "auth.codeSent": "A new code is on its way. Check your inbox and spam folder.",
   "gate.cantStart": "Couldn't start.",
   "gate.tryAgain": "Try again",
 

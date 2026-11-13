@@ -14,6 +14,10 @@ export function SignupForm({ next = null }: { next?: string | null }) {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Confirmation required: the account opens once the 6-digit code from the email is typed here.
+  const [codeFor, setCodeFor] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -39,8 +43,67 @@ export function SignupForm({ next = null }: { next?: string | null }) {
       }
       return;
     }
+    const needs = await fetch("/api/v1/auth/verification").then((r) => r.json()).catch(() => ({ required: false }));
+    if (needs?.required) {
+      setBusy(false);
+      setCodeFor(email.trim().toLowerCase());
+      return;
+    }
     router.replace(next ?? "/account?welcome=1");
     router.refresh();
+  }
+
+  async function confirm(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setSent(null);
+    if (!/^\d{6}$/.test(code.trim())) return setError("The code has 6 digits.");
+    setBusy(true);
+    const r = await fetch("/api/v1/auth/verify-email", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: codeFor, code: code.trim() }) }).catch(() => null);
+    const j = r ? await r.json().catch(() => ({})) : {};
+    setBusy(false);
+    if (!r || !r.ok) return setError((j as { error?: string }).error || "Couldn't check the code. Please try again.");
+    router.replace(next ?? "/account?welcome=1");
+    router.refresh();
+  }
+
+  async function resend() {
+    setError(null);
+    setSent(null);
+    const r = await fetch("/api/v1/auth/resend-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: codeFor }) }).catch(() => null);
+    if (r && (r.ok || r.status === 204)) setSent("A new code is on its way. Check your inbox and spam folder.");
+    else setError(((r ? await r.json().catch(() => ({})) : {}) as { error?: string }).error || "Couldn't send a new code. Please try again.");
+  }
+
+  if (codeFor) {
+    return (
+      <form className="form" onSubmit={confirm} noValidate>
+        <p>
+          We sent a 6-digit code to <b>{codeFor}</b>. Type it here to confirm your email and open your account.
+        </p>
+        {error && (
+          <p className="alert alert-error" role="alert">
+            {error}
+          </p>
+        )}
+        {sent && (
+          <p className="alert" role="status">
+            {sent}
+          </p>
+        )}
+        <div className="field">
+          <label htmlFor="code">Code</label>
+          <input id="code" className="input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]*" maxLength={6} required autoFocus value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+          <small className="fine">The code works for 1 hour. You can also click the button in the email.</small>
+        </div>
+        <button className="btn btn-dark btn-lg" type="submit" disabled={busy || code.length !== 6}>
+          {busy ? "Checking…" : "Confirm my email"}
+        </button>
+        <p className="switch-line">
+          No email? <button type="button" className="link-button" onClick={() => void resend()}>Send a new code</button>
+        </p>
+      </form>
+    );
   }
 
   return (

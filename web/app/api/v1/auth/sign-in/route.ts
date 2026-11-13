@@ -9,6 +9,7 @@ import {
   readJson,
   toPublicUser,
 } from "@/lib/api";
+import { verificationRequired } from "@/lib/mail";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,15 @@ export async function POST(req: Request) {
       body: { email: email.trim().toLowerCase(), password },
     });
     if (!result.token) return apiError("Could not create a session.", 500);
+    // An account whose email isn't confirmed yet (when confirmation is required): a fresh code is sent
+    // and the app asks for it, instead of opening the account and refusing the first message later.
+    if (!result.user.emailVerified && req.headers.get("x-oovi-email-code") === "1" && (await verificationRequired())) {
+      await auth.api.signOut({ headers: new Headers({ authorization: `Bearer ${result.token}` }) }).catch(() => {});
+      if (rateLimit(`verify-code:${result.user.email}`, 3, 10 * 60_000)) {
+        await auth.api.sendVerificationEmail({ body: { email: result.user.email, callbackURL: "/verified" } }).catch((e) => console.error("send code failed", e instanceof Error ? e.message : "unknown error"));
+      }
+      return json({ verify: true, email: result.user.email }, 200);
+    }
     return json({ token: result.token, user: toPublicUser(result.user) }, 200);
   } catch (err) {
     const { status, message } = describeAuthError(err);

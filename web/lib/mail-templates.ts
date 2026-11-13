@@ -117,23 +117,50 @@ function render(l: Layout, to: string, subject: string): Mail {
 
 // ---------- the messages ----------
 
-export function verifyEmail(to: string, name: string, url: string): Mail {
+/** code: the 6-digit code typed in oovi's sign-up form (null when it couldn't be made: the link still works). */
+export function verifyEmail(to: string, name: string, url: string, code: string | null = null): Mail {
   return render(
     {
-      preheader: "One click to confirm your email and start with theOovi.",
+      preheader: code ? `Your oovi code: ${code}` : "One click to confirm your email and start with theOovi.",
       title: "Confirm your email",
       hello: `Hi ${firstName(name)},`,
       blocks: [
-        {
-          kind: "p",
-          text: "Welcome to oovi! Please confirm this is your email address. It keeps your account safe and unlocks your free credits for <b>theOovi</b>, the AI model included with your account.",
-        },
+        ...(code
+          ? [
+              { kind: "p" as const, text: "Welcome to oovi! Type this code in oovi to confirm your email and open your account:" },
+              { kind: "p" as const, text: `<span style="font-size:32px;font-weight:700;letter-spacing:8px;font-family:monospace">${code}</span>` },
+              { kind: "p" as const, text: "Or confirm with the button below." },
+            ]
+          : [
+              {
+                kind: "p" as const,
+                text: "Welcome to oovi! Please confirm this is your email address. It keeps your account safe and unlocks your free credits for <b>theOovi</b>, the AI model included with your account.",
+              },
+            ]),
       ],
       button: { label: "Confirm my email", url },
-      note: "This link works for 24 hours. If you didn&rsquo;t create an oovi account, you can ignore this email.",
+      note: `${code ? "The code works for 1 hour, the button for 24 hours." : "This link works for 24 hours."} If you didn&rsquo;t create an oovi account, you can ignore this email.`,
     },
     to,
-    "Confirm your email for oovi",
+    code ? `${code} is your oovi code` : "Confirm your email for oovi",
+  );
+}
+
+/** A code on its own (sent only through the email-OTP plugin's own endpoint). */
+export function verifyCode(to: string, code: string): Mail {
+  return render(
+    {
+      preheader: `Your oovi code: ${code}`,
+      title: "Your oovi code",
+      hello: "Hi,",
+      blocks: [
+        { kind: "p", text: "Type this code in oovi to confirm your email:" },
+        { kind: "p", text: `<span style="font-size:32px;font-weight:700;letter-spacing:8px;font-family:monospace">${code}</span>` },
+      ],
+      note: "The code works for 1 hour. If you didn&rsquo;t ask for it, you can ignore this email.",
+    },
+    to,
+    `${code} is your oovi code`,
   );
 }
 

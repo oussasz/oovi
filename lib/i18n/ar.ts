@@ -52,6 +52,13 @@ const ar: Dict = {
   "auth.agree": "أوافق على {terms} و{privacy}.",
   "auth.oneMoment": "لحظة من فضلك…",
   "auth.forgot": "نسيت كلمة المرور؟",
+  "auth.codeTitle": "أكّد بريدك الإلكتروني",
+  "auth.codeSub": "أرسلنا رمزًا من 6 أرقام إلى {email}. اكتبه هنا لفتح حسابك.",
+  "auth.code": "الرمز",
+  "auth.codeConfirm": "تأكيد",
+  "auth.codeResend": "أرسل رمزًا جديدًا",
+  "auth.codeBack": "استعمل بريدًا آخر",
+  "auth.codeSent": "الرمز الجديد في الطريق. تفقّد صندوق الوارد والرسائل غير المرغوب فيها.",
   "gate.cantStart": "تعذّر التشغيل.",
   "gate.tryAgain": "حاول مجددًا",
 

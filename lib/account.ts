@@ -141,7 +141,8 @@ export const appVersion = () => process.env.OOVI_VERSION || process.env.npm_pack
 
 export async function cloud<T>(route: string, init: { method?: string; body?: unknown; auth?: boolean } = {}): Promise<T> {
   // The version and OS let the oovi team see which versions are in use (no personal data).
-  const headers: Record<string, string> = { accept: "application/json", "x-oovi-version": appVersion(), "x-oovi-platform": process.platform };
+  // x-oovi-email-code: this app asks for the 6-digit email code while an account is being opened.
+  const headers: Record<string, string> = { accept: "application/json", "x-oovi-version": appVersion(), "x-oovi-platform": process.platform, "x-oovi-email-code": "1" };
   if (init.body !== undefined) headers["content-type"] = "application/json";
   if (init.auth) {
     const t = sessionToken();

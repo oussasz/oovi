@@ -51,6 +51,13 @@ const es: Dict = {
   "auth.agree": "Acepto los {terms} y la {privacy}.",
   "auth.oneMoment": "Un momento…",
   "auth.forgot": "¿Olvidaste tu contraseña?",
+  "auth.codeTitle": "Confirma tu correo",
+  "auth.codeSub": "Te enviamos un código de 6 cifras a {email}. Escríbelo aquí para abrir tu cuenta.",
+  "auth.code": "Código",
+  "auth.codeConfirm": "Confirmar",
+  "auth.codeResend": "Enviar un código nuevo",
+  "auth.codeBack": "Usar otro correo",
+  "auth.codeSent": "Un código nuevo está en camino. Revisa tu bandeja de entrada y el spam.",
   "gate.cantStart": "No se pudo iniciar.",
   "gate.tryAgain": "Reintentar",
 
