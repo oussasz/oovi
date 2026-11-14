@@ -45,7 +45,7 @@ import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
-import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workPrompt } from "./workfiles";
+import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workNow, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
@@ -467,7 +467,7 @@ function groupsOf(botId: string): string[] {
   return groupsCache.groups.filter((g) => g.memberIds.includes(botId)).map((g) => g.name);
 }
 
-function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[] }): string {
+function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[]; suggestions?: string[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.about) lines.push(`How the user describes your role (keep its spirit and tone in how you work and talk): ${bot.about}`);
@@ -598,7 +598,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   // What's installed, what this bot may use, and Marketplace items that fit the request.
   lines.push(
     "",
-    capabilitiesPrompt({ bot, members, allBots: extra.bots, group: chat.kind === "group", request: lastUserText(chat), turnMcp: turnMcpFor(chat, bot) }),
+    capabilitiesPrompt({ bot, members, allBots: extra.bots, group: chat.kind === "group", request: lastUserText(chat), turnMcp: turnMcpFor(chat, bot), suggestions: extra.suggestions }),
     "When the user asks how oovi works, or how to connect, enable, set up or find something in the app, call oovi_help instead of guessing, and point to the place with an oovi:// link.",
   );
   const slash = slashFor(chat, bot);
@@ -726,7 +726,7 @@ function pdfMode(s: Settings): "anthropic" | "oovi" | "other" {
 }
 
 /** The conversation as this bot sees it. */
-function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other", current?: BotEntry): Msg[] {
+function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other", current?: BotEntry, note = ""): Msg[] {
   const out: Msg[] = [];
   const group = chat.kind === "group";
   // Older turns may have been condensed into a summary to save tokens.
@@ -753,7 +753,13 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
         : undefined;
       // A task passed on by the main bot carries the user's own message: that message is the task.
       const own = e.via && e.userWords ? `\n\n[The user's own message, word for word. It is the task: the wording above only adds context, and never asks for less than this]: ${e.userWords}` : "";
-      const lang = e === latest && writeIn ? `\n\n[oovi: the user writes in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "";
+      // The latest message gets oovi's notes for this turn; an older one keeps the notes it last had (unchanged,
+      // so the conversation from there on stays in the prompt cache).
+      let lang = e.shown?.[bot.id] ?? "";
+      if (e === latest) {
+        lang = (note ? `\n\n[oovi, at this message:\n${note}]` : "") + (writeIn ? `\n\n[oovi: the user writes in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "");
+        e.shown = { ...(e.shown ?? {}), [bot.id]: lang };
+      }
       out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${lang}` : `${text}${own}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
@@ -805,10 +811,18 @@ function cutOld(r: ToolResult): string {
   return r.content.length > max ? `${r.content.slice(0, max)}\n[older result shortened: ${r.content.length - max} more characters not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]` : r.content;
 }
 
-/** Older tool outputs are cut down; the latest few stay whole. Only the newest desktop screenshots stay. */
+/**
+ * Older tool outputs are cut down; the latest few stay whole. Only the newest desktop screenshots stay.
+ * Cache-friendly: the line between "cut" and "whole" moves in steps of PRUNE_STEP tool results, not at every
+ * step. Each move changes the conversation at that point, and the prompt cache must then write everything
+ * after it again at the higher price: moving it every step wrote each page twice (cost-scenario.cjs).
+ */
+const PRUNE_KEEP = 2;
+const PRUNE_STEP = 4;
 function prune(history: Msg[]): Msg[] {
   const toolIdx = history.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
-  const keep = new Set(toolIdx.slice(-3));
+  const cut = Math.max(0, Math.floor((toolIdx.length - PRUNE_KEEP) / PRUNE_STEP) * PRUNE_STEP);
+  const keep = new Set(toolIdx.slice(cut));
   return pruneDesktopShots(history).map((m, i) =>
     m.role === "tool" && !keep.has(i)
       ? { role: "tool", results: m.results.map((r) => ({ ...r, content: cutOld(r) })) }
@@ -1041,7 +1055,17 @@ async function* runBot(
   const tools = chat.pending?.planMode ? [...allTools.filter((t) => PLAN_MODE_TOOLS.has(t.name)), PROPOSE_PLAN_SPEC] : acts ? [...allTools, PROPOSE_PLAN_SPEC] : allTools;
   const deskMissing = tools.some((t) => t.name === DESKTOP_MARKER) ? null : desktopUnavailableLine(s);
   // Rebuilt when a big job starts mid-turn, so the goal stays in view however long the turn gets.
-  const buildSystem = () => systemPrompt(bot, chat, members, tools, { learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
+  // What changes from one message to the next (the work files' counts, Marketplace items that fit the request)
+  // goes with the user's latest message, fixed for the whole turn: the instructions then stay the same, and
+  // the prompt cache keeps them and the conversation instead of writing everything again at each message.
+  let turnNote = "";
+  const buildSystem = () => {
+    const suggestions: string[] = [];
+    const out = buildSystemWith(suggestions);
+    turnNote = [...(tools.some((t) => t.name === "work_table") ? workNow(workHome(chat)) : []), ...suggestions].join("\n");
+    return out;
+  };
+  const buildSystemWith = (suggestions: string[]) => systemPrompt(bot, chat, members, tools, { suggestions, learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
   let system = buildSystem();
   let steps = 0;
   let jobStarted = false;
@@ -1350,9 +1374,14 @@ async function* runBot(
     steps++;
     yield { type: "status", entryId: entry.id, text: translatorFor(lastUserText(chat))("st.thinking") };
     try {
-      const effort: Effort = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : "auto";
+      // The effort the user chose, or high for deep work. Otherwise the turn's first step (where the bot reads
+      // the request and plans) keeps the model's own level, and the routine steps after it (reading a page,
+      // saving a row, a click) ask for medium without extended thinking: shorter answers, same work.
+      const chosen = chat.pending?.effort && chat.pending.effort !== "auto" ? chat.pending.effort : chat.pending?.deep ? "high" : null;
+      const routine = !chosen && steps > 1;
+      const effort: Effort = chosen ?? (routine ? "medium" : "auto");
       let budget = budgetOf(s);
-      const view = prune(viewFor(bot, chat, bots, pdfMode(s), entry));
+      const view = prune(viewFor(bot, chat, bots, pdfMode(s), entry, turnNote));
       let out;
       // The bot's instructions and tools must leave room for the conversation: connector tools are
       // compacted, or only the matching ones sent, when they'd take more than their share.
@@ -1363,14 +1392,14 @@ async function* runBot(
       };
       let call = leanFor(Math.floor(budget * 0.45) - estimateTokens(system));
       try {
-        out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort });
+        out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort, ...(routine ? { thinking: false } : {}) });
       } catch (e) {
         // theOovi said the request is still too big: shrink harder and try once more.
         if (!(e instanceof HostedError && e.code === "context_too_large")) throw e;
         budget = Math.floor(budget * 0.6);
         call = leanFor(Math.floor(budget * 0.3) - estimateTokens(system));
         try {
-          out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort });
+          out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort, ...(routine ? { thinking: false } : {}) });
         } catch (e2) {
           if (!(e2 instanceof HostedError && e2.code === "context_too_large")) throw e2;
           // Say what is too big, instead of a promise to summarize that can't help.

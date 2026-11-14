@@ -128,15 +128,19 @@ export function addRecordRows(chatId: string, wanted: string, records: Record<st
 export const WORK_TOOLS: ReadonlySet<string> = new Set(WORK_SPECS.map((s) => s.name));
 
 /** For every bot's instructions: what the team already has. */
-export function workPrompt(chatId: string, group: boolean, fromMain = false): string[] {
-  const lines = storeLines(loadWork(chatId));
+export function workPrompt(_chatId: string, group: boolean, fromMain = false): string[] {
   return [
     "",
     `Work files${fromMain ? " (the same ones as the main assistant who gave this task: what it already found is in them, and what you add it sees at once; add to its table, don't start another)" : group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where. Deliver a work file to the user with work_export.`,
     "Sources for a list: a row needs a source, not a perfect one. A detail you read on any page (a directory, a listing, a map's results, a search result) goes into the table, with that page in the Source column; when you couldn't also see it on the item's own page, write \"to confirm\" in a Status column. Don't hold a found row back while you look for a better source, and never ask the user to copy from a page what a page shows. Only what you read nowhere stays empty. If the user asked for stricter proof, follow the user.",
     "One deliverable, one file: when you change something you already delivered (a list, a report), deliver it again under the same file name (work_export again, or the same filename): the user's file is updated, not copied. Never make copies named FINAL, v2, UPDATED, CORRECT or similar unless the user asks for a separate copy, and never rebuild a list by retyping it.",
-    ...(lines.length ? ["The work files right now:", ...lines] : []),
   ];
+}
+
+/** What the work files hold right now (changes as rows are added): told with the user's message, not in the instructions. */
+export function workNow(chatId: string): string[] {
+  const lines = storeLines(loadWork(chatId));
+  return lines.length ? ["The work files right now:", ...lines] : [];
 }
 
 /** Text from the web must stay text in Excel: a cell starting with "=" would run as a formula. */

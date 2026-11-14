@@ -34,7 +34,11 @@ type RawCompletion = {
 
 /** How hard the model thinks. "auto" = the model's own default. */
 export type Effort = "auto" | "low" | "medium" | "high" | "max";
-export type CallOptions = { effort?: Effort };
+/**
+ * thinking: false asks for the effort level without extended thinking (Anthropic models that take an effort
+ * level, and theOovi): a routine step (read a page, save a row, click) needs a short, direct answer.
+ */
+export type CallOptions = { effort?: Effort; thinking?: boolean };
 /** Longest reply per effort level. */
 const OUTPUT_FOR: Record<Effort, number> = { auto: 8192, low: 4096, medium: 8192, high: 16000, max: 32000 };
 const TIMEOUT_FOR: Record<Effort, number> = { auto: 120_000, low: 90_000, medium: 120_000, high: 240_000, max: 480_000 };
@@ -163,7 +167,7 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
     let blips = 0;
     for (let attempt = 0; attempt < 7; attempt++) {
       try {
-        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto", noMedia);
+        const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto", noMedia, opts.thinking !== false);
         cooldown.delete(keyOf(ref));
         if (ref.provider === "oovi") return { ...out, model: out.hostedName || HOSTED_NAME, ref, fallback: false, note };
         const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
@@ -275,13 +279,13 @@ const MEDIA_REJECTED = /image|vision|multimodal|image_url|document|pdf|media.?ty
 const hasMedia = (messages: Msg[]) =>
   messages.some((m) => (m.role === "user" && !!m.attachments?.some((a) => !a.brief && (a.att.kind === "image" || (a.att.kind === "pdf" && a.doc)))) || (m.role === "tool" && m.results.some((t) => !!t.attach?.length || !!t.shot)));
 
-async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort, noMedia = false): Promise<RawCompletion> {
+async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Msg[], tools: ToolSpec[], maxOut: number, signal: AbortSignal | undefined, effort: Effort, noMedia = false, think = true): Promise<RawCompletion> {
   if (ref.provider === "oovi") {
     // Wait for a free place first (other bots may be calling too); the call's own time limit starts after that.
     return hostedGate.run(() => {
       const timeout = AbortSignal.timeout(290_000);
       const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-      return hostedCall({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig, noMedia });
+      return hostedCall({ label: HOSTED_NAME, provider: "oovi", baseUrl: cloudUrl(), model: ref.model, system, messages, tools, maxOut, effort, signal: sig, noMedia, think });
     }, signal);
   }
   const meta = PROVIDERS[ref.provider];
@@ -291,13 +295,13 @@ async function callOnce(s: Settings, ref: ModelRef, system: string, messages: Ms
   if (meta.needsKey && !cfg.apiKey) throw new ProviderError(`No API key for ${meta.label}. Add one in Settings.`, 401);
   const timeout = AbortSignal.timeout(TIMEOUT_FOR[effort]);
   const sig = signal ? AbortSignal.any([signal, timeout]) : timeout;
-  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig, noMedia };
+  const req: Req = { label: meta.label, provider: ref.provider, baseUrl, model: ref.model, key: cfg.apiKey, system, messages, tools, maxOut, effort, signal: sig, noMedia, think };
   // The desktop toolset is a Claude feature: other models never get it.
   return meta.kind === "anthropic" ? anthropic(req) : openaiCompatible({ ...req, tools: tools.filter((t) => t.name !== DESKTOP_MARKER) }, ref.provider === "openrouter");
 }
 
 /** noMedia: send attachments as text notes only (the model rejected images or PDFs). */
-type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; effort: Effort; signal?: AbortSignal; noMedia?: boolean };
+type Req = { label: string; provider: ProviderId; baseUrl: string; model: string; key?: string; system: string; messages: Msg[]; tools: ToolSpec[]; maxOut: number; effort: Effort; signal?: AbortSignal; noMedia?: boolean; think?: boolean };
 
 // ---------- attachments ----------
 
@@ -360,9 +364,11 @@ function claudeVersion(model: string): number {
 }
 
 /** Anthropic request fields for an effort level (thinking blocks are never sent back: see below). */
-function anthropicReasoning(model: string, effort: Effort, maxOut: number): Record<string, unknown> {
+function anthropicReasoning(model: string, effort: Effort, maxOut: number, think = true): Record<string, unknown> {
   if (effort === "auto") return {};
   const v = claudeVersion(model);
+  // The effort level alone (shorter, more direct answers), only where the model takes it.
+  if (!think) return v >= 4.6 ? { output_config: { effort } } : {};
   if (v >= 4.6) {
     // Adaptive thinking + effort. 4.6 has no "display"; 4.7+ hide thinking text unless asked.
     const thinking = v >= 4.7 ? { type: "adaptive", display: "summarized" } : { type: "adaptive" };
@@ -503,7 +509,7 @@ async function anthropic(r: Req): Promise<RawCompletion> {
     {
       model: r.model,
       max_tokens: r.maxOut,
-      ...anthropicReasoning(r.model, r.effort, r.maxOut),
+      ...anthropicReasoning(r.model, r.effort, r.maxOut, r.think !== false),
       system: p.system,
       messages: p.messages,
       ...(p.tools.length ? { tools: p.tools } : {}),
@@ -535,7 +541,7 @@ async function hostedCall(r: Req): Promise<RawCompletion> {
         "x-oovi-platform": process.platform,
       },
       // The server picks the model; the app only says how hard to think.
-      body: wireJson({ system: p.system, messages: p.messages, tools: p.tools, max_tokens: r.maxOut, ...(r.effort !== "auto" ? { effort: r.effort } : {}) }),
+      body: wireJson({ system: p.system, messages: p.messages, tools: p.tools, max_tokens: r.maxOut, ...(r.effort !== "auto" ? { effort: r.effort, ...(r.think === false ? { thinking: false } : {}) } : {}) }),
       signal: r.signal,
     });
   } catch (e) {
@@ -603,7 +609,8 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
       messages: msgs,
       // OpenAI's newer models only accept max_completion_tokens.
       ...(r.provider === "openai" ? { max_completion_tokens: r.maxOut } : { max_tokens: r.maxOut }),
-      ...openaiReasoning(r.provider, r.model, r.effort),
+      // Without extended thinking asked: these models keep their own default (as before this option existed).
+      ...(r.think === false ? {} : openaiReasoning(r.provider, r.model, r.effort)),
       ...(r.tools.length ? { tools: r.tools.map((t) => ({ type: "function", function: { name: t.name, description: t.description, parameters: t.parameters } })) } : {}),
     },
     r.signal,

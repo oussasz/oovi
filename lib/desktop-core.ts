@@ -649,6 +649,12 @@ export function typingPlan(text: string): ({ text: string } | { key: "enter" | "
  * replays thinking blocks, so dropping old images doesn't invalidate anything.
  */
 export function pruneDesktopShots(history: Msg[], keep = KEEP_SHOTS): Msg[] {
+  // Cache-friendly: older screenshots go in groups of `keep`, so the history changes once every `keep`
+  // screenshots instead of at every one (each change makes the prompt cache write the rest again).
+  // Between `keep` and 2*keep-1 of the newest stay.
+  const total = history.reduce((n, m) => n + (m.role === "tool" ? m.results.filter((r) => r.shot).length : 0), 0);
+  const drop = Math.max(0, Math.floor((total - keep) / keep) * keep);
+  keep = total - drop;
   let seen = 0;
   const out = history.slice();
   for (let i = out.length - 1; i >= 0; i--) {

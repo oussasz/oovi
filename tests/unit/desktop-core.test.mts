@@ -223,7 +223,7 @@ test("approval rules", () => {
   assert.equal(c.desktopNeedsOk("type", { granted: true, askEvery: false, first: true }), null);
 });
 
-test("only the newest 3 screenshots stay in the model's view", () => {
+test("only the newest screenshots stay in the model's view, dropped in groups", () => {
   const shotMsg = (i: number) => ({ role: "tool" as const, results: [{ id: `t${i}`, name: "desktop_screenshot", content: `shot ${i}`, shot: `desk-${i}`, image: `/api/shots/desk-${i}` }] });
   const history = [
     { role: "user" as const, content: "go" },
@@ -234,9 +234,15 @@ test("only the newest 3 screenshots stay in the model's view", () => {
     { role: "tool" as const, results: [{ id: "x", name: "desktop_left_click", content: "OK" }, { id: "t4", name: "desktop_zoom", content: "zoom", shot: "desk-4" }] },
     shotMsg(5),
   ];
-  const out = c.pruneDesktopShots(history);
+  const out = c.pruneDesktopShots(history, 2);
   const kept = out.flatMap((m) => (m.role === "tool" ? m.results.filter((r) => r.shot).map((r) => r.shot) : []));
+  // Cache-friendly groups of 2: with 5 screenshots, the oldest 2 go and the 3 newest stay.
   assert.deepEqual(kept, ["desk-3", "desk-4", "desk-5"]);
+  // With 3 of 3 (keep 3), all stay; the next ones only drop in groups, so earlier messages rarely change.
+  const keptOf = (h: typeof history, k: number) => c.pruneDesktopShots(h, k).flatMap((m) => (m.role === "tool" ? m.results.filter((r) => r.shot).map((r) => r.shot) : []));
+  assert.deepEqual(keptOf(history, 3), ["desk-1", "desk-2", "desk-3", "desk-4", "desk-5"]);
+  assert.deepEqual(keptOf([...history, shotMsg(6)], 3), ["desk-4", "desk-5", "desk-6"]);
+  assert.deepEqual(keptOf([...history, shotMsg(6), shotMsg(7)], 3), ["desk-4", "desk-5", "desk-6", "desk-7"]);
   const first = out[1];
   assert.ok(first?.role === "tool" && first.results[0]?.content.includes("Older screenshot removed") && first.results[0]?.image === "/api/shots/desk-1");
   // The input isn't changed.

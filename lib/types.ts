@@ -112,7 +112,10 @@ export type Usage = { input: number; output: number };
 /** routine: sent by a scheduled routine (its id), never by the user or the HTTP API. */
 /** userWords: with `via` (a task the main bot passed on), the user's own message, word for word.
  * workChat: with `via`, the chat whose work files this task is done in (the main bot's chat), so one job has one set of tables. */
-export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; userWords?: string; workChat?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string };
+export type UserEntry = { id: string; kind: "user"; text: string; at: number; via?: string; userWords?: string; workChat?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string;
+  /** What oovi added to this message for each bot (work files now, language, suggestions), as last shown: kept so
+   * the message reads the same in later requests and the prompt cache keeps everything after it. */
+  shown?: Record<string, string> };
 /** A slash command's effect for this message: force a skill, lend a connector, or answer a /help question. `for`: the bots it applies to. */
 export type SlashUse = { kind: "skill" | "connector" | "help"; cmd: string; id?: string; name?: string; for: string[]; installed?: boolean; enabled?: boolean };
 export type Effort = "auto" | "low" | "medium" | "high" | "max";

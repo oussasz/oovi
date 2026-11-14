@@ -81,9 +81,14 @@ export type CapInput = {
   request: string;
   /** Connector ids this bot gets for this message only (a /connector command). */
   turnMcp: string[];
+  /**
+   * Where the suggestions for this request go ("Fits this request"). Given, they stay out of the bot's
+   * instructions (which then stay the same from one message to the next, so the prompt cache keeps them).
+   */
+  suggestions?: string[];
 };
 
-export function capabilitiesPrompt({ bot, members, allBots, group, request, turnMcp }: CapInput): string {
+export function capabilitiesPrompt({ bot, members, allBots, group, request, turnMcp, suggestions }: CapInput): string {
   const servers = publicServers();
   const { connectors: catalog, skills: catSkills, plugins: catPlugins } = catalogCached();
   const catalogOf = (name: string): CatalogConnector | undefined => catalog.find((c) => c.name.toLowerCase() === name.toLowerCase());
@@ -195,7 +200,7 @@ export function capabilitiesPrompt({ bot, members, allBots, group, request, turn
       .filter((h) => !seen.has(h.key) && !!seen.add(h.key))
       .slice(0, MAX_SUGGEST);
     if (best.length) {
-      lines.push(
+      (suggestions ?? lines).push(
         "Fits this request:",
         ...best.map((h) => `- ${h.line}`),
         "If the request needs something that isn't installed, recommend the best item in one line with its link (it opens in the Marketplace), and carry on once the user has added it.",

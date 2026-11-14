@@ -273,6 +273,8 @@ export async function POST(req: Request) {
   const requestedOut = typeof raw.max_tokens === "number" && raw.max_tokens > 0 ? Math.floor(raw.max_tokens) : 8192;
   const maxOut = Math.min(requestedOut, cfg.maxOutputTokens);
   const effort = effortOf(raw.effort, cfg);
+  // thinking: false (apps from 0.10.13, for routine steps): the effort level alone, without extended thinking.
+  const think = raw.thinking !== false;
   // Desktop control: only models with Anthropic's computer toolset may answer.
   const desktop = hasComputerToolset(tools);
   const models = [cfg.model, ...(cfg.backupModel && cfg.backupModel !== cfg.model ? [cfg.backupModel] : [])].filter((m) => !desktop || supportsComputerToolset(m));
@@ -301,7 +303,7 @@ export async function POST(req: Request) {
     system,
     messages,
     ...(tools.length ? { tools } : {}),
-    ...(effort && withEffort ? { thinking: { type: "adaptive", display: "summarized" }, output_config: { effort } } : {}),
+    ...(effort && withEffort ? { ...(think ? { thinking: { type: "adaptive", display: "summarized" } } : {}), output_config: { effort } } : {}),
   });
   const signal = AbortSignal.any([req.signal, AbortSignal.timeout(UPSTREAM_TIMEOUT)]);
   let up: Upstream | null = null;

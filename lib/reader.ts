@@ -26,7 +26,7 @@ export const READER_SPECS: ToolSpec[] = [
       "Read a web page quickly without opening the browser: returns its main text (article, docs, product page) with headings, lists and links, without menus and ads. Use it for reading; use open_url only when you need to click, type or sign in.",
     parameters: {
       type: "object",
-      properties: { url: { type: "string" }, max_chars: { type: "integer", minimum: 1000, maximum: 60000, description: "Default 15000" } },
+      properties: { url: { type: "string" }, max_chars: { type: "integer", minimum: 1000, maximum: 60000, description: "Default 8000 (the main text of most pages). Ask for more only when the part you need was cut." } },
       required: ["url"],
     },
   },
@@ -429,7 +429,7 @@ export async function runReaderTool(call: ToolCall, s: Settings, signal?: AbortS
     if (call.name === "read_url") {
       const url = String(i.url ?? "").trim();
       if (!url) return fail("url is required");
-      const max = Math.min(60_000, Math.max(1000, Number(i.max_chars) || 15_000));
+      const max = Math.min(60_000, Math.max(1000, Number(i.max_chars) || 8_000));
       // A YouTube search: the videos with their watch links (the page's text alone has no links to open).
       if (isYoutubeSearch(url)) {
         try {
