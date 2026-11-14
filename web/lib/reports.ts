@@ -9,6 +9,7 @@ import { pool } from "./db";
 import { planForPrice } from "./billing";
 import { USAGE_COUNT_KEYS, USAGE_TOTAL_KEYS } from "./telemetry";
 import { assess, getSignals, type Signals } from "./user-signals";
+import { CALL, FACES, HEARD, IMPROVE, LANGUAGES, MOBILE, PAY, PAY_METHODS, ROLES, SYSTEMS, TOOLS, USES, labelOf, labelsOf, readAnswers } from "./pilot-form";
 
 export const ROW_LIMIT = 100_000;
 
@@ -270,14 +271,28 @@ async function feedback(days: number | null): Promise<Table> {
 }
 
 async function pilot(days: number | null): Promise<Table> {
+  // "p.*" so the query still works before the answers column exists.
   const { rows } = await pool.query(
-    `SELECT p.id, p.created_at, u.email, p.status, p.use_case, p.organization, p.role, p.team_size, p.credits, p.reviewed_by, p.reviewed_at, p.admin_note
+    `SELECT p.*, u.email
        FROM pilot_requests p LEFT JOIN "user" u ON u.id = p.user_id
       WHERE ${WHEN("p.created_at")} ORDER BY p.created_at DESC LIMIT ${ROW_LIMIT + 1}`,
     [days],
   );
-  return table(["id", "requested_utc", "email", "status", "use_case", "organization", "role", "team_size", "credits_given", "reviewed_by", "reviewed_utc", "your_note"],
-    rows.map((r) => [num(r.id), iso(r.created_at), r.email, r.status, r.use_case, r.organization, r.role, r.team_size, r.credits, r.reviewed_by, iso(r.reviewed_at), r.admin_note]));
+  return table(
+    ["id", "requested_utc", "email", "status", "who", "company", "team_size", "computer", "uses_oovi_for", "languages", "ai_tools_today", "heard_from", "first_try_1_to_5", "first_try_word",
+      "usefulness_1_to_5", "improve_first", "can_pay_with", "would_pay_per_month", "phone_app", "call_15_min", "contact", "may_quote", "note", "credits_given", "reviewed_by", "reviewed_utc", "your_note"],
+    rows.map((r) => {
+      const a = readAnswers(r.answers);
+      const face = a ? FACES.find((f) => f.value === a.experience) : undefined;
+      return [
+        num(r.id), iso(r.created_at), r.email, r.status, a ? labelOf(ROLES, a.role) : r.role, r.organization, r.team_size, a ? labelOf(SYSTEMS, a.system) : null,
+        a ? labelsOf(USES, a.uses) : r.use_case, a ? labelsOf(LANGUAGES, a.languages) : null, a ? labelsOf(TOOLS, a.tools) : null,
+        a ? (a.heard === "other" && a.heardOther ? a.heardOther : labelOf(HEARD, a.heard)) : null, a?.experience || null, face?.label, a?.usefulness,
+        a ? labelsOf(IMPROVE, a.improve) : null, a ? labelsOf(PAY_METHODS, a.payMethods) : null, a?.pay ? labelOf(PAY, a.pay) : null, a?.mobile ? labelOf(MOBILE, a.mobile) : null,
+        a?.call ? labelOf(CALL, a.call) : null, a?.contact, a?.quote === undefined ? null : a.quote, a?.extra ?? (a ? null : r.use_case), r.credits, r.reviewed_by, iso(r.reviewed_at), r.admin_note,
+      ];
+    }),
+  );
 }
 
 export const REPORTS: ReportDef[] = [

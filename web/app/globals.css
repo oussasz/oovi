@@ -7,6 +7,9 @@
   --border: #e9e6de;
   --blue: #a9bcf7;
   --blue-ink: #6f8cf0;
+  --chip-on: #ece6f7;
+  --star: #f2b134;
+  --star-off: #ddd9ce;
   --yellow: #fdda80;
   --coral: #ff9f86;
   --mint: #bbd8c4;
@@ -33,6 +36,9 @@
     --muted: #a3a197;
     --border: #34332e;
     --blue-ink: #a9bcf7;
+    --chip-on: #38314d;
+    --star: #f2b134;
+    --star-off: #4a4944;
     --btn-dark-bg: #f3f1ea;
     --btn-dark-fg: #151513;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
@@ -2971,4 +2977,57 @@ textarea.input {
 .switch-line .link-button {
   color: var(--ink);
   font-weight: 800;
+}
+
+
+/* ---------- pilot request form (app/pilot/PilotForm.tsx): taps instead of typing ---------- */
+.pf { gap: 18px; }
+.pf-steps { display: flex; gap: 6px; }
+.pf-dot { flex: 1; height: 8px; border-radius: 999px; background: var(--border); transition: background 0.2s ease; }
+.pf-dot.on { background: var(--blue-ink); }
+.pf-count { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+.pf-title { margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.01em; }
+.pf-title:focus { outline: none; }
+.pf-step { display: flex; flex-direction: column; gap: 22px; }
+.pf-step[hidden] { display: none; }
+.pf-group { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
+.pf-group legend { padding: 0; font-weight: 800; font-size: 15px; margin-bottom: 2px; }
+.pf-req { color: var(--blue-ink); font-weight: 800; }
+.pf-opt { color: var(--muted); font-weight: 600; font-size: 13px; }
+.pf-hint { font-size: 13px; font-weight: 600; color: var(--muted); }
+.pf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.pf-chip { position: relative; display: inline-flex; }
+.pf-chip input, .pf-face input, .pf-star input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pf-chip > span { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-weight: 700; font-size: 14.5px; line-height: 1.3; transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease; }
+.pf-chip:hover > span { background: var(--surface-2); }
+.pf-chip input:checked + span { background: var(--chip-on); border-color: var(--ink); font-weight: 800; }
+.pf-chip input:focus-visible + span, .pf-face input:focus-visible + span { outline: 3px solid var(--blue-ink); outline-offset: 2px; }
+.pf-chip input:disabled { cursor: not-allowed; }
+.pf-chip input:disabled + span { opacity: 0.45; }
+.pf-ico { font-size: 16px; line-height: 1; }
+.pf-faces { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.pf-face { position: relative; display: block; }
+.pf-face > span { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 4px 10px; border-radius: 18px; border: 1.5px solid var(--border); background: var(--surface); font-size: 12.5px; font-weight: 700; color: var(--muted); text-align: center; transition: background 0.12s ease, border-color 0.12s ease; }
+.pf-face:hover > span { background: var(--surface-2); }
+.pf-em { font-size: 32px; line-height: 1.1; filter: grayscale(0.7); opacity: 0.7; transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease; }
+.pf-face input:checked + span { background: var(--chip-on); border-color: var(--ink); color: var(--ink); }
+.pf-face input:checked + span .pf-em { filter: none; opacity: 1; transform: scale(1.2); }
+.pf-stars { display: flex; gap: 2px; }
+.pf-star { position: relative; display: block; width: 44px; height: 44px; }
+.pf-star > span { display: grid; place-items: center; width: 100%; height: 100%; font-size: 36px; line-height: 1; color: var(--star-off); transition: color 0.12s ease, transform 0.12s ease; }
+.pf-star.on > span { color: var(--star); }
+.pf-star:hover > span { transform: scale(1.12); }
+.pf-star input:focus-visible + span { outline: 3px solid var(--blue-ink); outline-offset: -2px; border-radius: 10px; }
+.pf-nav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
+.pf-done { text-align: center; padding: 12px 0; display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.pf-done h3 { margin: 0; font-size: 22px; }
+.pf-done-icon { margin: 0; font-size: 44px; line-height: 1; }
+@media (max-width: 480px) {
+  .pf-faces { gap: 4px; }
+  .pf-face > span { font-size: 11px; padding: 10px 2px 8px; border-radius: 14px; }
+  .pf-em { font-size: 26px; }
+  .pf-star { width: 40px; height: 40px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pf-dot, .pf-chip > span, .pf-face > span, .pf-em, .pf-star > span { transition: none; }
 }

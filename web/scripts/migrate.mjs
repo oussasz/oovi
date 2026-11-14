@@ -191,6 +191,8 @@ await pool.query(`
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS pilot_requests_status_idx ON pilot_requests (status, created_at DESC);
+  -- The pilot form's answers (taps, stars, faces) as one JSON object. lib/pilot-answers.ts also creates it on first use.
+  ALTER TABLE pilot_requests ADD COLUMN IF NOT EXISTS answers JSONB NULL;
 
   CREATE TABLE IF NOT EXISTS feedback (
     id           BIGSERIAL PRIMARY KEY,

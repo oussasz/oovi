@@ -8,6 +8,10 @@ import { ActionForm } from "@/components/admin/ActionForm";
 import { isEmail, smtpStatus } from "@/lib/mail";
 import { recentInvites } from "@/lib/pilot-invite";
 import { sendPilotInvite } from "./actions";
+import { PilotAnswersView } from "@/components/admin/PilotAnswersView";
+import { pilotInsights } from "@/lib/pilot-answers";
+import { FACES } from "@/lib/pilot-form";
+import { SplitBars } from "@/components/admin/Charts";
 import { Empty, FilterLinks, Kpi, PageHead, Section } from "@/components/admin/ui";
 import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDate, fmtDateTime, fmtInt } from "@/components/admin/format";
@@ -21,12 +25,13 @@ export default async function AdminPilot({ searchParams }: { searchParams: Promi
   await requireAdmin();
   const sp = await searchParams;
   const status = PILOT_STATUSES.includes(sp.status as PilotStatus) ? (sp.status as PilotStatus) : null;
-  const [{ rows, counts }, cfg, granted, mail, invites] = await Promise.all([
+  const [{ rows, counts }, cfg, granted, mail, invites, insights] = await Promise.all([
     listPilotRequests(status),
     getPilotConfig(),
     pilotCreditsGranted(),
     smtpStatus().catch(() => null),
     recentInvites(10),
+    pilotInsights(),
   ]);
   // "Invite" links from a user's page arrive with the address filled in.
   const prefill = typeof sp.invite === "string" && sp.invite.length <= 300 && isEmail(sp.invite.trim()) ? sp.invite.trim().toLowerCase() : "";
@@ -122,6 +127,30 @@ export default async function AdminPilot({ searchParams }: { searchParams: Promi
         </Section>
       </div>
 
+      {insights && (
+        <Section title="What your pilot people told you" sub={`From the ${fmtInt(insights.answered)} request${insights.answered === 1 ? "" : "s"} that used the new form. These numbers decide what to build and buy next.`}>
+          <div className="adm-kpis">
+            <Kpi
+              label="First try, average"
+              value={insights.avgExperience === null ? "–" : `${FACES[Math.min(4, Math.max(0, Math.round(insights.avgExperience) - 1))]!.icon} ${insights.avgExperience.toFixed(1)} / 5`}
+              hint="From 😖 to 🤩"
+            />
+            <Kpi label="Usefulness, average" value={insights.avgUsefulness === null ? "–" : `★ ${insights.avgUsefulness.toFixed(1)} / 5`} />
+            <Kpi label="Open to a 15 minute call" value={fmtInt(insights.callOk)} hint="Yes or maybe later" />
+          </div>
+          <div className="adm-grid-2" style={{ marginTop: 16 }}>
+            <SplitBars title="Which computer" rows={insights.system} empty="No answers yet." />
+            <SplitBars title="Would use it on the phone" rows={insights.mobile} empty="No answers yet." />
+            <SplitBars title="How they can pay" rows={insights.payMethods} empty="No answers yet." />
+            <SplitBars title="What they'd pay per month" rows={insights.pay} empty="No answers yet." />
+            <SplitBars title="Where they heard about oovi" rows={insights.heard} empty="No answers yet." />
+            <SplitBars title="What they'll use it for" rows={insights.uses} empty="No answers yet." />
+            <SplitBars title="What to improve first" rows={insights.improve} empty="No answers yet." />
+            <SplitBars title="Who they are" rows={insights.roles} empty="No answers yet." />
+          </div>
+        </Section>
+      )}
+
       <Section
         title={status ? `${LABELS[status]} requests` : "All requests"}
         sub="Pending first, then newest. Approving adds the credits and starts the pilot plan right away."
@@ -159,6 +188,7 @@ export default async function AdminPilot({ searchParams }: { searchParams: Promi
                   <dt>Team size</dt>
                   <dd>{teamSizeLabel(r.teamSize)}</dd>
                 </dl>
+                <PilotAnswersView a={r.answers} useCase={r.useCase} />
                 <PilotReview req={r} defaultCredits={cfg.credits} />
               </li>
             ))}
