@@ -1,6 +1,7 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
 ## After 0.10.9 (2026-11-14, not released yet)
+- Bot pointer: a soft rounded arrow in the glow colours (gold → orange → coral → pink, colours drifting slowly), like the owner's picture; orange click ring.
 - Glow moves for real (owner: "good but static, make them move and wave, responsive to the screen size"). It was drawn to move, but a wave took ~28 s, so it looked frozen. Measured with a test page: change per pixel in 1 s went from about 4 to 16 (out of 255). Changes: waves 5x faster with a bigger swing, a gentle "breathing", colours turning faster; with Windows "Animation effects" off it moves calmer instead of not at all; `backgroundThrottling: false` on the glow windows; thickness = 6% of the screen's short side (36–130 px); redrawn when a screen is plugged in or out or its resolution/scale changes. Not yet seen on the owner's PC.
 
 ## After 0.10.8 (2026-11-14, not released yet)

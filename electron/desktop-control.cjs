@@ -210,12 +210,13 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
         for (const [x, y, w, h] of parts) edges.push(decoWindow({ x: b.x + x, y: b.y + y, width: w, height: h }, glowPage(b.width, b.height, x, y)));
       }
       const p = screen.getPrimaryDisplay().bounds;
-      // The pointer: oovi's lilac, with a ring that pulses on a click.
+      // The pointer: a soft rounded arrow in the glow's colours (gold, orange, coral, pink) whose colours
+      // drift slowly like the edges, with a ring that pulses on a click. Its tip is the window's top-left.
       pointerWin = decoWindow(
         { x: p.x + Math.round(p.width / 2), y: p.y + Math.round(p.height / 2), width: POINTER, height: POINTER },
         decoPage(
-          '<div class="r" id="r"></div><svg viewBox="0 0 32 32" width="40" height="40"><path d="M5 3.5 26.5 14.2c1 .5.9 2-.2 2.3l-8.300 2.300-3.600 8.200c-.500 1.100-2 1-2.400-.100z" fill="#b9a7ff" stroke="#171717" stroke-width="2" stroke-linejoin="round"/></svg>',
-          "svg{position:absolute;left:0;top:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}.r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ffb199;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}",
+          '<div class="r" id="r"></div><svg viewBox="0 0 44 44" width="44" height="44"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd25a"/><stop offset=".38" stop-color="#ffab1f"/><stop offset=".72" stop-color="#ff6f61"/><stop offset="1" stop-color="#ff4b8b"/><animateTransform attributeName="gradientTransform" type="rotate" values="-25 .5 .5;25 .5 .5;-25 .5 .5" dur="4s" repeatCount="indefinite"/></linearGradient></defs><path d="M5 5 39 16.5Q28.5 28.5 16.5 39Z" fill="url(#g)" stroke="url(#g)" stroke-width="7" stroke-linejoin="round"/><path d="M9 9 23 14" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
+          "svg{position:absolute;left:0;top:0;overflow:visible;filter:drop-shadow(0 0 5px rgba(255,140,60,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35))}.r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ff9b6a;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}",
         ),
       );
     } catch {
