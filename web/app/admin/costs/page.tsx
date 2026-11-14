@@ -4,6 +4,7 @@ import { getAiConfig, getPlans } from "@/lib/ai-config";
 import { AI_PERIOD_LABELS, AI_PERIODS, getAiStats, type AiPeriod } from "@/lib/ai-stats";
 import { BarChart, SplitBars } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtInt, fmtUsd } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,7 @@ export default async function AdminCosts({ searchParams }: { searchParams: Promi
     <>
       <PageHead title="Costs" sub="What the AI costs you while people test. Plain numbers, in US dollars, taken from the database.">
         <PeriodPicker period={period} path="/admin/costs" periods={AI_PERIODS} label={(x) => AI_PERIOD_LABELS[x as AiPeriod]} />
+        <CsvButton report="ai-usage" period={period} label="Cost per person CSV" />
       </PageHead>
 
       <Section title={`You spent ${usd(c.costUsd)} on AI ${periodName}`} sub={`${fmtInt(c.calls)} answers for ${fmtInt(c.activeUsers)} ${c.activeUsers === 1 ? "person" : "people"}.`}>

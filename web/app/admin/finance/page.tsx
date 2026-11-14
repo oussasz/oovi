@@ -5,6 +5,7 @@ import { getFinance } from "@/lib/finance";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { BarChart, LineChart, SplitBars } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDate, fmtInt, fmtNumber, fmtPct, fmtUsd } from "@/components/admin/format";
 import { saveFinanceAction } from "./actions";
 import { CostsEditor } from "./CostsEditor";
@@ -51,6 +52,9 @@ export default async function AdminFinance({ searchParams }: { searchParams: Pro
         sub="Money from Paddle (in USD, what reaches your Paddle balance), recorded from every payment, refund and chargeback Paddle reports. Revenue is before tax; Paddle collects and pays the tax."
       >
         <PeriodPicker period={period} path="/admin/finance" />
+        <CsvButton report="payments" period={period} label="Payments CSV" />
+        <CsvButton report="refunds" period={period} label="Refunds CSV" />
+        <CsvButton report="finance-daily" period={period} label="Per day CSV" />
       </PageHead>
 
       {noData && (

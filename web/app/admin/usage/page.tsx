@@ -4,6 +4,7 @@ import { getUsage, parsePeriod } from "@/lib/admin-stats";
 import { USAGE_COUNT_KEYS } from "@/lib/telemetry";
 import { BarChart, LineChart } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtCompact, fmtInt, fmtNumber, fmtUsd } from "@/components/admin/format";
 import { TOTAL_LABELS, USAGE_LABELS } from "@/components/admin/usage-labels";
 
@@ -26,6 +27,7 @@ export default async function AdminUsage({ searchParams }: { searchParams: Promi
         sub="Daily numbers the desktop app reports (counts only, never chat content). Days are the user's local day as reported."
       >
         <PeriodPicker period={period} path="/admin/usage" />
+        <CsvButton report="app-usage" period={period} label="Usage CSV" />
       </PageHead>
 
       <div className="adm-kpis">

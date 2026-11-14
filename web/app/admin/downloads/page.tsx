@@ -4,6 +4,7 @@ import { getDownloads, parsePeriod } from "@/lib/admin-stats";
 import { DOWNLOAD_TARGETS, githubDownloadCounts } from "@/lib/releases";
 import { StackedBarChart } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { countryName, fmtInt, TARGET_COLORS, TARGET_LABELS } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -21,6 +22,7 @@ export default async function AdminDownloads({ searchParams }: { searchParams: P
         sub="Clicks on the download buttons that led to an installer. Link previews and bots are not counted. No IP addresses are stored."
       >
         <PeriodPicker period={period} path="/admin/downloads" />
+        <CsvButton report="activity" period={period} label="Downloads CSV" />
       </PageHead>
 
       <div className="adm-kpis">

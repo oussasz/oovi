@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin";
 import { FEEDBACK_FROM, FEEDBACK_KINDS, FEEDBACK_STATUSES, listFeedback, type FeedbackFrom, type FeedbackKind, type FeedbackStatus } from "@/lib/ai-admin";
 import { FEEDBACK_KIND_LABELS, FEEDBACK_STATUS_LABELS, FeedbackItem } from "@/components/admin/FeedbackItem";
 import { Empty, FilterLinks, Kpi, PageHead, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtInt } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,9 @@ export default async function AdminFeedback({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <PageHead title="Feedback" sub="Problems and ideas people sent from the desktop app and the website, and notes the bots sent about oovi's own tools. New items first." />
+      <PageHead title="Feedback" sub="Problems and ideas people sent from the desktop app and the website, and notes the bots sent about oovi's own tools. New items first.">
+        <CsvButton report="feedback" period="all" label="Feedback CSV" />
+      </PageHead>
 
       <div className="adm-kpis">
         <Kpi label="New" value={fmtInt(counts.new)} hint="Not looked at yet" />

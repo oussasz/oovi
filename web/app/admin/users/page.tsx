@@ -6,6 +6,7 @@ import { getPlans, type Plan } from "@/lib/ai-config";
 import { assess, countryLabel, getSignals } from "@/lib/user-signals";
 import { VerdictBadge } from "@/components/admin/Verdict";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtAgo, fmtDate, fmtInt, fmtNumber, platformLabel } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -55,7 +56,9 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
       <PageHead
         title="Users"
         sub={`Everyone with an oovi account, newest first. Credits are theOovi credits; “–” means they haven’t used theOovi or opened their account page yet. * = daily limit set by hand.${flagged ? ` ${flagged} on this page look suspicious.` : ""}`}
-      />
+      >
+        <CsvButton report="users" label="All accounts CSV" />
+      </PageHead>
       <Section
         title={q ? `Results for “${q}”` : "All accounts"}
         actions={
