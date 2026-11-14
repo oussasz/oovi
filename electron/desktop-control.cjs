@@ -119,7 +119,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   // nothing of oovi's may sit under the point the bot clicks. The edges are thin strips at the screen
   // border; the pointer window sits just beside the real pointer's tip. All are kept out of the bot's
   // screenshots (content protection) and are a bonus: if one can't be made, control goes on without it.
-  const EDGE = 8; // DIP
+  const EDGE = 14; // DIP: a soft glow that fades toward the middle of the screen
   const POINTER = 56; // DIP
   let edges = [];
   let pointerWin = null;
@@ -154,7 +154,11 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     w.webContents.on("will-navigate", (e) => e.preventDefault());
     w.once("ready-to-show", () => {
       try {
-        if (!w.isDestroyed()) w.showInactive();
+        if (w.isDestroyed()) return;
+        w.showInactive();
+        // On a second screen with another scale (125%, 150%…) Windows may place it by the first
+        // screen's scale: set the same bounds again once it is on its screen.
+        w.setBounds(bounds);
       } catch {
         /* a bonus */
       }
@@ -162,24 +166,32 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     void w.loadURL(url).catch(() => {});
     return w;
   }
+  // oovi's colors: lilac, periwinkle blue and coral, flowing slowly along the edges of every screen.
+  const GLOW_CSS = (dir, along) => `
+.g{position:absolute;inset:0;
+  background:linear-gradient(${along},#b9a7ff,#8fb0ff,#ffb199,#c9a7ff,#8fb0ff,#b9a7ff);background-size:300% 300%;
+  -webkit-mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.55) 35%,transparent 100%);mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.55) 35%,transparent 100%);
+  animation:flow 6s linear infinite,breathe 2.8s ease-in-out infinite}
+@keyframes flow{0%{background-position:0% 50%}100%{background-position:300% 50%}}
+@keyframes breathe{0%,100%{opacity:.7}50%{opacity:1}}
+@media (prefers-reduced-motion:reduce){.g{animation:none;opacity:.85}}`;
   function showDeco() {
     hideDeco();
     try {
-      const b = screen.getPrimaryDisplay().bounds;
-      const glow = (dir) =>
-        decoPage(
-          '<div class="g"></div>',
-          `.g{width:100%;height:100%;background:linear-gradient(${dir},rgba(185,167,255,.95),rgba(124,160,255,.55) 45%,rgba(255,140,120,0) 100%);animation:p 2.4s ease-in-out infinite}@keyframes p{0%,100%{opacity:.55}50%{opacity:1}}@media (prefers-reduced-motion:reduce){.g{animation:none;opacity:.8}}`,
+      for (const d of screen.getAllDisplays()) {
+        const b = d.bounds;
+        const glow = (dir, along) => decoPage('<div class="g"></div>', GLOW_CSS(dir, along));
+        edges.push(
+          decoWindow({ x: b.x, y: b.y, width: b.width, height: EDGE }, glow("to bottom", "90deg")),
+          decoWindow({ x: b.x, y: b.y + b.height - EDGE, width: b.width, height: EDGE }, glow("to top", "270deg")),
+          decoWindow({ x: b.x, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to right", "0deg")),
+          decoWindow({ x: b.x + b.width - EDGE, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to left", "180deg")),
         );
-      edges = [
-        decoWindow({ x: b.x, y: b.y, width: b.width, height: EDGE }, glow("to bottom")),
-        decoWindow({ x: b.x, y: b.y + b.height - EDGE, width: b.width, height: EDGE }, glow("to top")),
-        decoWindow({ x: b.x, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to right")),
-        decoWindow({ x: b.x + b.width - EDGE, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to left")),
-      ];
+      }
+      const p = screen.getPrimaryDisplay().bounds;
       // The pointer: oovi's lilac, with a ring that pulses on a click.
       pointerWin = decoWindow(
-        { x: b.x + Math.round(b.width / 2), y: b.y + Math.round(b.height / 2), width: POINTER, height: POINTER },
+        { x: p.x + Math.round(p.width / 2), y: p.y + Math.round(p.height / 2), width: POINTER, height: POINTER },
         decoPage(
           '<div class="r" id="r"></div><svg viewBox="0 0 32 32" width="40" height="40"><path d="M5 3.5 26.5 14.2c1 .5.9 2-.2 2.3l-8.300 2.300-3.600 8.200c-.500 1.100-2 1-2.400-.100z" fill="#b9a7ff" stroke="#171717" stroke-width="2" stroke-linejoin="round"/></svg>',
           "svg{position:absolute;left:0;top:0;filter:drop-shadow(0 2px 4px rgba(0,0,0,.45))}.r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ffb199;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}",
@@ -358,8 +370,24 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
      * fractions 0-1 (zoom). Throws "unavailable" when the screen can't be captured (locked, a UAC
      * prompt or another secure screen shows black).
      */
-    async capture({ real, out, fit = false, crop = null, mask = [], quality = 70 }) {
-      const d = screen.getPrimaryDisplay();
+    /**
+     * Every screen: id, name, main or not, its top-left corner and size in real pixels (the
+     * coordinates the mouse uses; the main screen starts at 0,0, others can be left of or above it).
+     */
+    screens() {
+      const primary = screen.getPrimaryDisplay().id;
+      return screen.getAllDisplays().map((d) => ({
+        id: d.id,
+        label: d.label || "",
+        primary: d.id === primary,
+        origin: d.nativeOrigin ? { x: d.nativeOrigin.x, y: d.nativeOrigin.y } : { x: Math.round(d.bounds.x * d.scaleFactor), y: Math.round(d.bounds.y * d.scaleFactor) },
+        size: { width: Math.round(d.size.width * d.scaleFactor), height: Math.round(d.size.height * d.scaleFactor) },
+        scaleFactor: d.scaleFactor,
+        internal: !!d.internal,
+      }));
+    },
+    async capture({ real, out, fit = false, crop = null, mask = [], quality = 70, screen: which = null }) {
+      const d = (which !== null && screen.getAllDisplays().find((x) => x.id === which)) || screen.getPrimaryDisplay();
       const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
       const src = sources.find((s) => s.display_id === String(d.id)) ?? (sources.length === 1 ? sources[0] : null);
       if (!src || src.thumbnail.isEmpty()) throw new Error("unavailable");
@@ -436,6 +464,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       return windows().act(handle, action);
     },
     move(x, y) {
+      // Windows' own call works on every screen layout; the input library is the fallback.
+      if (windows().setCursor && windows().setCursor(x, y)) return;
       need().moveMouse(Math.round(x), Math.round(y));
     },
     click(button, double) {

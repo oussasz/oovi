@@ -680,7 +680,7 @@ export function glidePath(from: Point, to: Point): Point[] {
 
 const normWin = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
 export type AppWindow = WinInfo & { minimized?: boolean; maximized?: boolean };
-export const WINDOW_ACTIONS = ["list", "switch", "minimize", "maximize", "restore", "close"] as const;
+export const WINDOW_ACTIONS = ["list", "switch", "minimize", "maximize", "restore", "close", "screen"] as const;
 export type WindowAction = (typeof WINDOW_ACTIONS)[number];
 
 const norm = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^\p{L}\p{N}]+/gu, " ").trim();
@@ -729,4 +729,60 @@ export function pickWindow(list: AppWindow[], wanted: unknown): { win: AppWindow
 export function mayAct(w: AppWindow): string | null {
   const v = windowVerdict(w);
   return v ? v.message : null;
+}
+
+// ---------- several screens ----------
+// The bot works on one screen at a time: it sees that screen alone, at full sharpness, and its
+// coordinates are that screen's. The mouse uses real pixels of the whole desktop (the main screen
+// starts at 0,0; a screen left of or above it has negative positions), so every point is moved by
+// the screen's top-left corner on its way out, and back on its way in.
+
+/** One screen as electron/desktop-control.cjs reports it (real pixels). */
+export type ScreenInfo = { id: number; label: string; primary: boolean; origin: Point; size: Size; scaleFactor: number; internal?: boolean };
+
+export const toGlobal = (p: Point, origin: Point): Point => ({ x: p.x + origin.x, y: p.y + origin.y });
+export const toLocal = (p: Point, origin: Point): Point => ({ x: p.x - origin.x, y: p.y - origin.y });
+const inside = (p: Point, s: ScreenInfo) => p.x >= s.origin.x && p.x < s.origin.x + s.size.width && p.y >= s.origin.y && p.y < s.origin.y + s.size.height;
+
+/** The screen a point of the whole desktop is on, if any. */
+export const screenAt = (screens: ScreenInfo[], p: Point): ScreenInfo | null => screens.find((s) => inside(p, s)) ?? null;
+
+/** The screen showing most of a window (null when it shows on none). */
+export function screenOfRect(screens: ScreenInfo[], r: Rect): ScreenInfo | null {
+  let best: ScreenInfo | null = null;
+  let area = 0;
+  for (const s of screens) {
+    const w = Math.min(r.x + r.width, s.origin.x + s.size.width) - Math.max(r.x, s.origin.x);
+    const h = Math.min(r.y + r.height, s.origin.y + s.size.height) - Math.max(r.y, s.origin.y);
+    if (w > 0 && h > 0 && w * h > area) {
+      area = w * h;
+      best = s;
+    }
+  }
+  return best;
+}
+
+/** Screens in the order the bot numbers them: the main one first, then left to right, top to bottom. */
+export function orderScreens(screens: ScreenInfo[]): ScreenInfo[] {
+  return [...screens].sort((a, b) => Number(b.primary) - Number(a.primary) || a.origin.x - b.origin.x || a.origin.y - b.origin.y);
+}
+
+/** "2 screens: 1. main screen, 1920x1080 … (you are working on this one)". Empty for a single screen. */
+export function screenLines(screens: ScreenInfo[], activeId: number | null): string[] {
+  if (screens.length < 2) return [];
+  return orderScreens(screens).map((s, i) => {
+    const name = s.primary ? "main screen" : s.internal ? "built-in screen" : "external screen";
+    return `${i + 1}. ${name}${s.label ? ` (${s.label})` : ""}, ${s.size.width}x${s.size.height}${s.id === activeId ? " (you are working on this one)" : ""}`;
+  });
+}
+
+/** The screen a number from screenLines (or "main", "external") means. */
+export function pickScreen(screens: ScreenInfo[], wanted: unknown): ScreenInfo | null {
+  const list = orderScreens(screens);
+  const w = String(wanted ?? "").trim().toLowerCase();
+  const n = Number(w);
+  if (Number.isInteger(n) && n >= 1 && n <= list.length) return list[n - 1]!;
+  if (/main|primary|principal|رئيس/.test(w)) return list.find((s) => s.primary) ?? null;
+  if (/external|second|other|externe|خارج|ثاني/.test(w)) return list.find((s) => !s.primary) ?? null;
+  return null;
 }

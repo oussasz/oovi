@@ -77,6 +77,15 @@ const findPad = () => win32.appWindows().find((w) => /notepad/i.test(w.exe) || /
   if (edit) SendMessageNum(edit, 0x00b9, 0, 0); // EM_SETMODIFY false
   await sleep(300);
 
+  // The pointer is moved with Windows' own call, so it reaches every screen (negative positions too).
+  {
+    const POINT = koffi.struct("OoviPoint", { x: "int32_t", y: "int32_t" });
+    const GetCursorPos = user32.func("bool __stdcall GetCursorPos(_Out_ OoviPoint *p)");
+    const moved = win32.setCursor(321, 234);
+    const p = {};
+    GetCursorPos(p);
+    check("the pointer is moved exactly where asked (SetCursorPos)", moved === true && p.x === 321 && p.y === 234, `setCursor: ${moved}; now at ${p.x},${p.y}`);
+  }
   check("maximize", win32.act(w.handle, "maximize") === "");
   await sleep(700);
   check("...the list says it is maximized", findPad()?.maximized === true);

@@ -1311,6 +1311,7 @@ const tr: Dict = {
   "ok.list": "{where} içeriğini gör (dosya adları, boyutları, tarihleri)",
   "ok.send": "{file} dosyasını sana gönder",
   "ok.openApp": "{bot}, bilgisayarında {app} uygulamasını açmak istiyor",
+  "ok.alsoDesktop": "Bu, {bot} adlı botun bu görevin geri kalanında tekrar sormadan ekranını görmesine, fare ve klavyeni kullanmasına da izin verir.",
   "ok.screenshot": "{bot} ekranının görüntüsünü alıp sana göndermek istiyor",
   "ok.useFolder": "{bot}, {path} klasöründe çalışmak istiyor",
   "ok.useFolderNew": "Bu klasör henüz yok: oluşturulacak.",

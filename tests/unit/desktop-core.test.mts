@@ -273,3 +273,27 @@ test("a tiny or impossible move is one step to the target", () => {
   assert.deepEqual(glidePath({ x: Number.NaN, y: 0 }, { x: 5, y: 5 }), [{ x: 5, y: 5 }]);
   assert.equal(glidePath({ x: 0, y: 0 }, { x: 100, y: 0 }).length, 4);
 });
+
+test("several screens: points go to the right screen, windows belong to the screen showing most of them", async () => {
+  const { screenAt, screenOfRect, toGlobal, toLocal, screenLines, pickScreen, orderScreens } = await import("../../lib/desktop-core.ts");
+  // The owner's set-up: a laptop at 1920x1080 (150%) and a 2560x1440 monitor to its left.
+  const main = { id: 1, label: "", primary: true, origin: { x: 0, y: 0 }, size: { width: 1920, height: 1080 }, scaleFactor: 1.5, internal: true };
+  const ext = { id: 2, label: "DELL U2720Q", primary: false, origin: { x: -2560, y: -200 }, size: { width: 2560, height: 1440 }, scaleFactor: 1 };
+  const list = [ext, main];
+  assert.equal(screenAt(list, { x: -10, y: 0 })?.id, 2);
+  assert.equal(screenAt(list, { x: 10, y: 10 })?.id, 1);
+  assert.equal(screenAt(list, { x: 5000, y: 0 }), null);
+  // A window mostly on the external screen belongs to it.
+  assert.equal(screenOfRect(list, { x: -1000, y: 100, width: 1200, height: 600 })?.id, 2);
+  // A click at the external screen's own (100, 50) is at (-2460, -150) on the whole desktop, and back.
+  assert.deepEqual(toGlobal({ x: 100, y: 50 }, ext.origin), { x: -2460, y: -150 });
+  assert.deepEqual(toLocal({ x: -2460, y: -150 }, ext.origin), { x: 100, y: 50 });
+  // Numbered main first; one screen means no list at all.
+  assert.deepEqual(orderScreens(list).map((x) => x.id), [1, 2]);
+  assert.deepEqual(screenLines(list, 2), ["1. main screen, 1920x1080", "2. external screen (DELL U2720Q), 2560x1440 (you are working on this one)"]);
+  assert.deepEqual(screenLines([main], 1), []);
+  assert.equal(pickScreen(list, "2")?.id, 2);
+  assert.equal(pickScreen(list, "external")?.id, 2);
+  assert.equal(pickScreen(list, "main")?.id, 1);
+  assert.equal(pickScreen(list, "9"), null);
+});

@@ -8,6 +8,7 @@
 //    the service revokes them.
 
 import crypto from "node:crypto";
+import { cloudUrl } from "./account";
 import { auth, type OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.js";
 import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 
@@ -17,6 +18,13 @@ export type OAuthData = { clientInfo?: OAuthClientInformationMixed; tokens?: OAu
 export type OAuthStore = { load: () => OAuthData; save: (patch: Partial<OAuthData>, replace?: boolean) => void };
 
 export const CALLBACK_PATH = "/api/mcp/oauth/callback";
+/**
+ * The address the service sends the browser back to: oovi's website, which hands the code to this
+ * app (state ends with the app's local port). The service's permission page then names oovi's own
+ * site instead of "localhost". The code alone is useless without the PKCE verifier that stays here.
+ */
+export const WEB_CALLBACK_PATH = "/connect/callback";
+const webRedirect = () => `${cloudUrl()}${WEB_CALLBACK_PATH}`;
 
 export class OoviOAuthProvider implements OAuthClientProvider {
   private readonly redirect: string;
@@ -111,8 +119,11 @@ function sweep() {
 /** Start signing in. Returns the page to open, or authorized when tokens already work. */
 export async function startSignIn(serverId: string, serverUrl: string, store: OAuthStore, appOrigin: string): Promise<{ authUrl?: string; authorized: boolean }> {
   sweep();
-  const redirect = `${appOrigin}${CALLBACK_PATH}`;
-  const state = crypto.randomBytes(16).toString("hex");
+  // OOVI_OAUTH_LOCAL=1: the service comes back straight to this app (no website in between).
+  const local = process.env.OOVI_OAUTH_LOCAL === "1";
+  const redirect = local ? `${appOrigin}${CALLBACK_PATH}` : webRedirect();
+  const port = new URL(appOrigin).port;
+  const state = `${crypto.randomBytes(16).toString("hex")}${local || !port ? "" : `.${port}`}`;
   let authUrl: string | undefined;
   // A fresh sign-in: forget old tokens so the service shows its permission page.
   store.save({ tokens: undefined, verifier: undefined });

@@ -52,6 +52,9 @@ function load(koffi) {
       keybd_event: user32.func("void __stdcall keybd_event(uint8_t vk, uint8_t scan, uint32_t flags, uintptr_t extra)"),
       // Typing text as characters (KEYEVENTF_UNICODE), whatever the keyboard layout: Arabic, French, emoji.
       SendInput: user32.func("uint32_t __stdcall SendInput(uint32_t count, uint8_t *inputs, int size)"),
+      // The pointer anywhere on any screen (real pixels of the whole desktop; screens left of or above
+      // the main one have negative positions).
+      SetCursorPos: user32.func("bool __stdcall SetCursorPos(int x, int y)"),
     });
   } catch (e) {
     moreError = String((e && e.message) || e);
@@ -217,6 +220,11 @@ function load(koffi) {
 
   return {
     typeText,
+    /** Moves the pointer to x, y (real pixels of the whole desktop). Returns false when it couldn't. */
+    setCursor(x, y) {
+      if (moreError) return false;
+      return !!more.SetCursorPos(Math.round(x), Math.round(y));
+    },
     /** Windows the user could switch to, top of the z-order first, with minimized: true for those in the taskbar only. */
     appWindows() {
       return appWindows()

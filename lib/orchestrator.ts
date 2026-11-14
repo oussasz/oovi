@@ -1116,10 +1116,14 @@ async function* runBot(
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
-          if (c.name === "open_app") return openAppItem(c, bot.name, translatorFor(lastUserText(chat)));
-          if (c.name === "manage_window") return windowItem(c, bot.name, translatorFor(lastUserText(chat)));
+          // Bringing a window up, opening an app or a page is the start of using the computer: one card, and
+          // its OK is also the OK for the screen, mouse and keyboard for the rest of the task (no second card).
+          const alsoDesk = (item: ApprovalItem): ApprovalItem =>
+            deskOn && !deskGranted ? { ...item, detail: [item.detail, translatorFor(lastUserText(chat))("ok.alsoDesktop", { bot: bot.name })].filter(Boolean).join("\n") } : item;
+          if (c.name === "open_app") return alsoDesk(openAppItem(c, bot.name, translatorFor(lastUserText(chat))));
+          if (c.name === "manage_window") return alsoDesk(windowItem(c, bot.name, translatorFor(lastUserText(chat))));
           if (c.name === "send_screenshot") return { call: c, summary: translatorFor(lastUserText(chat))("ok.screenshot", { bot: bot.name }) };
-          if (c.name === "open_in_user_browser") return openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat)));
+          if (c.name === "open_in_user_browser") return alsoDesk(openBrowserItem(c, bot.name, openable, translatorFor(lastUserText(chat))));
           if (SPECIALIST_TOOLS.has(c.name)) return specialistItem(c, chat, bot);
           if (ADMIN_TOOLS.has(c.name)) return adminItem(c, bot, isMain);
           if (c.name === USE_FOLDER_SPEC.name) return useFolderItem(c, chat, bot.name, translatorFor(lastUserText(chat)));
@@ -1189,14 +1193,17 @@ async function* runBot(
           } else if (c.name === "oovi_help") {
             results.push({ id: c.id, name: c.name, content: ooviHelp(String(c.input.topic ?? "overview")) });
           } else if (c.name === "open_app") {
+            if (decisions[c.id] === true && deskOn && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             results.push(await runOpenApp(c));
           } else if (c.name === "manage_window") {
+            if (decisions[c.id] === true && deskOn && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             results.push(await runManageWindow(c));
           } else if (c.name === "send_screenshot") {
             // An OK on its card is the OK for this task's screen (as the desktop card's "Allow for this task").
             if (decisions[c.id] === true && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             results.push(await runSendScreenshot(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal }));
           } else if (c.name === "open_in_user_browser") {
+            if (decisions[c.id] === true && deskOn && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             results.push(await runOpenInBrowser(c, openable));
           } else if (WORK_TOOLS.has(c.name)) {
             // Exports always go to Downloads/oovi (never into a project folder, where a new file needs the user's OK).

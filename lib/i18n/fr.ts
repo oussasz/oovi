@@ -1311,6 +1311,7 @@ const fr: Dict = {
   "ok.list": "Voir le contenu de {where} (noms, tailles, dates des fichiers)",
   "ok.send": "T'envoyer {file}",
   "ok.openApp": "{bot} veut ouvrir {app} sur votre ordinateur",
+  "ok.alsoDesktop": "Cela permet aussi à {bot} de voir votre écran et d'utiliser la souris et le clavier pour le reste de cette tâche, sans redemander.",
   "ok.screenshot": "{bot} veut faire une capture de votre écran et vous l'envoyer",
   "ok.useFolder": "{bot} veut travailler dans le dossier {path}",
   "ok.useFolderNew": "Ce dossier n'existe pas encore : il sera créé.",

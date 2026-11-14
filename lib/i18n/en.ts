@@ -1330,6 +1330,7 @@ const en = {
   "ok.list": "See what's in {where} (file names, sizes, dates)",
   "ok.send": "Send {file} to you",
   "ok.openApp": "{bot} wants to open {app} on your computer",
+  "ok.alsoDesktop": "This also lets {bot} see your screen and use your mouse and keyboard for the rest of this task, without asking again.",
   "ok.screenshot": "{bot} wants to take a screenshot of your screen and send it to you",
   "ok.useFolder": "{bot} wants to work in the folder {path}",
   "ok.useFolderNew": "This folder doesn't exist yet: it will be created.",
