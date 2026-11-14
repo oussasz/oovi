@@ -15,14 +15,14 @@
 import fs from "node:fs";
 import { currentUser } from "./account";
 import { complete, HostedError, type ToolSpec } from "./llm";
-import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, recallHistory } from "./context";
+import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, leanTools, recallHistory } from "./context";
 import { hostedMaxInput, hostedStatus } from "./hosted";
 import { memoryPrompt } from "./memory";
 import { CORRECTION, lessonsPrompt, mergeLearned, rateLessons, reflect } from "./learning";
 import { capabilitiesPrompt } from "./capabilities";
 import { catalogCached } from "./catalog-remote";
 import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
-import { listServers, mcpToolsFor } from "./mcp";
+import { listServers, mcpServerOf, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
 import { USE_FOLDER_SPEC, folderTarget, runUseFolder, useFolderItem } from "./project-folder";
@@ -262,6 +262,31 @@ const filesMade = (chat: Chat) => {
  * Everything else a bot does runs without a card; the user can still press Stop at any time.
  */
 export const AUTO_STILL_ASKS = (name: string) => name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
+
+/** Told to the bot when some connector tools were left out to keep the request small. */
+function droppedToolsNote(dropped: string[]): string {
+  const by = new Map<string, number>();
+  for (const n of dropped) {
+    const server = getServerOfTool(n);
+    by.set(server, (by.get(server) ?? 0) + 1);
+  }
+  return `To keep this request small, ${dropped.length} connector tools aren't sent with it (${[...by].map(([k, v]) => `${k}: ${v}`).join(", ")}); the ones that match the user's request are. If the task needs another tool of these connectors, say which one you need; it comes with the next message that names it.`;
+}
+const getServerOfTool = (name: string) => mcpServerOf(name)?.name ?? name.split("_")[1] ?? "connector";
+
+/** Why a request can't be made small enough, in the user's language: the biggest parts and what to do. */
+function tooBigText(system: string, tools: ToolSpec[], view: Msg[], tr: Tr): string {
+  const parts = new Map<string, number>();
+  parts.set(tr("big.instructions"), estimateTokens(system));
+  parts.set(tr("big.ownTools"), estimateTokens(tools.filter((t) => !t.name.startsWith("mcp_"))));
+  for (const t of tools.filter((x) => x.name.startsWith("mcp_"))) {
+    const k = tr("big.connector", { name: getServerOfTool(t.name) });
+    parts.set(k, (parts.get(k) ?? 0) + estimateTokens(t));
+  }
+  parts.set(tr("big.messages"), estimateTokens(view));
+  const top = [...parts].filter(([, n]) => n > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([k, n]) => `${k} (~${Math.round(n / 1000)}k)`).join(", ");
+  return tr("chat.tooBig", { parts: top });
+}
 
 /** What a bot is told when its message stopped at the output limit before its tool call was complete. */
 export const CUT_OFF =
@@ -1298,13 +1323,28 @@ async function* runBot(
       let budget = budgetOf(s);
       const view = prune(viewFor(bot, chat, bots, pdfMode(s), entry));
       let out;
+      // The bot's instructions and tools must leave room for the conversation: connector tools are
+      // compacted, or only the matching ones sent, when they'd take more than their share.
+      const request = lastUserText(chat) ?? "";
+      const leanFor = (room: number) => {
+        const l = leanTools(tools, request, room);
+        return { tools: l.tools, system: l.dropped.length ? `${system}\n\n${droppedToolsNote(l.dropped)}` : system };
+      };
+      let call = leanFor(Math.floor(budget * 0.45) - estimateTokens(system));
       try {
-        out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
+        out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort });
       } catch (e) {
         // theOovi said the request is still too big: shrink harder and try once more.
         if (!(e instanceof HostedError && e.code === "context_too_large")) throw e;
         budget = Math.floor(budget * 0.6);
-        out = await complete(s, system, fitBudget(system, view, tools, budget), tools, signal, { effort });
+        call = leanFor(Math.floor(budget * 0.3) - estimateTokens(system));
+        try {
+          out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort });
+        } catch (e2) {
+          if (!(e2 instanceof HostedError && e2.code === "context_too_large")) throw e2;
+          // Say what is too big, instead of a promise to summarize that can't help.
+          throw new Error(tooBigText(system, tools, view, translatorFor(request)));
+        }
       }
       if (typeof out.credits === "number") entry.credits = Math.round(((entry.credits ?? 0) + out.credits) * 100) / 100;
       entry.usage.input += out.usage.input;

@@ -104,7 +104,17 @@ export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], bu
       content: `[${from - head} earlier messages of this conversation are hidden to save space. They're saved: use recall_history to look anything up.]`,
     };
     const next: Msg[] = [...msgs.slice(0, head), note, ...msgs.slice(from)];
-    if (requestTokens(system, next, tools) <= budget || from >= msgs.length - 2) return next;
+    if (requestTokens(system, next, tools) <= budget) return next;
+    if (from >= msgs.length - 2) {
+      msgs = next;
+      break;
+    }
+  }
+  // Even the newest messages are too big (a huge pasted text or tool result): cut every long text.
+  for (const max of [6000, 2000, 600]) {
+    const short = shortenAll(msgs, max);
+    if (requestTokens(system, short, tools) <= budget) return short;
+    msgs = short;
   }
   return msgs;
 }
@@ -184,4 +194,68 @@ export function activityLine(e: Chat["entries"][number]): string {
     }
   }
   return done.length ? ` [tools: ${[...new Set(done)].slice(0, 15).join(", ")}]` : "";
+}
+
+// ---------- the fixed part: tools ----------
+// Connectors can bring dozens of tools with long descriptions and schemas (Notion, Zapier…). When the
+// bot's instructions and tools alone come near the budget, trimming the conversation can't help: every
+// message fails, even "hi". The connectors' tools are then sent in a compact form, and if that is
+// still too big, only the ones that match the request.
+
+const isConnectorTool = (t: ToolSpec) => t.name.startsWith("mcp_");
+
+/** A JSON schema without the per-field descriptions, examples and titles (the field names and types stay). */
+export function compactSchema(v: unknown, depth = 0): unknown {
+  if (Array.isArray(v)) return v.map((x) => compactSchema(x, depth + 1));
+  if (!v || typeof v !== "object") return v;
+  const out: Record<string, unknown> = {};
+  for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+    if (k === "examples" || k === "example" || k === "title" || k === "$schema" || k === "$comment") continue;
+    if (k === "description" && depth > 0) continue;
+    out[k] = compactSchema(x, depth + 1);
+  }
+  return out;
+}
+
+const matchScore = (t: ToolSpec, words: string[]) => {
+  const hay = `${t.name} ${t.description}`.toLowerCase();
+  return words.reduce((n, w) => n + (hay.includes(w) ? 1 : 0), 0);
+};
+
+/**
+ * Tools that fit in `room` tokens: oovi's own tools unchanged, connector tools compacted, then (still too
+ * big) only the connector tools that best match the request. dropped: the connector tools left out.
+ */
+export function leanTools(tools: ToolSpec[], request: string, room: number): { tools: ToolSpec[]; dropped: string[] } {
+  if (estimateTokens(tools) <= room) return { tools, dropped: [] };
+  const compact = tools.map((t) => (isConnectorTool(t) ? { ...t, description: t.description.length > 300 ? `${t.description.slice(0, 300)}…` : t.description, parameters: compactSchema(t.parameters) as ToolSpec["parameters"] } : t));
+  if (estimateTokens(compact) <= room) return { tools: compact, dropped: [] };
+  const words = [...new Set((request.toLowerCase().match(/[\p{L}\p{N}]{3,}/gu) ?? []))];
+  const own = compact.filter((t) => !isConnectorTool(t));
+  const ranked = compact.filter(isConnectorTool).map((t, i) => ({ t, i, s: matchScore(t, words) })).sort((a, b) => b.s - a.s || a.i - b.i);
+  const kept: ToolSpec[] = [];
+  let used = estimateTokens(own);
+  const dropped: string[] = [];
+  for (const { t } of ranked) {
+    const cost = estimateTokens(t);
+    if (used + cost <= room) {
+      kept.push(t);
+      used += cost;
+    } else dropped.push(t.name);
+  }
+  // Keep the original order (connectors grouped as they came).
+  const keep = new Set(kept.map((t) => t.name));
+  return { tools: compact.filter((t) => !isConnectorTool(t) || keep.has(t.name)), dropped };
+}
+
+/** Last resort when even the newest messages are too big: every long text is cut to `max` characters. */
+export function shortenAll(messages: Msg[], max: number): Msg[] {
+  const c = (s: string) => cut(s, max, "shortened to fit; use recall_history for the full text");
+  return messages.map((m): Msg =>
+    m.role === "tool"
+      ? { role: "tool", results: m.results.map((r) => ({ ...r, content: c(r.content) })) }
+      : m.role === "assistant"
+        ? { ...m, text: c(m.text), toolCalls: m.toolCalls.map((x) => ({ ...x, input: shrinkInput(x.input, max) })) }
+        : { ...m, content: c(m.content) },
+  );
 }
