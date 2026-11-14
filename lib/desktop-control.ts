@@ -886,7 +886,13 @@ async function perform(b: Bridge, s: Session, call: ToolCall, a: DesktopAction, 
   // ----- pointer: the window under the final point is read again right before pressing -----
   const checkAt = (r: Point) => {
     stopped();
-    const w = read(() => b.windowAt(r.x, r.y));
+    // The glow along the screen's edges lets clicks through: what counts is the window under it.
+    // (oovi's own window is still refused: only the glow is looked through.)
+    let w = read(() => b.windowAt(r.x, r.y));
+    if (w?.overlay) {
+      const list = read(() => b.visibleWindows()) ?? [];
+      w = list.find((v) => !v.overlay && v.rect && r.x >= v.rect.x && r.x < v.rect.x + v.rect.width && r.y >= v.rect.y && r.y < v.rect.y + v.rect.height) ?? null;
+    }
     const v = windowVerdict(w);
     if (v) throw new Refused(v.message);
   };

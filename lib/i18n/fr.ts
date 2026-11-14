@@ -1022,6 +1022,7 @@ const fr: Dict = {
   "bot.part.nose": "Nez",
   "bot.part.top": "Sur la tête",
   "bot.part.wear": "Sur le visage",
+  "bot.part.beard": "Barbe",
   "bot.brain": "Cerveau",
   "bot.brainSub": "Mélangez les modèles dans un groupe, par exemple Grok pour la recherche et Claude pour l'écriture. Si ce modèle échoue ou atteint une limite, les modèles de secours des Paramètres prennent le relais automatiquement.",
   "bot.provider": "Fournisseur du modèle",

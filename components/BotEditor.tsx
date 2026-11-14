@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ABOUT_MAX, ROLE_MAX } from "@/lib/bot-limits";
 import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
-import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
+import { BEARDS, CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import { chainOf, enabledRefs, priceText, refKey, type ModelInfo } from "@/lib/model-list";
 import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
@@ -146,7 +146,7 @@ export default function BotEditor({ id }: { id: string }) {
       <div className="opt-label">{label}</div>
       <div className="opt-grid">
         {list.map((name, i) => (
-          <button type="button" key={name} className={`opt${d.face[key] === i ? " on" : ""}`} onClick={() => setFace({ [key]: i, ...reveal(key) })} title={name} aria-label={`${label}: ${name}`} aria-pressed={d.face[key] === i}>
+          <button type="button" key={name} className={`opt${(d.face[key] ?? 0) === i ? " on" : ""}`} onClick={() => setFace({ [key]: i, ...reveal(key) })} title={name} aria-label={`${label}: ${name}`} aria-pressed={(d.face[key] ?? 0) === i}>
             <Face face={{ ...d.face, [key]: i, ...reveal(key) }} size={48} />
           </button>
         ))}
@@ -268,6 +268,7 @@ export default function BotEditor({ id }: { id: string }) {
           {options(t("bot.part.nose"), NOSES, "nose")}
           {options(t("bot.part.top"), TOPS, "top")}
           {options(t("bot.part.wear"), WEAR, "wear")}
+          {options(t("bot.part.beard"), BEARDS, "beard")}
         </section>
 
         <section className="card">

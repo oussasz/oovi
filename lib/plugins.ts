@@ -70,7 +70,7 @@ export function installPlugin(id: string, list: CatalogPlugin[] = PLUGINS, skill
     if (main) pinMainBot(main.id);
   }
   const taken = new Set(listBots().map((b) => b.name.toLowerCase()));
-  const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, instructions: b.instructions, face: b.face, tools: { ...b.tools, mcp: [] } }));
+  const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, ...(b.about ? { about: b.about } : {}), instructions: b.instructions, face: b.face, tools: { ...b.tools, mcp: [] } }));
   // One expert: just the bot, the user talks to it in its own chat (a group of one adds nothing).
   let chatId: string;
   if (made.length === 1) chatId = getChat(dmId(made[0]!.id))?.id ?? dmId(made[0]!.id);

@@ -1039,6 +1039,7 @@ const en = {
   "bot.part.nose": "Nose",
   "bot.part.top": "On the head",
   "bot.part.wear": "On the face",
+  "bot.part.beard": "Beard",
   "bot.brain": "Brain",
   "bot.brainSub": "Mix models in one group, for example Grok for research and Claude for writing. If this model fails or hits a limit, the backup models from Settings take over automatically.",
   "bot.provider": "Model provider",

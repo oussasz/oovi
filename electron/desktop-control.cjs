@@ -119,7 +119,6 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   // nothing of oovi's may sit under the point the bot clicks. The edges are thin strips at the screen
   // border; the pointer window sits just beside the real pointer's tip. All are kept out of the bot's
   // screenshots (content protection) and are a bonus: if one can't be made, control goes on without it.
-  const EDGE = 18; // DIP: a soft glow that fades toward the middle of the screen
   const POINTER = 56; // DIP
   let edges = [];
   let pointerWin = null;
@@ -166,27 +165,34 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     void w.loadURL(url).catch(() => {});
     return w;
   }
-  // oovi's colors: lilac, periwinkle blue and coral, flowing slowly along the edges of every screen.
-  const GLOW_CSS = (dir, along) => `
-.g{position:absolute;inset:0;
-  background:linear-gradient(${along},#b9a7ff,#8fb0ff,#ffb199,#c9a7ff,#8fb0ff,#b9a7ff);background-size:300% 300%;
-  -webkit-mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.75) 40%,transparent 100%);mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.75) 40%,transparent 100%);
-  animation:flow 6s linear infinite,breathe 2.8s ease-in-out infinite}
-@keyframes flow{0%{background-position:0% 50%}100%{background-position:300% 50%}}
-@keyframes breathe{0%,100%{opacity:.7}50%{opacity:1}}
-@media (prefers-reduced-motion:reduce){.g{animation:none;opacity:.85}}`;
+  // The glow while a bot controls the computer: soft waves of oovi's colors (blue, lilac, gold, coral)
+  // flowing around the edges of every screen, with thin bright lines, clear in the middle. One scene per
+  // screen, drawn by four click-through windows along the edges: each draws the whole screen's scene
+  // shifted to its own place, so the pieces join without a seam.
+  const GLOW_SCENE = "// The glow scene: drawn for the whole screen (W x H), shown through a window at (X, Y).\n(function () {\n  var P = window.__GLOW__;\n  var W = P.W, H = P.H, X = P.X, Y = P.Y;\n  var cv = document.getElementById(\"c\"), ctx = cv.getContext(\"2d\");\n  var dpr = Math.min(2, window.devicePixelRatio || 1);\n  function size() { cv.width = Math.round(innerWidth * dpr); cv.height = Math.round(innerHeight * dpr); }\n  size(); addEventListener(\"resize\", size);\n  var reduce = matchMedia(\"(prefers-reduced-motion: reduce)\").matches;\n  var T = Math.max(44, Math.min(96, Math.min(W, H) * 0.065));\n  var N = 8; // how square the inner shape is (a rounded rectangle-like curve)\n  var cx = W / 2, cy = H / 2;\n  // The inner edge of a layer at angle th: a rounded shape pushed in by its depth, waving over time.\n  function pt(th, depth) {\n    var c = Math.cos(th), s = Math.sin(th);\n    var a = W / 2 - depth, b = H / 2 - depth;\n    return [cx + a * Math.sign(c) * Math.pow(Math.abs(c), 2 / N), cy + b * Math.sign(s) * Math.pow(Math.abs(s), 2 / N)];\n  }\n  var layers = [\n    { depth: 1.05, amp: 0.35, k: 3, speed: 0.22, phase: 0.0, alpha: 0.42, blur: 18, line: 0 },\n    { depth: 0.75, amp: 0.30, k: 4, speed: -0.30, phase: 1.9, alpha: 0.45, blur: 10, line: 0.75 },\n    { depth: 0.42, amp: 0.25, k: 5, speed: 0.38, phase: 3.3, alpha: 0.55, blur: 4, line: 0.9 },\n  ];\n  var STEPS = 240;\n  function curve(L, t) {\n    var out = [];\n    for (var i = 0; i <= STEPS; i++) {\n      var th = (i / STEPS) * Math.PI * 2;\n      var w = Math.sin(th * L.k + t * L.speed + L.phase) * 0.65 + Math.sin(th * (L.k + 2) - t * L.speed * 0.7 + L.phase * 1.7) * 0.35;\n      out.push(pt(th, Math.max(2, T * (L.depth + L.amp * w))));\n    }\n    return out;\n  }\n  function path(pts) {\n    ctx.moveTo(pts[0][0], pts[0][1]);\n    for (var i = 1; i < pts.length; i++) {\n      var q = pts[i], prev = pts[i - 1];\n      ctx.quadraticCurveTo(prev[0], prev[1], (prev[0] + q[0]) / 2, (prev[1] + q[1]) / 2);\n    }\n    ctx.closePath();\n  }\n  function frame(now) {\n    var t = reduce ? 0 : now / 1000;\n    ctx.setTransform(dpr, 0, 0, dpr, -X * dpr, -Y * dpr);\n    ctx.clearRect(X, Y, cv.width / dpr, cv.height / dpr);\n    // Blue top-left, gold top-right, coral and red bottom-right, amber bottom-left, lilac between; turning slowly.\n    var g = ctx.createConicGradient(t * 0.05 - Math.PI * 0.8, cx, cy);\n    g.addColorStop(0.00, \"#2f6bff\"); g.addColorStop(0.12, \"#8f86ff\"); g.addColorStop(0.26, \"#ffd25a\");\n    g.addColorStop(0.36, \"#ffab1f\"); g.addColorStop(0.50, \"#ff6f61\"); g.addColorStop(0.60, \"#ff4b5c\");\n    g.addColorStop(0.70, \"#ff9b6a\"); g.addColorStop(0.80, \"#ffc040\"); g.addColorStop(0.90, \"#c49bff\"); g.addColorStop(1.00, \"#2f6bff\");\n    for (var li = 0; li < layers.length; li++) {\n      var L = layers[li], pts = curve(L, t);\n      ctx.save();\n      ctx.filter = \"blur(\" + L.blur + \"px)\";\n      ctx.globalAlpha = L.alpha;\n      ctx.fillStyle = g;\n      ctx.beginPath();\n      ctx.rect(-40, -40, W + 80, H + 80);\n      path(pts);\n      ctx.fill(\"evenodd\");\n      ctx.restore();\n      if (L.line) {\n        ctx.save();\n        ctx.globalAlpha = L.line;\n        ctx.lineWidth = 1.4;\n        ctx.strokeStyle = \"rgba(255,255,255,0.95)\";\n        ctx.shadowColor = \"rgba(255,236,190,1)\";\n        ctx.shadowBlur = 12;\n        ctx.beginPath();\n        path(pts);\n        ctx.stroke();\n        ctx.restore();\n      }\n    }\n    if (!reduce) setTimeout(function () { requestAnimationFrame(frame); }, 33);\n  }\n  requestAnimationFrame(frame);\n})();\n";
+  /** How far in the glow reaches on a screen of W x H DIPs (the windows' thickness). Same numbers as the scene. */
+  const glowReach = (W, H) => {
+    const T = Math.max(44, Math.min(96, Math.min(W, H) * 0.065));
+    return Math.ceil(T * 1.45 + (Math.max(W, H) / 2) * (1 - Math.pow(Math.SQRT1_2, 2 / 8)) + 24);
+  };
+  const glowPage = (W, H, X, Y) =>
+    decoPage(
+      `<canvas id="c"></canvas><script>window.__GLOW__=${JSON.stringify({ W, H, X, Y })};${GLOW_SCENE}<\/script>`,
+      "canvas{display:block;width:100%;height:100%}",
+    );
   function showDeco() {
     hideDeco();
     try {
       for (const d of screen.getAllDisplays()) {
         const b = d.bounds;
-        const glow = (dir, along) => decoPage('<div class="g"></div>', GLOW_CSS(dir, along));
-        edges.push(
-          decoWindow({ x: b.x, y: b.y, width: b.width, height: EDGE }, glow("to bottom", "90deg")),
-          decoWindow({ x: b.x, y: b.y + b.height - EDGE, width: b.width, height: EDGE }, glow("to top", "270deg")),
-          decoWindow({ x: b.x, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to right", "0deg")),
-          decoWindow({ x: b.x + b.width - EDGE, y: b.y + EDGE, width: EDGE, height: b.height - 2 * EDGE }, glow("to left", "180deg")),
-        );
+        const E = Math.min(glowReach(b.width, b.height), Math.floor(Math.min(b.width, b.height) / 3));
+        const parts = [
+          [0, 0, b.width, E],
+          [0, b.height - E, b.width, E],
+          [0, E, E, b.height - 2 * E],
+          [b.width - E, E, E, b.height - 2 * E],
+        ];
+        for (const [x, y, w, h] of parts) edges.push(decoWindow({ x: b.x + x, y: b.y + y, width: w, height: h }, glowPage(b.width, b.height, x, y)));
       }
       const p = screen.getPrimaryDisplay().bounds;
       // The pointer: oovi's lilac, with a ring that pulses on a click.

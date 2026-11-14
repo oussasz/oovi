@@ -26,9 +26,11 @@ export const CHEEKS = ["none", "blush", "freckles", "hearts"] as const;
 /** Things on top of the head. */
 export const TOPS = ["none", "hat", "beret", "headphones", "crown", "bow", "flower", "cap", "catears", "halo", "horns", "sprout"] as const;
 /** Things on the face. */
+export const BEARDS = ["none", "light white", "stubble", "full dark"] as const;
 export const WEAR = ["none", "glasses", "shades", "monocle", "mustache", "patch", "star"] as const;
 
-export type Face = { color: number; shape: number; hair: number; eyes: number; nose: number; mouth: number; cheeks: number; top: number; wear: number };
+/** beard: optional (older faces have none). */
+export type Face = { color: number; shape: number; hair: number; eyes: number; nose: number; mouth: number; cheeks: number; top: number; wear: number; beard?: number };
 
 /**
  * What the bot is doing, shown on its face.
@@ -88,6 +90,7 @@ export function normalizeFace(f: unknown): Face {
     cheeks: has("cheeks") ? clamp(o.cheeks, CHEEKS.length) : 1,
     top: clamp(top, TOPS.length),
     wear: clamp(wear, WEAR.length),
+    ...(has("beard") && clamp(o.beard, BEARDS.length) > 0 ? { beard: clamp(o.beard, BEARDS.length) } : {}),
   };
 }
 

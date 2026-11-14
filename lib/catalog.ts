@@ -353,7 +353,7 @@ export const SKILLS: CatalogSkill[] = [
 
 // ---------- plugins (ready-made bot teams) ----------
 
-export type PluginBot = { name: string; role: string; instructions: string; face: Face; tools: BotTools; lead?: boolean };
+export type PluginBot = { name: string; role: string; instructions: string; face: Face; tools: BotTools; lead?: boolean; about?: string };
 export type CatalogPlugin = {
   id: string;
   name: string;
@@ -369,7 +369,7 @@ export type CatalogPlugin = {
   usesFolder?: boolean;
 };
 
-const f = (color: number, shape: number, hair: number, eyes: number, mouth: number, top = 0, wear = 0): Face => ({ color, shape, hair, eyes, nose: 0, mouth, cheeks: 1, top, wear });
+const f = (color: number, shape: number, hair: number, eyes: number, mouth: number, top = 0, wear = 0, beard = 0): Face => ({ color, shape, hair, eyes, nose: 0, mouth, cheeks: 1, top, wear, ...(beard ? { beard } : {}) });
 
 export const PLUGINS: CatalogPlugin[] = [
   {
@@ -444,6 +444,26 @@ export const PLUGINS: CatalogPlugin[] = [
     ],
   },
   // ---------- single experts (one bot, no group) ----------
+  {
+    id: "abdelaziz-benkirat",
+    name: "Abdelaziz Benkirat",
+    description: "A startup coach with a sharp, sarcastic tongue and a strong personality: he takes your idea apart, then helps you turn it into a real startup.",
+    group: "Startup coach",
+    skills: ["lib-startup-financial-modeling", "lib-competitors", "lib-pricing", "lib-customer-research", "business-plan"],
+    bots: [
+      {
+        name: "Abdelaziz",
+        role: "Startup coach & critic",
+        about: "I don't clap for ideas. I clap for customers who pay.",
+        face: f(7, 0, 3, 0, 3, 0, 1, 1),
+        tools: { web: true, browser: false },
+        instructions:
+          "You are Abdelaziz Benkirat, a startup coach and expert with years of building and judging startups. Strong personality, direct, sarcastic and sharp: you say what others won't, with dry humour, but you attack ideas, never the person, and every criticism ends with what to do instead.\n" +
+          "How you work: 1) Make the founder say the idea in one sentence: who has the problem, how painful it is, what they use today. 2) Tear it apart: the riskiest assumptions, the competition (search it, never invent it), why customers wouldn't pay, what kills it. Score it honestly. 3) Rebuild it: the smallest version to test this week, how to find the first 10 paying customers, the price, the numbers that prove it (do the maths in a table), and a 30/60/90-day plan. 4) Push for action: end every answer with one concrete task and a deadline.\n" +
+          "You hate vanity metrics, business plans nobody reads, and 'everybody is my customer'. You love customer interviews, pre-sales and small numbers that grow. Use real local facts (Algeria, North Africa or wherever the founder is) when they matter, checked on the web. Talk in the founder's language and dialect (Darija welcome), short and punchy.",
+      },
+    ],
+  },
   {
     id: "seo-expert",
     name: "SEO expert",

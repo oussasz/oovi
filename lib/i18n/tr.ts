@@ -1022,6 +1022,7 @@ const tr: Dict = {
   "bot.part.nose": "Burun",
   "bot.part.top": "Başta",
   "bot.part.wear": "Yüzde",
+  "bot.part.beard": "Sakal",
   "bot.brain": "Beyin",
   "bot.brainSub": "Bir grupta modelleri karıştır, örneğin araştırma için Grok, yazmak için Claude. Bu model başarısız olursa veya bir sınıra takılırsa Ayarlar'daki yedek modeller otomatik olarak devralır.",
   "bot.provider": "Model sağlayıcısı",
