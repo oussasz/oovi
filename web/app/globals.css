@@ -3038,3 +3038,10 @@ textarea.input {
 .pf-select-opt[data-active="true"] { background: var(--surface-2); }
 .pf-select-opt[aria-selected="true"] { background: var(--chip-on); font-weight: 800; }
 .pf-select-tick { margin-inline-start: auto; flex: none; }
+
+/* ---------- admin catalog editor: friendly fields (components/admin/CatalogFields.tsx) ---------- */
+.adm-friendly { display: flex; flex-direction: column; gap: 16px; }
+.adm-friendly textarea.input { min-height: 90px; font-family: var(--font-sans); font-size: 15px; }
+.adm-advanced { border: 1px solid var(--border); border-radius: var(--radius-sm, 14px); padding: 10px 14px; background: var(--surface-2); }
+.adm-advanced > summary { cursor: pointer; font-weight: 800; font-size: 14px; }
+.adm-advanced[open] > summary { margin-bottom: 12px; }

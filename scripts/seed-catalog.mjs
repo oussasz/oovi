@@ -3,6 +3,9 @@
 // everything the app shows. Safe to run again: items that already exist are
 // left alone, so edits made in the console are never overwritten.
 //
+// You no longer need this: Admin > Marketplace has a "Make all editable" button that does the same from the dashboard
+// (it uses web/lib/builtin-catalog.json, kept current by scripts/sync-web-catalog.mts and a unit test).
+//
 //   node --env-file=web/.env.local scripts/seed-catalog.mjs          (add missing items)
 //   node --env-file=web/.env.local scripts/seed-catalog.mjs --dry    (only check them)
 

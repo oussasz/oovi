@@ -12,6 +12,7 @@ import {
 } from "@/lib/catalog";
 import { saveCatalogItem, type SaveState } from "@/app/admin/marketplace/actions";
 import { CatalogPreview } from "./CatalogPreview";
+import { CatalogFields } from "./CatalogFields";
 
 type Initial = { id: string; kind: CatalogKind; published: boolean; sort: number; dataText: string };
 
@@ -103,6 +104,21 @@ export function CatalogEditor({ mode, initial }: { mode: "create" | "edit"; init
           Lower order numbers are shown first.
         </p>
 
+        {check.value && typeof check.value === "object" && !Array.isArray(check.value) ? (
+          <CatalogFields
+            kind={kind}
+            data={check.value as Record<string, unknown>}
+            onChange={(next) => {
+              setText(JSON.stringify(next, null, 2));
+              setTouched(true);
+            }}
+          />
+        ) : (
+          <p className="alert alert-error">The JSON below has a problem, so the fields are hidden. Fix it (or use Tidy JSON) and they come back.</p>
+        )}
+
+        <details className="adm-advanced" open={check.errors.length > 0}>
+          <summary>Advanced: the same content as JSON</summary>
         <div className="field">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
             <label htmlFor="cat-data">Data (JSON)</label>
@@ -124,6 +140,7 @@ export function CatalogEditor({ mode, initial }: { mode: "create" | "edit"; init
             aria-describedby="cat-data-errors"
           />
         </div>
+        </details>
 
         <div id="cat-data-errors" aria-live="polite">
           {idError && id && <p className="alert alert-error">{idError}</p>}

@@ -47,6 +47,8 @@ export type ConnectorData = {
   fields?: CatalogField[];
   needsNode?: boolean;
   docs?: string;
+  /** The service's page where the person chooses what oovi may do (shown in the setup card). */
+  setupUrl?: string;
   verified?: boolean;
   /** true, or a short note on why it isn't available yet. */
   soon?: boolean | string;
@@ -65,6 +67,8 @@ export type Face = Record<(typeof FACE_KEYS)[number], number>;
 export type PluginBot = {
   name: string;
   role: string;
+  /** One line in the bot's own voice, shown on its card. */
+  about?: string;
   instructions: string;
   lead?: boolean;
   tools: { web: boolean; browser: boolean; accounts?: boolean };
@@ -78,6 +82,8 @@ export type PluginData = {
   skills: string[];
   connectors?: string[];
   usesFolder?: boolean;
+  /** Pages about it (shown in its details), e.g. an expert's profile. */
+  links?: { label: string; url: string }[];
   bots: PluginBot[];
 };
 
@@ -236,6 +242,7 @@ const CONNECTOR_KEYS = [
   "fields",
   "needsNode",
   "docs",
+  "setupUrl",
   "verified",
   "soon",
   "logo",
@@ -256,6 +263,7 @@ function validateConnector(d: Obj): string[] {
   c.strArray("args", 50, 500, false);
   c.bool("needsNode");
   c.https("docs");
+  c.https("setupUrl");
   c.bool("verified");
   c.https("logo");
   if (d.soon !== undefined && typeof d.soon !== "boolean") c.str("soon", 400, false);
@@ -310,8 +318,9 @@ function validateSkill(d: Obj): string[] {
   return c.errors;
 }
 
-const PLUGIN_KEYS = ["name", "description", "group", "skills", "connectors", "usesFolder", "bots"] as const;
-const BOT_KEYS = ["name", "role", "instructions", "lead", "tools", "face"] as const;
+const PLUGIN_KEYS = ["name", "description", "group", "skills", "connectors", "usesFolder", "links", "bots"] as const;
+const BOT_KEYS = ["name", "role", "about", "instructions", "lead", "tools", "face"] as const;
+const LINK_KEYS = ["label", "url"] as const;
 const TOOL_KEYS = ["web", "browser", "accounts"] as const;
 
 function validatePlugin(d: Obj): string[] {
@@ -323,6 +332,21 @@ function validatePlugin(d: Obj): string[] {
   c.strArray("skills", 50, 64, true, ID_RE, "must be a catalog ID.");
   c.strArray("connectors", 50, 64, false, ID_RE, "must be a catalog ID.");
   c.bool("usesFolder");
+
+  if (d.links !== undefined) {
+    if (!Array.isArray(d.links)) c.errors.push("links must be a list of { label, url }.");
+    else if (d.links.length > 10) c.errors.push("links has too many entries (max 10).");
+    else
+      d.links.forEach((l, i) => {
+        const path = `links[${i}]`;
+        if (!isObj(l)) return c.errors.push(`${path} must be an object { "label": "...", "url": "https://..." }.`);
+        const lc = new Checker(l, path);
+        lc.only(LINK_KEYS);
+        lc.str("label", 80, true);
+        lc.https("url", true);
+        c.errors.push(...lc.errors);
+      });
+  }
 
   if (!Array.isArray(d.bots)) {
     c.errors.push("bots is required (a list of 1 to 12 bots).");
@@ -338,6 +362,7 @@ function validatePlugin(d: Obj): string[] {
     bc.only(BOT_KEYS);
     bc.str("name", 24, true, /^[\p{L}\p{N}_-]+$/u, "must be one word (letters, numbers, - or _).");
     bc.str("role", 80, true);
+    bc.str("about", 300, false);
     bc.str("instructions", 8000, true);
     bc.bool("lead");
     if (b.lead === true) leads += 1;

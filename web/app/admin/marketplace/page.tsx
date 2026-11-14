@@ -3,32 +3,41 @@ import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
 import { CATALOG_KINDS, isCatalogKind, type CatalogKind } from "@/lib/catalog";
 import { listCatalog } from "@/lib/catalog-db";
+import { BUILTIN_ITEMS, builtinById, sameAsBuiltin } from "@/lib/builtin-catalog";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo } from "@/components/admin/format";
-import { deleteCatalogItem, setPublished, setSort } from "./actions";
+import { deleteCatalogItem, editBuiltin, hideBuiltin, importAllBuiltin, restoreBuiltin, setPublished, setSort } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Marketplace" };
 
 const KIND_LABELS: Record<CatalogKind, string> = { connector: "Connectors", skill: "Skills", plugin: "Plugins" };
+const nameOf = (data: unknown, id: string) => (typeof (data as { name?: unknown })?.name === "string" ? (data as { name: string }).name : id);
 
 export default async function AdminMarketplace({
   searchParams,
 }: {
-  searchParams: Promise<{ kind?: string; saved?: string }>;
+  searchParams: Promise<{ kind?: string; saved?: string; imported?: string }>;
 }) {
   await requireAdmin();
   const sp = await searchParams;
   const kind = isCatalogKind(sp.kind) ? sp.kind : null;
-  const items = await listCatalog(kind);
+  const all = await listCatalog(null);
+  const items = kind ? all.filter((i) => i.kind === kind) : all;
   const saved = typeof sp.saved === "string" ? sp.saved.slice(0, 64) : null;
+  const imported = sp.imported !== undefined && /^\d{1,4}$/.test(sp.imported) ? Number(sp.imported) : null;
+
+  // Built into the app but not in the database yet: shown here too, so nothing is hidden from you.
+  const inDb = new Set(all.map((i) => i.id));
+  const missing = BUILTIN_ITEMS.filter((b) => !inDb.has(b.id));
+  const onlyInApp = kind ? missing.filter((b) => b.kind === kind) : missing;
 
   return (
     <>
       <PageHead
         title="Marketplace"
-        sub="Everything the desktop app’s Marketplace shows, including the items built into the app. Changes reach the app (0.7.0 and later) within about 10 minutes: unpublish an item to hide it, edit it to change it, or add new ones."
+        sub="Everything the desktop app’s Marketplace shows. Items in the database are edited here and reach the app (0.7.0 and later) within about 10 minutes: unpublish to hide one, edit to change it, or add new ones. Items marked “Only in the app” are still built into the app’s code: one click makes them editable here, and they stay exactly as they are until you change them."
       >
         <Link href={`/admin/marketplace/edit${kind ? `?kind=${kind}` : ""}`} className="btn btn-dark btn-sm">
           New item
@@ -39,6 +48,30 @@ export default async function AdminMarketplace({
         <p className="alert alert-ok" role="status">
           Saved “{saved}”.
         </p>
+      )}
+      {imported !== null && (
+        <p className="alert alert-ok" role="status">
+          {imported ? `${imported} built-in item${imported === 1 ? " is" : "s are"} now editable here.` : "Everything built into the app was already here."}
+        </p>
+      )}
+
+      {missing.length > 0 && (
+        <section className="card adm-card" aria-labelledby="mk-import">
+          <div className="adm-card-head">
+            <div>
+              <h2 id="mk-import">{missing.length} items can’t be edited here yet</h2>
+              <p className="adm-sub">
+                They are written into the app’s code ({BUILTIN_ITEMS.length - missing.length} of {BUILTIN_ITEMS.length} are in the database). Make them editable
+                and every one becomes a normal row you can change, hide or delete. Nothing changes for people until you edit something.
+              </p>
+            </div>
+            <form action={importAllBuiltin}>
+              <ConfirmButton className="btn btn-dark btn-sm" message={`Make all ${missing.length} built-in items editable here? Their content stays exactly as it is in the app. Items you already have are never touched.`}>
+                Make all editable
+              </ConfirmButton>
+            </form>
+          </div>
+        </section>
       )}
 
       <Section
@@ -56,7 +89,7 @@ export default async function AdminMarketplace({
           </nav>
         }
       >
-        {items.length === 0 ? (
+        {items.length === 0 && onlyInApp.length === 0 ? (
           <Empty>
             {kind ? `No ${KIND_LABELS[kind].toLowerCase()} yet.` : "The marketplace is empty."}{" "}
             <Link href={`/admin/marketplace/edit${kind ? `?kind=${kind}` : ""}`} className="text-link">
@@ -73,13 +106,16 @@ export default async function AdminMarketplace({
                   <th>ID</th>
                   <th>Kind</th>
                   <th>Status</th>
+                  <th>Source</th>
                   <th>Updated</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const name = typeof (item.data as { name?: unknown }).name === "string" ? (item.data as { name: string }).name : item.id;
+                  const name = nameOf(item.data, item.id);
+                  const builtin = builtinById(item.id);
+                  const same = builtin ? sameAsBuiltin(item) : false;
                   return (
                     <tr key={item.id}>
                       <td>
@@ -88,16 +124,7 @@ export default async function AdminMarketplace({
                           <label className="sr-only" htmlFor={`sort-${item.id}`}>
                             Order for {name}
                           </label>
-                          <input
-                            id={`sort-${item.id}`}
-                            className="input"
-                            type="number"
-                            name="sort"
-                            defaultValue={item.sort}
-                            step={1}
-                            min={-100000}
-                            max={100000}
-                          />
+                          <input id={`sort-${item.id}`} className="input" type="number" name="sort" defaultValue={item.sort} step={1} min={-100000} max={100000} />
                           <button type="submit" className="btn btn-ghost btn-sm">
                             Set
                           </button>
@@ -118,19 +145,82 @@ export default async function AdminMarketplace({
                           </button>
                         </form>
                       </td>
+                      <td>
+                        {!builtin ? (
+                          <span className="adm-badge">Added by you</span>
+                        ) : same ? (
+                          <span className="adm-badge" title="The same as the version built into the app">
+                            Same as the app
+                          </span>
+                        ) : (
+                          <span className="adm-badge on" title="This version replaces the one built into the app: you changed it, or the app has a newer version since you copied it">
+                            Differs from the app
+                          </span>
+                        )}
+                      </td>
                       <td className="nowrap">{fmtAgo(item.updatedAt)}</td>
                       <td>
                         <div className="adm-row-actions">
                           <Link href={`/admin/marketplace/edit?id=${encodeURIComponent(item.id)}`} className="btn btn-light btn-sm">
                             Edit
                           </Link>
+                          {builtin && !same && (
+                            <form action={restoreBuiltin}>
+                              <input type="hidden" name="id" value={item.id} />
+                              <ConfirmButton className="btn btn-ghost btn-sm" message={`Replace “${name}” with the version built into the app? Your changes to it are lost (they can't be recovered).`}>
+                                Use the app’s version
+                              </ConfirmButton>
+                            </form>
+                          )}
                           <form action={deleteCatalogItem}>
                             <input type="hidden" name="id" value={item.id} />
                             <ConfirmButton
                               className="btn btn-ghost btn-sm"
-                              message={`Delete “${name}” (${item.id})? This can't be undone, and it disappears from the app within about 10 minutes.`}
+                              message={
+                                builtin
+                                  ? `Delete this copy of “${name}” (${item.id})? The app goes back to its own built-in version, and that disappears from the app within about 10 minutes.`
+                                  : `Delete “${name}” (${item.id})? This can't be undone, and it disappears from the app within about 10 minutes.`
+                              }
                             >
                               Delete
+                            </ConfirmButton>
+                          </form>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {onlyInApp.map((b) => {
+                  const name = nameOf(b.data, b.id);
+                  return (
+                    <tr key={`app-${b.id}`}>
+                      <td className="adm-mono" title="The app's own order">
+                        {b.sort}
+                      </td>
+                      <td>{name}</td>
+                      <td className="adm-mono">{b.id}</td>
+                      <td>{b.kind}</td>
+                      <td>
+                        <span className="adm-badge on">Shown in the app</span>
+                      </td>
+                      <td>
+                        <span className="adm-badge" title="Written into the app's code. Make it editable to change it here.">
+                          Only in the app
+                        </span>
+                      </td>
+                      <td className="nowrap">–</td>
+                      <td>
+                        <div className="adm-row-actions">
+                          <form action={editBuiltin}>
+                            <input type="hidden" name="id" value={b.id} />
+                            <button type="submit" className="btn btn-light btn-sm">
+                              Edit
+                            </button>
+                          </form>
+                          <form action={hideBuiltin}>
+                            <input type="hidden" name="id" value={b.id} />
+                            <ConfirmButton className="btn btn-ghost btn-sm" message={`Hide “${name}” from the app? It disappears within about 10 minutes, and you can publish it again here later.`}>
+                              Hide
                             </ConfirmButton>
                           </form>
                         </div>
