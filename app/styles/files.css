@@ -40,6 +40,18 @@
 
 .cs-card { border: 1px solid var(--border); border-top: none; border-radius: 0 0 16px 16px; background: var(--panel); padding: 14px 16px 6px; }
 .cs-steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.cs-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 6px 16px; margin: 0 0 16px; padding: 12px 14px; border-radius: 12px; background: var(--soft); font-size: 13px; }
+.cs-facts dt { color: var(--muted); font-weight: 600; }
+.cs-facts dd { margin: 0; overflow-wrap: anywhere; }
+.cs-facts .cs-mono { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 12px; }
+.cs-verified { color: var(--muted); }
+.cs-tool-list { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+.cs-tool-list li { display: grid; gap: 2px; font-size: 13px; }
+.cs-tool-list li b { text-transform: capitalize; font-weight: 700; }
+.cs-tool-list li span { color: var(--muted); font-size: 12.5px; }
+.cs-end { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 8px; padding-top: 12px; border-top: 1px solid var(--border); }
+.cs-end .note { margin: 0; flex: 1 1 200px; }
+@media (max-width: 520px) { .cs-facts { grid-template-columns: 1fr; gap: 2px; } .cs-facts dd { margin-bottom: 6px; } }
 .cs-steps > li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 10px; align-items: start; padding-bottom: 12px; border-bottom: 1px dashed var(--border); }
 .cs-steps > li:last-child { border-bottom: none; }
 .cs-steps > li > div { display: grid; gap: 4px; min-width: 0; }

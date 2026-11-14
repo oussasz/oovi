@@ -18,20 +18,36 @@ export type SetupServer = {
   error?: string;
   tools: { name: string; description?: string }[];
   bots?: string[];
+  transport?: "stdio" | "http";
+  url?: string;
+  command?: string;
+  args?: string[];
+  envKeys?: string[];
+  headerKeys?: string[];
+  createdAt?: number;
+  signedInAt?: number;
+  checkedAt?: number;
 };
+
+/** What the catalog says about it (missing for connectors added by hand). */
+export type SetupCatalog = { by?: string; description?: string; docs?: string; verified?: boolean };
 
 type BotLite = { id: string; name: string };
 type Test = { ok: boolean; tools?: string[]; details?: { name: string; description?: string }[]; error?: string };
 
-export default function ConnectorSetup(props: { server: SetupServer; catalogId?: string; setupUrl?: string; busy: boolean; onSignIn: () => void; onChanged: () => void }) {
-  const { server: s, catalogId, setupUrl, busy, onSignIn, onChanged } = props;
-  const { t } = useI18n();
+export default function ConnectorSetup(props: { server: SetupServer; catalogId?: string; setupUrl?: string; catalog?: SetupCatalog; busy: boolean; onSignIn: () => void; onChanged: () => void; onDisconnect: () => void }) {
+  const { server: s, catalogId, setupUrl, catalog, busy, onSignIn, onChanged, onDisconnect } = props;
+  const { t, tag } = useI18n();
+  const when = (ms?: number) => (ms ? new Date(ms).toLocaleString(tag, { dateStyle: "medium", timeStyle: "short" }) : "");
+  const kind = s.auth === "oauth" ? t("conn.kind.oauth") : s.transport === "stdio" ? t("conn.kind.local") : (s.headerKeys?.length ?? 0) > 0 ? t("conn.kind.key") : t("conn.kind.open");
+  const where = s.transport === "stdio" ? [s.command, ...(s.args ?? [])].filter(Boolean).join(" ") : (s.url ?? "");
   const [bots, setBots] = useState<BotLite[]>([]);
   const [mainId, setMainId] = useState<string | null>(null);
   const [on, setOn] = useState<string[]>(s.bots ?? []);
   const [test, setTest] = useState<Test | null>(null);
   const [testing, setTesting] = useState(false);
   const [saveErr, setSaveErr] = useState<string | null>(null);
+  const [allTools, setAllTools] = useState(false);
   const zapier = catalogId === "zapier";
   const signedIn = s.auth !== "oauth" || !!s.signedIn;
 
@@ -74,6 +90,58 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
 
   return (
     <div className="cs-card" aria-label={t("conn.setupTitle", { name: s.name })}>
+      <dl className="cs-facts">
+        {catalog?.description && (
+          <>
+            <dt>{t("conn.fact.what")}</dt>
+            <dd>{catalog.description}</dd>
+          </>
+        )}
+        <dt>{t("conn.fact.status")}</dt>
+        <dd>
+          <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} />{" "}
+          {s.auth === "oauth" && !s.signedIn ? t("mk.notSignedIn") : s.status === "connected" ? t("conn.state.connected") : s.status === "error" ? s.error : t("conn.state.idle")}
+        </dd>
+        <dt>{t("conn.fact.kind")}</dt>
+        <dd>{kind}</dd>
+        {catalog?.by && (
+          <>
+            <dt>{t("conn.fact.by")}</dt>
+            <dd>
+              {catalog.by}
+              {catalog.verified && <span className="cs-verified"> · {t("conn.verified")}</span>}
+            </dd>
+          </>
+        )}
+        {where && (
+          <>
+            <dt>{t("conn.fact.where")}</dt>
+            <dd className="cs-mono">{where}</dd>
+          </>
+        )}
+        {s.createdAt ? (
+          <>
+            <dt>{t("conn.fact.added")}</dt>
+            <dd>{when(s.createdAt)}</dd>
+          </>
+        ) : null}
+        {s.signedInAt ? (
+          <>
+            <dt>{t("conn.fact.signedIn")}</dt>
+            <dd>{when(s.signedInAt)}</dd>
+          </>
+        ) : null}
+        {catalog?.docs && (
+          <>
+            <dt>{t("conn.fact.docs")}</dt>
+            <dd>
+              <a href={catalog.docs} target="_blank" rel="noopener noreferrer">
+                {catalog.docs.replace(/^https?:\/\//, "")}
+              </a>
+            </dd>
+          </>
+        )}
+      </dl>
       <ol className="cs-steps">
         <li className={signedIn ? "done" : ""}>
           <span className="cs-num">{signedIn ? <Icon name="check" size={14} /> : 1}</span>
@@ -123,14 +191,19 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
             {shownTools && shownTools.length > 0 && (
               <div className="cs-tools">
                 <small>{found ? t("conn.foundNow", { count: shownTools.length }) : t("conn.foundLast", { count: shownTools.length })}</small>
-                <ul>
-                  {shownTools.slice(0, 24).map((x) => (
-                    <li key={x.name} title={x.description}>
-                      {x.name}
+                <ul className="cs-tool-list">
+                  {(allTools ? shownTools : shownTools.slice(0, 12)).map((x) => (
+                    <li key={x.name}>
+                      <b>{x.name.replace(/_/g, " ")}</b>
+                      {x.description && <span>{x.description.split(/(?<=\.)\s/)[0]!.slice(0, 160)}</span>}
                     </li>
                   ))}
-                  {shownTools.length > 24 && <li className="more">{t("conn.more", { count: shownTools.length - 24 })}</li>}
                 </ul>
+                {shownTools.length > 12 && (
+                  <button type="button" className="linkish" onClick={() => setAllTools(!allTools)}>
+                    {allTools ? t("conn.fewer") : t("conn.more", { count: shownTools.length - 12 })}
+                  </button>
+                )}
               </div>
             )}
             {found && found.length === 0 && <div className="notice small cs-msg">{zapier ? t("conn.zapier.noTools") : t("conn.noTools", { name: s.name })}</div>}
@@ -163,6 +236,12 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
           </div>
         </li>
       </ol>
+      <div className="cs-end">
+        <button type="button" className="btn sm danger" disabled={busy} onClick={onDisconnect}>
+          {t("conn.disconnect")}
+        </button>
+        <span className="note">{s.auth === "oauth" ? t("conn.disconnectHintOauth") : t("conn.disconnectHint")}</span>
+      </div>
     </div>
   );
 }

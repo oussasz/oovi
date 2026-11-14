@@ -501,6 +501,9 @@ export default function Marketplace() {
     </>
   );
 
+  const removeServer = (s: Server) => {
+    if (confirm(t("lib.confirmRemove", { name: s.name }))) void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })));
+  };
   const disconnect = (s: Server) => {
     if (confirm(t("conn.confirmDisconnect", { name: s.name }))) void run(`out-${s.id}`, async () => void (await api(`/api/mcp/${s.id}/oauth`, { method: "DELETE" })));
   };
@@ -574,9 +577,7 @@ export default function Marketplace() {
                   </button>
                   <button
                     className="icon-btn sm"
-                    onClick={() => {
-                      if (confirm(t("lib.confirmRemove", { name: s.name }))) void run(`rm-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "DELETE" })));
-                    }}
+                    onClick={() => removeServer(s)}
                     title={t("common.remove")}
                     aria-label={t("common.remove")}
                   >
@@ -584,7 +585,18 @@ export default function Marketplace() {
                   </button>
                 </div>
               </div>
-              {open && <ConnectorSetup server={s} catalogId={cat?.id} setupUrl={cat?.setupUrl} busy={!!busy} onSignIn={() => void signIn(s.id, s.name)} onChanged={() => void load()} />}
+              {open && (
+                <ConnectorSetup
+                  server={s}
+                  catalogId={cat?.id}
+                  setupUrl={cat?.setupUrl}
+                  catalog={cat ? { by: cat.by, description: cat.description, docs: cat.docs, verified: cat.verified } : undefined}
+                  busy={!!busy}
+                  onSignIn={() => void signIn(s.id, s.name)}
+                  onChanged={() => void load()}
+                  onDisconnect={() => (s.auth === "oauth" && s.signedIn ? disconnect(s) : removeServer(s))}
+                />
+              )}
             </div>
           );
         })}

@@ -45,6 +45,8 @@ export type McpPublic = Omit<McpServer, "env" | "headers" | "oauth" | "known"> &
   tools: { name: string; description?: string }[];
   /** When the tool list was last checked (ms). */
   checkedAt?: number;
+  /** Sign-in connectors: when the user last signed in (ms). */
+  signedInAt?: number;
 };
 
 type Conn = { client: Client; tools: { name: string; description?: string; inputSchema?: Record<string, unknown> }[]; key: string; at?: number };
@@ -118,6 +120,7 @@ export function publicServers(): McpPublic[] {
     return {
       ...s,
       signedIn,
+      ...(s.auth === "oauth" && oauth ? { signedInAt: readOAuth(oauth).signedInAt } : {}),
       envKeys: Object.keys(env ?? {}),
       headerKeys: Object.keys(headers ?? {}),
       status: c ? "connected" : err ? "error" : "idle",

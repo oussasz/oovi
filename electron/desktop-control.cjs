@@ -119,7 +119,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   // nothing of oovi's may sit under the point the bot clicks. The edges are thin strips at the screen
   // border; the pointer window sits just beside the real pointer's tip. All are kept out of the bot's
   // screenshots (content protection) and are a bonus: if one can't be made, control goes on without it.
-  const EDGE = 14; // DIP: a soft glow that fades toward the middle of the screen
+  const EDGE = 18; // DIP: a soft glow that fades toward the middle of the screen
   const POINTER = 56; // DIP
   let edges = [];
   let pointerWin = null;
@@ -170,7 +170,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   const GLOW_CSS = (dir, along) => `
 .g{position:absolute;inset:0;
   background:linear-gradient(${along},#b9a7ff,#8fb0ff,#ffb199,#c9a7ff,#8fb0ff,#b9a7ff);background-size:300% 300%;
-  -webkit-mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.55) 35%,transparent 100%);mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.55) 35%,transparent 100%);
+  -webkit-mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.75) 40%,transparent 100%);mask-image:linear-gradient(${dir},#000 0%,rgba(0,0,0,.75) 40%,transparent 100%);
   animation:flow 6s linear infinite,breathe 2.8s ease-in-out infinite}
 @keyframes flow{0%{background-position:0% 50%}100%{background-position:300% 50%}}
 @keyframes breathe{0%,100%{opacity:.7}50%{opacity:1}}
