@@ -1,5 +1,8 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## After 0.10.9 (2026-11-14, not released yet)
+- Glow moves for real (owner: "good but static, make them move and wave, responsive to the screen size"). It was drawn to move, but a wave took ~28 s, so it looked frozen. Measured with a test page: change per pixel in 1 s went from about 4 to 16 (out of 255). Changes: waves 5x faster with a bigger swing, a gentle "breathing", colours turning faster; with Windows "Animation effects" off it moves calmer instead of not at all; `backgroundThrottling: false` on the glow windows; thickness = 6% of the screen's short side (36–130 px); redrawn when a screen is plugged in or out or its resolution/scale changes. Not yet seen on the owner's PC.
+
 ## After 0.10.8 (2026-11-14, not released yet)
 - Desktop glow redrawn to match the owner's picture: a soft, wavy, multicolor canvas scene (blue, lilac, orange/yellow, pink) with bright lines, rounded corners, one scene shared across all screens (`electron/desktop-control.cjs` GLOW_SCENE). Not yet seen on a real Windows multi-monitor PC.
 - New setup "Abdelaziz Benkirat" (`lib/catalog.ts`): startup coach, funny, cool and brutally honest; yellow face with glasses, no beard (the beard option was removed); LinkedIn link shown in the details. Open question to the owner: written consent from Abdelaziz to use his real name and link.
