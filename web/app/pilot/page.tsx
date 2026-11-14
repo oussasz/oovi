@@ -88,11 +88,25 @@ export default async function PilotPage() {
         </>
       ) : (
         <>
-          <h2>Your request is being reviewed</h2>
-          <p className="muted">
-            You sent it on {fmtDate(existing.created_at)}. We review every request by hand. Once it’s approved, the credits appear in your
-            account and in the app.
-          </p>
+          <h2>
+            <span aria-hidden="true">🎉 </span>Thank you! Your request is in
+          </h2>
+          <p className="muted">You sent it on {fmtDate(existing.created_at)}. We read every request by hand.</p>
+          <ol className="steps-list" style={{ marginTop: 14 }}>
+            <li>
+              <b>We review it</b> by hand.
+            </li>
+            <li>
+              <b>When it’s approved,</b> an email tells you and the credits appear in your account and in the app.
+            </li>
+            <li>
+              <b>While you wait,</b> keep trying oovi, and tell us what you notice on the{" "}
+              <Link href="/feedback" className="text-link">
+                feedback page
+              </Link>
+              .
+            </li>
+          </ol>
         </>
       );
   } else if (!win.open) {
@@ -133,7 +147,7 @@ export default async function PilotPage() {
       <>
         <h2>Ask to join</h2>
         <p className="muted" style={{ marginBottom: 18 }}>
-          Signed in as {session.user.email}. Tell us a little about how you’ll use oovi.
+          Signed in as {session.user.email}. Four quick steps, mostly taps. It helps us build what you need.
         </p>
         <PilotForm />
       </>
@@ -163,7 +177,7 @@ export default async function PilotPage() {
                 <b>Who can apply:</b> accounts created between {fmtDate(cfg.startsAt)} and {fmtDate(cfg.endsAt)}.
               </li>
               <li>
-                <b>Tell us about your work:</b> a few sentences on what you’ll use oovi for.
+                <b>Tell us about your work:</b> a short form, all taps and stars, about a minute.
               </li>
               <li>
                 <b>We review each request</b> by hand.

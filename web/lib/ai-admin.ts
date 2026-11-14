@@ -2,6 +2,7 @@
 // pilot requests, feedback and the audit log. Every caller must have passed
 // requireAdmin() first.
 import { pool } from "./db";
+import { readAnswers, type PilotAnswers } from "./pilot-form";
 import { MC, utcDay } from "./credits";
 
 const n = (v: unknown): number => (v === null || v === undefined ? 0 : Number(v));
@@ -56,6 +57,8 @@ export type PilotRequestRow = {
   organization: string | null;
   role: string | null;
   teamSize: string | null;
+  /** What they answered on the form (taps, stars, faces). Null for requests sent before the form had them. */
+  answers: PilotAnswers | null;
   status: PilotStatus;
   credits: number | null;
   adminNote: string | null;
@@ -88,6 +91,7 @@ function toPilot(r: Record<string, unknown>): PilotRequestRow {
     organization: (r.organization as string | null) ?? null,
     role: (r.role as string | null) ?? null,
     teamSize: (r.team_size as string | null) ?? null,
+    answers: readAnswers(r.answers),
     status: r.status as PilotStatus,
     credits: r.credits === null || r.credits === undefined ? null : n(r.credits),
     adminNote: (r.admin_note as string | null) ?? null,
