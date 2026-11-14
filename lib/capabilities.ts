@@ -143,12 +143,12 @@ export function capabilitiesPrompt({ bot, members, allBots, group, request, turn
   const teams = installedPluginsQuick()
     .map((p) => catPlugins.find((x) => x.id === p.id))
     .filter((p): p is NonNullable<typeof p> => !!p);
-  if (teams.length) lines.push(`- Teams added from Marketplace plugins: ${teams.slice(0, MAX_LIST).map((p) => `${p.name} (group "${p.group}")`).join(", ")}.`);
+  if (teams.length) lines.push(`- Added from Marketplace setups: ${teams.slice(0, MAX_LIST).map((p) => (p.bots.length > 1 ? `${p.name} (group "${p.group}")` : `${p.name} (the bot ${p.bots[0]?.name ?? ""})`)).join(", ")}.`);
   if (listSkills().length) lines.push("- Skills: every bot can use the saved skills listed further down.");
 
   if (notOn.length || off.length) {
     lines.push(
-      `If a request needs a connector that isn't on for you, don't try without it: say so plainly (e.g. "Zapier is connected but not turned on for me.") and tell the user how to turn it on: [Open ${bot.name}'s abilities](oovi://bot/${bot.name}) > Tools from MCP servers > tick it > Save (or Marketplace > Connectors > Yours > Set up > "Which bots can use it"), or start the message with /<connector> to lend it to me for one message.${group ? " Or @mention a teammate who has it." : ""}`,
+      `If a request needs a connector that isn't on for you, don't try without it: say so plainly (e.g. "Zapier is connected but not turned on for me.") and tell the user how to turn it on: [Open ${bot.name}'s abilities](oovi://bot/${bot.name}) > Tools from MCP servers > tick it > Save (or Marketplace > Connectors > Yours > Details > "Which bots can use it"), or start the message with /<connector> to lend it to me for one message.${group ? " Or @mention a teammate who has it." : ""}`,
     );
   }
 

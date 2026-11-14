@@ -7,7 +7,8 @@ import { PLUGINS, SKILLS, type CatalogPlugin, type CatalogSkill } from "./catalo
 import { NAME_RE } from "./mentions";
 import { dataDir } from "./settings";
 import { listSkills, parseSkill, saveSkill, slugify } from "./skills";
-import { createBot, createGroup, deleteBot, deleteChat, getChat, listBots, listChats } from "./store";
+import { createBot, createGroup, deleteBot, deleteChat, dmId, getChat, listBots, listChats } from "./store";
+import { librarySkill } from "./skills-library";
 import { mainBot, pinMainBot, pinnedMainBot } from "./team";
 
 type Installed = { id: string; botIds: string[]; groupId: string; at: number };
@@ -70,12 +71,25 @@ export function installPlugin(id: string, list: CatalogPlugin[] = PLUGINS, skill
   }
   const taken = new Set(listBots().map((b) => b.name.toLowerCase()));
   const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, instructions: b.instructions, face: b.face, tools: { ...b.tools, mcp: [] } }));
-  const lead = made[p.bots.findIndex((b) => b.lead)] ?? made[0];
-  const group = createGroup({ name: p.group, memberIds: made.map((b) => b.id), leadId: lead?.id, orchestrate: true });
-  const have = new Set(installedSkillIds(skills));
-  for (const sid of p.skills) if (!have.has(sid) && skills.some((s) => s.id === sid)) installSkill(sid, skills);
-  writeInstalled([...installedPlugins().filter((x) => x.id !== id), { id, botIds: made.map((b) => b.id), groupId: group.id, at: Date.now() }]);
-  return { groupId: group.id, bots: made.map((b) => b.name) };
+  // One expert: just the bot, the user talks to it in its own chat (a group of one adds nothing).
+  let chatId: string;
+  if (made.length === 1) chatId = getChat(dmId(made[0]!.id))?.id ?? dmId(made[0]!.id);
+  else {
+    const lead = made[p.bots.findIndex((b) => b.lead)] ?? made[0];
+    chatId = createGroup({ name: p.group, memberIds: made.map((b) => b.id), leadId: lead?.id, orchestrate: true }).id;
+  }
+  // Its skills: from oovi's own list or from the skills library ("lib-…").
+  const have = new Set(listSkills().map((x) => slugify(x.name)));
+  for (const sid of p.skills) {
+    const own = skills.find((x) => x.id === sid);
+    const fromLib = own ? undefined : librarySkill(sid);
+    const sk = own ?? fromLib;
+    if (!sk || have.has(slugify(sk.name))) continue;
+    saveSkill({ name: sk.name, description: sk.description, body: sk.body, source: fromLib ? `library:${fromLib.source.repo}` : "oovi" });
+    have.add(slugify(sk.name));
+  }
+  writeInstalled([...installedPlugins().filter((x) => x.id !== id), { id, botIds: made.map((b) => b.id), groupId: chatId, at: Date.now() }]);
+  return { groupId: chatId, bots: made.map((b) => b.name) };
 }
 
 /** Remove a team: its bots and its group (skills stay). */

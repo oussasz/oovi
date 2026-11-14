@@ -60,7 +60,8 @@ function Logo({ src, size = 44 }: { src: string | undefined; size?: number }) {
 
 /** Logo for a skill: its publisher (oovi, Anthropic, or the GitHub owner it came from). */
 function skillLogo(source: string | undefined): string {
-  if (source && /github\.com\/anthropics\//i.test(source)) return ANTHROPIC_LOGO;
+  if (source && /github\.com\/anthropics\/|^library:anthropics\//i.test(source)) return ANTHROPIC_LOGO;
+  if (source?.startsWith("library:")) return githubOwnerLogo(`https://github.com/${source.slice(8)}`) ?? OOVI_LOGO;
   return githubOwnerLogo(source) ?? OOVI_LOGO;
 }
 
@@ -84,6 +85,11 @@ export default function Marketplace() {
   const [servers, setServers] = useState<Server[]>([]);
   const [inst, setInst] = useState<Installed>({ plugins: [], skills: [], node: true });
   const [remote, setRemote] = useState<RemoteSkill[] | null>(null);
+  // The skills library (hundreds of open-source skills), searched page by page on the app's server.
+  type LibCard = { id: string; name: string; description: string; category: string; source: { repo: string; license: string; url: string } };
+  const [lib, setLib] = useState<{ total: number; items: LibCard[]; installed: string[] } | null>(null);
+  const [libCat, setLibCat] = useState<string>("");
+  const [libErr, setLibErr] = useState(false);
   const [registry, setRegistry] = useState<RegItem[] | null>(null);
   const [installing, setInstalling] = useState<CatalogConnector | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -370,6 +376,20 @@ export default function Marketplace() {
 
   // ---------- helpers ----------
   const ql = q.trim().toLowerCase();
+  const loadLib = async (offset: number) => {
+    try {
+      const r = await api<{ total: number; items: LibCard[]; installed: string[] }>(`/api/skills/library?q=${encodeURIComponent(ql)}&category=${libCat}&offset=${offset}`);
+      setLib((cur) => (offset && cur ? { total: r.total, items: [...cur.items, ...r.items], installed: [...cur.installed, ...r.installed] } : r));
+      setLibErr(false);
+    } catch {
+      setLibErr(true);
+    }
+  };
+  useEffect(() => {
+    const id = setTimeout(() => void loadLib(0), 250);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ql, libCat]);
   const match = (...xs: (string | undefined)[]) => !ql || xs.some((x) => (x ?? "").toLowerCase().includes(ql));
 
   const card = (key: string, avatar: React.ReactNode, title: React.ReactNode, desc: string, by: string, action: React.ReactNode, extra?: React.ReactNode) => (
@@ -604,6 +624,67 @@ export default function Marketplace() {
     </div>
   );
 
+  const libraryCats = ["", "work", "writing", "research", "coding", "life"];
+  const skillLibrary = (
+    <>
+      <div className="mk-section-head">
+        <h3>{t("mk.library")}</h3>
+        {lib && <span className="mk-count">{lib.total}</span>}
+      </div>
+      <p className="note">{t("mk.libraryIntro")}</p>
+      <div className="chip-row mk-lib-cats" role="group" aria-label={t("mk.library")}>
+        {libraryCats.map((c) => (
+          <button key={c || "all"} type="button" className={`chip${libCat === c ? " on" : ""}`} aria-pressed={libCat === c} onClick={() => setLibCat(c)}>
+            {t(c ? (`skill.cat.${c}` as "skill.cat.work") : "mk.cat.all")}
+          </button>
+        ))}
+      </div>
+      {libErr ? (
+        <p className="note">{t("mk.cantLoadRemote")}</p>
+      ) : !lib ? (
+        <p className="note">{t("common.loading")}</p>
+      ) : lib.items.length === 0 ? (
+        <p className="note">{t("mk.libraryNone")}</p>
+      ) : (
+        <>
+          <div className="mk-grid">
+            {lib.items.map((s) =>
+              card(
+                s.id,
+                <Logo src={s.source.repo.startsWith("anthropics/") ? ANTHROPIC_LOGO : githubOwnerLogo(`https://github.com/${s.source.repo}`)} />,
+                s.name,
+                s.description,
+                "",
+                lib.installed.includes(s.id) || skillHave(s.name)
+                  ? done(t("mk.added"))
+                  : plus(
+                      () =>
+                        void run(`lib-${s.id}`, async () => {
+                          const k = await api<Skill>("/api/skills/library", { method: "POST", body: JSON.stringify({ id: s.id }) });
+                          setLib((cur) => (cur ? { ...cur, installed: [...cur.installed, s.id] } : cur));
+                          return t("lib.installedSkill", { name: k.name });
+                        }),
+                      t("mk.addX", { name: s.name }),
+                    ),
+                <small className="mk-src">
+                  <a href={s.source.url} target="_blank" rel="noopener noreferrer">
+                    {s.source.repo}
+                  </a>{" "}
+                  · {s.source.license}
+                </small>,
+              ),
+            )}
+          </div>
+          {lib.items.length < lib.total && (
+            <button type="button" className="btn sm mk-more" onClick={() => void loadLib(lib.items.length)}>
+              {t("mk.showMore", { count: lib.total - lib.items.length })}
+            </button>
+          )}
+        </>
+      )}
+    </>
+  );
+
   const featuredSkill = allSkills[0] ?? SKILLS[0]!;
   const discoverSkills = (
     <>
@@ -668,6 +749,7 @@ export default function Marketplace() {
             )}
         </div>
       )}
+      {skillLibrary}
     </>
   );
 
@@ -724,7 +806,7 @@ export default function Marketplace() {
         </Link>
       ) : (
         <button className="btn sm primary" disabled={!!busy} onClick={() => void addPlugin(p)}>
-          {busy === `pl-${p.id}` ? t("common.loading") : t("mk.addTeam")}
+          {busy === `pl-${p.id}` ? t("common.loading") : t(p.bots.length > 1 ? "mk.addTeam" : "mk.addBot")}
         </button>
       ),
       <>
@@ -763,10 +845,15 @@ export default function Marketplace() {
         </div>
       )}
       <div className="mk-section-head">
-        <h3>{t("mk.teams")}</h3>
-        <span className="mk-count">{allPlugins.length}</span>
+        <h3>{t("mk.experts")}</h3>
+        <span className="mk-count">{allPlugins.filter((p) => p.bots.length === 1).length}</span>
       </div>
-      <div className="mk-grid">{allPlugins.filter((p) => match(p.name, p.description)).map(pluginCard)}</div>
+      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length === 1 && match(p.name, p.description)).map(pluginCard)}</div>
+      <div className="mk-section-head">
+        <h3>{t("mk.teams")}</h3>
+        <span className="mk-count">{allPlugins.filter((p) => p.bots.length > 1).length}</span>
+      </div>
+      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length > 1 && match(p.name, p.description)).map(pluginCard)}</div>
     </>
   );
 

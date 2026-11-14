@@ -651,6 +651,10 @@ a.tag { text-decoration: none; }
 .mk-done { background: color-mix(in srgb, var(--ok) 22%, var(--panel)); color: var(--ok); border-color: transparent; cursor: default; }
 .mk-verified { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%; background: var(--soft); color: var(--muted); font-size: 10px; }
 .mk-warn, .mk-hint { font-size: 12px; font-weight: 700; color: var(--muted); }
+.mk-src { color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.mk-src a { color: inherit; }
+.mk-lib-cats { margin: 4px 0 12px; }
+.mk-more { margin: 12px auto 0; display: block; }
 .mk-warn { color: var(--err); }
 .mk-team { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0 2px; }
 .mk-list { display: grid; gap: 8px; }

@@ -8,7 +8,7 @@ import type { ToolSpec } from "./llm";
 
 export const HELP_TOPICS = {
   overview: "What oovi is, and the list of help topics",
-  marketplace: "Connectors, skills and plugins: add, turn on per bot, remove",
+  marketplace: "Connectors, skills and setups (ready-made expert bots and teams): add, turn on per bot, remove",
   connectors: "Setting up a connector (Zapier and others): sign in, choose what oovi may do, test, which bots; fixing 0 tools or sign-in problems",
   files: "Files on this computer: finding, reading and sending your files (also on Telegram), approvals, allowed folders",
   skills: "Create, install and use skills",
@@ -35,7 +35,7 @@ const TEXT: Record<HelpTopic, string> = {
 - Under the message box: Effort and Deep work. Type @ to mention a bot, / for commands.
 Topics: ${Object.keys(HELP_TOPICS).filter((k) => k !== "overview").join(", ")}.`,
 
-  marketplace: `Marketplace (sidebar, bottom) has four tabs: Connectors, Skills, Plugins and Memory. Connectors, Skills and Plugins each have "Yours" (installed) and "Discover" (catalog), a search box and an "+ Add" menu.
+  marketplace: `Marketplace (sidebar, bottom) has four tabs: Connectors, Skills, Setups and Memory. Connectors, Skills and Setups each have "Yours" (installed) and "Discover" (catalog), a search box and an "+ Add" menu.
 Connectors (MCP servers) link bots to apps:
 - Add: Connectors > Discover > press + on a card. Most connectors sign in through the browser (oovi connects once you approve). Some need a key or token (e.g. GitHub) or Node.js.
 - Zapier (featured) and Pipedream connect thousands of apps: Gmail, Google Drive, Docs, Sheets, Calendar, Outlook, Teams, Slack, HubSpot… In Zapier you choose which apps and actions bots may use (zapier.com/mcp).
@@ -44,7 +44,7 @@ Connectors (MCP servers) link bots to apps:
 - A new connector is turned on for the main bot (the Chief) automatically. Other bots: Connectors > Yours > "Set up" > "Which bots can use it" ("All bots" in one click), or open the bot ("Edit bot") > Abilities > "Tools from MCP servers" > click the connector > Save. A connector is not available to a bot until this is done.
 - Connectors > Yours: each one shows its status and how many tools it has; "on" switches it off for every bot, "Always allow" lets bots use it without asking (otherwise every use asks you first), Connect / Reconnect / Disconnect (sign out, keep the connector), "Set up" (the setup card: see topic "connectors"), and the bin icon removes it.
 Skills: step-by-step procedures every bot can use (no per-bot switch). Skills > Discover: oovi skills and skills from Anthropic; press + to add. Skills > Yours: edit or delete. See topic "skills".
-Plugins: ready-made bot teams. Plugins > Discover > "Add team" creates the bots, a group with leader mode on, and installs the team's skills. Plugins > Yours: Open the group, or the bin icon removes the team (its bots and group; skills stay).`,
+Setups: ready-made expert bots and teams. Setups > Discover > "Add team" creates the bots, a group with leader mode on, and installs the team's skills. Setups > Yours: Open the group, or the bin icon removes the team (its bots and group; skills stay).`,
 
   connectors: `Setting up a connector: Marketplace > Connectors > Yours > "Set up" opens its setup card (it also opens by itself right after connecting):
 1. Signed in: press Connect, approve in the browser page that opens, then come back to oovi. "Reconnect" signs in again; "Disconnect" signs out.
@@ -140,7 +140,7 @@ Advanced (optional, Settings > Telegram > Advanced, collapsed): link another Tel
 - Your name and photo: Settings > Profile.`,
 
   settings: `Settings: the gear at the bottom of the sidebar. Tabs: Profile (name, photo, sign out), AI models (theOovi or your own keys and models, their order), Telegram, Sites you signed in to (oovi's own browser sign-ins, for bots with "Use my signed-in accounts"), Web search (search provider), Browser (local or Docker, local network), Cloud computer (E2B key), Safety (approvals, max steps, hand-offs, Files on this computer, Control this computer), Language, Data & backup (download / restore a backup), About & privacy (version, updates, crash reports).
-Elsewhere: per-bot settings in Edit bot (pencil in a bot's chat header): About, Look, Brain (model), Abilities (Main bot, Web search, Browser, signed-in accounts, Tools from MCP servers). Group settings: pencil in a group's header. Connectors, skills, plugins and memory: Marketplace.
+Elsewhere: per-bot settings in Edit bot (pencil in a bot's chat header): About, Look, Brain (model), Abilities (Main bot, Web search, Browser, signed-in accounts, Tools from MCP servers). Group settings: pencil in a group's header. Connectors, skills, setups and memory: Marketplace. A Connector's "Details" shows how it connects, what it can do, and Disconnect.
 Links into the app, written by bots, show as buttons in chat: \`[Label](oovi://marketplace/connector/ID)\`, \`oovi://marketplace/skill/ID\`, \`oovi://marketplace/plugin/ID\`, \`oovi://settings/TAB\` (profile, models, memory, telegram, accounts, search, browser, computer, safety, language, data, about), \`oovi://bot/BOTNAME\` (opens that bot's Abilities), \`oovi://routines\` (the Routines page).`,
 
   commands: `Type / at the start of a message to open the command menu (filter by typing; Enter or click to insert):
