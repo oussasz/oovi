@@ -4,7 +4,8 @@ import { bearer, emailOTP } from "better-auth/plugins";
 import { checkSignup } from "./signup-guard";
 import { pool } from "./db";
 import { isBlocked } from "./credits";
-import { hookHeaders, later, recordCountry, recordEmailConfirmed, recordSignup } from "./user-signals";
+import { countryLabel, countryOf, hookHeaders, later, recordCountry, recordEmailConfirmed, recordSignup } from "./user-signals";
+import { notify } from "./notify";
 import { sendInBackground } from "./mail";
 import { passwordChanged, resetPassword, verifyCode, verifyEmail } from "./mail-templates";
 import { TERMS_VERSION } from "./legal";
@@ -110,6 +111,19 @@ export const auth = betterAuth({
         after: async (user, ctx) => {
           const h = hookHeaders(ctx);
           later(() => recordSignup(user.id, h, h.get("x-oovi-ref")));
+          later(() =>
+            notify({
+              event: "newUser",
+              title: `New account: ${user.email}`,
+              lead: "Someone just created an oovi account.",
+              rows: [
+                ["Email", String(user.email ?? "")],
+                ["Name", String(user.name ?? "") || "–"],
+                ["Country", countryLabel(countryOf(h))],
+              ],
+              button: { label: "Open the account", path: `/admin/users/${encodeURIComponent(user.id)}` },
+            }),
+          );
         },
         before: async (user, ctx) => {
           const u = user as typeof user & { termsVersion?: string | null };

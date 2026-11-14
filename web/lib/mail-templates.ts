@@ -48,7 +48,7 @@ function htmlBlock(b: Block): string {
 }
 
 const strip = (s: string) =>
-  s.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&rsquo;/g, "’");
+  s.replace(/<br>/g, "\n").replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&rsquo;/g, "’").replace(/&ldquo;/g, "“").replace(/&rdquo;/g, "”").replace(/&rsaquo;/g, "›");
 
 function textBlock(b: Block): string {
   if (b.kind === "p") return strip(b.text);
@@ -253,6 +253,29 @@ export function pilotInvite(to: string, name: string): Mail {
     },
     to,
     "Thanks for trying oovi: more credits for you",
+  );
+}
+
+/** A short notice for the owner ("New order", "New feedback"...). Everything typed by other people is escaped. */
+export function adminNotice(
+  to: string,
+  n: { title: string; lead: string; rows?: [string, string][]; quote?: string; button?: { label: string; path: string } },
+): Mail {
+  const title = n.title.replace(/[\r\n]+/g, " ").slice(0, 140);
+  const blocks: Block[] = [{ kind: "p", text: esc(n.lead.slice(0, 600)) }];
+  if (n.rows?.length) blocks.push({ kind: "facts", rows: n.rows.map(([k, v]) => [esc(k.slice(0, 60)), esc(v.slice(0, 200))] as [string, string]) });
+  if (n.quote) blocks.push({ kind: "p", text: `&ldquo;${esc(n.quote.slice(0, 1500)).replace(/\n/g, "<br>")}&rdquo;` });
+  return render(
+    {
+      preheader: n.lead.slice(0, 120),
+      title,
+      hello: "Hi,",
+      blocks,
+      button: n.button ? { label: n.button.label, url: `${siteUrl()}${n.button.path}` } : undefined,
+      note: "You get this because notifications are on in Admin &rsaquo; Email. You can change what you receive, and who receives it, there.",
+    },
+    to,
+    `[oovi] ${title}`,
   );
 }
 

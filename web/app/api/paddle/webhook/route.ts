@@ -5,6 +5,8 @@ import { NodeRuntime, Webhooks } from "@paddle/paddle-node-sdk";
 import { handlePaddleEvent } from "@/lib/billing";
 import { pool } from "@/lib/db";
 import { paddleWebhookSecret } from "@/lib/paddle-server";
+import { notifyPaddleEvent } from "@/lib/notify-paddle";
+import { later } from "@/lib/user-signals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -42,6 +44,8 @@ export async function POST(req: Request) {
       "INSERT INTO paddle_events (event_id, event_type, occurred_at) VALUES ($1, $2, $3) ON CONFLICT (event_id) DO NOTHING",
       [event.eventId, event.eventType, event.occurredAt],
     );
+    // Tell the owner (orders, refunds, cancellations). After the response, and only the first time the event is recorded.
+    later(() => notifyPaddleEvent(event));
     return Response.json({ ok: true, result });
   } catch (err) {
     console.error(`[paddle] ${event.eventType} ${event.eventId} failed:`, err instanceof Error ? err.message : err);

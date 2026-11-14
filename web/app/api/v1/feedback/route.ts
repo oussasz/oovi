@@ -2,6 +2,8 @@
 import { apiError, getRequestSession, noContent, rateLimit, readJson } from "@/lib/api";
 import { pool } from "@/lib/db";
 import { parsePlatform, parseVersion } from "@/lib/telemetry";
+import { notify } from "@/lib/notify";
+import { later } from "@/lib/user-signals";
 
 export const dynamic = "force-dynamic";
 
@@ -42,5 +44,17 @@ export async function POST(req: Request) {
     parseVersion(req.headers.get("x-oovi-version")),
     parsePlatform(req.headers.get("x-oovi-platform")),
   ]);
+  const from = session.user.email;
+  const ver = parseVersion(req.headers.get("x-oovi-version")) ?? "–";
+  later(() =>
+    notify({
+      event: "feedback",
+      title: `New feedback (${kind}) from ${from}`,
+      lead: "Someone sent feedback from the desktop app.",
+      rows: [["From", from], ["Type", kind], ["App version", ver]],
+      quote: message,
+      button: { label: "Open Feedback", path: "/admin/feedback" },
+    }),
+  );
   return noContent();
 }

@@ -6,7 +6,8 @@ import { previews } from "@/lib/mail-templates";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { PageHead, Section } from "@/components/admin/ui";
 import { fmtDateTime } from "@/components/admin/format";
-import { removeEmailPassword, saveEmailSettings, sendTestEmail } from "./actions";
+import { removeEmailPassword, saveEmailSettings, saveNotificationSettings, sendTestEmail, sendTestNotification } from "./actions";
+import { adminList, effectiveRecipients, EVENTS, getNotifyConfig } from "@/lib/notify";
 import { EmailPreviews, type PreviewItem } from "./EmailPreviews";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,7 @@ export default async function AdminEmail() {
   const missing = [!cfg.host && "server", !cfg.user && "username", !hasPassword && "password", !cfg.fromEmail && "sender email"].filter(
     Boolean,
   ) as string[];
+  const notif = await getNotifyConfig();
   const all = previews(admin.email);
   const items: PreviewItem[] = Object.keys(all).map((key) => ({ key, label: LABELS[key] ?? key, subject: all[key]!.subject }));
 
@@ -75,6 +77,55 @@ export default async function AdminEmail() {
           </span>
         </div>
       </div>
+
+      <Section
+        title="Notifications to you"
+        sub="Get an email when something happens: a new account, an order, feedback, and more. Choose what you want, and who receives it."
+      >
+        {!ready && (
+          <p className="alert alert-error" role="status" style={{ marginBottom: 12 }}>
+            The mail server below isn’t set up yet, so no notification can be sent. Fill it in first.
+          </p>
+        )}
+        <ActionForm action={saveNotificationSettings} submitLabel="Save notification settings" pendingLabel="Saving…">
+          <label className="check">
+            <input type="checkbox" name="enabled" defaultChecked={notif.enabled} />
+            <span>
+              <b>Send me notifications.</b> Untick to pause all of them at once.
+            </span>
+          </label>
+          <Field
+            id="recipients"
+            label="Who receives them"
+            help={
+              notif.recipients.length
+                ? "One address per line (or separated by commas). Up to 10."
+                : `Empty means all admins${adminList().length ? `: ${adminList().join(", ")}` : " (none set in ADMIN_EMAILS yet)"}. One address per line, up to 10.`
+            }
+          >
+            <textarea id="recipients" name="recipients" className="input" rows={3} maxLength={3000} defaultValue={notif.recipients.join("\n")} placeholder="you@example.com" spellCheck={false} autoComplete="off" aria-describedby="recipients-help" />
+          </Field>
+          <fieldset className="adm-fieldset">
+            <legend>Tell me when</legend>
+            <div className="adm-fields adm-fields-wide" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))" }}>
+              {EVENTS.map((e) => (
+                <label key={e.key} className="check">
+                  <input type="checkbox" name={`ev_${e.key}`} defaultChecked={notif.events[e.key]} />
+                  <span>
+                    <b>{e.label}.</b> {e.help}
+                  </span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <p className="adm-help">
+            Right now notifications go to: <b>{effectiveRecipients(notif).join(", ") || "nobody"}</b>. Each kind is limited to 30 emails an hour, so a burst can’t flood your inbox.
+          </p>
+        </ActionForm>
+        <div style={{ marginTop: 14 }}>
+          <ActionForm action={sendTestNotification} submitLabel="Send a test notification" pendingLabel="Sending…" submitClassName="btn btn-light btn-sm" />
+        </div>
+      </Section>
 
       <div className="adm-grid-2">
         <Section title="Mail server (SMTP)" sub="Use the details from your email provider. Saved changes apply within about 15 seconds.">

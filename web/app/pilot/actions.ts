@@ -8,6 +8,8 @@ import { rateLimit } from "@/lib/api";
 import { isBlocked } from "@/lib/credits";
 import { pool } from "@/lib/db";
 import { fdStr } from "@/lib/form";
+import { notify } from "@/lib/notify";
+import { later } from "@/lib/user-signals";
 
 export type PilotFormState = { ok?: boolean; errors?: string[] } | null;
 
@@ -49,6 +51,17 @@ export async function requestPilot(_prev: PilotFormState, fd: FormData): Promise
     console.error("pilot request failed", err instanceof Error ? err.message : err);
     return { errors: ["Could not send your request. Please try again."] };
   }
+  const who = session.user.email;
+  later(() =>
+    notify({
+      event: "pilotRequest",
+      title: `New pilot request from ${who}`,
+      lead: "Someone asked to join the pilot. Review it and approve or reject.",
+      rows: [["Email", who], ["Organization", organization || "–"], ["Role", role || "–"], ["Team size", teamSize || "–"]],
+      quote: useCase,
+      button: { label: "Review the request", path: "/admin/pilot" },
+    }),
+  );
   revalidatePath("/pilot");
   revalidatePath("/account");
   return { ok: true };

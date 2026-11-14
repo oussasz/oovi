@@ -7,6 +7,7 @@ import { audit } from "@/lib/credits";
 import { fdBool, fdNum, fdStr } from "@/lib/form";
 import { isEmail, normalizeSmtp, saveSmtp, sendMail, smtpStatus, type SmtpConfig } from "@/lib/mail";
 import { testEmail } from "@/lib/mail-templates";
+import { EVENTS, getNotifyConfig, saveNotifyConfig, sendTestNotice, type EventKey, type NotifyConfig } from "@/lib/notify";
 import type { ActionState } from "@/components/admin/ActionForm";
 
 function refresh() {
@@ -108,4 +109,54 @@ export async function sendTestEmail(fd: FormData): Promise<ActionState> {
   }
   await audit(admin.email, "email.test", "smtp", { to }).catch(() => {});
   return { ok: `Sent to ${to}. It can take a minute to arrive; check spam too.` };
+}
+
+/** Who gets notifications, and for which events. Saved for everyone who opens the console. */
+export async function saveNotificationSettings(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const parts = fdStr(fd, "recipients", 3000)
+    .split(/[\s,;]+/)
+    .map((p) => p.trim().toLowerCase())
+    .filter(Boolean);
+  const errors: string[] = [];
+  const bad = parts.filter((p) => !isEmail(p));
+  if (bad.length) errors.push(`These don't look like email addresses: ${bad.slice(0, 3).join(", ")}${bad.length > 3 ? "…" : ""}`);
+  const recipients = [...new Set(parts)];
+  if (recipients.length > 10) errors.push("Use at most 10 addresses.");
+  if (errors.length) return { errors };
+
+  const events = {} as Record<EventKey, boolean>;
+  for (const e of EVENTS) events[e.key] = fdBool(fd, `ev_${e.key}`);
+  const next: NotifyConfig = { enabled: fdBool(fd, "enabled"), recipients, events };
+  try {
+    const before = await getNotifyConfig();
+    await saveNotifyConfig(next, admin.email);
+    await audit(admin.email, "notifications.settings", "notifications", {
+      enabled: { from: before.enabled, to: next.enabled },
+      recipients: { from: before.recipients, to: next.recipients },
+      events: EVENTS.filter((e) => before.events[e.key] !== next.events[e.key]).map((e) => `${e.key}: ${next.events[e.key] ? "on" : "off"}`),
+    }).catch(() => {});
+  } catch (err) {
+    console.error("notification settings save failed", err instanceof Error ? err.message : "unknown error");
+    return { errors: ["Could not save. Please try again."] };
+  }
+  refresh();
+  const on = EVENTS.filter((e) => next.events[e.key]).length;
+  return {
+    ok: !next.enabled
+      ? "Saved. Notifications are off."
+      : `Saved. ${on} kind${on === 1 ? "" : "s"} of notification on. Send a test to check it reaches you.`,
+  };
+}
+
+export async function sendTestNotification(): Promise<ActionState> {
+  const admin = await requireAdmin();
+  if (!rateLimit(`notify-test:${admin.id}`, 5, 10 * 60_000)) return { errors: ["That's a lot of tests in a short time. Please wait a few minutes."] };
+  try {
+    const { sent } = await sendTestNotice();
+    await audit(admin.email, "notifications.test", "notifications", { to: sent }).catch(() => {});
+    return { ok: `Sent to ${sent.join(", ")}. It can take a minute to arrive; check spam too.` };
+  } catch (err) {
+    return { errors: [err instanceof Error ? err.message : "The test couldn't be sent."] };
+  }
 }

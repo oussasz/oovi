@@ -5,6 +5,8 @@ import { rateLimit } from "@/lib/api";
 import { isBlocked } from "@/lib/credits";
 import { pool } from "@/lib/db";
 import { fdStr } from "@/lib/form";
+import { notify } from "@/lib/notify";
+import { later } from "@/lib/user-signals";
 
 export type FeedbackFormState = { ok?: boolean; errors?: string[] } | null;
 
@@ -34,6 +36,17 @@ export async function sendFeedback(_prev: FeedbackFormState, fd: FormData): Prom
     );
     if (Number(rows[0]?.c ?? 0) >= 30) return { errors: ["You’ve sent a lot of feedback in the last hour. Please try again later."] };
     await pool.query("INSERT INTO feedback (user_id, kind, message, source) VALUES ($1, $2, $3, 'web')", [userId, kind, message]);
+    const from = session.user.email;
+    later(() =>
+      notify({
+        event: "feedback",
+        title: `New feedback (${kind}) from ${from}`,
+        lead: "Someone sent feedback from the website.",
+        rows: [["From", from], ["Type", kind]],
+        quote: message,
+        button: { label: "Open Feedback", path: "/admin/feedback" },
+      }),
+    );
   } catch (err) {
     console.error("web feedback failed", err instanceof Error ? err.message : err);
     return { errors: ["Could not send your feedback. Please try again."] };

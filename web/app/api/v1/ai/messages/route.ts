@@ -29,6 +29,7 @@ import {
 } from "@/lib/credits";
 import { verificationRequired } from "@/lib/mail";
 import { recordAiCall } from "@/lib/user-signals";
+import { notifyOnce } from "@/lib/notify";
 import { after as runAfter } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -233,6 +234,14 @@ export async function POST(req: Request) {
   if (!cfg.enabled) return fail(503, "off", `${cfg.displayName} isn't available right now. Add your own API key in Settings > AI models.`);
   if (cfg.paused) return fail(503, "paused", cfg.pausedMessage);
   if (cfg.dailyBudgetUsd > 0 && (await spendToday()) >= cfg.dailyBudgetUsd) {
+    runAfter(() =>
+      notifyOnce("capacity", 6 * 3_600_000, {
+        event: "capacity",
+        title: "theOovi paused: daily budget reached",
+        lead: `People are being told to wait until midnight UTC. The daily limit is $${cfg.dailyBudgetUsd}. Raise it in Admin > theOovi if you want it to keep answering.`,
+        button: { label: "Open theOovi settings", path: "/admin/ai" },
+      }),
+    );
     return fail(503, "paused", `${cfg.displayName} has reached today's capacity and will be back at midnight UTC. Your own API keys still work.`);
   }
   if (!session.user.emailVerified && (await verificationRequired())) {
@@ -319,6 +328,14 @@ export async function POST(req: Request) {
     const s = up?.status ?? 0;
     if (s === 401 || s === 403) {
       console.error("theOovi: the provider rejected the API key");
+      runAfter(() =>
+        notifyOnce("providerError", 3_600_000, {
+          event: "providerError",
+          title: "theOovi is down: the AI key was rejected",
+          lead: "The AI provider refused your API key, so nobody can use theOovi right now. Check the key in Admin > theOovi.",
+          button: { label: "Open theOovi settings", path: "/admin/ai" },
+        }),
+      );
       return fail(503, "unavailable", `${cfg.displayName} isn't available right now. Please try again later.`);
     }
     if (s === 400 || s === 413) return fail(400, "bad_request", upstreamMessage(up!));

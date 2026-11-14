@@ -1,5 +1,7 @@
 import { apiError, clientIp, getRequestSession, noContent, rateLimit, readJson } from "@/lib/api";
 import { pool } from "@/lib/db";
+import { notify } from "@/lib/notify";
+import { later } from "@/lib/user-signals";
 
 export const dynamic = "force-dynamic";
 
@@ -41,5 +43,15 @@ export async function POST(req: Request) {
     console.error("crash report insert failed", err);
     return apiError("Could not store the crash report.", 500);
   }
+  later(() =>
+    notify({
+      event: "crash",
+      title: `Crash in the app (${appVersion})`,
+      lead: "The desktop app reported a crash.",
+      rows: [["App version", appVersion], ["System", platform]],
+      quote: message,
+      button: { label: "Open Crashes", path: "/admin/crashes" },
+    }),
+  );
   return noContent();
 }
