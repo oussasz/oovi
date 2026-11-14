@@ -297,3 +297,17 @@ test("several screens: points go to the right screen, windows belong to the scre
   assert.equal(pickScreen(list, "main")?.id, 1);
   assert.equal(pickScreen(list, "9"), null);
 });
+
+// Speed: the last screen-changing action of a turn brings its own screenshot (one model round trip instead of two).
+import { shotAfterId, settleMs } from "../../lib/desktop-core.ts";
+test("the last action of a turn comes back with a screenshot, unless the turn already looks", () => {
+  const k = (id: string, m: string) => ({ id, name: `desktop_${m}` });
+  assert.equal(shotAfterId([k("1", "left_click"), k("2", "type"), k("3", "key")]), "3");
+  assert.equal(shotAfterId([k("1", "left_click"), k("2", "screenshot")]), null);
+  assert.equal(shotAfterId([{ id: "1", name: "desktop_mouse_down" }]), null);
+  assert.equal(shotAfterId([{ id: "1", name: "read_url" }]), null);
+  assert.equal(shotAfterId([k("1", "scroll"), { id: "2", name: "work_table" }]), "1");
+  assert.equal(settleMs({ kind: "key", combos: [{ key: "enter", modifiers: [] }], repeat: 1 }), 1200);
+  assert.equal(settleMs({ kind: "type", text: "hello" }), 250);
+  assert.equal(settleMs({ kind: "click", button: "left", count: 1, modifiers: [] }), 700);
+});

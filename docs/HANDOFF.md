@@ -1,5 +1,10 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## After 0.10.11 (2026-11-14, not released yet): faster computer use, glow never in the bot's screenshots
+- Speed: the last screen-changing action of a turn comes back with a fresh screenshot (`shotAfterId`, `settleMs` in `lib/desktop-core.ts`; `shotAfter` in `runDesktopCall`), after a short settle (250 ms typing … 1.2 s after Enter). Before, every action returned "OK" and the bot needed a second model round trip just to look: roughly half the waits are gone. The bot is told to chain predictable steps in one turn. Older screenshots are still pruned (KEEP_SHOTS).
+- "Thinking" pointer: when oovi's pointer hasn't moved for 0.7 s, it sways gently and three dots in the glow colours pulse beside it (only the drawing moves, never the real mouse). Calmer with reduce-motion.
+- Glow in the bot's screenshots (owner: "what the bot sees"): it is excluded by Windows content protection from Windows 10 version 2004; on older builds (< 19041) the glow and pointer go see-through for ~60 ms during each capture. Content protection is applied again after showing. Mask code already skipped these windows. Not checked on a real PC.
+
 ## After 0.10.11 (2026-11-14, not released yet): fixes from a user's conversation (m3ak prospect list)
 - One deliverable, one file: a chat that makes a file again under the same name in Downloads/oovi replaces its own earlier file (registry `made-files.json` in the data folder; another chat's or the user's file is never replaced; a file open in Excel gets a new copy and the bot is told). work_export of the same table goes to the same file even when the bot invents "_FINAL"/"_UPDATED" names (`exports` in the work store; `new_copy` only when the user asks). Instructions tell bots not to make copies.
 - Table reads no longer push each other out of view: one read returns at most ~12K characters and says where to continue (`READ_CHARS`, `lib/workfiles-core.ts`). Cause: with theOovi's ~80K-token budget, a 100-row read made older reads shrink to 400 characters (`fitBudget`), so the bot "remembered" rows and retyped them.

@@ -397,6 +397,29 @@ export type DesktopAction =
   | { kind: "hold_key"; combo: KeyCombo; seconds: number }
   | { kind: "wait"; seconds: number };
 
+/**
+ * Speed: the last action of a turn that changes the screen comes back with a fresh screenshot, so the bot
+ * doesn't need another round trip to the model just to look (that wait was most of the time between
+ * actions). None when the turn already ends with its own screenshot, or mid-drag (button held).
+ */
+export function shotAfterId(calls: { id: string; name: string }[]): string | null {
+  const desk = calls.filter((c) => c.name.startsWith(DESKTOP_PREFIX));
+  const last = desk.at(-1);
+  if (!last) return null;
+  const m = memberOf(last.name);
+  if (LOOK_ONLY.has(m) || m === "mouse_down" || m === "hold_key") return null;
+  return last.id;
+}
+
+/** How long the screen takes to settle after an action before the screenshot (a page may load after Enter). */
+export function settleMs(a: DesktopAction): number {
+  if (a.kind === "key") return a.combos.some((c) => c.key === "enter" || (c.modifiers.length > 0 && ["t", "w", "l", "r", "tab"].includes(c.key))) ? 1200 : 350;
+  if (a.kind === "type") return /\n$/.test(a.text) ? 1200 : 250;
+  if (a.kind === "click") return a.count > 1 ? 900 : 700;
+  if (a.kind === "scroll") return 400;
+  return 300;
+}
+
 export const MAX_TYPE = 500;
 export const MAX_REPEAT = 20;
 const MAX_WAIT = 30;

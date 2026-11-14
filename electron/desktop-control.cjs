@@ -120,6 +120,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   // border; the pointer window sits just beside the real pointer's tip. All are kept out of the bot's
   // screenshots (content protection) and are a bonus: if one can't be made, control goes on without it.
   const POINTER = 56; // DIP
+  /** Windows before 10 version 2004 (build 19041) can't leave a window out of screenshots, only black it out. */
+  const OLD_WINDOWS = process.platform === "win32" && Number(String(require("node:os").release()).split(".")[2] || 0) < 19041;
   let edges = [];
   let pointerWin = null;
   const decoPage = (body, css) =>
@@ -155,6 +157,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       try {
         if (w.isDestroyed()) return;
         w.showInactive();
+        // Applied again once shown: a window shown after content protection was set could lose it on some systems.
+        w.setContentProtection(true);
         // On a second screen with another scale (125%, 150%…) Windows may place it by the first
         // screen's scale: set the same bounds again once it is on its screen.
         w.setBounds(bounds);
@@ -215,8 +219,16 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       pointerWin = decoWindow(
         { x: p.x + Math.round(p.width / 2), y: p.y + Math.round(p.height / 2), width: POINTER, height: POINTER },
         decoPage(
-          '<div class="r" id="r"></div><svg viewBox="0 0 44 44" width="44" height="44"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd25a"/><stop offset=".38" stop-color="#ffab1f"/><stop offset=".72" stop-color="#ff6f61"/><stop offset="1" stop-color="#ff4b8b"/><animateTransform attributeName="gradientTransform" type="rotate" values="-25 .5 .5;25 .5 .5;-25 .5 .5" dur="4s" repeatCount="indefinite"/></linearGradient></defs><path d="M5 5 39 16.5Q28.5 28.5 16.5 39Z" fill="url(#g)" stroke="url(#g)" stroke-width="7" stroke-linejoin="round"/><path d="M9 9 23 14" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-linecap="round" fill="none"/></svg>',
-          "svg{position:absolute;left:0;top:0;overflow:visible;filter:drop-shadow(0 0 5px rgba(255,140,60,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35))}.r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ff9b6a;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}",
+          '<div class="r" id="r"></div><div class="a"><svg viewBox="0 0 44 44" width="44" height="44"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd25a"/><stop offset=".38" stop-color="#ffab1f"/><stop offset=".72" stop-color="#ff6f61"/><stop offset="1" stop-color="#ff4b8b"/><animateTransform attributeName="gradientTransform" type="rotate" values="-25 .5 .5;25 .5 .5;-25 .5 .5" dur="4s" repeatCount="indefinite"/></linearGradient></defs><path d="M5 5 39 16.5Q28.5 28.5 16.5 39Z" fill="url(#g)" stroke="url(#g)" stroke-width="7" stroke-linejoin="round"/><path d="M9 9 23 14" stroke="rgba(255,255,255,.5)" stroke-width="2" stroke-linecap="round" fill="none"/></svg></div><div class="d"><i></i><i></i><i></i></div>' +
+            // While the bot thinks (the pointer hasn't moved for a moment), the arrow sways gently and three dots
+            // pulse beside it: the user sees it is working, not stuck. Only this drawing moves, never the real mouse.
+            "<script>(function(){var x=screenX,y=screenY,t=Date.now();setInterval(function(){if(screenX!==x||screenY!==y){x=screenX;y=screenY;t=Date.now();document.body.classList.remove('think');}else if(Date.now()-t>700)document.body.classList.add('think');},120);})();<\/script>",
+          ".a{position:absolute;left:0;top:0;transform-origin:3px 3px}svg{position:absolute;left:0;top:0;overflow:visible;filter:drop-shadow(0 0 5px rgba(255,140,60,.55)) drop-shadow(0 2px 3px rgba(0,0,0,.35))}" +
+            ".r{position:absolute;left:-14px;top:-14px;width:40px;height:40px;border-radius:50%;border:3px solid #ff9b6a;opacity:0;transform:scale(.3)}.r.on{animation:c .45s ease-out}@keyframes c{0%{opacity:.95;transform:scale(.3)}100%{opacity:0;transform:scale(1.25)}}" +
+            ".d{position:absolute;left:33px;top:40px;display:flex;gap:3px;opacity:0;transition:opacity .25s}.d i{width:5px;height:5px;border-radius:50%;background:#ffab1f;box-shadow:0 0 4px rgba(255,140,60,.8)}.d i:nth-child(2){background:#ff6f61}.d i:nth-child(3){background:#ff4b8b}" +
+            ".think .d{opacity:1}.think .d i{animation:p 1.1s ease-in-out infinite}.think .d i:nth-child(2){animation-delay:.18s}.think .d i:nth-child(3){animation-delay:.36s}@keyframes p{0%,100%{transform:translateY(0);opacity:.45}40%{transform:translateY(-4px);opacity:1}}" +
+            ".think .a{animation:s 2.4s ease-in-out infinite}@keyframes s{0%,100%{transform:rotate(-7deg) translate(0,0)}50%{transform:rotate(6deg) translate(1px,2px)}}" +
+            "@media (prefers-reduced-motion:reduce){.think .a{animation:none}.think .d i{animation-duration:2.2s}}",
         ),
       );
     } catch {
@@ -410,7 +422,18 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     },
     async capture({ real, out, fit = false, crop = null, mask = [], quality = 70, screen: which = null }) {
       const d = (which !== null && screen.getAllDisplays().find((x) => x.id === which)) || screen.getPrimaryDisplay();
-      const sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
+      // The glow and the pointer are left out of screenshots by Windows itself (content protection) from
+      // Windows 10 version 2004. Older Windows would show them as black bands over what the bot must see:
+      // there they are made see-through for the moment of the capture.
+      const deco = OLD_WINDOWS ? [...edges, pointerWin].filter((w) => w && !w.isDestroyed()) : [];
+      let sources;
+      try {
+        for (const w of deco) w.setOpacity(0);
+        if (deco.length) await new Promise((r) => setTimeout(r, 60));
+        sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
+      } finally {
+        for (const w of deco) if (!w.isDestroyed()) w.setOpacity(1);
+      }
       const src = sources.find((s) => s.display_id === String(d.id)) ?? (sources.length === 1 ? sources[0] : null);
       if (!src || src.thumbnail.isEmpty()) throw new Error("unavailable");
       let img = src.thumbnail;

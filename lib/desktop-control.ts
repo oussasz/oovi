@@ -35,6 +35,7 @@ import {
   IDLE_LIMIT_MS,
   LOOK_ONLY,
   SHOT_BOX,
+  settleMs,
   TYPE_CHUNK,
   describeAction,
   fitWithin,
@@ -708,6 +709,8 @@ export type DesktopCtx = {
   signal?: AbortSignal;
   /** The approval card this call was allowed on, when it was asked. */
   approved?: ApprovalItem | null;
+  /** The last action of the turn: come back with a fresh screenshot (see shotAfterId). */
+  shotAfter?: boolean;
 };
 
 /** Runs one desktop call. The orchestrator has already checked the user's OK. */
@@ -765,6 +768,16 @@ export async function runDesktopCall(call: ToolCall, ctx: DesktopCtx): Promise<T
       res = await perform(b, s, call, a, { ...o, signal: ctx.signal });
     }
     if (st.session === s) s.lastPos = read(() => b.cursor()) ?? s.lastPos;
+    // The screen after the action, in the same result: no extra round trip to the model just to look.
+    if (ctx.shotAfter && !res.isError && !ctx.signal?.aborted) {
+      await sleep(settleMs(a), ctx.signal);
+      try {
+        const shot = await screenshotResult(b, call, read(() => screenOf(b)) ?? o);
+        if (!shot.isError) return { ...shot, content: `${res.content === "OK" ? "Done." : res.content} The screen now (no need to take another screenshot):\n${shot.content}` };
+      } catch {
+        // The action itself worked: say so, the bot takes a screenshot when it needs one.
+      }
+    }
     return res;
   } catch (e) {
     if (st.session === s) s.lastPos = read(() => b.cursor()) ?? s.lastPos;
@@ -1049,7 +1062,7 @@ async function perform(b: Bridge, s: Session, call: ToolCall, a: DesktopAction, 
 
 export const DESKTOP_PROMPT = `Desktop control (Beta): you can see this computer's screen and use its mouse and keyboard with the computer tools (screenshot, zoom, left_click, double_click, right_click, left_click_drag, scroll, type, key, mouse_move, wait…).
 - It is a real ability you have: when the user asks you to use their computer, an app on it, or their mouse and keyboard, do it (never say you can't). Prefer files, documents, the browser tools and connectors when they can do the same job, because they are faster.
-- Start with a screenshot. Coordinates are pixels in the latest screenshot. With several screens, a screenshot shows one screen (the one with the window you work in) and lists the others: what you need may be on another one; bring its window to the front (manage_window switch) or look there (manage_window screen). Click into a window before typing: keys go to the window that has the focus. After actions that change the screen, take a screenshot to check the result.
+- Start with a screenshot. Coordinates are pixels in the latest screenshot. With several screens, a screenshot shows one screen (the one with the window you work in) and lists the others: what you need may be on another one; bring its window to the front (manage_window switch) or look there (manage_window screen). Click into a window before typing: keys go to the window that has the focus. Your last action of each turn comes back with a fresh screenshot of the result: use it, don't take another. To be fast, chain steps whose result you can predict in one turn (click a field, type, press Enter; several keys), and look only when you need to see what happened.
 - The user approves the first action of each task, and may approve every action. The user can press Stop at any time.
 - Never type passwords, PINs, card numbers, security answers or one-time codes, and never type into a field that looks like a password field: ask the user to do that part. oovi refuses password managers, banking and payment windows, and blacks them out in screenshots.
 - To start an app that isn't open, call open_app with its name (the user approves it, unless they already allowed the mouse and keyboard for this task). You can't use terminals, Run, Settings, Task Manager, the Windows key, the taskbar, Start or Search, Alt+Tab, or windows running as administrator. open_app also starts Microsoft Store apps (WhatsApp, the new Outlook…).

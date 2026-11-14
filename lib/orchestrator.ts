@@ -51,7 +51,7 @@ import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
-import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
+import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots, shotAfterId } from "./desktop-core";
 import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 import { ASK_SPEC, answersText, cleanAnswers, cleanQuestions } from "./ask-user";
@@ -1202,6 +1202,7 @@ async function* runBot(
       let selfChanged = false;
       // Desktop actions of one turn run in order and stop at the first failure (the computer toolset's batch rule).
       let deskHalted = false;
+      const shotAfter = shotAfterId(last.toolCalls);
       for (const c of last.toolCalls) {
         if (signal.aborted) break;
         if (c.name === "propose_plan") {
@@ -1223,7 +1224,7 @@ async function* runBot(
             // Only the task's own card ("Allow for this task") grants the task.
             if (grantsTask(item) && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             yield { type: "status", entryId: entry.id, text: statusText(c, translatorFor(lastUserText(chat))) };
-            r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal, approved: item });
+            r = await runDesktopCall(c, { chatId: chat.id, botId: bot.id, taskId, language: settings.language, signal, approved: item, shotAfter: c.id === shotAfter });
           }
           if (r.isError) deskHalted = true;
           results.push(r);
