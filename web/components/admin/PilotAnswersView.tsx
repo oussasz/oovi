@@ -5,7 +5,6 @@ export function PilotAnswersView({ a, useCase }: { a: PilotAnswers | null; useCa
   if (!a || !a.role) return null;
   const face = FACES.find((f) => f.value === a.experience);
   const heard = a.heard === "other" && a.heardOther ? `${labelOf(HEARD, "other")}: ${a.heardOther}` : labelOf(HEARD, a.heard);
-  const stars = a.usefulness ? `${"★".repeat(a.usefulness)}${"☆".repeat(5 - a.usefulness)} (${a.usefulness}/5)` : "–";
   const call = a.call ? `${labelOf(CALL, a.call)}${a.contact ? ` · ${a.contact}` : ""}` : "–";
   const rows: [string, string][] = [
     ["Computer", labelOf(SYSTEMS, a.system)],
@@ -14,7 +13,6 @@ export function PilotAnswersView({ a, useCase }: { a: PilotAnswers | null; useCa
     ["Uses today", labelsOf(TOOLS, a.tools)],
     ["Heard from", heard],
     ["First try", face ? `${face.icon} ${face.label}` : "–"],
-    ["Usefulness", stars],
     ["Improve first", labelsOf(IMPROVE, a.improve)],
     ["Can pay with", labelsOf(PAY_METHODS, a.payMethods)],
     ["Would pay", a.pay ? labelOf(PAY, a.pay) : "–"],

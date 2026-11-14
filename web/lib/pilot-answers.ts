@@ -38,7 +38,6 @@ export type Tally = { label: string; value: number }[];
 export type PilotInsights = {
   answered: number;
   avgExperience: number | null;
-  avgUsefulness: number | null;
   system: Tally;
   roles: Tally;
   uses: Tally;
@@ -69,18 +68,16 @@ export async function pilotInsights(): Promise<PilotInsights | null> {
   const list = rows.map((r) => readAnswers(r.answers)).filter((a): a is PilotAnswers => !!a && !!a.role);
   if (!list.length) return null;
   const m = { system: new Map<string, number>(), role: new Map<string, number>(), uses: new Map<string, number>(), heard: new Map<string, number>(), improve: new Map<string, number>(), pay: new Map<string, number>(), payM: new Map<string, number>(), mobile: new Map<string, number>() };
-  let exp = 0, expN = 0, use = 0, useN = 0, callOk = 0;
+  let exp = 0, expN = 0, callOk = 0;
   for (const a of list) {
     bump(m.system, a.system); bump(m.role, a.role); bump(m.heard, a.heard); bump(m.pay, a.pay); bump(m.mobile, a.mobile);
     a.uses.forEach((v) => bump(m.uses, v)); a.improve.forEach((v) => bump(m.improve, v)); a.payMethods.forEach((v) => bump(m.payM, v));
     if (a.experience) { exp += a.experience; expN++; }
-    if (a.usefulness) { use += a.usefulness; useN++; }
     if (a.call === "yes" || a.call === "later") callOk++;
   }
   return {
     answered: list.length,
     avgExperience: expN ? exp / expN : null,
-    avgUsefulness: useN ? use / useN : null,
     system: tally(m.system, SYSTEMS), roles: tally(m.role, ROLES), uses: tally(m.uses, USES), heard: tally(m.heard, HEARD), improve: tally(m.improve, IMPROVE),
     pay: tally(m.pay, PAY), payMethods: tally(m.payM, PAY_METHODS), mobile: tally(m.mobile, MOBILE), callOk,
   };

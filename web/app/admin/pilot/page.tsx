@@ -135,7 +135,6 @@ export default async function AdminPilot({ searchParams }: { searchParams: Promi
               value={insights.avgExperience === null ? "–" : `${FACES[Math.min(4, Math.max(0, Math.round(insights.avgExperience) - 1))]!.icon} ${insights.avgExperience.toFixed(1)} / 5`}
               hint="From 😖 to 🤩"
             />
-            <Kpi label="Usefulness, average" value={insights.avgUsefulness === null ? "–" : `★ ${insights.avgUsefulness.toFixed(1)} / 5`} />
             <Kpi label="Open to a 15 minute call" value={fmtInt(insights.callOk)} hint="Yes or maybe later" />
           </div>
           <div className="adm-grid-2" style={{ marginTop: 16 }}>

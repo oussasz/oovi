@@ -8,8 +8,6 @@
   --blue: #a9bcf7;
   --blue-ink: #6f8cf0;
   --chip-on: #ece6f7;
-  --star: #f2b134;
-  --star-off: #ddd9ce;
   --yellow: #fdda80;
   --coral: #ff9f86;
   --mint: #bbd8c4;
@@ -37,8 +35,6 @@
     --border: #34332e;
     --blue-ink: #a9bcf7;
     --chip-on: #38314d;
-    --star: #f2b134;
-    --star-off: #4a4944;
     --btn-dark-bg: #f3f1ea;
     --btn-dark-fg: #151513;
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
@@ -2997,7 +2993,7 @@ textarea.input {
 .pf-hint { font-size: 13px; font-weight: 600; color: var(--muted); }
 .pf-chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .pf-chip { position: relative; display: inline-flex; }
-.pf-chip input, .pf-face input, .pf-star input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
+.pf-chip input, .pf-face input { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; opacity: 0; cursor: pointer; }
 .pf-chip > span { display: inline-flex; align-items: center; gap: 8px; padding: 9px 15px; border-radius: 999px; border: 1.5px solid var(--border); background: var(--surface); font-weight: 700; font-size: 14.5px; line-height: 1.3; transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease; }
 .pf-chip:hover > span { background: var(--surface-2); }
 .pf-chip input:checked + span { background: var(--chip-on); border-color: var(--ink); font-weight: 800; }
@@ -3012,12 +3008,6 @@ textarea.input {
 .pf-em { font-size: 32px; line-height: 1.1; filter: grayscale(0.7); opacity: 0.7; transition: transform 0.15s ease, filter 0.15s ease, opacity 0.15s ease; }
 .pf-face input:checked + span { background: var(--chip-on); border-color: var(--ink); color: var(--ink); }
 .pf-face input:checked + span .pf-em { filter: none; opacity: 1; transform: scale(1.2); }
-.pf-stars { display: flex; gap: 2px; }
-.pf-star { position: relative; display: block; width: 44px; height: 44px; }
-.pf-star > span { display: grid; place-items: center; width: 100%; height: 100%; font-size: 36px; line-height: 1; color: var(--star-off); transition: color 0.12s ease, transform 0.12s ease; }
-.pf-star.on > span { color: var(--star); }
-.pf-star:hover > span { transform: scale(1.12); }
-.pf-star input:focus-visible + span { outline: 3px solid var(--blue-ink); outline-offset: -2px; border-radius: 10px; }
 .pf-nav { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 4px; }
 .pf-done { text-align: center; padding: 12px 0; display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .pf-done h3 { margin: 0; font-size: 22px; }
@@ -3026,8 +3016,25 @@ textarea.input {
   .pf-faces { gap: 4px; }
   .pf-face > span { font-size: 11px; padding: 10px 2px 8px; border-radius: 14px; }
   .pf-em { font-size: 26px; }
-  .pf-star { width: 40px; height: 40px; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .pf-dot, .pf-chip > span, .pf-face > span, .pf-em, .pf-star > span { transition: none; }
+  .pf-dot, .pf-chip > span, .pf-face > span, .pf-em, .pf-select-btn, .pf-select-chev { transition: none; }
 }
+
+/* ---------- dropdown with logos (app/pilot/IconSelect.tsx) ---------- */
+.pf-select { position: relative; max-width: 400px; }
+.pf-select-btn { display: flex; align-items: center; gap: 12px; width: 100%; text-align: start; font: inherit; font-size: 16px; font-weight: 700; color: var(--ink); background: var(--surface); border: 1.5px solid var(--border); border-radius: 14px; padding: 12px 14px; cursor: pointer; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
+.pf-select-btn:hover { background: var(--surface-2); }
+.pf-select-btn:focus-visible, .pf-select-btn[aria-expanded="true"] { outline: none; border-color: var(--blue-ink); box-shadow: 0 0 0 4px color-mix(in srgb, var(--blue) 35%, transparent); }
+.pf-select-btn > svg:first-child { flex: none; }
+.pf-select-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pf-select-empty { color: var(--muted); font-weight: 600; }
+.pf-select-chev { flex: none; color: var(--muted); transition: transform 0.15s ease; }
+.pf-select-chev.open { transform: rotate(180deg); }
+.pf-select-list { position: absolute; z-index: 30; inset-inline: 0; top: calc(100% + 6px); margin: 0; padding: 6px; list-style: none; max-height: 320px; overflow-y: auto; background: var(--surface); border: 1.5px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
+.pf-select-opt { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 12px; font-weight: 700; font-size: 15px; line-height: 1.3; cursor: pointer; }
+.pf-select-opt > svg:first-child { flex: none; }
+.pf-select-opt > span { min-width: 0; }
+.pf-select-opt[data-active="true"] { background: var(--surface-2); }
+.pf-select-opt[aria-selected="true"] { background: var(--chip-on); font-weight: 800; }
+.pf-select-tick { margin-inline-start: auto; flex: none; }

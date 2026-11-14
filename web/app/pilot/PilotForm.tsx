@@ -4,6 +4,7 @@ import { useActionState, useRef, useState, startTransition } from "react";
 import { TEAM_SIZES } from "@/lib/team-sizes";
 import { CALL, FACES, HEARD, IMPROVE, LANGUAGES, MOBILE, PAY, PAY_METHODS, ROLES, SYSTEMS, TOOLS, USES, type Opt } from "@/lib/pilot-form";
 import { requestPilot, type PilotFormState } from "./actions";
+import { IconSelect } from "./IconSelect";
 
 const STEPS = ["About you", "What you’ll do", "Your first try", "Almost done"];
 
@@ -75,7 +76,6 @@ export function PilotForm() {
   const [problems, setProblems] = useState<string[]>([]);
   const [heard, setHeard] = useState<string[]>([]);
   const [face, setFace] = useState(0);
-  const [stars, setStars] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
 
@@ -188,7 +188,7 @@ export function PilotForm() {
       </div>
 
       <div hidden={step !== 2} className="pf-step">
-        <Choices name="heard" legend="Where did you hear about oovi?" options={HEARD} required onChange={setHeard} />
+        <IconSelect name="heard" legend="Where did you hear about oovi?" options={HEARD} required onChange={(v) => setHeard([v])} />
         {heard[0] === "other" && (
           <div className="field">
             <label htmlFor="heardOther">Where? (a few words)</label>
@@ -209,19 +209,6 @@ export function PilotForm() {
                   </span>
                   {f.label}
                 </span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
-        <fieldset className="pf-group">
-          <legend>
-            How useful could oovi be for your work?<span className="pf-opt"> (optional)</span>
-          </legend>
-          <div className="pf-stars">
-            {[1, 2, 3, 4, 5].map((n) => (
-              <label key={n} className={`pf-star${n <= stars ? " on" : ""}`} title={`${n} of 5`}>
-                <input type="radio" name="usefulness" value={n} checked={stars === n} onChange={() => setStars(n)} aria-label={`${n} of 5 stars`} />
-                <span aria-hidden="true">★</span>
               </label>
             ))}
           </div>

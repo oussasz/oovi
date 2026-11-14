@@ -3,7 +3,8 @@
 // free text is only for "Something else" and one optional note. The answers are stored as one JSON object
 // (pilot_requests.answers) so questions can change without a new column each time.
 
-export type Opt = { value: string; label: string; icon?: string };
+/** `icon` is a small emoji; `brand` names a real logo drawn by components/BrandIcon.tsx. */
+export type Opt = { value: string; label: string; icon?: string; brand?: string };
 
 export const ROLES: Opt[] = [
   { value: "freelancer", label: "Freelancer", icon: "💼" },
@@ -48,16 +49,19 @@ export const TOOLS: Opt[] = [
   { value: "other", label: "Another one" },
 ];
 export const HEARD: Opt[] = [
-  { value: "youtube", label: "YouTube", icon: "▶️" },
-  { value: "facebook", label: "Facebook", icon: "👍" },
-  { value: "linkedin", label: "LinkedIn", icon: "🔗" },
-  { value: "x", label: "X (Twitter)", icon: "✖️" },
-  { value: "instagram", label: "Instagram or TikTok", icon: "📱" },
-  { value: "friend", label: "A friend or colleague", icon: "🤝" },
-  { value: "google", label: "Google search", icon: "🔍" },
-  { value: "store", label: "Microsoft Store", icon: "🛍️" },
-  { value: "github", label: "GitHub", icon: "🐙" },
-  { value: "other", label: "Somewhere else", icon: "✨" },
+  { value: "youtube", label: "YouTube", brand: "youtube" },
+  { value: "facebook", label: "Facebook", brand: "facebook" },
+  { value: "instagram", label: "Instagram", brand: "instagram" },
+  { value: "tiktok", label: "TikTok", brand: "tiktok" },
+  { value: "linkedin", label: "LinkedIn", brand: "linkedin" },
+  { value: "x", label: "X (Twitter)", brand: "x" },
+  { value: "telegram", label: "Telegram", brand: "telegram" },
+  { value: "whatsapp", label: "WhatsApp", brand: "whatsapp" },
+  { value: "google", label: "Google search", brand: "google" },
+  { value: "store", label: "Microsoft Store", brand: "microsoft" },
+  { value: "github", label: "GitHub", brand: "github" },
+  { value: "friend", label: "A friend or colleague", brand: "friend" },
+  { value: "other", label: "Somewhere else", brand: "other" },
 ];
 export const IMPROVE: Opt[] = [
   { value: "speed", label: "Speed", icon: "⚡" },
@@ -113,7 +117,6 @@ export type PilotAnswers = {
   heard: string;
   heardOther?: string;
   experience: number;
-  usefulness?: number;
   improve: string[];
   pay?: string;
   payMethods: string[];
@@ -182,8 +185,6 @@ export function parseAnswers(fd: FormData): { errors: string[]; answers: PilotAn
   };
   const heardOther = clean(fd.get("heardOther"), 80);
   if (heard === "other" && heardOther) answers.heardOther = heardOther;
-  const usefulness = rating(fd, "usefulness");
-  if (usefulness) answers.usefulness = usefulness;
   const pay = one(fd, "pay", PAY);
   if (pay) answers.pay = pay;
   const mobile = one(fd, "mobile", MOBILE);
@@ -215,7 +216,6 @@ export function readAnswers(raw: unknown): PilotAnswers | null {
     heard: s("heard") ?? "",
     heardOther: s("heardOther"),
     experience: num("experience") ?? 0,
-    usefulness: num("usefulness"),
     improve: arr("improve"),
     pay: s("pay"),
     payMethods: arr("payMethods"),
