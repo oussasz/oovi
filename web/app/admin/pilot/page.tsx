@@ -9,6 +9,7 @@ import { isEmail, smtpStatus } from "@/lib/mail";
 import { recentInvites } from "@/lib/pilot-invite";
 import { sendPilotInvite } from "./actions";
 import { Empty, FilterLinks, Kpi, PageHead, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDate, fmtDateTime, fmtInt } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -46,7 +47,9 @@ export default async function AdminPilot({ searchParams }: { searchParams: Promi
             </Link>
           </>
         }
-      />
+      >
+        <CsvButton report="pilot" period="all" label="Pilot requests CSV" />
+      </PageHead>
 
       <div className="adm-kpis">
         <Kpi label="Pending" value={fmtInt(counts.pending)} hint="Waiting for a decision" />

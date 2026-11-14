@@ -8,6 +8,7 @@ import { BarChart, LineChart } from "@/components/admin/Charts";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDateTime, fmtInt, fmtNumber, fmtPct, fmtUsd } from "@/components/admin/format";
 import { removeProviderKey, replaceProviderKey, saveAiSettings, savePilotSettings, savePlansAction, setPaused } from "./actions";
 import { PlansEditor } from "./PlansEditor";
@@ -52,6 +53,7 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
         sub={`The hosted model people use with their oovi account (${cfg.displayName}, ${cfg.model} behind it). Costs are what the provider charges us. All days are in UTC.`}
       >
         <PeriodPicker period={period} path="/admin/ai" periods={AI_PERIODS} label={(x) => AI_PERIOD_LABELS[x as AiPeriod]} />
+        <CsvButton report="ai-usage" period={period} label="Usage and cost CSV" />
         <form action={setPaused}>
           <input type="hidden" name="paused" value={cfg.paused ? "false" : "true"} />
           {cfg.paused ? (

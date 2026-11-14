@@ -7,6 +7,7 @@ const LINKS = [
   { href: "/admin", label: "Overview" },
   { href: "/admin/finance", label: "Finance" },
   { href: "/admin/costs", label: "Costs" },
+  { href: "/admin/reports", label: "Reports" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/ai", label: "theOovi" },
   { href: "/admin/pilot", label: "Pilot" },

@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin";
 import { getCrashes, parsePeriod } from "@/lib/admin-stats";
 import { BarChart } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
+import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtAgo, fmtDate, fmtInt, platformLabel } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -18,6 +19,7 @@ export default async function AdminCrashes({ searchParams }: { searchParams: Pro
     <>
       <PageHead title="Crashes" sub="Crash reports sent by the desktop app, grouped by error message.">
         <PeriodPicker period={period} path="/admin/crashes" />
+        <CsvButton report="crashes" period={period} label="Crashes CSV" />
       </PageHead>
 
       <div className="adm-kpis">
