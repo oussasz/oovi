@@ -244,7 +244,7 @@ export function checkDelegations(): void {
       // A task given while the group was busy goes out once the group is free and not waiting for the user.
       if (d.queued) {
         const telegram = d.origin ? { channel: "telegram" as const, telegramChatId: d.origin.telegramChatId } : {};
-        const free = !isRunning(d.groupId) && !chat.pending?.approval && !chat.pending?.planReview;
+        const free = !isRunning(d.groupId) && !chat.pending?.approval && !chat.pending?.planReview && !chat.pending?.questions;
         if (free && startRun(d.groupId, { text: d.queued.text, via: d.mainBotId, entryId: d.sentEntryId, ...(d.queued.userWords ? { userWords: d.queued.userWords } : {}), ...(d.queued.workChat ? { workChat: d.queued.workChat } : {}), ...telegram })) {
           delete d.queued;
           d.startedAt = now;

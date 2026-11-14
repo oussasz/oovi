@@ -149,6 +149,8 @@ export type BotEntry = {
   plan?: PlanItem[];
   /** Plan mode: the plan this reply proposed is waiting for the user, or was approved / cancelled. */
   planReview?: "waiting" | "approved" | "cancelled";
+  /** ask_user: questions shown as cards, one after another; answers once the user replied (null: skipped). */
+  questions?: { intro?: string; items: AskItem[]; state: "waiting" | "answered" | "skipped" | "replaced"; answers?: string[] };
   /** What the bots learned from this reply (self-learning). */
   learned?: LearnedNote;
   /** The user's thumbs up/down on this reply. */
@@ -160,6 +162,9 @@ export type BotEntry = {
   /** Hand-off requested but the per-message limit was reached. */
   handoffBlocked?: boolean;
 };
+
+/** One question of an ask_user card: 2-3 options to tap; the user can also write an answer. */
+export type AskItem = { question: string; options: string[] };
 
 export type Entry = UserEntry | BotEntry;
 
@@ -183,6 +188,8 @@ export type Pending = {
   planMode?: boolean;
   /** Plan mode: this proposed plan waits for the user to edit and approve (or cancel) it. */
   planReview?: { entryId: string; botId: string };
+  /** ask_user: this reply's questions wait for the user's answers. */
+  questions?: { entryId: string; botId: string };
   /** Plan mode: the user approved the plan, so deep work follows their steps. */
   planApproved?: boolean;
   /** Rounds the done-check continued by itself since the user's message (MAX_AUTO_ROUNDS). */
@@ -257,6 +264,8 @@ export type ChatSummary = {
   preview: string;
   running: boolean;
   waiting: boolean;
+  /** What it waits for is the user's answers to a bot's questions (not an OK). */
+  asking?: boolean;
 };
 
 // ---------- routines (scheduled tasks) ----------

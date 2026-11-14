@@ -54,6 +54,7 @@ import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots } from "./desktop-core";
 import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
+import { ASK_SPEC, answersText, cleanAnswers, cleanQuestions } from "./ask-user";
 
 /**
  * alwaysEdit: with decisions, the user also allowed file edits in this chat's project folder from now on.
@@ -77,6 +78,8 @@ export type RunInput = {
   plan?: boolean;
   /** The user's answer to a proposed plan: run it (with their edited steps) or cancel it. */
   planDecision?: { approve: boolean; items: string[] };
+  /** The user's answers to an ask_user card (one per question), or null when they skipped the questions. */
+  answers?: string[] | null;
   attachments?: Attachment[];
   channel?: "telegram";
   telegramChatId?: number;
@@ -647,7 +650,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   else if (tools.some((t) => t.name === "propose_plan")) lines.push("", ACT_PLAN);
   // Deep work's planning and longer final summary are for the bot that answers the user; teammates stay compact.
   else if (chat.pending?.deep && answersUser && !job) lines.push("", chat.pending.planApproved ? DEEP_WORK_APPROVED : DEEP_WORK);
-  lines.push("", chat.pending?.deep && answersUser && !job ? "Write clearly; the final summary can be longer than usual when the work needs it." : "Be short and practical: the answer first, in a few lines, then at most 5 short bullets if needed. Don't repeat the request or what the user already knows, and don't add sections like 'Critical issues' or 'Questions' unless asked. Ask at most one question, and only when you can't go on without the answer. When you offered choices and the user just answers \"ok\", \"yes\" or \"do it\", do the first one you offered and say in a few words which one you did. Long messages only for a requested document or an emergency.", LANGUAGE, "", FOR_THE_USER, "", SAFETY);
+  lines.push("", chat.pending?.deep && answersUser && !job ? "Write clearly; the final summary can be longer than usual when the work needs it." : `Be short and practical: the answer first, in a few lines, then at most 5 short bullets if needed. Don't repeat the request or what the user already knows, and don't add sections like 'Critical issues' or 'Questions' unless asked. ${tools.some((t) => t.name === "ask_user") ? "Ask only when you can't go on without the user's choice, and then with ask_user (tappable cards with options), never as questions written in your message; everything you can decide or find out yourself, do without asking." : "Ask at most one question, and only when you can't go on without the answer."} When you offered choices and the user just answers \"ok\", \"yes\" or \"do it\", do the first one you offered and say in a few words which one you did. Long messages only for a requested document or an emergency.`, LANGUAGE, "", FOR_THE_USER, "", SAFETY);
   return lines.join("\n");
 }
 
@@ -842,10 +845,16 @@ function closeDangling(entry: BotEntry, reason: string) {
 
 function cancelApproval(chat: Chat) {
   const plan = chat.pending?.planReview;
-  const id = chat.pending?.approval?.entryId ?? plan?.entryId;
+  const asked = chat.pending?.questions;
+  const id = chat.pending?.approval?.entryId ?? plan?.entryId ?? asked?.entryId;
   const e = id ? chat.entries.find((x) => x.id === id) : undefined;
   if (e?.kind === "bot") {
-    if (plan) {
+    if (asked && e.questions) {
+      // The user wrote a message instead of tapping the cards: that message is their answer.
+      closeDangling(e, "The user didn't use the question cards: their next message answers you instead.");
+      e.questions = { ...e.questions, state: "replaced" };
+      e.status = "done";
+    } else if (plan) {
       // A message while a plan waits = changes requested: the bot writes a new plan from it.
       closeDangling(e, "The user asked for changes to this plan in their next message.");
       e.planReview = "cancelled";
@@ -1025,7 +1034,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1080,6 +1089,22 @@ async function* runBot(
         if (typeof proposal.input.goal === "string" && proposal.input.goal.trim()) entry.text = proposal.input.goal.trim().slice(0, 300);
         entry.status = "waiting";
         chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), planReview: { entryId: entry.id, botId: bot.id } };
+        yield { type: "entry", entry };
+        return "waiting";
+      }
+      // ask_user: the questions wait for the user as cards; the turn resumes with the answers.
+      const askCall = last.toolCalls.find((c) => c.name === "ask_user");
+      if (askCall && decisions[askCall.id] === undefined) {
+        const q = cleanQuestions(askCall.input);
+        if (typeof q === "string" || last.toolCalls.length > 1) {
+          const why = typeof q === "string" ? q : "Call ask_user alone, as the last thing in your turn (the other tools weren't run: call them again after the answers if still needed).";
+          entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: c.id === askCall.id ? why : "Not run: ask_user must be called alone.", isError: true })) });
+          continue;
+        }
+        entry.questions = { ...(q.intro ? { intro: q.intro } : {}), items: q.items, state: "waiting" };
+        if (last.text.trim()) entry.text = last.text.trim();
+        entry.status = "waiting";
+        chat.pending = { ...(chat.pending ?? { queue: [], turnsLeft: settings.maxTurns }), questions: { entryId: entry.id, botId: bot.id } };
         yield { type: "entry", entry };
         return "waiting";
       }
@@ -1183,6 +1208,11 @@ async function* runBot(
           results.push({ id: c.id, name: c.name, content: planDecisionText(entry, decisions[c.id] === true) });
           continue;
         }
+        if (c.name === "ask_user") {
+          const q = entry.questions;
+          results.push({ id: c.id, name: c.name, content: q ? answersText(q.items, q.state === "answered" ? q.answers ?? null : null) : "The questions couldn't be shown. Decide sensibly and go on." });
+          continue;
+        }
         if (isDesktopName(c.name)) {
           let r: ToolResult;
           if (!deskOn) r = { id: c.id, name: c.name, content: `Desktop control isn't enabled for ${bot.name}. The user can turn it on in [Settings > Safety](oovi://settings/safety) (it needs a supported Claude model).`, isError: true };
@@ -1269,7 +1299,7 @@ async function* runBot(
             results.push(r);
             // This bot just got a new ability: its turn restarts with the new tools and instructions.
             if (!r.isError && c.name === "request_abilities" && JSON.stringify(listBots().find((b) => b.id === bot.id)?.tools) !== JSON.stringify(bot.tools)) selfChanged = true;
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, chatId: workHome(chat), channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });
@@ -1499,6 +1529,20 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     if (open && !queue.length) queue.push(open.by);
     saveChat(chat);
     yield { type: "entry", entry: user };
+  } else if (input.answers !== undefined && chat.pending?.questions) {
+    const asked = chat.pending.questions;
+    const e = chat.entries.find((x) => x.id === asked.entryId);
+    const call = e?.kind === "bot" ? [...e.steps].reverse().find((m): m is Extract<typeof m, { role: "assistant" }> => m.role === "assistant")?.toolCalls.find((c) => c.name === "ask_user") : undefined;
+    if (e?.kind !== "bot" || !e.questions || !call) {
+      chat.pending.questions = undefined;
+      saveChat(chat);
+      return;
+    }
+    const answers = input.answers === null ? null : cleanAnswers(e.questions.items, input.answers);
+    if (input.answers !== null && !answers) return; // not answers to these questions: the card stays
+    chat.pending.questions = undefined;
+    e.questions = { ...e.questions, state: answers ? "answered" : "skipped", ...(answers ? { answers } : {}) };
+    resume = { entry: e, decisions: { [call.id]: true } };
   } else if (input.planDecision && chat.pending?.planReview) {
     const review = chat.pending.planReview;
     const e = chat.entries.find((x) => x.id === review.entryId);
@@ -1804,7 +1848,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     }
     settle(entry, bot, outcome, metBefore, false);
     // Nobody is next and this bot answers the user: is what they asked really finished?
-    if (outcome === "done" && !signal.aborted && !chat.pending?.queue.length && !chat.pending?.approval && !chat.pending?.planReview) {
+    if (outcome === "done" && !signal.aborted && !chat.pending?.queue.length && !chat.pending?.approval && !chat.pending?.planReview && !chat.pending?.questions) {
       const v = await checkDone(chat, entry, bot, settings, signal);
       if (v) yield { type: "entry", entry };
     }

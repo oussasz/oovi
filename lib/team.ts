@@ -160,8 +160,8 @@ export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}):
     if (isRunning(group.id)) await waitForGroup(group.id, BUSY_WAIT_MS, ctx.signal);
     if (ctx.signal?.aborted) return bad("Stopped by the user.");
     const now = getChat(group.id) ?? group;
-    if (isRunning(group.id) || now.pending?.approval || now.pending?.planReview) {
-      const what = now.pending?.approval ? `waits for the user's OK on its last task (${now.pending.approval.items.map((x) => x.summary).join("; ")})` : now.pending?.planReview ? "waits for the user to review its plan" : "is still working on its current task";
+    if (isRunning(group.id) || now.pending?.approval || now.pending?.planReview || now.pending?.questions) {
+      const what = now.pending?.approval ? `waits for the user's OK on its last task (${now.pending.approval.items.map((x) => x.summary).join("; ")})` : now.pending?.planReview ? "waits for the user to review its plan" : now.pending?.questions ? "waits for the user's answers to its questions" : "is still working on its current task";
       addDelegation({
         groupId: group.id,
         groupName: group.name,
@@ -172,7 +172,7 @@ export async function runTeamTool(call: ToolCall, self: Bot, ctx: TeamCtx = {}):
         inline: false,
         queued: { text: message, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(ctx.workChat ? { workChat: ctx.workChat } : {}) },
       });
-      return ok(`"${group.name}" ${what}. Your message is queued: it goes to the group as soon as ${now.pending?.approval || now.pending?.planReview ? "the user has answered" : "it's free"}, and the group's answer is posted to the user automatically. Tell the user that in one sentence${now.pending?.approval || now.pending?.planReview ? ", and that the group needs their answer first" : ""}. Don't send the same task again.`);
+      return ok(`"${group.name}" ${what}. Your message is queued: it goes to the group as soon as ${now.pending?.approval || now.pending?.planReview || now.pending?.questions ? "the user has answered" : "it's free"}, and the group's answer is posted to the user automatically. Tell the user that in one sentence${now.pending?.approval || now.pending?.planReview || now.pending?.questions ? ", and that the group needs their answer first" : ""}. Don't send the same task again.`);
     }
     if (!startRun(group.id, { text: message, via: self.id, entryId: sentEntryId, ...(ctx.userWords?.trim() ? { userWords: ctx.userWords } : {}), ...(ctx.workChat ? { workChat: ctx.workChat } : {}), ...(telegram ?? {}) })) return bad(`"${group.name}" is busy right now.`);
     // On disk from the start: if this turn ends early (stop, crash, restart), the result still reaches the user.

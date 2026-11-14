@@ -919,3 +919,33 @@ a.tag { text-decoration: none; }
 .linkish { background: none; border: 0; padding: 0; color: var(--muted); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
 .linkish:hover { color: var(--text); text-decoration: underline; }
 .linkish:focus-visible { outline: 2px solid var(--accent, currentColor); outline-offset: 2px; border-radius: 4px; }
+
+/* ask_user: a bot's questions as cards, one after another */
+.ask-card { margin: 6px 0; padding: 14px 16px; display: grid; gap: 10px; border: 1px solid var(--border); border-radius: 16px; background: var(--panel); width: 100%; max-width: 560px; box-sizing: border-box; animation: ask-in 0.18s ease-out; }
+@keyframes ask-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .ask-card { animation: none; } }
+.ask-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ask-count { font-size: 12px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.ask-dots { display: flex; gap: 5px; }
+.ask-dots i { width: 7px; height: 7px; border-radius: 50%; background: var(--border); }
+.ask-dots i.done { background: var(--primary); opacity: 0.45; }
+.ask-dots i.on { background: var(--primary); }
+.ask-intro { margin: 0; font-size: 13.5px; color: var(--muted); }
+.ask-q { margin: 0; font-weight: 700; font-size: 15px; line-height: 1.4; }
+.ask-options { display: grid; gap: 7px; }
+.ask-opt { display: flex; align-items: center; gap: 10px; width: 100%; text-align: start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+.ask-opt:hover:not(:disabled) { border-color: var(--primary); }
+.ask-opt:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ask-opt.picked { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 10%, var(--bg)); }
+.ask-opt:disabled { opacity: 0.6; cursor: default; }
+.ask-opt.other { color: var(--muted); }
+.ask-key { flex: none; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; border: 1px solid var(--border); font-size: 12px; font-weight: 700; color: var(--muted); }
+.ask-write { display: grid; gap: 8px; }
+.ask-write textarea { width: 100%; min-height: 60px; resize: vertical; padding: 9px 11px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 14px; line-height: 1.4; box-sizing: border-box; }
+.ask-write textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.ask-write-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.ask-foot { display: flex; justify-content: space-between; align-items: center; font-size: 13px; }
+.ask-foot .link-btn.muted { color: var(--muted); }
+.ask-done { margin: 6px 0; padding: 10px 14px; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: 14px; max-width: 560px; font-size: 13.5px; }
+.ask-done dt { color: var(--muted); }
+.ask-done dd { margin: 2px 0 0; font-weight: 600; }

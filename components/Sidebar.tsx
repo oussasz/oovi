@@ -120,7 +120,7 @@ export default function Sidebar() {
                 <span className="side-name">
                   {c.name}
                   {c.running && <span className="live-dot" title={t("side.working")} />}
-                  {c.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
+                  {c.waiting && <span className="ask-pill">{t(c.asking ? "side.question" : "side.needsOk")}</span>}
                 </span>
                 <span className="side-preview" dir="auto">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
               </span>
@@ -138,7 +138,7 @@ export default function Sidebar() {
                     {b.name}
                     {b === chief && <span className="chief-tag" title={t("chief.what")}>{t("chief.title")}</span>}
                     {c?.running && <span className="live-dot" title={t("side.working")} />}
-                    {c?.waiting && <span className="ask-pill">{t("side.needsOk")}</span>}
+                    {c?.waiting && <span className="ask-pill">{t(c.asking ? "side.question" : "side.needsOk")}</span>}
                   </span>
                   <span className="side-preview" dir="auto">{c?.preview || b.role || t("common.bot")}</span>
                 </span>

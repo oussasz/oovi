@@ -11,6 +11,7 @@ import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import type { Browser } from "playwright-core";
 import { blockPrivate, checkUrl, launchLocal } from "./browser";
+import { isYoutubeSearch, youtubeList, youtubeVideos } from "./youtube-core";
 import { contactDetails } from "./contacts";
 import type { ToolSpec } from "./llm";
 import { exaFetch, webSearch, type SearchHit } from "./search";
@@ -429,6 +430,17 @@ export async function runReaderTool(call: ToolCall, s: Settings, signal?: AbortS
       const url = String(i.url ?? "").trim();
       if (!url) return fail("url is required");
       const max = Math.min(60_000, Math.max(1000, Number(i.max_chars) || 15_000));
+      // A YouTube search: the videos with their watch links (the page's text alone has no links to open).
+      if (isYoutubeSearch(url)) {
+        try {
+          const page = await fetchPage(url, s, signal);
+          const videos = page.ok ? youtubeVideos(page.body) : [];
+          const q = new URL(url).searchParams;
+          if (videos.length) return { id: call.id, name: call.name, content: youtubeList(q.get("search_query") ?? q.get("q") ?? "", videos) };
+        } catch {
+          // fall through to the normal reader
+        }
+      }
       const a = await readArticle(url, s, signal, { browser: true });
       const more = a.text.length > max ? `\n\n[… ${a.text.length - max} more characters. Call read_url again with a larger max_chars if you need them.]` : "";
       return {

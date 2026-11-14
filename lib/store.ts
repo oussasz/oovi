@@ -222,7 +222,8 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
   if (last?.kind === "user") preview = `You: ${last.text}`;
   else if (last?.kind === "bot") {
     const who = bots.find((b) => b.id === last.botId)?.name ?? "Bot";
-    preview = last.text ? `${c.kind === "group" ? `${who}: ` : ""}${last.text}` : last.status === "waiting"
+    const asks = last.questions?.state === "waiting" ? last.questions.items[0]?.question : undefined;
+    preview = last.text ? `${c.kind === "group" ? `${who}: ` : ""}${last.text}` : asks ? `${who}: ${asks}` : last.status === "waiting"
         ? `${who} needs your OK`
         : last.status === "error"
           ? `${who} couldn't reply`
@@ -244,7 +245,8 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
       .replace(/\s+/g, " ")
       .slice(0, 90),
     running,
-    waiting: !!(c.pending?.approval || c.pending?.planReview),
+    waiting: !!(c.pending?.approval || c.pending?.planReview || c.pending?.questions),
+    asking: !!c.pending?.questions && !c.pending?.approval,
   };
 }
 

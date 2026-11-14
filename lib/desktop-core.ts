@@ -34,7 +34,7 @@ export const SYSTEM_WINDOW = "This window can run programs or change the system 
 export const OWN_WINDOW = "That is oovi's own window, and bots can't control oovi itself. oovi moves its window aside by itself: take a new screenshot and go on.";
 export const UNKNOWN_WINDOW = "oovi can't tell which window this would reach, so it won't act there. Take a new screenshot, or ask the user.";
 export const ELEVATED_WINDOW =
-  "This window runs as administrator. Windows doesn't let apps control it (nor User Account Control prompts or the lock screen): ask the user to do this part.";
+  "This window runs as administrator. Windows doesn't let apps control it (nor User Account Control prompts or the lock screen). If what's left is opening a page or playing a video, open the exact address with open_in_user_browser instead (a YouTube watch link plays by itself: find it with read_url on the YouTube search page). Otherwise ask the user to do this part, in one short sentence.";
 /** An approved desktop action must run within this long, or the user is asked again. */
 export const APPROVAL_TTL_MS = 20 * 60_000;
 /** Typing is sent in chunks this long, and the window is checked again before each one. */

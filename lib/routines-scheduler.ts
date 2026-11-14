@@ -74,7 +74,7 @@ async function tick(): Promise<void> {
 
 function chatState(r: Routine, chat: Chat | null): ChatState {
   if (state().active.has(r.id) || isRunning(r.chatId)) return "busy";
-  if (chat?.pending?.approval || chat?.pending?.planReview) return "waiting";
+  if (chat?.pending?.approval || chat?.pending?.planReview || chat?.pending?.questions) return "waiting";
   return "free";
 }
 

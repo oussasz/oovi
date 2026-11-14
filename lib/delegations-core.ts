@@ -79,7 +79,7 @@ export const EARLIER_MAX = 8;
  */
 export function healInterrupted(chat: Chat): boolean {
   let changed = false;
-  const pendingEntry = chat.pending?.approval?.entryId ?? chat.pending?.planReview?.entryId;
+  const pendingEntry = chat.pending?.approval?.entryId ?? chat.pending?.planReview?.entryId ?? chat.pending?.questions?.entryId;
   for (const e of chat.entries) {
     if (e.kind !== "bot") continue;
     if (e.status === "running" || (e.status === "waiting" && e.id !== pendingEntry)) {
@@ -89,7 +89,7 @@ export function healInterrupted(chat: Chat): boolean {
     }
   }
   // A queue of bots that never got their turn: nothing will pick it up.
-  if (chat.pending && !chat.pending.approval && !chat.pending.planReview) {
+  if (chat.pending && !chat.pending.approval && !chat.pending.planReview && !chat.pending.questions) {
     chat.pending = undefined;
     changed = true;
   }

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { addRows, countComplete, emptyStore, progressMark, readRows, removeRows, storeLines, tableMarkdown, updateRow, writeNote, MAX_FILES } from "../../lib/workfiles-core.ts";
+import { addRows, countComplete, emptyStore, exportView, filledCounts, progressMark, readRows, removeRows, setColumns, storeLines, tableMarkdown, updateRow, writeNote, MAX_FILES } from "../../lib/workfiles-core.ts";
 
 const COLS = ["Name", "Type", "Area", "Phone", "Source"];
 
@@ -88,4 +88,44 @@ test("a chat can't grow an endless number of work files", () => {
   for (let i = 0; i < MAX_FILES; i++) assert.equal(addRows(s, `T${i}`, ["a"], [["x"]]).error, undefined);
   assert.match(addRows(s, "one more", ["a"], [["x"]]).error!, /already has/);
   assert.match(writeNote(s, "note", "x", false).error!, /already has/);
+});
+
+// A 177-row table read at once pushed earlier reads out of view, and the bot retyped rows from memory.
+test("a long read comes in parts that stay in view, and says where to go on", () => {
+  const s = emptyStore();
+  const rows = Array.from({ length: 177 }, (_, i) => [`Business ${i + 1}`, "Restaurant", "Alger centre, rue Didouche Mourad, près de la grande poste", `0550 ${String(100000 + i)}`, "https://www.facebook.com/some-long-page-name-" + i]);
+  addRows(s, "Liste", COLS, rows);
+  const r = readRows(s.tables.Liste!, 1, 500);
+  assert.ok(r.text.length <= 12_000, `read is ${r.text.length} characters`);
+  assert.ok(r.shown > 20 && r.shown < 177);
+  assert.equal(r.next, r.shown + 1);
+  const last = readRows(s.tables.Liste!, 170, 500);
+  assert.equal(last.shown, 8);
+  assert.equal(last.next, null);
+});
+
+test("columns: blank tracking columns first, a column dropped, without retyping rows", () => {
+  const s = emptyStore();
+  addRows(s, "T", ["Name", "Phone", "Statut", "Note", "Check"], [["A", "0550 11 22 33", "Validé", "lu sur la page", "x"], ["B", "", "À reprendre", "", "y"]]);
+  const t = s.tables.T!;
+  assert.equal(setColumns(t, { order: ["Statut", "Note", "Name", "Phone"], clear: ["Statut", "Note"] }), null);
+  assert.deepEqual(t.columns, ["Statut", "Note", "Name", "Phone"]);
+  assert.deepEqual(t.rows, [["", "", "A", "0550 11 22 33"], ["", "", "B", ""]]);
+  assert.equal(setColumns(t, { rename: { Phone: "Téléphone" } }), null);
+  assert.deepEqual(t.columns, ["Statut", "Note", "Name", "Téléphone"]);
+  assert.match(setColumns(t, { clear: ["Nope"] })!, /no column "Nope"/);
+  assert.match(setColumns(t, { order: ["Name", "name"] })!, /twice/);
+});
+
+test("export view: chosen order, empty columns, and the real filled counts", () => {
+  const s = emptyStore();
+  addRows(s, "T", ["Name", "Phone", "Statut"], [["A", "0550 11 22 33", "Validé"], ["B", "", "À reprendre"], ["C", "0661 00 00 00", ""]]);
+  const v = exportView(s.tables.T!, ["Statut", "Note", "Name", "Phone"], ["Statut", "Note"]);
+  assert.deepEqual(v.columns, ["Statut", "Note", "Name", "Phone"]);
+  assert.deepEqual(v.rows[0], ["", "", "A", "0550 11 22 33"]);
+  assert.deepEqual(v.unknown, []);
+  assert.equal(filledCounts(v.columns, v.rows), "Statut 0, Note 0, Name 3, Phone 2");
+  assert.deepEqual(exportView(s.tables.T!, ["Name", "Email"]).unknown, ["Email"]);
+  // The shared table itself is unchanged.
+  assert.deepEqual(s.tables.T!.columns, ["Name", "Phone", "Statut"]);
 });

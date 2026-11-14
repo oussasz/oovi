@@ -12,7 +12,8 @@ type Ctx = { params: Promise<{ id: string }> };
 
 /**
  * Start a run: {text, plan?} sends a message (plan: Plan mode), {decisions: {callId: true|false}, alwaysEdit?, alwaysFolders?}
- * answers an approval, {planDecision: {approve, items}} runs (with the edited steps) or cancels a proposed plan. Streams events.
+ * answers an approval, {planDecision: {approve, items}} runs (with the edited steps) or cancels a proposed plan,
+ * {answers: ["…", …] | null} answers (or skips) a bot's question cards. Streams events.
  */
 export async function POST(req: Request, { params }: Ctx) {
   const denied = guard(req);
@@ -20,7 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown } | null;
   let input: RunInput;
   // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
   const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
@@ -39,12 +40,15 @@ export async function POST(req: Request, { params }: Ctx) {
     const d = body.planDecision as { approve?: unknown; items?: unknown };
     const items = Array.isArray(d.items) ? d.items.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
     input = { planDecision: { approve: d.approve === true, items } };
+  } else if (body && "answers" in body && (body.answers === null || Array.isArray(body.answers))) {
+    const answers = body.answers === null ? null : (body.answers as unknown[]).slice(0, 4).map((x) => (typeof x === "string" ? x.slice(0, 1000) : ""));
+    input = { answers };
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;
     input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true };
   } else {
-    return Response.json({ error: "Send {text}, {decisions} or {planDecision}." }, { status: 400 });
+    return Response.json({ error: "Send {text}, {decisions}, {planDecision} or {answers}." }, { status: 400 });
   }
 
   if (!startRun(id, input)) return Response.json({ error: "The bots are still working on the last message." }, { status: 409 });

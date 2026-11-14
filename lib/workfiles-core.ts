@@ -5,7 +5,8 @@
 // Pure (no imports): tests/unit/workfiles.test.mts.
 
 export type WorkTable = { columns: string[]; rows: string[][]; updatedAt: number };
-export type WorkStore = { tables: Record<string, WorkTable>; notes: Record<string, { text: string; updatedAt: number }> };
+/** exports: the file name each work file was last delivered as ("table:Prospects:xlsx" -> "Prospects Alger"), so a new export updates that file. */
+export type WorkStore = { tables: Record<string, WorkTable>; notes: Record<string, { text: string; updatedAt: number }>; exports?: Record<string, string> };
 
 export const MAX_ROWS = 20_000;
 export const MAX_COLUMNS = 40;
@@ -181,12 +182,82 @@ export function storeLines(store: WorkStore): string[] {
 }
 
 /** Rows as text for a bot to read: "12. a | b | c". */
-export function readRows(t: WorkTable, from = 1, limit = 100, onlyMissing?: string): { text: string; shown: number; matching: number } {
+/** Characters one read returns at most: about 4K tokens, so a read never pushes earlier reads out of view. */
+export const READ_CHARS = 12_000;
+
+export function readRows(t: WorkTable, from = 1, limit = 100, onlyMissing?: string, maxChars = READ_CHARS): { text: string; shown: number; matching: number; next: number | null } {
   const miss = onlyMissing ? columnIndex(t.columns, onlyMissing) : -1;
   const all = t.rows.map((r, i) => ({ r, n: i + 1 })).filter((x) => miss < 0 || isBlank(x.r[miss]));
   const start = Math.max(1, Math.floor(from) || 1);
   const part = all.filter((x) => x.n >= start).slice(0, Math.min(500, Math.max(1, Math.floor(limit) || 100)));
-  return { text: [`# | ${t.columns.join(" | ")}`, ...part.map((x) => `${x.n}. ${x.r.map((c) => c.slice(0, 300)).join(" | ")}`)].join("\n"), shown: part.length, matching: all.length };
+  const lines = [`# | ${t.columns.join(" | ")}`];
+  let size = lines[0]!.length;
+  let shown = 0;
+  for (const x of part) {
+    const line = `${x.n}. ${x.r.map((c) => c.slice(0, 300)).join(" | ")}`;
+    // Always at least one row; then stop before the read gets too big to stay in view.
+    if (shown && size + line.length + 1 > maxChars) break;
+    lines.push(line);
+    size += line.length + 1;
+    shown++;
+  }
+  const rest = all.filter((x) => x.n >= start).slice(shown);
+  return { text: lines.join("\n"), shown, matching: all.length, next: rest.length ? rest[0]!.n : null };
+}
+
+/**
+ * Reorder, rename, empty or drop columns of a table, without retyping its rows.
+ * order: the new column order (a name not in the table becomes a new empty column; a column left out is removed).
+ * rename: {old name: new name}. clear: columns to empty in every row.
+ */
+export function setColumns(t: WorkTable, spec: { order?: unknown; rename?: unknown; clear?: unknown }, now = Date.now()): string | null {
+  const list = (v: unknown) => (Array.isArray(v) ? v.map(cell).filter(Boolean) : []);
+  const rename = spec.rename && typeof spec.rename === "object" && !Array.isArray(spec.rename) ? Object.entries(spec.rename as Record<string, unknown>) : [];
+  const order = list(spec.order);
+  const clear = list(spec.clear);
+  if (!order.length && !rename.length && !clear.length) return "Give order, rename or clear.";
+  for (const [from] of rename) if (columnIndex(t.columns, from) < 0) return `There is no column "${from}". Columns: ${t.columns.join(", ")}.`;
+  for (const c of clear) if (columnIndex(t.columns, c) < 0) return `There is no column "${c}". Columns: ${t.columns.join(", ")}.`;
+  if (order.length > MAX_COLUMNS) return `The table can't have more than ${MAX_COLUMNS} columns.`;
+  if (order.length && new Set(order.map(norm)).size !== order.length) return "order names a column twice.";
+  const cols = [...t.columns];
+  for (const [from, to] of rename) {
+    const name = cell(to);
+    if (!name) return `rename: "${from}" needs a new name.`;
+    const i = columnIndex(cols, from);
+    const clash = columnIndex(cols, name);
+    if (clash >= 0 && clash !== i) return `There is already a column "${cols[clash]}".`;
+    cols[i] = name;
+  }
+  let rows = t.rows.map((r) => [...r]);
+  for (const c of clear) {
+    const i = columnIndex(cols, c) >= 0 ? columnIndex(cols, c) : columnIndex(t.columns, c);
+    for (const r of rows) r[i] = "";
+  }
+  let next = cols;
+  if (order.length) {
+    const idx = order.map((c) => columnIndex(cols, c));
+    next = order.map((c, k) => (idx[k]! >= 0 ? cols[idx[k]!]! : c));
+    rows = rows.map((r) => idx.map((i) => (i >= 0 ? r[i] ?? "" : "")));
+  }
+  t.columns = next;
+  t.rows = rows;
+  t.updatedAt = now;
+  return null;
+}
+
+/** The columns and rows to put in a file: a chosen order (names not in the table become empty columns), some columns left empty. */
+export function exportView(t: WorkTable, columnsIn?: unknown, emptyIn?: unknown): { columns: string[]; rows: string[][]; unknown: string[] } {
+  const columns = Array.isArray(columnsIn) && columnsIn.length ? columnsIn.map(cell).filter(Boolean).slice(0, MAX_COLUMNS) : [...t.columns];
+  const empty = new Set((Array.isArray(emptyIn) ? emptyIn : []).map((c) => norm(cell(c))));
+  const idx = columns.map((c) => (empty.has(norm(c)) ? -1 : columnIndex(t.columns, c)));
+  const unknown = columns.filter((c, k) => idx[k] === -1 && !empty.has(norm(c)));
+  return { columns, rows: t.rows.map((r) => idx.map((i) => (i >= 0 ? r[i] ?? "" : ""))), unknown };
+}
+
+/** "Phone 118 of 177, Email 40 of 177": the real counts, for a report that must not guess them. */
+export function filledCounts(columns: string[], rows: string[][]): string {
+  return columns.map((c, i) => `${c} ${rows.filter((r) => !isBlank(r[i])).length}`).join(", ");
 }
 
 /** Change cells of one row (1-based), by column name. A new column name (a Status, a Checked on…) becomes a new column. */

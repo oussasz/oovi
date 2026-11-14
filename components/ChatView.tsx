@@ -19,6 +19,7 @@ import LiveBrowser from "./LiveBrowser";
 import type { LiveSessionInfo } from "@/lib/browser-live";
 import ApprovalCard from "./ApprovalCard";
 import PlanReview from "./PlanReview";
+import QuestionCards, { AnsweredQuestions } from "./QuestionCards";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { EFFORT_LEVELS } from "@/lib/slash";
@@ -175,7 +176,8 @@ function rowsOf(e: BotEntry): Row[] {
   const results = new Map<string, ToolResult>();
   for (const s of e.steps) if (s.role === "tool") for (const r of s.results) results.set(r.id, r);
   const rows: Row[] = [];
-  for (const s of e.steps) if (s.role === "assistant") for (const c of s.toolCalls) rows.push({ call: c, result: results.get(c.id) });
+  // ask_user is shown as its question cards, not as a step.
+  for (const s of e.steps) if (s.role === "assistant") for (const c of s.toolCalls) if (c.name !== "ask_user") rows.push({ call: c, result: results.get(c.id) });
   return rows;
 }
 
@@ -551,8 +553,10 @@ function BotMessage(props: {
   planBusy?: boolean;
   /** Worked at the same time as teammates and still has a question for the user: its card comes after the current one. */
   queued?: boolean;
+  /** Set only for the reply whose question cards wait for the user's answers. */
+  onAnswer?: (answers: string[] | null) => void;
 }) {
-  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy, queued } = props;
+  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy, queued, onAnswer } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -670,6 +674,7 @@ function BotMessage(props: {
             ))}
           </div>
         )}
+        {e.questions && e.questions.state !== "waiting" && <AnsweredQuestions items={e.questions.items} answers={e.questions.answers} state={e.questions.state} />}
         {e.text && (
           <div className="bubble bot-bubble">
             <Rich text={e.text} bots={bots} linkBots={allBots} />
@@ -683,7 +688,11 @@ function BotMessage(props: {
             <span>{status ?? t("chat.thinking")}</span>
           </div>
         )}
-        {e.status === "waiting" && <div className="note">{t(queued ? "chat.waitingNext" : "chat.waiting")}</div>}
+        {e.questions?.state === "waiting" && onAnswer ? (
+          <QuestionCards key={e.id} intro={e.questions.intro} items={e.questions.items} busy={!!planBusy} onAnswer={onAnswer} />
+        ) : (
+          e.status === "waiting" && !e.questions && <div className="note">{t(queued ? "chat.waitingNext" : "chat.waiting")}</div>
+        )}
         {e.status === "stopped" && !e.text && <div className="note">{t("chat.stopped")}</div>}
         {e.status === "done" && !e.text && <div className="note">{t("chat.noReply")}</div>}
         {e.error && (e.errorCode && e.errorCode !== "busy" && e.errorCode !== "bad_request" ? <HostedNotice code={e.errorCode} message={e.error} /> : <div className="notice error small">{e.error === INTERRUPTED ? t("chat.interrupted") : e.error}</div>)}
@@ -1185,6 +1194,13 @@ export default function ChatView({ id }: { id: string }) {
     void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ planDecision: { approve, items } }) });
   }
 
+  /** ask_user: the user's answers to a bot's question cards (null: skipped, the bot decides). */
+  function answerQuestions(answers: string[] | null) {
+    if (!chat?.pending?.questions || running) return;
+    setError(null);
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }) });
+  }
+
   /** always: "edits" also allows file edits in this chat's project folder from now on; "folders" lets bots read and send from these files' folders without asking. */
   function decide(ok: boolean, always?: "edits" | "folders") {
     if (!approval) return;
@@ -1470,7 +1486,7 @@ export default function ChatView({ id }: { id: string }) {
                 </div>
               ) : (
                 <Fragment key={e.id}>
-                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} planBusy={running} queued={chat.pending?.parked?.includes(e.id)} />
+                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} onAnswer={chat.pending?.questions?.entryId === e.id ? answerQuestions : undefined} planBusy={running} queued={chat.pending?.parked?.includes(e.id)} />
                   {(() => {
                     // A team task: show what the whole task cost, under its last message.
                     const tot = taskCredits(chat.entries, i, running);

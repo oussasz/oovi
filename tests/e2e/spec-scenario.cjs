@@ -84,6 +84,19 @@ function answer(body) {
       if (n === 2) return use("run_command", { command: "echo hi" });
       return reply([{ type: "text", text: "AUTO-DONE" }], "end_turn");
     }
+    // ask_user: questions as cards; the answers come back as the tool's result.
+    if (/ASKME:|ASKTYPE:/.test(ask)) {
+      seen.ask = seen.ask || {};
+      seen.askTools = tools;
+      if (n === 0) return use("ask_user", { intro: "Avant d'exporter la liste :", questions: [{ question: "Les numéros non vérifiés ?", options: ["Les garder, avec une colonne Vérification", "Les retirer"] }, { question: "Format du fichier ?", options: ["Excel", "CSV"] }] });
+      seen.ask[/ASKTYPE:/.test(ask) ? "typed" : "cards"] = out;
+      return reply([{ type: "text", text: `ASK-DONE: ${out.slice(0, 300)}` }], "end_turn");
+    }
+    if (/ASKBAD:/.test(ask)) {
+      if (n === 0) return use("ask_user", { questions: [{ question: "Only one option?", options: ["yes"] }] });
+      seen.askBad = out;
+      return reply([{ type: "text", text: "ASKBAD-DONE" }], "end_turn");
+    }
     if (/SAVEHERE:/.test(ask)) {
       if (n === 0) return use("create_document", { filename: "Note.txt", content: "saved where the user chose" });
       seen.saved = out;
@@ -311,6 +324,37 @@ const check = (name, ok, detail = "") => {
   check("files bots make go to the chosen folder", fs.existsSync(path.join(fs.realpathSync(SAVE_DIR), "Note.txt")), (seen.saved || "").slice(0, 160));
   const back = await api("POST", "/api/computer-files", { saveFolder: null });
   check("and back to the default folder", back.custom === false && back.saveFolder === back.saveDefault, JSON.stringify(back).slice(0, 200));
+
+  // ask_user: the questions wait as cards; the answers (one tapped, one written) go back to the bot.
+  await api("POST", `/api/chats/${cd}/run`, { text: "ASKME: export my list" });
+  let qc = await idle(cd);
+  const qe = qc.entries.at(-1);
+  check("ask_user: the bot's questions wait as cards (2 questions, options, intro)", seen.askTools?.includes("ask_user") && qc.pending?.questions?.entryId === qe?.id && qe?.status === "waiting" && qe?.questions?.state === "waiting" && qe.questions.items.length === 2 && qe.questions.items[0].options.length === 2 && qe.questions.intro === "Avant d'exporter la liste :", JSON.stringify(qe?.questions).slice(0, 200));
+  const wrong = await fetch(`${BASE}/api/chats/${cd}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers: ["only one"] }) });
+  await wrong.text();
+  qc = await idle(cd);
+  check("ask_user: answers that don't fit the questions leave the cards waiting", qc.pending?.questions?.entryId === qe?.id && qc.entries.at(-1).questions.state === "waiting");
+  await api("POST", `/api/chats/${cd}/run`, { answers: ["Les garder, avec une colonne Vérification", "Excel, avec Statut et Note vides au début"] });
+  qc = await idle(cd);
+  const qd = qc.entries.at(-1);
+  check("ask_user: the answers reach the bot (a tapped option and a written one) and it goes on", !qc.pending?.questions && qd.questions?.state === "answered" && /1\. Les numéros non vérifiés \? → Les garder, avec une colonne Vérification\n2\. Format du fichier \? → Excel, avec Statut et Note vides au début \(written by the user\)/.test(seen.ask?.cards || "") && /^ASK-DONE/.test(qd.text || ""), (seen.ask?.cards || "").slice(0, 200));
+  // Writing a message instead of tapping: that message answers, and the waiting cards close.
+  await api("POST", `/api/chats/${cd}/run`, { text: "ASKTYPE: export again" });
+  qc = await idle(cd);
+  const tq = qc.entries.at(-1);
+  await api("POST", `/api/chats/${cd}/run`, { text: "Garde tout, en Excel." });
+  qc = await idle(cd);
+  check("ask_user: a typed message instead of the cards closes them and is the answer", qc.entries.find((x) => x.id === tq.id)?.questions?.state === "replaced" && !qc.pending?.questions, qc.entries.find((x) => x.id === tq.id)?.questions?.state);
+  // Skipping: the bot decides.
+  await api("POST", `/api/chats/${cd}/run`, { text: "ASKME: one more" });
+  await idle(cd);
+  await api("POST", `/api/chats/${cd}/run`, { answers: null });
+  qc = await idle(cd);
+  check("ask_user: Skip lets the bot decide", qc.entries.at(-1).questions?.state === "skipped" && /skipped these questions/.test(seen.ask?.cards || ""), (seen.ask?.cards || "").slice(0, 120));
+  // A bad card (one option) never reaches the user: the bot is told to fix it.
+  await api("POST", `/api/chats/${cd}/run`, { text: "ASKBAD: hmm" });
+  qc = await idle(cd);
+  check("ask_user: a card with one option never reaches the user; the bot is told why", !qc.pending?.questions && /needs 2 or 3 options/.test(seen.askBad || "") && qc.entries.at(-1).text === "ASKBAD-DONE", (seen.askBad || "").slice(0, 120));
 
   // Auto mode: no card for the folder or the file; running a command still asks.
   await api("POST", "/api/settings", { approvals: { auto: true } });

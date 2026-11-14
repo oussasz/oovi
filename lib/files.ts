@@ -67,7 +67,7 @@ export const DOC_SPECS: ToolSpec[] = [
   {
     name: "create_spreadsheet",
     description:
-      "Create a real spreadsheet: Excel (.xlsx, several sheets, formulas, number formats, native charts) or CSV (.csv, first sheet only). Values starting with '=' are formulas (e.g. '=SUM(B2:B10)'). Numbers must be numbers, not strings. Add charts to a sheet with `charts`: they are real Excel charts linked to the cells, so they update when the numbers change. For Google Sheets, create an .xlsx (Google Sheets opens it).",
+      "Create a real spreadsheet: Excel (.xlsx, several sheets, formulas, number formats, native charts) or CSV (.csv, first sheet only). Values starting with '=' are formulas (e.g. '=SUM(B2:B10)'). Numbers must be numbers, not strings. Add charts to a sheet with `charts`: they are real Excel charts linked to the cells, so they update when the numbers change. For Google Sheets, create an .xlsx (Google Sheets opens it). To update a file you made in this chat, use the same filename: it replaces your earlier version (no copies). For the rows of a work table, use work_export instead.",
     parameters: {
       type: "object",
       properties: {
@@ -240,8 +240,48 @@ function existingOutput(filename: string, ws: Workspace | undefined): { abs: str
   return fs.existsSync(abs) ? { abs, shown: abs } : null;
 }
 
-/** Absolute output path: inside the project folder, or a new file in Downloads/oovi. */
-function outputPath(filename: string, ws: Workspace | undefined, fallbackExt: string): { abs: string; shown: string } {
+// Files a chat made in Downloads/oovi. When a bot makes a file again with the same name in the same chat (the
+// list updated, the report corrected), it replaces its own file instead of adding "name (2)": one deliverable,
+// one file, always the latest. A file the user put there, or another chat made, is never replaced.
+const MADE_MAX = 3000;
+const madeFile = () => path.join(dataDir(), "made-files.json");
+const madeKey = (abs: string) => (process.platform === "win32" || process.platform === "darwin" ? path.resolve(abs).toLowerCase() : path.resolve(abs));
+function loadMade(): Record<string, { chat: string; at: number }> {
+  try {
+    const j = JSON.parse(fs.readFileSync(madeFile(), "utf8"));
+    return j && typeof j === "object" ? j : {};
+  } catch {
+    return {};
+  }
+}
+function rememberMade(abs: string, chat: string) {
+  try {
+    const all = loadMade();
+    all[madeKey(abs)] = { chat, at: Date.now() };
+    const keys = Object.keys(all);
+    if (keys.length > MADE_MAX) for (const k of keys.sort((a, b) => all[a]!.at - all[b]!.at).slice(0, keys.length - MADE_MAX)) delete all[k];
+    fs.mkdirSync(path.dirname(madeFile()), { recursive: true });
+    fs.writeFileSync(madeFile(), JSON.stringify(all));
+  } catch {
+    // Without it, the next version is a new copy: nothing breaks.
+  }
+}
+/** The file can be written now (on Windows, a file open in Excel or Word can't). */
+function writable(abs: string): boolean {
+  try {
+    fs.closeSync(fs.openSync(abs, "r+"));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Absolute output path: inside the project folder, or in Downloads/oovi. In Downloads, a file this chat made
+ * before under the same name is replaced (`replaced`); any other existing file gets a new name.
+ * `busy`: this chat's file was open in another program, so a new copy was made instead.
+ */
+function outputPath(filename: string, ws: Workspace | undefined, fallbackExt: string, chatId?: string): { abs: string; shown: string; replaced?: boolean; busy?: string } {
   const name = cleanName(filename, fallbackExt);
   if (ws) {
     const { abs, rel } = resolveInWorkspace(ws, name);
@@ -252,8 +292,19 @@ function outputPath(filename: string, ws: Workspace | undefined, fallbackExt: st
   const ext = path.extname(base);
   const stem = base.slice(0, base.length - ext.length);
   let abs = path.join(dir, base);
+  const ours = !!chatId && fs.existsSync(abs) && loadMade()[madeKey(abs)]?.chat === chatId;
+  if (ours && writable(abs)) return { abs, shown: abs, replaced: true };
+  const busy = ours ? abs : undefined;
   for (let i = 2; fs.existsSync(abs); i++) abs = path.join(dir, `${stem} (${i})${ext}`);
-  return { abs, shown: abs };
+  if (chatId) rememberMade(abs, chatId);
+  return { abs, shown: abs, busy };
+}
+
+/** What the result says about the file it replaced or couldn't replace. */
+function placeNote(o: { replaced?: boolean; busy?: string }): string {
+  if (o.replaced) return " It replaces the earlier version of this file (same name, same chat), so the user has one file, always the latest.";
+  if (o.busy) return ` ${path.basename(o.busy)} is open in another program (Excel, Word…), so it couldn't be replaced: this is a new copy. Tell the user to close the old one.`;
+  return "";
 }
 
 function done(call: ToolCall, abs: string, shown: string, what: string): ToolResult {
@@ -267,11 +318,13 @@ function done(call: ToolCall, abs: string, shown: string, what: string): ToolRes
 }
 
 /** Save bytes made elsewhere (e.g. on the cloud computer) where documents go, and show it in the chat. */
-export function saveOutput(call: ToolCall, filename: string, ws: Workspace | undefined, data: Buffer, what: string): ToolResult {
-  const { abs, shown } = outputPath(filename, ws, path.extname(filename) || ".bin");
+export function saveOutput(call: ToolCall, filename: string, ws: Workspace | undefined, data: Buffer, what: string, chatId?: string): ToolResult {
+  const place = outputPath(filename, ws, path.extname(filename) || ".bin", chatId);
+  const { abs, shown } = place;
   fs.mkdirSync(path.dirname(abs), { recursive: true });
   fs.writeFileSync(abs, data);
-  return done(call, abs, shown, what);
+  const res = done(call, abs, shown, what);
+  return { ...res, content: res.content + placeNote(place) };
 }
 
 // ---------- Markdown -> Word ----------
@@ -862,7 +915,7 @@ async function readDocument(abs: string): Promise<string> {
 
 // ---------- run ----------
 
-export async function runDocTool(call: ToolCall, ws: Workspace | undefined, browser: BrowserConfig): Promise<ToolResult> {
+export async function runDocTool(call: ToolCall, ws: Workspace | undefined, browser: BrowserConfig, chatId?: string): Promise<ToolResult> {
   const fail = (content: string): ToolResult => ({ id: call.id, name: call.name, content, isError: true });
   const i = call.input;
   try {
@@ -898,13 +951,13 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
       }
       const append = i.append === true;
       let prev: DocSource | null = null;
-      let target: { abs: string; shown: string };
+      let target: { abs: string; shown: string; replaced?: boolean; busy?: string };
       if (append) {
         const found = existingOutput(filename, ws);
         prev = found ? readDocSource(found.abs) : null;
         if (!found || !prev) return fail(`There's no document called ${path.basename(filename.replace(/\\/g, "/"))} made in parts here to add to${found ? " (it wasn't made by create_document, so its text can't be extended)" : ""}. Create it first without append, with the same filename.`);
         target = found;
-      } else target = outputPath(filename, ws, ".docx");
+      } else target = outputPath(filename, ws, ".docx", chatId);
       const content = prev ? `${prev.md.replace(/\s+$/, "")}\n\n${part}` : part;
       if (content.length > MAX_TEXT) return fail("That's too long for one document. Make the rest a second document (Part 2).");
       const title = prev ? prev.title : typeof i.title === "string" ? i.title.slice(0, 200) : undefined;
@@ -916,7 +969,8 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
       else if (ext === ".html" || ext === ".htm") fs.writeFileSync(abs, toHtml(content, title));
       else fs.writeFileSync(abs, title && ext === ".md" ? `# ${title}\n\n${content}` : content);
       writeDocSource(abs, { title, md: content });
-      const res = done(call, abs, shown, ext === ".docx" ? "a Word document" : ext === ".pdf" ? "a PDF" : "a document");
+      const res0 = done(call, abs, shown, ext === ".docx" ? "a Word document" : ext === ".pdf" ? "a PDF" : "a document");
+      const res = { ...res0, content: res0.content + placeNote(target) };
       const sections = (content.match(/^#{1,3} /gm) ?? []).length;
       const words = content.split(/\s+/).filter((w) => /[\p{L}\p{N}]/u.test(w)).length;
       return { ...res, content: `${prev ? `Added to ${shown}: it now has` : `${res.content} It has`} ${words} words${sections ? ` in ${sections} headed sections` : ""}. To add more sections, call create_document again with this filename and append: true.${prev ? " The user can open it from the chat." : ""}` };
@@ -925,31 +979,36 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
     if (call.name === "create_spreadsheet") {
       const sheets = Array.isArray(i.sheets) ? (i.sheets as SheetIn[]) : [];
       if (!sheets.length) return fail("Give at least one sheet with columns and rows.");
-      const { abs, shown } = outputPath(filename, ws, ".xlsx");
+      const place = outputPath(filename, ws, ".xlsx", chatId);
+      const { abs, shown } = place;
       const ext = path.extname(abs).toLowerCase();
       if (ext !== ".xlsx" && ext !== ".csv") return fail(`create_spreadsheet makes .xlsx or .csv files, not ${ext}.`);
       if (ext === ".csv") {
         fs.mkdirSync(path.dirname(abs), { recursive: true });
         fs.writeFileSync(abs, toCsv(sheets[0]!));
-        const res = done(call, abs, shown, "a CSV file");
+        const res0 = done(call, abs, shown, "a CSV file");
+        const res = { ...res0, content: res0.content + placeNote(place) };
         return sheets.some((s) => Array.isArray(s.charts) && s.charts.length) ? { ...res, content: `${res.content}\nCSV files can't hold charts: make an .xlsx for charts.` } : res;
       }
       const book = await toXlsx(sheets);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, book.data);
-      return done(call, abs, shown, book.charts ? `an Excel workbook with ${book.charts} native chart${book.charts > 1 ? "s" : ""}` : "an Excel workbook");
+      const res = done(call, abs, shown, book.charts ? `an Excel workbook with ${book.charts} native chart${book.charts > 1 ? "s" : ""}` : "an Excel workbook");
+      return { ...res, content: res.content + placeNote(place) };
     }
 
     if (call.name === "create_presentation") {
       const slides = Array.isArray(i.slides) ? (i.slides as SlideIn[]) : [];
       if (!slides.length) return fail("Give at least one slide.");
-      const { abs, shown } = outputPath(filename, ws, ".pptx");
+      const place = outputPath(filename, ws, ".pptx", chatId);
+      const { abs, shown } = place;
       if (path.extname(abs).toLowerCase() !== ".pptx") return fail("create_presentation makes .pptx files.");
       const deck = await toPptx(String(i.title ?? "Presentation").slice(0, 200), String(i.subtitle ?? "").slice(0, 300), String(i.theme ?? "light"), slides, ws, i.cover_image);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, deck.data);
       const extras = [deck.charts && `${deck.charts} chart${deck.charts > 1 ? "s" : ""}`, deck.pictures && `${deck.pictures} picture${deck.pictures > 1 ? "s" : ""}`].filter(Boolean).join(", ");
       const res = done(call, abs, shown, `a PowerPoint presentation (${slides.slice(0, 80).length + 1} slides${extras ? `, ${extras}` : ""})`);
+      res.content += placeNote(place);
       return deck.notes.length ? { ...res, content: `${res.content}\n${deck.notes.join("\n")}` } : res;
     }
 

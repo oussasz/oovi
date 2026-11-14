@@ -247,6 +247,8 @@ export type RunCtx = {
   channel?: "telegram";
   addToTable?: (table: string, rows: ListRow[], source: string) => { text: string; isError?: boolean };
   addRecords?: (table: string, rows: Record<string, string>[]) => { text: string; isError?: boolean };
+  /** The chat files belong to: making a file again with the same name replaces this chat's own earlier file. */
+  chatId?: string;
 };
 
 /**
@@ -398,7 +400,7 @@ async function fetchToDownloads(sess: Session, url: string, allowPrivate: boolea
 export async function runTool(call: ToolCall, settings: Settings, sessionId: string, useAccounts = false, workspace?: Workspace, ctx: RunCtx = {}): Promise<ToolResult> {
   const input = call.input;
   if (FILE_TOOLS.has(call.name)) return runFileTool(call, workspace);
-  if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser);
+  if (DOC_TOOLS.has(call.name)) return runDocTool(call, workspace, settings.browser, ctx.chatId);
   if (READER_TOOLS.has(call.name)) return runReaderTool(call, settings, ctx.signal);
   if (call.name === PLACES_SPEC.name) return runPlacesTool(call, { signal: ctx.signal, addToTable: ctx.addToTable });
   if (call.name === PAPERS_SPEC.name) return runPapersTool(call, { signal: ctx.signal, addRecords: ctx.addRecords });

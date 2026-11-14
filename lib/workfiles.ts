@@ -11,7 +11,7 @@ import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { rowsForTable, type ListRow } from "./page-list-core";
 import { dropUnseen, droppedNote, type Seen } from "./workfiles-core";
-import { addRows, cleanFileName, emptyStore, readRows, removeRows, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
+import { addRows, cleanFileName, emptyStore, exportView, filledCounts, readRows, removeRows, setColumns, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
 
 const ID_RE = /^[\w-]{1,64}$/;
 const file = (chatId: string) => path.join(dataDir(), "work", `${chatId}.json`);
@@ -20,7 +20,11 @@ export function loadWork(chatId: string): WorkStore {
   if (!ID_RE.test(chatId)) return emptyStore();
   try {
     const j = JSON.parse(fs.readFileSync(file(chatId), "utf8")) as Partial<WorkStore>;
-    return { tables: j.tables && typeof j.tables === "object" ? j.tables : {}, notes: j.notes && typeof j.notes === "object" ? j.notes : {} };
+    return {
+      tables: j.tables && typeof j.tables === "object" ? j.tables : {},
+      notes: j.notes && typeof j.notes === "object" ? j.notes : {},
+      ...(j.exports && typeof j.exports === "object" ? { exports: j.exports } : {}),
+    };
   } catch {
     return emptyStore();
   }
@@ -45,11 +49,11 @@ export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_table",
     description:
-      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty). update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. Add rows as you find them, in batches, rather than all at the end.",
+      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty); a long table comes in parts: act on each part (update, check) before reading the next, because older reads are shortened to save space. update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. columns: reorder, rename, empty (clear) or drop columns of the whole table at once, without retyping rows (order lists the columns in their new order; a column left out is removed, a new name is added empty). Add rows as you find them, in batches, rather than all at the end. Never rebuild or retype a table from memory: change it with update/columns and deliver it with work_export.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["add", "read", "update", "remove"] },
+        action: { type: "string", enum: ["add", "read", "update", "remove", "columns"] },
         table: { type: "string", description: "Table name, e.g. 'Prospects Alger'. Use the existing one when the team already has it." },
         columns: { type: "array", items: { type: "string" }, description: "add, new table only: the header row. Put the name first; include a Source column for where each row was found." },
         rows: { type: "array", items: {}, description: "add: rows as arrays in column order, or objects keyed by column name. Leave a cell empty when you don't have the value; never invent one." },
@@ -59,6 +63,9 @@ export const WORK_SPECS: ToolSpec[] = [
         from: { type: "integer", description: "read: first row number (default 1)" },
         limit: { type: "integer", description: "read: how many rows (default 100, max 500)" },
         missing: { type: "string", description: "read: only rows where this column is empty" },
+        order: { type: "array", items: { type: "string" }, description: "columns: the new column order, e.g. ['Statut','Note','Name','Phone',…]" },
+        rename: { type: "object", description: "columns: {old name: new name}" },
+        clear: { type: "array", items: { type: "string" }, description: "columns: columns to empty in every row" },
       },
       required: ["action", "table"],
     },
@@ -82,13 +89,16 @@ export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_export",
     description:
-      "Turn a work table or notes file into a real file for the user, complete, without retyping it: a table becomes Excel (.xlsx) or CSV; notes become Word (.docx), PDF or Markdown; a table can also go into a Word or PDF document. Use this (not create_spreadsheet or create_document) to deliver what's in a work file.",
+      "Turn a work table or notes file into a real file for the user, complete, without retyping it: a table becomes Excel (.xlsx) or CSV; notes become Word (.docx), PDF or Markdown; a table can also go into a Word or PDF document. Use this (not create_spreadsheet or create_document) to deliver what's in a work file. Exporting the same work file again updates the same file the user already has (one deliverable, one file, always the latest): don't invent new names like _FINAL, _v2 or _UPDATED. Only when the user asks for a separate copy, set new_copy. For a file with other columns than the table (blank tracking columns first, some columns left out), use columns and empty_columns: the table itself stays as it is. The result gives the exact filled counts per column: report those numbers, never estimates.",
     parameters: {
       type: "object",
       properties: {
         name: { type: "string", description: "The table's or notes file's name" },
         format: { type: "string", enum: ["xlsx", "csv", "docx", "pdf", "md"] },
-        filename: { type: "string", description: "Optional file name for the user" },
+        filename: { type: "string", description: "Optional file name, only for the first export (later exports keep the same file)" },
+        columns: { type: "array", items: { type: "string" }, description: "Spreadsheet only: the columns of the file, in order (default: all the table's columns). A name not in the table becomes an empty column." },
+        empty_columns: { type: "array", items: { type: "string" }, description: "Spreadsheet only: columns to put in the file empty (e.g. Statut, Note for the user's own tracking)" },
+        new_copy: { type: "boolean", description: "Only when the user asked for a separate copy: make a new file instead of updating the existing one" },
       },
       required: ["name", "format"],
     },
@@ -124,6 +134,7 @@ export function workPrompt(chatId: string, group: boolean, fromMain = false): st
     "",
     `Work files${fromMain ? " (the same ones as the main assistant who gave this task: what it already found is in them, and what you add it sees at once; add to its table, don't start another)" : group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where. Deliver a work file to the user with work_export.`,
     "Sources for a list: a row needs a source, not a perfect one. A detail you read on any page (a directory, a listing, a map's results, a search result) goes into the table, with that page in the Source column; when you couldn't also see it on the item's own page, write \"to confirm\" in a Status column. Don't hold a found row back while you look for a better source, and never ask the user to copy from a page what a page shows. Only what you read nowhere stays empty. If the user asked for stricter proof, follow the user.",
+    "One deliverable, one file: when you change something you already delivered (a list, a report), deliver it again under the same file name (work_export again, or the same filename): the user's file is updated, not copied. Never make copies named FINAL, v2, UPDATED, CORRECT or similar unless the user asks for a separate copy, and never rebuild a list by retyping it.",
     ...(lines.length ? ["The work files right now:", ...lines] : []),
   ];
 }
@@ -132,10 +143,10 @@ export function workPrompt(chatId: string, group: boolean, fromMain = false): st
 const asText = (c: string) => (/^[=@]/.test(c) ? ` ${c}` : c);
 
 /** Word and PDF have a size limit; Markdown takes any length. */
-async function asDocument(call: ToolCall, filename: string, content: string, ws: Workspace | undefined, browser: BrowserConfig): Promise<ToolResult> {
-  if (filename.endsWith(".md")) return { ...saveOutput(call, filename, ws, Buffer.from(content, "utf8"), "a document"), name: call.name };
+async function asDocument(call: ToolCall, filename: string, content: string, ws: Workspace | undefined, browser: BrowserConfig, chatId?: string): Promise<ToolResult> {
+  if (filename.endsWith(".md")) return { ...saveOutput(call, filename, ws, Buffer.from(content, "utf8"), "a document", chatId), name: call.name };
   if (content.length > 380_000) return { id: call.id, name: call.name, content: `That's too long for one ${filename.endsWith(".pdf") ? "PDF" : "Word"} file (${content.length.toLocaleString("en-US")} characters). Export it as md (any length), or split it into several notes files and export each.`, isError: true };
-  const r = await runDocTool({ id: call.id, name: "create_document", input: { filename, content } }, ws, browser);
+  const r = await runDocTool({ id: call.id, name: "create_document", input: { filename, content } }, ws, browser, chatId);
   return { ...r, name: call.name };
 }
 
@@ -204,7 +215,8 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
       const t = store.tables[existing]!;
       if (i.action === "read") {
         const r = readRows(t, Number(i.from) || 1, Number(i.limit) || 100, typeof i.missing === "string" ? i.missing : undefined);
-        return ok(`${tableLine(existing, t)}\n${typeof i.missing === "string" ? `${r.matching} rows have no ${i.missing}. ` : ""}Showing ${r.shown}:\n${r.text}`);
+        const more = r.next ? `\n[More rows from row ${r.next}. Do what you need with these rows first (update, check), then read again with from=${r.next}: older reads are shortened to save space, so never rely on remembering them.]` : "";
+        return ok(`${tableLine(existing, t)}\n${typeof i.missing === "string" ? `${r.matching} rows have no ${i.missing}. ` : ""}Showing ${r.shown}:\n${r.text}${more}`);
       }
       if (i.action === "update") {
         const values = fromText(i.values);
@@ -217,13 +229,19 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
         const added = t.columns.slice(before);
         return ok([`Row ${Math.floor(Number(i.row))} updated.${added.length ? ` New column${added.length > 1 ? "s" : ""} ${added.map((c) => `"${c}"`).join(", ")} added to the table (empty in the other rows).` : ""}`, droppedNote(checked?.dropped ?? [])].filter(Boolean).join("\n"));
       }
+      if (i.action === "columns") {
+        const err = setColumns(t, { order: fromText(i.order), rename: fromText(i.rename), clear: fromText(i.clear) });
+        if (err) return bad(err);
+        saveWork(chatId, store);
+        return ok(`Done. Now: ${tableLine(existing, t)}.`);
+      }
       if (i.action === "remove") {
         const n = removeRows(t, i.rows_to_remove);
         if (!n) return bad("No such rows. Give rows_to_remove as row numbers from work_table read.");
         saveWork(chatId, store);
         return ok(`${n} rows removed. Now: ${tableLine(existing, t)}. (Row numbers changed: read again before more changes.)`);
       }
-      return bad("action must be add, read, update or remove.");
+      return bad("action must be add, read, update, remove or columns.");
     }
 
     if (call.name === "work_notes") {
@@ -252,20 +270,39 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
       const table = nameOf(store, wanted, "tables");
       const note = table ? null : nameOf(store, wanted, "notes");
       if (!table && !note) return bad(`There is no work file "${cleanFileName(wanted)}".${others()}`);
-      const base = cleanFileName(typeof i.filename === "string" && i.filename.trim() ? i.filename.replace(/\.[a-z0-9]{2,5}$/i, "") : (table ?? note)!);
+      // One deliverable, one file: a work file exported again goes to the file it was exported to before.
+      const key = `${table ? "table" : "notes"}:${table ?? note}:${format}`;
+      const asked = typeof i.filename === "string" && i.filename.trim() ? cleanFileName(i.filename.replace(/\.[a-z0-9]{2,5}$/i, "")) : "";
+      const before = i.new_copy === true ? "" : store.exports?.[key] ?? "";
+      const base = before || asked || cleanFileName((table ?? note)!);
+      const remember = (r: ToolResult) => {
+        if (!r.isError && r.file) {
+          store.exports = { ...(store.exports ?? {}), [key]: path.basename(r.file.name, path.extname(r.file.name)) };
+          saveWork(chatId, store);
+        }
+        return r;
+      };
+      const sameFile = before && asked && asked !== before ? ` (Updated the existing file "${before}" instead of making "${asked}": set new_copy only if the user asked for a separate copy.)` : "";
       if (table) {
         const t = store.tables[table]!;
         if (!t.rows.length) return bad(`"${table}" has no rows yet.`);
         if (format === "xlsx" || format === "csv") {
-          const r = await runDocTool({ id: call.id, name: "create_spreadsheet", input: { filename: `${base}.${format}`, sheets: [{ name: table.slice(0, 28), columns: t.columns, rows: t.rows.map((r) => r.map(asText)) }] } }, ws, browser);
-          return { ...r, name: call.name, content: r.isError ? r.content : `${r.content} It has all ${t.rows.length} rows of "${table}".` };
+          const v = exportView(t, fromText(i.columns), fromText(i.empty_columns));
+          if (v.unknown.length) return bad(`"${table}" has no column ${v.unknown.map((c) => `"${c}"`).join(", ")}. Its columns: ${t.columns.join(", ")}. To add an empty column to the file, list it in empty_columns too.`);
+          const r = await runDocTool({ id: call.id, name: "create_spreadsheet", input: { filename: `${base}.${format}`, sheets: [{ name: table.slice(0, 28), columns: v.columns, rows: v.rows.map((r) => r.map(asText)) }] } }, ws, browser, chatId);
+          remember(r);
+          return { ...r, name: call.name, content: r.isError ? r.content : `${r.content} It has all ${t.rows.length} rows of "${table}". Filled cells per column: ${filledCounts(v.columns, v.rows)}.${sameFile}` };
         }
-        if (format === "docx" || format === "pdf" || format === "md") return await asDocument(call, `${base}.${format}`, tableMarkdown(table, t), ws, browser);
+        if (format === "docx" || format === "pdf" || format === "md") {
+          const r = remember(await asDocument(call, `${base}.${format}`, tableMarkdown(table, t), ws, browser, chatId));
+          return r.isError ? r : { ...r, content: `${r.content}${sameFile}` };
+        }
         return bad("format must be xlsx, csv, docx, pdf or md.");
       }
       if (format === "xlsx" || format === "csv") return bad(`"${note}" is a notes file: export it as docx, pdf or md.`);
       if (!["docx", "pdf", "md"].includes(format)) return bad("format must be docx, pdf or md for notes.");
-      return await asDocument(call, `${base}.${format}`, store.notes[note!]!.text, ws, browser);
+      const r = remember(await asDocument(call, `${base}.${format}`, store.notes[note!]!.text, ws, browser, chatId));
+      return r.isError ? r : { ...r, content: `${r.content}${sameFile}` };
     }
     return bad(`Unknown tool: ${call.name}`);
   } catch (e) {

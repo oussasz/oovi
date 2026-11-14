@@ -135,6 +135,11 @@ function answer(body) {
   if (me === "Solo" && solo) {
     if (!/BIG JOB MODE/.test(sys)) return call("start_big_job", { goal: "12 suppliers with a phone", table: "Suppliers", target_rows: 12, required_columns: ["Phone"] });
     seen.soloSys = sys;
+    // As in the owner's conversation: it delivers again under a new "FINAL" name. That must update the same file.
+    if (lastTool === "work_export" && !seen.soloReexport) {
+      seen.soloReexport = 1;
+      return call("work_export", { name: "Suppliers", format: "xlsx", filename: "Suppliers_FINAL" });
+    }
     if (lastTool === "work_export") return text("SOLO-DONE: 12 suppliers, see Suppliers.xlsx");
     if (status.length && status[0] >= status[1]) return call("work_export", { name: "Suppliers", format: "xlsx" });
     // It adds 4 rows per turn and then stops (as models do): the harness sends it back until 12.
@@ -343,6 +348,10 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   const sb = so.entries.filter((e) => e.kind === "bot");
   check("G) the goal enters the bot's instructions as soon as the job starts (same turn)", /BIG JOB MODE\. You own the result: keep working/.test(seen.soloSys || "") && /The job's goal: 12 suppliers with a phone/.test(seen.soloSys || ""));
   check("G) a bot alone gets the same mode and is sent back until the goal (it sees the count reach the goal in its last turn and delivers there)", /^SOLO-DONE/.test(sb.at(-1)?.text ?? "") && sb.length === 3, `${sb.length} turns; last: ${(sb.at(-1)?.text ?? "").slice(0, 50)}`);
+  {
+    const exports = sb.flatMap((e) => e.steps.filter((st) => st.role === "tool").flatMap((st) => st.results.filter((r) => r.name === "work_export" && r.file)));
+    check("G2) delivering the same list again updates the same file (no FINAL or (2) copy), with the real counts", exports.length === 2 && exports[0].file.path === exports[1].file.path && /replaces the earlier version/.test(exports[1].content) && /Updated the existing file "Suppliers"/.test(exports[1].content) && /Filled cells per column: .*Phone 12/.test(exports[1].content), exports.map((r) => `${r.file.name}: ${r.content.slice(-200)}`).join(" || "));
+  }
 
   // H (second half): the same lesson learned again updates the saved one; the card can correct and forget.
   const second = await learnedOn(`dm-${solo.id}`);
