@@ -1,6 +1,6 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## After 0.10.7, not released (owner: "fix those and wait for other fixes"): screens, connectors, skills library, setups, "too long" (2026-11-14)
+## 0.10.8 (2026-11-14, released; website deployed first): screens, connectors, skills library, setups, "too long"
 - Several screens: the bot works on one screen at a time (`ScreenView` in `lib/desktop-control.ts`: the screen with the window in front, or the one it chose), sees it alone at full sharpness, and every point is moved by that screen's corner (`toGlobal`/`toLocal`, `screenOfRect`, `screenLines`, `pickScreen` in `lib/desktop-core.ts`, unit-tested with a laptop + monitor on its left). `manage_window screen` switches screens; `switch` follows the window's screen; `open_app` re-detects. The bridge (`electron/desktop-control.cjs`): `screens()` (nativeOrigin, real sizes), `capture({screen})`, the glow on every screen, pointer moved with `SetCursorPos` (works with negative positions; checked on GitHub's Windows machine). NOT run with two real screens: needs the owner's PC.
 - Glow: oovi's lilac, blue and coral flowing along the edges (18 DIP, fades inward), on every screen; bounds set again once shown (mixed scale factors).
 - One card: bringing a window to the front, opening an app or a page in the user's browser is also the OK for the screen, mouse and keyboard for the rest of the task (`ok.alsoDesktop`); no second card.
