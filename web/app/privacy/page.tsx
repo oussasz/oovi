@@ -191,8 +191,8 @@ export default function PrivacyPage() {
 
       <h2>12. Children</h2>
       <p>
-        oovi is not intended for children under 16, and we don’t knowingly collect their data. If you believe a child
-        has created an account, contact us and we’ll delete it.
+        oovi is only for people aged 18 or older, and we don’t knowingly collect data from anyone younger. If you
+        believe someone under 18 has created an account, contact us and we’ll delete it.
       </p>
 
       <h2>13. Changes to this policy</h2>

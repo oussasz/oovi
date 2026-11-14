@@ -26,7 +26,7 @@ export function SignupForm({ next = null }: { next?: string | null }) {
     if (!name.trim()) return setError("Please enter your name.");
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) return setError("Please enter a valid email address.");
     if (password.length < 8) return setError("Password must be at least 8 characters.");
-    if (!agree) return setError("Please accept the Terms of Service and Privacy Policy.");
+    if (!agree) return setError("Please confirm you're 18 or older and accept the Terms of Service and Privacy Policy.");
     setBusy(true);
     const { error } = await authClient.signUp.email({
       name: name.trim(),
@@ -160,7 +160,7 @@ export function SignupForm({ next = null }: { next?: string | null }) {
         <label className="check">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} required />
           <span>
-            I agree to the{" "}
+            I’m 18 or older and I agree to the{" "}
             <Link href="/terms" target="_blank">
               Terms of Service
             </Link>{" "}

@@ -205,7 +205,8 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
           </label>
           <label className="field">
             {t("auth.password")}
-            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} />
+            <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete={mode === "signin" ? "current-password" : "new-password"} required minLength={8} maxLength={128} aria-describedby={mode === "signup" ? "pw-hint" : undefined} />
+            {mode === "signup" && <small id="pw-hint" className="muted">{t("auth.passwordHint")}</small>}
           </label>
           {mode === "signin" && (
             <a className="forgot-link" href={`${cloudUrl}/forgot-password`} target="_blank" rel="noreferrer noopener">

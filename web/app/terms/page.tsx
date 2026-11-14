@@ -28,8 +28,7 @@ export default function TermsPage() {
         Service.
       </p>
       <p>
-        You must be at least 16 years old (or the age of digital consent where you live, if higher) to use the
-        Service. If you use oovi on behalf of an organization, you confirm you’re allowed to accept these Terms for
+        You must be at least 18 years old to use the Service. You confirm this when you create your account. If you use oovi on behalf of an organization, you confirm you’re allowed to accept these Terms for
         it.
       </p>
 
