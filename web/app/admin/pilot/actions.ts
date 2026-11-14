@@ -6,9 +6,11 @@ import { pool } from "@/lib/db";
 import { getPilotConfig, getPlans, planById } from "@/lib/ai-config";
 import { getPilotRequest } from "@/lib/ai-admin";
 import { adjustCredits, audit, setPlan } from "@/lib/credits";
-import { fdNum, fdStr, ID_RE } from "@/lib/form";
-import { sendMailQuietly, smtpStatus } from "@/lib/mail";
-import { pilotApproved } from "@/lib/mail-templates";
+import { fdBool, fdNum, fdStr, ID_RE } from "@/lib/form";
+import { isEmail, sendMail, sendMailQuietly, smtpStatus } from "@/lib/mail";
+import { pilotApproved, pilotInvite } from "@/lib/mail-templates";
+import { rateLimit } from "@/lib/api";
+import { accountNameFor, lastInviteTo } from "@/lib/pilot-invite";
 import type { ActionState } from "@/components/admin/ActionForm";
 
 function refresh(userId: string) {
@@ -103,4 +105,34 @@ export async function rejectPilot(fd: FormData): Promise<ActionState> {
   await audit(admin.email, "pilot.reject", userId, { requestId: id, note: note || null });
   refresh(userId);
   return { ok: "Rejected." };
+}
+
+/**
+ * Sends the personal pilot invitation (the same email you used to send by hand) to one address.
+ * Protected against accidents: it asks before sending, refuses a second invitation to the same
+ * address unless "Send again" is ticked, limits how many go out per hour, and writes every send to the audit log.
+ */
+export async function sendPilotInvite(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const email = fdStr(fd, "email", 300).trim().toLowerCase();
+  if (!isEmail(email)) return { errors: ["Enter a valid email address."] };
+  if (!rateLimit(`pilot-invite:${admin.id}`, 20, 60 * 60_000)) return { errors: ["That's a lot of invitations in an hour. Please wait a little."] };
+  if (!rateLimit(`pilot-invite-to:${email}`, 1, 30_000)) return { errors: ["This address was just sent an invitation. Please wait before sending again."] };
+  const again = fdBool(fd, "again");
+  const before = await lastInviteTo(email).catch(() => null);
+  if (before && !again) {
+    return { errors: [`${email} was already invited on ${before.toISOString().slice(0, 10)}. Tick “Send again” if you really want to send it twice.`] };
+  }
+  const name = fdStr(fd, "name", 80).trim() || (await accountNameFor(email).catch(() => null)) || "";
+  try {
+    await sendMail(pilotInvite(email, name));
+  } catch (err) {
+    return { errors: [err instanceof Error ? err.message : "The invitation couldn't be sent."] };
+  }
+  await audit(admin.email, "pilot.invite", email, { name: name || null, again }).catch((err) =>
+    console.error("pilot invite audit failed", err instanceof Error ? err.message : err),
+  );
+  revalidatePath("/admin/pilot");
+  revalidatePath("/admin/audit");
+  return { ok: `Invitation sent to ${email}. It can take a minute to arrive.` };
 }

@@ -57,6 +57,9 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
   return (
     <>
       <PageHead title={user.name || user.email} sub={user.email}>
+        <Link href={`/admin/pilot?invite=${encodeURIComponent(user.email)}#invite`} className="btn btn-light btn-sm">
+          Send pilot invitation
+        </Link>
         <Link href="/admin/users" className="btn btn-ghost btn-sm">
           All users
         </Link>
