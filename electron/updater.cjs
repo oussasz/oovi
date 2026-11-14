@@ -27,14 +27,18 @@
 // Installs "for all users" (under Program Files, possible with installers before 0.8.7)
 // need administrator rights to update, so they get the download page instead.
 
-const { app, ipcMain, shell, BrowserWindow } = require("electron");
+const { app, ipcMain, shell, BrowserWindow, powerMonitor } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const SITE = "https://oovi.conuron.com";
 const FEED = `${SITE}/updates`;
 const FIRST_CHECK_MS = 15_000;
-const CHECK_EVERY_MS = 6 * 60 * 60 * 1000;
+// The banner must appear by itself, without opening Settings: check every 30 minutes, and again when the
+// user comes back to oovi (window focused, computer woken up or unlocked) if the last check is 10+ minutes old.
+// A check is one small file (latest.yml, ~400 bytes, cached 60 s by the website).
+const CHECK_EVERY_MS = 30 * 60 * 1000;
+const RECHECK_ON_RETURN_MS = 10 * 60 * 1000;
 const APP_ID = "app.oovi.desktop"; // package.json build.appId (the shortcuts' AppUserModelID)
 const SHORTCUT = "oovi.lnk"; // package.json build.nsis.shortcutName
 const releaseUrl = (v) => `${SITE}/changelog#v${String(v).replace(/^v/, "")}`;
@@ -319,6 +323,16 @@ function setupUpdates(isTrusted) {
   if (fromStore) return; // the Microsoft Store delivers updates
   setTimeout(() => void check(), FIRST_CHECK_MS);
   setInterval(() => void check(), CHECK_EVERY_MS).unref();
+  const onReturn = () => {
+    if (!state.checkedAt || Date.now() - state.checkedAt >= RECHECK_ON_RETURN_MS) void check();
+  };
+  app.on("browser-window-focus", onReturn);
+  try {
+    powerMonitor.on("resume", onReturn);
+    powerMonitor.on("unlock-screen", onReturn);
+  } catch {
+    /* not on every system */
+  }
 }
 
 module.exports = { setupUpdates, compare, _test: { check, getState: () => state } };
