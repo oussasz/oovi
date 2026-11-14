@@ -7,11 +7,17 @@ export const dynamic = "force-dynamic";
 
 const CATEGORIES = new Set(["work", "writing", "research", "coding", "life"]);
 
-/** ?q=&category=&offset= : a page of the library, and which of its skills the user already has (by name). */
+/** ?id= : one skill with its text. ?q=&category=&offset= : a page of the library, and which of its skills the user already has (by name). */
 export async function GET(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
   const u = new URL(req.url).searchParams;
+  // One skill, whole (its details in the Marketplace).
+  const one = u.get("id");
+  if (one) {
+    const s = librarySkill(one);
+    return s ? Response.json(s) : Response.json({ error: "Unknown skill." }, { status: 404 });
+  }
   const category = u.get("category");
   const r = searchLibrary((u.get("q") ?? "").slice(0, 100), category && CATEGORIES.has(category) ? category : null, Math.max(0, Number(u.get("offset")) || 0), 30);
   const have = new Set(listSkills().map((s) => slugify(s.name)));

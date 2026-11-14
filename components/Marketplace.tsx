@@ -8,7 +8,7 @@ import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, mergeById, type Cata
 import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
 import { ANTHROPIC_LOGO, MCP_LOGO, OOVI_LOGO, githubOwnerLogo, logoFor } from "@/lib/logos";
 import "@/lib/desktop";
-import { FaceStack } from "./Face";
+import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import ConnectorSetup from "./ConnectorSetup";
@@ -90,6 +90,20 @@ export default function Marketplace() {
   const [lib, setLib] = useState<{ total: number; items: LibCard[]; installed: string[] } | null>(null);
   const [libCat, setLibCat] = useState<string>("");
   const [libErr, setLibErr] = useState(false);
+  // The details window of one Marketplace item.
+  type Detail =
+    | { kind: "connector"; c: CatalogConnector }
+    | { kind: "skill"; id: string; name: string; description: string; body?: string; by: string; logo: string; source?: { repo: string; license: string; url: string }; url?: string; have: boolean; add: () => void }
+    | { kind: "setup"; p: CatalogPlugin };
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [detailBody, setDetailBody] = useState<string | null>(null);
+  useEffect(() => {
+    setDetailBody(null);
+    if (detail?.kind !== "skill" || detail.body !== undefined || !detail.id.startsWith("lib-")) return;
+    api<{ body: string }>(`/api/skills/library?id=${encodeURIComponent(detail.id)}`)
+      .then((r) => setDetailBody(r.body))
+      .catch(() => setDetailBody(""));
+  }, [detail]);
   const [registry, setRegistry] = useState<RegItem[] | null>(null);
   const [installing, setInstalling] = useState<CatalogConnector | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
@@ -392,8 +406,28 @@ export default function Marketplace() {
   }, [ql, libCat]);
   const match = (...xs: (string | undefined)[]) => !ql || xs.some((x) => (x ?? "").toLowerCase().includes(ql));
 
-  const card = (key: string, avatar: React.ReactNode, title: React.ReactNode, desc: string, by: string, action: React.ReactNode, extra?: React.ReactNode) => (
-    <div key={key} className={`mk-card${isFocus(key) ? " focus" : ""}`}>
+  /** A card; clicking anywhere but its buttons and links opens its details. */
+  const card = (key: string, avatar: React.ReactNode, title: React.ReactNode, desc: string, by: string, action: React.ReactNode, extra?: React.ReactNode, open?: () => void) => (
+    <div
+      key={key}
+      className={`mk-card${isFocus(key) ? " focus" : ""}${open ? " clickable" : ""}`}
+      {...(open
+        ? {
+            role: "button",
+            tabIndex: 0,
+            "aria-label": t("mk.d.open", { name: typeof title === "string" ? title : desc.slice(0, 40) }),
+            onClick: (e: React.MouseEvent) => {
+              if (!(e.target as HTMLElement).closest("button, a, input, label")) open();
+            },
+            onKeyDown: (e: React.KeyboardEvent) => {
+              if ((e.key === "Enter" || e.key === " ") && e.target === e.currentTarget) {
+                e.preventDefault();
+                open();
+              }
+            },
+          }
+        : {})}
+    >
       {avatar}
       <div className="mk-card-main">
         <b>{title}</b>
@@ -494,6 +528,7 @@ export default function Marketplace() {
             c.by,
             connectorAction(c),
             connectorExtra(c),
+            () => setDetail({ kind: "connector", c }),
           ),
         )}
       </div>
@@ -624,6 +659,12 @@ export default function Marketplace() {
     </div>
   );
 
+  const addLibSkill = (s: LibCard) =>
+    void run(`lib-${s.id}`, async () => {
+      const k = await api<Skill>("/api/skills/library", { method: "POST", body: JSON.stringify({ id: s.id }) });
+      setLib((cur) => (cur ? { ...cur, installed: [...cur.installed, s.id] } : cur));
+      return t("lib.installedSkill", { name: k.name });
+    });
   const libraryCats = ["", "work", "writing", "research", "coding", "life"];
   const skillLibrary = (
     <>
@@ -655,23 +696,25 @@ export default function Marketplace() {
                 s.name,
                 s.description,
                 "",
-                lib.installed.includes(s.id) || skillHave(s.name)
-                  ? done(t("mk.added"))
-                  : plus(
-                      () =>
-                        void run(`lib-${s.id}`, async () => {
-                          const k = await api<Skill>("/api/skills/library", { method: "POST", body: JSON.stringify({ id: s.id }) });
-                          setLib((cur) => (cur ? { ...cur, installed: [...cur.installed, s.id] } : cur));
-                          return t("lib.installedSkill", { name: k.name });
-                        }),
-                      t("mk.addX", { name: s.name }),
-                    ),
+                lib.installed.includes(s.id) || skillHave(s.name) ? done(t("mk.added")) : plus(() => addLibSkill(s), t("mk.addX", { name: s.name })),
                 <small className="mk-src">
                   <a href={s.source.url} target="_blank" rel="noopener noreferrer">
                     {s.source.repo}
                   </a>{" "}
                   · {s.source.license}
                 </small>,
+                () =>
+                  setDetail({
+                    kind: "skill",
+                    id: s.id,
+                    name: s.name,
+                    description: s.description,
+                    by: s.source.repo,
+                    logo: s.source.repo.startsWith("anthropics/") ? ANTHROPIC_LOGO : (githubOwnerLogo(`https://github.com/${s.source.repo}`) ?? OOVI_LOGO),
+                    source: s.source,
+                    have: lib.installed.includes(s.id) || skillHave(s.name),
+                    add: () => addLibSkill(s),
+                  }),
               ),
             )}
           </div>
@@ -685,6 +728,11 @@ export default function Marketplace() {
     </>
   );
 
+  const addRemoteSkill = (s: RemoteSkill) =>
+    void run(`rs-${s.id}`, async () => {
+      const k = await api<Skill>("/api/skills", { method: "POST", body: JSON.stringify({ url: s.url }) });
+      return t("lib.installedSkill", { name: k.name });
+    });
   const featuredSkill = allSkills[0] ?? SKILLS[0]!;
   const discoverSkills = (
     <>
@@ -711,7 +759,9 @@ export default function Marketplace() {
       </div>
       <div className="mk-grid">
         {allSkills.filter((s) => match(s.name, s.description)).map((s) =>
-          card(s.id, <Logo src={OOVI_LOGO} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name }))),
+          card(s.id, <Logo src={OOVI_LOGO} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name })), undefined, () =>
+            setDetail({ kind: "skill", id: s.id, name: s.name, description: s.description, body: s.body, by: "oovi", logo: OOVI_LOGO, have: skillHave(s.name), add: () => void addCatalogSkill(s.id, s.name) }),
+          ),
         )}
       </div>
       <div className="mk-section-head">
@@ -737,14 +787,9 @@ export default function Marketplace() {
                 s.by,
                 skillHave(s.name)
                   ? done(t("mk.added"))
-                  : plus(
-                      () =>
-                        void run(`rs-${s.id}`, async () => {
-                          const k = await api<Skill>("/api/skills", { method: "POST", body: JSON.stringify({ url: s.url }) });
-                          return t("lib.installedSkill", { name: k.name });
-                        }),
-                      t("mk.addX", { name: s.name }),
-                    ),
+                  : plus(() => addRemoteSkill(s), t("mk.addX", { name: s.name })),
+                undefined,
+                () => setDetail({ kind: "skill", id: s.id, name: s.name, description: s.description, by: s.by, logo: ANTHROPIC_LOGO, url: s.url, have: skillHave(s.name), add: () => addRemoteSkill(s) }),
               ),
             )}
         </div>
@@ -819,6 +864,7 @@ export default function Marketplace() {
         </div>
         {p.usesFolder && <span className="mk-hint">{t("mk.usesFolder")}</span>}
       </>,
+      () => setDetail({ kind: "setup", p }),
     );
   };
 
@@ -979,6 +1025,240 @@ export default function Marketplace() {
       )}
 
       {views[tab][view]}
+
+      {/* ---- the details of one item (click any card) ---- */}
+      {detail && (
+        <div
+          className="mk-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={detail.kind === "connector" ? detail.c.name : detail.kind === "skill" ? detail.name : detail.p.name}
+          onMouseDown={(e) => e.target === e.currentTarget && setDetail(null)}
+          onKeyDown={(e) => e.key === "Escape" && setDetail(null)}
+        >
+          <div className="mk-sheet wide mk-detail">
+            <button className="icon-btn sm mk-detail-close" onClick={() => setDetail(null)} aria-label={t("mk.close")} autoFocus>
+              <Icon name="close" size={16} />
+            </button>
+            {detail.kind === "connector" && (() => {
+              const c = detail.c;
+              const how = c.oauth ? t("conn.kind.oauth") : c.transport === "stdio" ? t("conn.kind.local") : c.fields?.length ? t("conn.kind.key") : t("conn.kind.open");
+              return (
+                <>
+                  <div className="mk-sheet-head">
+                    <Logo src={c.logo ?? logoFor(c.id)} size={56} />
+                    <div>
+                      <h3>
+                        {c.name} {verified(c.verified)}
+                      </h3>
+                      <p className="note">{t("mk.by", { by: c.by })}</p>
+                    </div>
+                  </div>
+                  <p className="mk-detail-desc" dir="auto">{c.description}</p>
+                  <dl className="cs-facts">
+                    <dt>{t("mk.d.category")}</dt>
+                    <dd>{t(`mk.cat.${c.category}` as "mk.cat.all")}</dd>
+                    <dt>{t("conn.fact.kind")}</dt>
+                    <dd>{how}</dd>
+                    {c.fields && c.fields.length > 0 && (
+                      <>
+                        <dt>{t("mk.d.needs")}</dt>
+                        <dd>
+                          {c.fields.map((x) => (
+                            <div key={x.key}>
+                              {x.label}
+                              {x.optional ? ` (${t("mk.d.optional")})` : ""}
+                              {x.help && /^https?:/.test(x.help) && (
+                                <>
+                                  {" · "}
+                                  <a href={x.help.split(" ")[0]} target="_blank" rel="noopener noreferrer">
+                                    {t("mk.d.getIt")}
+                                  </a>
+                                </>
+                              )}
+                            </div>
+                          ))}
+                        </dd>
+                      </>
+                    )}
+                    {c.needsNode && (
+                      <>
+                        <dt>{t("mk.d.needs")}</dt>
+                        <dd>Node.js{!inst.node ? ` · ${t("mk.needsNode")}` : ""}</dd>
+                      </>
+                    )}
+                    {(c.url || c.command) && (
+                      <>
+                        <dt>{t("conn.fact.where")}</dt>
+                        <dd className="cs-mono">{c.url ?? [c.command, ...(c.args ?? [])].join(" ")}</dd>
+                      </>
+                    )}
+                    {c.docs && (
+                      <>
+                        <dt>{t("conn.fact.docs")}</dt>
+                        <dd>
+                          <a href={c.docs} target="_blank" rel="noopener noreferrer">
+                            {c.docs.replace(/^https?:\/\//, "")}
+                          </a>
+                        </dd>
+                      </>
+                    )}
+                  </dl>
+                  {c.soon && <p className="notice small">{c.soon}</p>}
+                  <div className="row-btns">
+                    {hasServer(c.name) ? (
+                      <span className="tag ok">{t("mk.added")}</span>
+                    ) : c.soon ? (
+                      <button className="btn primary" onClick={() => (setDetail(null), setSoonItem(c))}>
+                        {t("mk.soon")}
+                      </button>
+                    ) : (
+                      <button className="btn primary" disabled={!!busy} onClick={() => (setDetail(null), startInstall(c))}>
+                        {c.oauth ? t("mk.connect") : t("common.add")}
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+            {detail.kind === "skill" && (() => {
+              const body = detail.body ?? detailBody;
+              return (
+                <>
+                  <div className="mk-sheet-head">
+                    <Logo src={detail.logo} size={56} />
+                    <div>
+                      <h3>{detail.name}</h3>
+                      <p className="note">
+                        {detail.source ? (
+                          <>
+                            <a href={detail.source.url} target="_blank" rel="noopener noreferrer">
+                              {detail.source.repo}
+                            </a>{" "}
+                            · {detail.source.license}
+                          </>
+                        ) : (
+                          t("mk.by", { by: detail.by })
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <p className="mk-detail-desc" dir="auto">{detail.description}</p>
+                  <h4 className="mk-detail-h">{t("mk.d.instructions")}</h4>
+                  {body ? (
+                    <pre className="mk-detail-body" dir="auto">{body}</pre>
+                  ) : body === "" || detail.url ? (
+                    <p className="note">
+                      {detail.url ? (
+                        <a href={detail.url.replace("raw.githubusercontent.com", "github.com").replace(/\/(main|master)\//, "/blob/$1/")} target="_blank" rel="noopener noreferrer">
+                          {t("mk.d.readSource")}
+                        </a>
+                      ) : (
+                        t("mk.cantLoadRemote")
+                      )}
+                    </p>
+                  ) : (
+                    <p className="note">{t("common.loading")}</p>
+                  )}
+                  <div className="row-btns">
+                    {detail.have || skillHave(detail.name) ? (
+                      <span className="tag ok">{t("mk.added")}</span>
+                    ) : (
+                      <button className="btn primary" disabled={!!busy} onClick={() => (detail.add(), setDetail({ ...detail, have: true }))}>
+                        {t("common.add")}
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+            {detail.kind === "setup" && (() => {
+              const p = detail.p;
+              const gid = pluginGroup(p.id);
+              const skillName = (id: string) => allSkills.find((x) => x.id === id)?.name ?? id.replace(/^lib-/, "").replace(/-/g, " ").replace(/^./, (ch) => ch.toUpperCase());
+              const ability = (b: CatalogPlugin["bots"][number]) => [b.tools.web && t("bot.web"), b.tools.browser && t("bot.browser"), b.tools.accounts && t("bot.accounts")].filter(Boolean) as string[];
+              return (
+                <>
+                  <div className="mk-sheet-head">
+                    <span className="mk-faces">
+                      <FaceStack faces={p.bots.map((b) => b.face)} size={64} />
+                    </span>
+                    <div>
+                      <h3>{p.name}</h3>
+                      <p className="note">{p.bots.length > 1 ? t("mk.d.team", { count: p.bots.length }) : t("mk.d.expert")}</p>
+                    </div>
+                  </div>
+                  <p className="mk-detail-desc" dir="auto">{p.description}</p>
+                  {p.links && p.links.length > 0 && (
+                    <p className="mk-detail-links">
+                      {p.links.map((l) => (
+                        <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer">
+                          {l.label} <Icon name="arrow" size={12} />
+                        </a>
+                      ))}
+                    </p>
+                  )}
+                  <h4 className="mk-detail-h">{p.bots.length > 1 ? t("mk.d.bots") : t("mk.d.bot")}</h4>
+                  <div className="mk-detail-bots">
+                    {p.bots.map((b) => (
+                      <div key={b.name} className="mk-detail-bot">
+                        <Face face={b.face} size={56} />
+                        <div>
+                          <b>
+                            {b.name} <span className="tag">{b.role}</span> {b.lead && p.bots.length > 1 && <span className="tag ok">{t("mk.d.lead")}</span>}
+                          </b>
+                          {b.about && <p className="mk-detail-about" dir="auto">“{b.about}”</p>}
+                          {ability(b).length > 0 && <p className="note">{ability(b).join(" · ")}</p>}
+                          <details>
+                            <summary>{t("mk.d.instructions")}</summary>
+                            <p className="mk-detail-body" dir="auto">{b.instructions}</p>
+                          </details>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {p.skills.length > 0 && (
+                    <>
+                      <h4 className="mk-detail-h">{t("mk.d.skills")}</h4>
+                      <div className="mk-team">
+                        {p.skills.map((id) => (
+                          <span key={id} className="tag">
+                            {skillName(id)}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {(p.connectors?.length ?? 0) > 0 && (
+                    <>
+                      <h4 className="mk-detail-h">{t("mk.d.connectors")}</h4>
+                      <div className="mk-team">
+                        {p.connectors!.map((id) => (
+                          <span key={id} className="tag">
+                            {allConnectors.find((x) => x.id === id)?.name ?? id}
+                          </span>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                  {p.usesFolder && <p className="mk-hint">{t("mk.usesFolder")}</p>}
+                  <div className="row-btns">
+                    {gid ? (
+                      <Link className="btn primary" href={`/c/${gid}`} onClick={() => setDetail(null)}>
+                        {t("mk.open")}
+                      </Link>
+                    ) : (
+                      <button className="btn primary" disabled={!!busy} onClick={() => (setDetail(null), void addPlugin(p))}>
+                        {p.bots.length > 1 ? t("mk.addTeam") : t("mk.addBot")}
+                      </button>
+                    )}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
+      )}
 
       {soonItem && (
         <div className="mk-modal" role="dialog" aria-modal="true" aria-label={soonItem.name} onMouseDown={(e) => e.target === e.currentTarget && setSoonItem(null)}>

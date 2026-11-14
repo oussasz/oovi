@@ -7,7 +7,7 @@
 // the pointer. Everything is SVG + CSS transforms/opacity (Face.module.css).
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BEARDS, CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, type Face as FaceT, type Mood } from "@/lib/faces";
+import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import s from "./Face.module.css";
 
 const INK = "#1d1d1b";
@@ -255,27 +255,6 @@ function Top({ type }: { type: (typeof TOPS)[number] }) {
   }
 }
 
-/** A beard around the chin, drawn under the mouth. */
-function Beard({ type }: { type: (typeof BEARDS)[number] }) {
-  if (type === "none") return null;
-  const d = "M34.5 53.5 C34 63 40 71.5 50 72.5 C60 71.5 66 63 65.5 53.5 C62.5 58.5 58 61.5 50 62 C42 61.5 37.5 58.5 34.5 53.5 Z";
-  if (type === "stubble")
-    return (
-      <g stroke="none" fill={INK} fillOpacity={0.55}>
-        {[[38, 60], [41, 64], [44, 67], [48, 68.5], [52, 68.5], [56, 67], [59, 64], [62, 60], [45, 63.5], [55, 63.5], [50, 65.5]].map(([x, y]) => (
-          <circle key={`${x}-${y}`} cx={x} cy={y} r={0.9} />
-        ))}
-      </g>
-    );
-  const light = type === "light white";
-  return (
-    <g>
-      <path d={d} fill={light ? "#F4F1EA" : "#3A2E28"} fillOpacity={light ? 0.95 : 1} stroke={INK} strokeWidth={1.3} strokeOpacity={light ? 0.55 : 1} />
-      {light && <path d="M42 65 q2 2 4 2.6 M54 67.6 q2 -0.6 4 -2.6 M50 69 v1.6" strokeWidth={1} strokeOpacity={0.35} fill="none" />}
-    </g>
-  );
-}
-
 function Wear({ type }: { type: (typeof WEAR)[number] }) {
   switch (type) {
     case "glasses":
@@ -492,7 +471,6 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
               <Brows mood={mood} />
               {NOSES[face.nose] === "hook" && <path d="M51.5 54 q-4 5 -0.5 6.5" strokeWidth={2.4} />}
               {NOSES[face.nose] === "line" && <path d="M50 54.5 l-2 5 h3.2" strokeWidth={2.4} />}
-              <Beard type={BEARDS[face.beard ?? 0] ?? "none"} />
               <Mouth type={MOUTHS[face.mouth] ?? "smile"} mood={mood} />
               <Wear type={wear} />
             </g>

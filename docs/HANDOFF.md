@@ -1,5 +1,10 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## After 0.10.8 (2026-11-14, not released yet)
+- Desktop glow redrawn to match the owner's picture: a soft, wavy, multicolor canvas scene (blue, lilac, orange/yellow, pink) with bright lines, rounded corners, one scene shared across all screens (`electron/desktop-control.cjs` GLOW_SCENE). Not yet seen on a real Windows multi-monitor PC.
+- New setup "Abdelaziz Benkirat" (`lib/catalog.ts`): startup coach, funny, cool and brutally honest; yellow face with glasses, no beard (the beard option was removed); LinkedIn link shown in the details. Open question to the owner: written consent from Abdelaziz to use his real name and link.
+- Marketplace: every connector, skill and setup card opens a details window (click, Enter or Space): connector facts and needed fields, a skill's full instructions, every bot of a setup with its role, abilities and instructions, skills and connectors included. `GET /api/skills/library?id=` returns one library skill whole.
+
 ## 0.10.8 (2026-11-14, released; website deployed first): screens, connectors, skills library, setups, "too long"
 - Several screens: the bot works on one screen at a time (`ScreenView` in `lib/desktop-control.ts`: the screen with the window in front, or the one it chose), sees it alone at full sharpness, and every point is moved by that screen's corner (`toGlobal`/`toLocal`, `screenOfRect`, `screenLines`, `pickScreen` in `lib/desktop-core.ts`, unit-tested with a laptop + monitor on its left). `manage_window screen` switches screens; `switch` follows the window's screen; `open_app` re-detects. The bridge (`electron/desktop-control.cjs`): `screens()` (nativeOrigin, real sizes), `capture({screen})`, the glow on every screen, pointer moved with `SetCursorPos` (works with negative positions; checked on GitHub's Windows machine). NOT run with two real screens: needs the owner's PC.
 - Glow: oovi's lilac, blue and coral flowing along the edges (18 DIP, fades inward), on every screen; bounds set again once shown (mixed scale factors).
