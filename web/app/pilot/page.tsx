@@ -159,9 +159,6 @@ export default async function PilotPage() {
       <SiteNav />
       <main className="container page pilot-page">
         <div className="page-head">
-          <span className="tag">
-            <span className="tag-dot" style={{ background: "#CDBFEA" }} /> Pilot program
-          </span>
           <h1 className="h2">{fmt(cfg.credits)} free credits for early users.</h1>
           <p className="lead">
             If you created your oovi account during the pilot, you can ask for {fmt(cfg.credits)} credits for {name}. In exchange, tell us
