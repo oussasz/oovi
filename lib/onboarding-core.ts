@@ -50,7 +50,7 @@ const words = (s: string) => new Set((s.toLowerCase().normalize("NFKD").replace(
  * typed under "Something else" add the setups whose name or description mention them. Setups the Marketplace
  * doesn't have (hidden by the admin) are left out.
  */
-export function suggestSetups(goals: readonly string[], other: string, available: readonly SetupLike[], max = 4, pick = 2): { ids: string[]; picked: string[] } {
+export function suggestSetups(goals: readonly string[], other: string, available: readonly SetupLike[], max = 4, pick = 1): { ids: string[]; picked: string[] } {
   const have = new Set([...available.map((s) => s.id), STARTER.id]);
   const score = new Map<string, number>();
   const add = (id: string, n: number) => have.has(id) && score.set(id, (score.get(id) ?? 0) + n);
@@ -74,7 +74,7 @@ export function suggestSetups(goals: readonly string[], other: string, available
   let ids = [...score.entries()].sort((a, b) => b[1] - a[1] || order(a[0]) - order(b[0])).map(([id]) => id).slice(0, max);
   // Nothing chosen, or nothing fits: the all-round team first, then two common helpers.
   if (!ids.length) ids = [STARTER.id, "research-desk", "content-studio"].filter((id) => have.has(id));
-  return { ids, picked: ids.slice(0, ids.length && !score.size ? 1 : pick) };
+  return { ids, picked: ids.slice(0, pick) };
 }
 const ALL_ORDER: string[] = GOALS.flatMap((g) => [...g.setups]);
 const order = (id: string) => {
@@ -101,6 +101,33 @@ export function leaderNotes(style: LeaderStyle | null, goals: readonly string[],
   const extra = other.replace(/\s+/g, " ").trim().slice(0, 200);
   return [
     l ? `Your personality: ${l.personality}.` : "",
-    g.length || extra ? `The user told you, when they started, that they will mainly use oovi for: ${[...g, ...(extra ? [`"${extra}"`] : [])].join(", ")}. Keep that in mind, and suggest the teammates and groups that fit.` : "",
+    g.length || extra ? `When they started, the user said they were curious about: ${[...g, ...(extra ? [`"${extra}"`] : [])].join(", ")}. That is only where they started, not a limit: people explore and their needs change, so always follow what they ask now, and suggest teammates or groups only when they fit the request in front of you.` : "",
   ].filter(Boolean).join("\n");
+}
+
+/** An example request for each goal (the end of the first run and the home screen offer them, never send them). */
+export const GOAL_IDEA = {
+  marketing: "home.idea.g.marketing",
+  clients: "home.idea.g.clients",
+  business: "home.idea.g.business",
+  shop: "home.idea.g.shop",
+  study: "home.idea.g.study",
+  research: "home.idea.g.research",
+  writing: "home.idea.g.writing",
+  code: "home.idea.g.code",
+  people: "home.idea.g.people",
+  everyday: "home.idea.post",
+} as const satisfies Record<GoalId, string>;
+
+/** The general examples, for everyone. */
+export const GENERAL_IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
+export type IdeaKey = (typeof GOAL_IDEA)[GoalId] | (typeof GENERAL_IDEAS)[number];
+
+/**
+ * Examples to start from: at most two from the user's first goals, the rest general, so the choice stays open
+ * (a goal picked on the first day says where someone started, not what they will do).
+ */
+export function ideasFor(goals: readonly string[], count: number): IdeaKey[] {
+  const fromGoals = [...new Set(goals.filter(isGoal).map((g) => GOAL_IDEA[g]))].slice(0, 2);
+  return [...new Set<IdeaKey>([...fromGoals, ...GENERAL_IDEAS])].slice(0, count);
 }

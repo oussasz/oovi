@@ -5,6 +5,7 @@ import { getOverview, parsePeriod } from "@/lib/admin-stats";
 import { getAiToday } from "@/lib/ai-stats";
 import { getOperatingCosts } from "@/lib/cost-stats";
 import { githubDownloadCounts } from "@/lib/releases";
+import { funnel } from "@/lib/onboarding-funnel";
 import { DOWNLOAD_TARGETS } from "@/lib/releases";
 import { BarChart, LineChart, SplitBars, StackedBarChart } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
@@ -16,7 +17,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parsePeriod((await searchParams).period);
-  const [o, gh, ai, costs] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday(), getOperatingCosts(period)]);
+  const [o, gh, ai, costs, first] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday(), getOperatingCosts(period), funnel(period)]);
   const perUser = (cost: number, users: number) => (users ? fmtUsd(cost / users) : "–");
 
   const stickiness = o.mau.value ? o.dau.value / o.mau.value : null;
@@ -76,6 +77,22 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
         )}
         <Kpi label="Crash reports, 7 days" value={fmtInt(o.crashes7.value)} change={o.crashes7} previousLabel="the 7 days before" lowerIsBetter />
       </div>
+
+      <Section
+        title="First run"
+        sub={`Where new people stop in the app's first run, last ${period} days (apps from 0.10.14). Each person counts once per step.`}
+      >
+        {first && first.steps.chief ? (
+          <div className="adm-kpis">
+            <Kpi label="Chose a Chief" value={fmtInt(first.steps.chief)} hint={first.styles.map((x) => `${x.id} ${fmtInt(x.n)}`).join(" · ") || undefined} />
+            <Kpi label="Reached the team" value={fmtInt(first.steps.team)} hint={`${fmtPct(first.steps.team / first.steps.chief)} of those who started`} />
+            <Kpi label="Created a team" value={fmtInt(first.steps.created)} hint={`${fmtPct(first.steps.created / first.steps.chief)} of those who started · ${fmtInt(first.steps.alone)} skipped to explore`} />
+            <Kpi label="Most chosen goals" value={first.goals[0]?.id ?? "–"} hint={first.goals.map((g) => `${g.id} ${fmtInt(g.n)}`).join(" · ") || undefined} />
+          </div>
+        ) : (
+          <Empty>No first runs reported yet. They appear once people install the app version with the new first run.</Empty>
+        )}
+      </Section>
 
       <Section
         title="Operating costs"

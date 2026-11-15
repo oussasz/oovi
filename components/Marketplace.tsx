@@ -2,6 +2,7 @@
 
 // Marketplace: connectors (MCP), skills and plugins (ready-made bot teams),
 // each with "Yours" and "Discover". (The bots' memory lives in Settings > Memory & soul.)
+import { setupText } from "@/lib/i18n";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import { CONNECTOR_CATEGORIES, CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogField, type CatalogPlugin, type CatalogSkill, type ConnectorCategory } from "@/lib/catalog";
@@ -842,8 +843,8 @@ export default function Marketplace() {
       <span className="mk-faces">
         <FaceStack faces={p.bots.map((b) => b.face)} size={52} />
       </span>,
-      p.name,
-      p.description,
+      setupText(t, p.id, "name", p.name),
+      setupText(t, p.id, "desc", p.description),
       "oovi",
       gid ? (
         <Link className="btn sm" href={`/c/${gid}`}>
@@ -894,12 +895,12 @@ export default function Marketplace() {
         <h3>{t("mk.experts")}</h3>
         <span className="mk-count">{allPlugins.filter((p) => p.bots.length === 1).length}</span>
       </div>
-      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length === 1 && match(p.name, p.description)).map(pluginCard)}</div>
+      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length === 1 && match(`${p.name} ${setupText(t, p.id, "name", p.name)}`, `${p.description} ${setupText(t, p.id, "desc", p.description)}`)).map(pluginCard)}</div>
       <div className="mk-section-head">
         <h3>{t("mk.teams")}</h3>
         <span className="mk-count">{allPlugins.filter((p) => p.bots.length > 1).length}</span>
       </div>
-      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length > 1 && match(p.name, p.description)).map(pluginCard)}</div>
+      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length > 1 && match(`${p.name} ${setupText(t, p.id, "name", p.name)}`, `${p.description} ${setupText(t, p.id, "desc", p.description)}`)).map(pluginCard)}</div>
     </>
   );
 
@@ -915,8 +916,8 @@ export default function Marketplace() {
               <FaceStack faces={p.bots.map((b) => b.face)} size={44} />
             </span>
             <div className="mk-card-main">
-              <b>{p.name}</b>
-              <p>{p.description}</p>
+              <b>{setupText(t, p.id, "name", p.name)}</b>
+              <p>{setupText(t, p.id, "desc", p.description)}</p>
             </div>
             <div className="mk-card-act">
               <Link className="btn sm" href={`/c/${ip.groupId}`}>
@@ -1184,11 +1185,11 @@ export default function Marketplace() {
                       <FaceStack faces={p.bots.map((b) => b.face)} size={64} />
                     </span>
                     <div>
-                      <h3>{p.name}</h3>
+                      <h3>{setupText(t, p.id, "name", p.name)}</h3>
                       <p className="note">{p.bots.length > 1 ? t("mk.d.team", { count: p.bots.length }) : t("mk.d.expert")}</p>
                     </div>
                   </div>
-                  <p className="mk-detail-desc" dir="auto">{p.description}</p>
+                  <p className="mk-detail-desc" dir="auto">{setupText(t, p.id, "desc", p.description)}</p>
                   {p.links && p.links.length > 0 && (
                     <p className="mk-detail-links">
                       {p.links.map((l) => (

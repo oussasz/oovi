@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client";
 import { PROVIDERS } from "@/lib/providers-meta";
+import { ideasFor } from "@/lib/onboarding-core";
 import type { PublicSettings } from "@/lib/settings";
 import type { Bot, ChatSummary } from "@/lib/types";
 import Face, { FaceStack } from "./Face";
@@ -14,20 +15,6 @@ import SettingsLink from "./SettingsLink";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
 const IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
-/** One example per goal chosen at the first run (lib/onboarding-core.ts), first; the general ones fill the rest. */
-const GOAL_IDEAS: Record<string, TKeyIdea> = {
-  marketing: "home.idea.g.marketing",
-  clients: "home.idea.g.clients",
-  business: "home.idea.g.business",
-  shop: "home.idea.g.shop",
-  study: "home.idea.g.study",
-  research: "home.idea.g.research",
-  writing: "home.idea.g.writing",
-  code: "home.idea.g.code",
-  people: "home.idea.g.people",
-};
-type TKeyIdea = "home.idea.g.marketing" | "home.idea.g.clients" | "home.idea.g.business" | "home.idea.g.shop" | "home.idea.g.study" | "home.idea.g.research" | "home.idea.g.writing" | "home.idea.g.code" | "home.idea.g.people";
-
 export default function Home() {
   const router = useRouter();
   const [bots, setBots] = useState<Bot[]>([]);
@@ -50,6 +37,17 @@ export default function Home() {
         setSettings(s);
       })
       .catch(() => {});
+    // An idea picked at the end of the first run waits in the message box (never sent by itself).
+    try {
+      const idea = sessionStorage.getItem("oovi.prefill");
+      if (idea) {
+        sessionStorage.removeItem("oovi.prefill");
+        setText(idea);
+        requestAnimationFrame(() => box.current?.focus());
+      }
+    } catch {
+      /* storage unavailable */
+    }
     api<{ goals: string[] }>("/api/onboarding?mine=1")
       .then((r) => setGoals(r.goals))
       .catch(() => {});
@@ -127,7 +125,7 @@ export default function Home() {
             </form>
             {error && <div className="notice error">{error}</div>}
             <div className="ideas home-ideas">
-              {[...new Set([...goals.map((g) => GOAL_IDEAS[g]).filter((k): k is TKeyIdea => !!k), ...IDEAS])].slice(0, 4).map((k) => (
+              {ideasFor(goals, IDEAS.length).map((k) => (
                 <button
                   key={k}
                   type="button"

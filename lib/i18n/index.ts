@@ -131,3 +131,14 @@ export const activeTag = () => active.tag;
 
 /** Translate with the active UI language (for code outside components). */
 export const t = (key: TKey, vars?: Vars) => translate(active.locale, key, vars, active.tag);
+
+/**
+ * A Marketplace setup's name or description in the user's language. The translation is used only while the
+ * setup's English text is still the built-in one: a setup the owner edited in the admin console shows the
+ * edited text as written (a stale translation would contradict it).
+ */
+export function setupText(t: (key: TKey, vars?: Vars) => string, id: string, field: "name" | "desc", text: string): string {
+  const key = `setup.${id}.${field}` as Key;
+  const builtin = (en as Record<string, string>)[key];
+  return builtin !== undefined && builtin === text ? t(key) : text;
+}

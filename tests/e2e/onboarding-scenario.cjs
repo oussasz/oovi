@@ -46,11 +46,11 @@ let server;
 
   const sug = (await api("GET", "/api/onboarding?goals=clients,shop&other=")).body;
   const ids = sug.setups.map((s) => s.id);
-  check("the team suggested fits the goals: the best fit for each goal (research desk, shop team) ticked, with faces to show", sug.picked.includes("shop-team") && sug.picked.includes("research-desk") && sug.picked.length === 2 && sug.setups.every((s) => s.bots.length && s.bots[0].face), ids.join(","));
+  check("the team suggested fits the goals (research desk, shop team), only the best fit ticked (a calm first day), with faces to show", ids.includes("shop-team") && ids.includes("research-desk") && sug.picked.length === 1 && sug.picked[0] === "research-desk" && sug.setups.every((s) => s.bots.length && s.bots[0].face), ids.join(","));
 
   const face = { color: 1, shape: 1, hair: 5, eyes: 2, nose: 0, mouth: 1, cheeks: 1, top: 8, wear: 0 };
-  const done = await api("POST", "/api/onboarding", { style: "funny", name: "Momo", face, goals: ["clients", "shop"], other: "a café in Oran", setups: sug.picked });
-  check("applying the choices works", done.status === 200 && done.body.created.length === 2 && done.body.leader.name === "Momo", JSON.stringify(done.body).slice(0, 200));
+  const done = await api("POST", "/api/onboarding", { style: "funny", name: "Momo", face, goals: ["clients", "shop"], other: "a café in Oran", setups: ["research-desk", "shop-team"] });
+  check("applying the choices works (the user ticked a second team)", done.status === 200 && done.body.created.length === 2 && done.body.leader.name === "Momo", JSON.stringify(done.body).slice(0, 200));
 
   const bots = (await api("GET", "/api/bots")).body;
   const chats = (await api("GET", "/api/chats")).body;
@@ -65,7 +65,18 @@ let server;
   check("doing it twice changes nothing (no second team)", again.status === 409 && bots2.length === bots.length && bots2.some((b) => b.name === "Momo"), `${again.status} ${bots2.length}/${bots.length}`);
 
   const mine = (await api("GET", "/api/onboarding?mine=1")).body;
-  check("the home screen gets the goals for its examples", JSON.stringify(mine.goals) === JSON.stringify(["clients", "shop"]), JSON.stringify(mine));
+  check("the home screen gets the goals for its examples", JSON.stringify(mine.goals) === JSON.stringify(["clients", "shop"]), JSON.stringify(mine.goals));
+  check("reopened before the last screen, the first run goes on with the Chief chosen (name and face)", mine.done?.leader?.name === "Momo" && mine.face?.top === 8, JSON.stringify(mine.done?.leader));
+
+  const step = await api("PUT", "/api/onboarding", { step: "tried", goals: ["clients"] });
+  const badStep = await api("PUT", "/api/onboarding", { step: "anything" });
+  check("first-run steps are accepted for the funnel; unknown ones are refused", step.status === 204 && badStep.status === 400, `${step.status} ${badStep.status}`);
+
+  // The first task goes to the Chief's chat (the model here is a stand-in that can't answer: only the message counts).
+  await fetch(`${BASE}/api/chats/dm-${chief.id}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "Find 30 cafés in Algiers with their phone numbers, in a table" }) }).then((r) => r.body?.cancel()).catch(() => {});
+  await sleep(800);
+  const dm = (await api("GET", `/api/chats/dm-${chief.id}`)).body;
+  check("the first task reaches the Chief", dm.entries?.some((e) => e.kind === "user" && /30 cafés/.test(e.text)), String(dm.entries?.length));
 
   const bad = await api("POST", "/api/onboarding", { name: "two words" });
   check("a second request can't sneak through with bad input either", bad.status === 409);

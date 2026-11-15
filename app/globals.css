@@ -991,3 +991,13 @@ a.tag { text-decoration: none; }
   .chief-pick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .chief-edit { grid-template-columns: 1fr; }
 }
+.team-live { width: 100%; display: grid; gap: 6px; text-align: start; margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--border); }
+.team-live-h { margin: 0; font-size: 14px; font-weight: 800; color: var(--muted); }
+.team-live .note { margin: 2px 0 4px; }
+.team-suggest.refreshing { opacity: 0.6; transition: opacity 0.15s; }
+.try-task textarea { width: 100%; min-height: 76px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg); color: var(--text); font: inherit; font-size: 15px; line-height: 1.45; box-sizing: border-box; }
+.try-task textarea:focus-visible { outline: 2px solid var(--primary); outline-offset: 1px; }
+.onb .fine .link-btn { font-size: inherit; }
+.ready-ideas { width: 100%; display: grid; gap: 8px; margin-top: 6px; text-align: start; }
+.ready-ideas .ideas { display: grid; gap: 8px; }
+.ready-ideas .idea { text-align: start; }

@@ -6,12 +6,10 @@
 
 import { isRealCrash } from "@/lib/crash-filter";
 import { useCallback, useEffect, useState } from "react";
-import { api, resizeImage } from "@/lib/client";
+import { api } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
 import { GOALS, LEADERS } from "@/lib/onboarding-core";
-import { LOCALES, NATIVE_NAMES } from "@/lib/i18n";
-import { HOSTED_NAME, PROVIDER_IDS, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
-import type { Bot, ChatSummary } from "@/lib/types";
+import { LOCALES, NATIVE_NAMES, setupText } from "@/lib/i18n";
 import Face, { FaceStack } from "./Face";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon from "./Icon";
@@ -63,8 +61,6 @@ export type AccountState = {
   user: { id: string; email: string; name: string; image: string | null } | null;
 };
 
-/** Shown in place of the user's photo until they pick one (a bot face, not the logo). */
-const PHOTO_PLACEHOLDER: FaceT = { color: 1, shape: 2, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 1, top: 0, wear: 0 };
 
 function reportCrash(message: string, stack?: string) {
   if (!isRealCrash(message)) return; // a browser notice, not a crash (lib/crash-filter.ts)
@@ -237,11 +233,11 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
 
 // ---------- onboarding ----------
 
-const STEPS = ["you", "leader", "goals", "team", "ready"] as const;
+const STEPS = ["leader", "team"] as const;
 
 type Leader = (typeof LEADERS)[number];
 type Suggested = { id: string; name: string; description: string; group: boolean; bots: { name: string; role: string; face: FaceT }[] };
-type Applied = { leader: { id: string; name: string }; created: { id: string; name: string; groupId: string; bots: string[] }[]; starter: boolean; failed: string[] };
+type Applied = { leader: { id: string; name: string }; created: { id: string; name: string; groupId: string; bots: string[] }[]; starter: boolean; failed: string[]; goals?: string[] };
 
 /** What the Chief says, with its face: the questions come from the character the user chose. */
 function ChiefSays({ face, name, children }: { face: FaceT; name: string; children: React.ReactNode }) {
@@ -256,15 +252,20 @@ function ChiefSays({ face, name, children }: { face: FaceT; name: string; childr
   );
 }
 
+/** Tells oovi's server which first-run step was reached (Admin > Overview). Never in the way. */
+const reach = (step: "chief" | "team" | "created" | "alone" | "tried" | "later", extra: Record<string, unknown> = {}) =>
+  void fetch("/api/onboarding", { method: "PUT", headers: { "content-type": "application/json" }, body: JSON.stringify({ step, ...extra }) }).catch(() => {});
+
 /**
- * First run, made personal (lib/onboarding-core.ts): who you are → the character of your Chief → what you'll use
- * oovi for (your Chief asks) → the team it suggests for that → ready. theOovi is set up by itself (no key needed);
- * your own API key stays one click away in Settings.
+ * First run, made personal, in two screens (lib/onboarding-core.ts):
+ *   1. your Chief: its character and name (the name you signed up with greets you; theOovi is set up by itself),
+ *   2. what you're curious about: your Chief asks, and the team it suggests appears and updates as you tap
+ *      (or skip and explore).
+ * Then the home screen, with your Chief and ideas that fit (it already offers them: no extra screen for that).
+ * Nothing here is a commitment: the goals say where someone starts, and the Chief follows what they ask later.
  */
 function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: AccountState) => void }) {
   const [step, setStep] = useState(0);
-  const [name, setName] = useState(account.user?.name ?? "");
-  const [image, setImage] = useState<string | null>(account.user?.image ?? null);
   const [style, setStyle] = useState<Leader["id"]>("calm");
   const [chiefName, setChiefName] = useState<string>(LEADERS[0].name);
   const [face, setFace] = useState<FaceT>({ ...LEADERS[0].face });
@@ -272,11 +273,23 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
   const [other, setOther] = useState("");
   const [setups, setSetups] = useState<Suggested[] | null>(null);
   const [picked, setPicked] = useState<string[]>([]);
-  const [applied, setApplied] = useState<Applied | null>(null);
+  const [touched, setTouched] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const { t } = useI18n();
-  const first = name.trim().split(/\s+/)[0] ?? "";
+  const first = (account.user?.name ?? "").trim().split(/\s+/)[0] ?? "";
+  const wantsTeam = goals.length > 0 || other.trim().length >= 3;
+
+  // Closed after the team was made but before the app opened: open it now (the choices are saved).
+  useEffect(() => {
+    api<{ done: Applied | null }>("/api/onboarding?mine=1")
+      .then((r) => {
+        if (r.done?.leader) void finish();
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function run(fn: () => Promise<void>) {
     setBusy(true);
@@ -290,15 +303,6 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
     }
   }
 
-  // About you. Your bots run on theOovi from the start: no key to find, nothing to choose.
-  const saveProfile = () =>
-    run(async () => {
-      await api("/api/account", { method: "PATCH", body: JSON.stringify({ name, image }) });
-      await api("/api/settings", { method: "POST", body: JSON.stringify({ active: "oovi" }) }).catch(() => {});
-      void fetch("/api/credits?fresh=1", { cache: "no-store" }).catch(() => null);
-      setStep(1);
-    });
-
   const pickStyle = (l: Leader) => {
     // A name the user typed stays; the character's own name follows the character.
     if (!chiefName.trim() || LEADERS.some((x) => x.name === chiefName)) setChiefName(l.name);
@@ -306,33 +310,55 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
     setFace({ ...l.face });
   };
 
-  // Your Chief suggests a team for what you said.
-  const suggest = () =>
-    run(async () => {
-      setSetups(null);
-      setStep(3);
-      const r = await api<{ setups: Suggested[]; picked: string[] }>(`/api/onboarding?goals=${encodeURIComponent(goals.join(","))}&other=${encodeURIComponent(other)}`);
-      setSetups(r.setups);
-      setPicked(r.picked);
-    });
+  // Screen 1 → 2. Your bots run on theOovi from the start: no key to find, nothing to choose.
+  const toGoals = () => {
+    void api("/api/settings", { method: "POST", body: JSON.stringify({ active: "oovi" }) }).catch(() => {});
+    void fetch("/api/credits?fresh=1", { cache: "no-store" }).catch(() => null);
+    reach("chief", { style });
+    reach("team");
+    setStep(1);
+  };
 
+  // The suggested team follows the goals as they are tapped (a short pause while typing).
+  useEffect(() => {
+    if (step !== 1) return;
+    if (!wantsTeam) {
+      setSetups(null);
+      return;
+    }
+    let alive = true;
+    setLoading(true);
+    const timer = setTimeout(() => {
+      api<{ setups: Suggested[]; picked: string[] }>(`/api/onboarding?goals=${encodeURIComponent(goals.join(","))}&other=${encodeURIComponent(other.trim())}`)
+        .then((r) => {
+          if (!alive) return;
+          setSetups(r.setups);
+          // Until the user ticks or unticks something, the best fit is ticked; after that, their choices stay.
+          setPicked((cur) => (touched ? cur.filter((id) => r.setups.some((x) => x.id === id)) : r.picked));
+        })
+        .catch(() => alive && setSetups([]))
+        .finally(() => alive && setLoading(false));
+    }, 250);
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [step, goals, other, wantsTeam, touched]);
+
+  // Screen 2 → 3: the choices are applied once; the first task is ready from the first goal.
   const apply = (ids: string[]) =>
     run(async () => {
       const r = await fetch("/api/onboarding", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ style, name: chiefName, face, goals, other, setups: ids }) });
       const j = (await r.json().catch(() => null)) as (Applied & { error?: string; done?: Applied }) | null;
-      if (r.status === 409 && j?.done) setApplied(j.done);
-      else if (!r.ok || !j) throw new Error(j?.error ?? t("onb.teamError"));
-      else setApplied(j);
-      setStep(4);
+      const done = r.status === 409 && j?.done ? j.done : r.ok && j ? j : null;
+      if (!done) throw new Error(j?.error ?? t("onb.teamError"));
+      reach(ids.length ? "created" : "alone", { goals, setups: ids });
+      await finish();
     });
 
-  const finish = () => run(async () => onDone(await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify({ action: "onboarded" }) })));
+  const finish = async () => onDone(await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify({ action: "onboarded" }) }));
+
   const toggle = (list: string[], id: string) => (list.includes(id) ? list.filter((x) => x !== id) : [...list, id]);
-  const back = step > 0 && step < 4 && (
-    <button type="button" className="link-btn muted onb-back" onClick={() => setStep(step - 1)} disabled={busy}>
-      {t("onb.back")}
-    </button>
-  );
 
   return (
     <div className="gate">
@@ -345,35 +371,7 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
 
         {step === 0 && (
           <div className="onb">
-            <Logo size={110} />
-            <h1>{first ? t("onb.youTitle", { name: first }) : t("onb.youTitleNoName")}</h1>
-            <p className="muted">{t("onb.youSub")}</p>
-            <div className="avatar-pick">
-              {image ? <img src={image} alt={t("common.yourPhoto")} className="avatar-img big" /> : <Face face={PHOTO_PLACEHOLDER} size={80} />}
-              <div className="row-btns">
-                <label className="btn sm">
-                  {t("onb.choosePhoto")}
-                  <input type="file" accept="image/*" hidden onChange={async (e) => e.target.files?.[0] && setImage(await resizeImage(e.target.files[0]).catch(() => null))} />
-                </label>
-                {image && <button className="btn sm" onClick={() => setImage(null)}>{t("common.remove")}</button>}
-              </div>
-            </div>
-            <label className="field">
-              {t("common.yourName")}
-              <input value={name} onChange={(e) => setName(e.target.value)} maxLength={60} autoComplete="name" />
-            </label>
-            {msg && <div className="notice error small">{msg}</div>}
-            <div className="row-btns">
-              <button className="btn primary" disabled={busy || !name.trim()} onClick={() => void saveProfile()}>
-                {t("common.continue")} <Icon name="arrow" size={16} />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {step === 1 && (
-          <div className="onb">
-            <h1>{t("onb.chiefTitle")}</h1>
+            <h1>{first ? t("onb.hiChief", { name: first }) : t("onb.chiefTitle")}</h1>
             <p className="muted">{t("onb.chiefSub")}</p>
             <div className="chief-pick" role="radiogroup" aria-label={t("onb.chiefTitle")}>
               {LEADERS.map((l) => (
@@ -394,21 +392,20 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
               </button>
             </div>
             <div className="row-btns">
-              <button className="btn primary" disabled={!/^[\p{L}\p{N}_-]{1,24}$/u.test(chiefName)} onClick={() => setStep(2)}>
+              <button className="btn primary" disabled={!/^[\p{L}\p{N}_-]{1,24}$/u.test(chiefName)} onClick={toGoals}>
                 {t("common.continue")} <Icon name="arrow" size={16} />
               </button>
             </div>
-            {back}
           </div>
         )}
 
-        {step === 2 && (
+        {step === 1 && (
           <div className="onb">
             <ChiefSays face={face} name={chiefName}>
               <p className="chief-q">{first ? t("onb.goalsAsk", { name: first, chief: chiefName }) : t("onb.goalsAskNoName", { chief: chiefName })}</p>
               <p className="muted">{t("onb.goalsSub")}</p>
             </ChiefSays>
-            <div className="goal-chips" role="group" aria-label={t("onb.step.goals")}>
+            <div className="goal-chips" role="group" aria-label={t("onb.step.team")}>
               {GOALS.map((g) => (
                 <button key={g.id} type="button" aria-pressed={goals.includes(g.id)} className={`goal-chip${goals.includes(g.id) ? " on" : ""}`} onClick={() => setGoals((x) => toggle(x, g.id))}>
                   {goals.includes(g.id) && <Icon name="check" size={14} />} {t(`onb.goal.${g.id}`)}
@@ -419,83 +416,53 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
               {t("onb.goalOther")}
               <input value={other} maxLength={200} onChange={(e) => setOther(e.target.value)} placeholder={t("onb.goalOtherHint")} />
             </label>
-            {msg && <div className="notice error small">{msg}</div>}
-            <div className="row-btns">
-              <button className="btn primary" disabled={busy} onClick={() => void suggest()}>
-                {goals.length || other.trim() ? t("onb.seeTeam") : t("onb.skipGoals")} <Icon name="arrow" size={16} />
-              </button>
-            </div>
-            {back}
-          </div>
-        )}
 
-        {step === 3 && (
-          <div className="onb">
-            <ChiefSays face={face} name={chiefName}>
-              <p className="chief-q">{t("onb.teamSay")}</p>
-              <p className="muted">{t("onb.teamSub")}</p>
-            </ChiefSays>
-            {!setups ? (
-              <p className="note" aria-live="polite">{t("onb.loadingTeam")}</p>
-            ) : (
-              <div className="team-suggest">
-                {setups.map((s) => {
-                  const on = picked.includes(s.id);
-                  return (
-                    <label key={s.id} className={`team-card${on ? " on" : ""}`}>
-                      <input type="checkbox" checked={on} onChange={() => setPicked((x) => toggle(x, s.id))} />
-                      <FaceStack faces={s.bots.map((b) => b.face)} size={52} />
-                      <span className="team-card-text">
-                        <b>{s.name}</b>
-                        <small className="team-card-tag">{s.group ? t("onb.teamOf", { count: s.bots.length }) : t("onb.expert")}</small>
-                        <span className="muted">{s.description}</span>
-                      </span>
-                      <span className="team-check" aria-hidden>{on && <Icon name="check" size={16} />}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            )}
+            <div className="team-live" aria-live="polite" aria-busy={loading}>
+              <h2 className="team-live-h">{t("onb.teamLive")}</h2>
+              {!wantsTeam ? (
+                <p className="note">{t("onb.teamHint", { chief: chiefName })}</p>
+              ) : !setups ? (
+                <p className="note">{t("onb.loadingTeam")}</p>
+              ) : (
+                <div className={`team-suggest${loading ? " refreshing" : ""}`}>
+                  {setups.map((s) => {
+                    const on = picked.includes(s.id);
+                    return (
+                      <label key={s.id} className={`team-card${on ? " on" : ""}`}>
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={() => {
+                            setTouched(true);
+                            setPicked((x) => toggle(x, s.id));
+                          }}
+                        />
+                        <FaceStack faces={s.bots.map((b) => b.face)} size={48} />
+                        <span className="team-card-text">
+                          <b>{setupText(t, s.id, "name", s.name)}</b>
+                          <small className="team-card-tag">{s.group ? t("onb.teamOf", { count: s.bots.length }) : t("onb.expert")}</small>
+                          <span className="muted">{setupText(t, s.id, "desc", s.description)}</span>
+                        </span>
+                        <span className="team-check" aria-hidden>{on && <Icon name="check" size={16} />}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {msg && <div className="notice error small">{msg}</div>}
             <div className="row-btns">
-              <button className="btn primary" disabled={busy || !setups || !picked.length} aria-busy={busy} onClick={() => void apply(picked)}>
+              <button className="btn primary" disabled={busy || !wantsTeam || !picked.length} aria-busy={busy} onClick={() => void apply(picked)}>
                 {busy ? t("onb.creating") : t("onb.createTeam")} {!busy && <Icon name="arrow" size={16} />}
               </button>
-              <button className="btn" disabled={busy || !setups} onClick={() => void apply([])}>{t("onb.justMe")}</button>
+              <button className="btn" disabled={busy} onClick={() => void apply([])}>{t("onb.justMe")}</button>
             </div>
-            {back}
+            <button type="button" className="link-btn muted onb-back" onClick={() => setStep(0)} disabled={busy}>
+              {t("onb.back")}
+            </button>
           </div>
         )}
 
-        {step === 4 && (
-          <div className="onb">
-            <div className="ready-faces">
-              <Face face={face} size={84} mood="happy" />
-            </div>
-            <h1>{first ? t("onb.readyTitle", { name: first }) : t("onb.readyTitleNoName")}</h1>
-            <p className="muted">{t("onb.readySub", { chief: applied?.leader.name ?? chiefName })}</p>
-            {!!applied?.created.length && (
-              <ul className="ready-team">
-                {applied.created.map((c) => (
-                  <li key={c.id}><Icon name="check" size={14} /> {c.name}</li>
-                ))}
-                {applied.starter && <li><Icon name="check" size={14} /> {t("onb.starterTeam")}</li>}
-              </ul>
-            )}
-            {!!applied?.failed.length && <div className="notice small">{t("onb.teamFailed", { names: applied.failed.join(", ") })}</div>}
-            <p className="fine muted">{t("onb.readyHosted")}</p>
-            {msg && <div className="notice error small">{msg}</div>}
-            <div className="row-btns">
-              <button className="btn primary" disabled={busy} aria-busy={busy} onClick={() => void finish()}>
-                {busy ? t("auth.oneMoment") : t("onb.start")} {!busy && <Icon name="arrow" size={16} />}
-              </button>
-              {/* Reaching your Chief from the phone is what users love most: offer it right away (optional). */}
-              <button className="btn" disabled={busy} onClick={() => void finish().then(() => openSettings("telegram"))}>
-                {t("onb.connectPhone")}
-              </button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

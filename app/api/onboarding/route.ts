@@ -12,6 +12,8 @@ import { dataDir } from "@/lib/settings";
 import { deleteBot, deleteChat, dmId, getChat, listBots, listChats, updateBot, validateBot } from "@/lib/store";
 import { mainBot, pinMainBot } from "@/lib/team";
 import { cleanFace } from "@/lib/faces";
+import { cloud } from "@/lib/account";
+import { loadSettings } from "@/lib/settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,11 +29,13 @@ export async function GET(req: Request) {
   if (denied) return denied;
   const url = new URL(req.url);
   if (url.searchParams.get("mine") === "1") {
+    // What the first run already did (the app was closed before its last screen: it goes on from there).
     try {
-      const d = JSON.parse(fs.readFileSync(doneFile(), "utf8")) as { goals?: unknown };
-      return Response.json({ goals: goalsOf(d.goals) });
+      const d = JSON.parse(fs.readFileSync(doneFile(), "utf8")) as { goals?: unknown; leader?: { id?: string } };
+      const leader = d.leader?.id ? listBots().find((b) => b.id === d.leader!.id) : undefined;
+      return Response.json({ goals: goalsOf(d.goals), done: d, face: leader?.face ?? null });
     } catch {
-      return Response.json({ goals: [] });
+      return Response.json({ goals: [], done: null, face: null });
     }
   }
   const plugins = await allPlugins();
@@ -100,4 +104,22 @@ export async function POST(req: Request) {
   fs.mkdirSync(path.dirname(doneFile()), { recursive: true });
   fs.writeFileSync(doneFile(), JSON.stringify(done));
   return Response.json(done);
+}
+
+const STEPS = new Set(["chief", "team", "created", "alone", "tried", "later"]);
+/**
+ * {step, style?, goals?, setups?}: tells the oovi server which first-run step was reached (Admin > Overview,
+ * "First run"), unless the user turned usage statistics off. Only the ids of choices go, never typed text.
+ * Never fails the first run.
+ */
+export async function PUT(req: Request) {
+  const denied = guard(req);
+  if (denied) return denied;
+  const b = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!b || typeof b.step !== "string" || !STEPS.has(b.step)) return Response.json({ error: "Unknown step." }, { status: 400 });
+  if (loadSettings().usageStats !== false) {
+    const body = { step: b.step, ...(typeof b.style === "string" ? { style: b.style } : {}), goals: goalsOf(b.goals), ...(Array.isArray(b.setups) ? { setups: b.setups.filter((x) => typeof x === "string").slice(0, 6) } : {}) };
+    void cloud("/api/v1/onboarding", { method: "POST", body, auth: true }).catch(() => {});
+  }
+  return new Response(null, { status: 204 });
 }
