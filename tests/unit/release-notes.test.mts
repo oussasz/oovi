@@ -5,6 +5,8 @@ import {
 } from "../../web/lib/release-notes.ts";
 import { SEED_NOTES } from "../../web/lib/release-notes-seed.ts";
 
+const MARKETPLACE_NEWS = /new (one-click )?connectors?:|new expert|skills library|\bnew teams\b|\bnew (expert )?bots\b/i;
+
 // Every version released so far has polished text, in one shape.
 const RELEASED = ["0.10.13","0.10.12","0.10.11","0.10.10","0.10.9","0.10.8","0.10.7","0.10.6","0.10.5","0.10.4","0.10.3","0.10.2","0.10.1","0.10.0","0.9.0","0.8.9","0.8.8","0.8.7","0.8.6","0.8.5","0.8.4","0.8.3","0.8.2","0.8.1","0.8.0","0.7.0","0.6.0","0.5.0","0.4.1"];
 
@@ -18,10 +20,12 @@ test("every shipped version is in the standard shape, short and clean", () => {
     if (notes.hidden) continue;
     assert.ok(notes.sections.length > 0, `${v} has no points`);
     assert.ok((notes.headline ?? "").length <= MAX_HEADLINE, `${v} headline`);
+    assert.ok(!MARKETPLACE_NEWS.test(notes.headline ?? ""), `${v} headline announces Marketplace content`);
     const order = notes.sections.map((s) => SECTION_TITLES.indexOf(s.title));
     assert.deepEqual(order, [...order].sort((a, b) => a - b), `${v} sections out of order`);
     for (const s of notes.sections) for (const it of s.items) {
       assert.ok(!/github|feedback from|token|prefill|blockmap/i.test(it), `${v}: internal word in "${it.slice(0, 50)}"`);
+      assert.ok(!MARKETPLACE_NEWS.test(it), `${v}: Marketplace additions are not app updates: "${it.slice(0, 50)}"`);
       assert.ok(it.length >= 20, `${v}: too short "${it}"`);
     }
   }
