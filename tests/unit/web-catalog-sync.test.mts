@@ -9,7 +9,8 @@ import { validateCatalogData } from "../../web/lib/catalog.ts";
 // owner edits them. These tests keep that copy honest.
 
 test("web/lib/builtin-catalog.json is current (fix: node scripts/sync-web-catalog.mts)", () => {
-  assert.equal(fs.readFileSync(SNAPSHOT_FILE, "utf8"), renderSnapshot(buildSnapshot()));
+  // Line endings aside: a Windows checkout turns them into CRLF, which changes nothing in the data.
+  assert.equal(fs.readFileSync(SNAPSHOT_FILE, "utf8").replace(/\r\n/g, "\n"), renderSnapshot(buildSnapshot()));
 });
 
 test("every built-in item passes the console's check, so it can always be copied into the database", () => {
