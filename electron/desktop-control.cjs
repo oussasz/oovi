@@ -81,6 +81,35 @@ function hwndOf(win) {
 
 const langOf = (app, lang) => String(lang && lang !== "auto" ? lang : app.getLocale() || "en").slice(0, 2).toLowerCase();
 
+/**
+ * The captured screen that shows display d. Windows usually tags each source with its display id;
+ * some setups (certain graphics drivers, remote sessions, several screens) leave the tag empty or
+ * different, and the capture must not fail then: the same position in the list (Chromium lists
+ * screens in display order), else the one picture with the display's shape, else the only one.
+ * Never a picture that is empty.
+ */
+function pickSource(sources, d, displays) {
+  const ok = (sources || []).filter((s) => s && s.thumbnail && !s.thumbnail.isEmpty());
+  if (!ok.length) return null;
+  const byId = ok.find((s) => s.display_id && s.display_id === String(d.id));
+  if (byId) return byId;
+  // A source tagged with another screen's id is that screen, never this one.
+  const ids = new Set(displays.map((x) => String(x.id)));
+  const free = ok.filter((s) => !s.display_id || !ids.has(s.display_id));
+  const at = displays.findIndex((x) => x.id === d.id);
+  if (sources.length === displays.length && at >= 0) {
+    const s = sources[at];
+    if (s && free.includes(s)) return s;
+  }
+  const want = d.size.width / d.size.height;
+  const shaped = free.filter((s) => {
+    const z = s.thumbnail.getSize();
+    return z.height > 0 && Math.abs(z.width / z.height - want) < 0.02;
+  });
+  if (shaped.length === 1) return shaped[0];
+  return free.length === 1 ? free[0] : null;
+}
+
 function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage, shell }) {
   const fs = require("node:fs");
   const { execFile, spawn } = require("node:child_process");
@@ -90,7 +119,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
   let aside = [];
   function stepAside() {
     for (const w of BrowserWindow.getAllWindows()) {
-      if (w === overlay || w.isDestroyed() || !w.isVisible() || w.isMinimized()) continue;
+      if (w === overlay || w === pointerWin || edges.includes(w) || w.isDestroyed() || !w.isVisible() || w.isMinimized()) continue;
       try {
         w.minimize();
         aside.push(w);
@@ -426,16 +455,25 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       // Windows 10 version 2004. Older Windows would show them as black bands over what the bot must see:
       // there they are made see-through for the moment of the capture.
       const deco = OLD_WINDOWS ? [...edges, pointerWin].filter((w) => w && !w.isDestroyed()) : [];
-      let sources;
-      try {
-        for (const w of deco) w.setOpacity(0);
-        if (deco.length) await new Promise((r) => setTimeout(r, 60));
-        sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
-      } finally {
-        for (const w of deco) if (!w.isDestroyed()) w.setOpacity(1);
+      const all = screen.getAllDisplays();
+      let src = null;
+      // Two tries: right after a change on screen (a new wallpaper, a window animating) Windows can
+      // hand back an empty picture for a moment.
+      for (let attempt = 0; attempt < 2 && !src; attempt++) {
+        if (attempt) await new Promise((r) => setTimeout(r, 350));
+        let sources;
+        try {
+          for (const w of deco) w.setOpacity(0);
+          if (deco.length) await new Promise((r) => setTimeout(r, 60));
+          sources = await desktopCapturer.getSources({ types: ["screen"], thumbnailSize: { width: real.width, height: real.height } });
+        } catch {
+          sources = [];
+        } finally {
+          for (const w of deco) if (!w.isDestroyed()) w.setOpacity(1);
+        }
+        src = pickSource(sources, d, all);
       }
-      const src = sources.find((s) => s.display_id === String(d.id)) ?? (sources.length === 1 ? sources[0] : null);
-      if (!src || src.thumbnail.isEmpty()) throw new Error("unavailable");
+      if (!src) throw new Error("unavailable");
       let img = src.thumbnail;
       const full = img.getSize();
       if (mask.length) {
@@ -619,9 +657,22 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       // A bot is starting to use the computer: read the Store apps now (a few seconds), so open_app finds them.
       storeApps();
       if (overlay && !overlay.isDestroyed()) {
-        stepAside();
-        if (!pointerWin || pointerWin.isDestroyed()) showDeco();
-        return Promise.resolve(overlay.isVisible());
+        // Something on the computer may have hidden or minimized it (a new browser window, Win+D):
+        // bring it back; only if that fails is a new one made below.
+        try {
+          if (overlay.isMinimized()) overlay.restore();
+          if (!overlay.isVisible()) overlay.showInactive();
+          overlay.setAlwaysOnTop(true, "screen-saver");
+        } catch {
+          /* checked just below */
+        }
+        if (overlay.isVisible() && !overlay.isMinimized()) {
+          stepAside();
+          if (!pointerWin || pointerWin.isDestroyed()) showDeco();
+          return Promise.resolve(true);
+        }
+        overlay.destroy();
+        overlay = null;
       }
       const code = langOf(app, lang);
       const text = OVERLAY_TEXT[code] || OVERLAY_TEXT.en;
@@ -698,8 +749,10 @@ button:hover{background:#dc2626}
           if (!ok && overlay === win && !win.isDestroyed()) win.destroy();
           resolve(ok);
         };
-        const timer = setTimeout(() => finish(false), 5000);
-        win.once("ready-to-show", () => {
+        let showing = false;
+        const show = () => {
+          if (showing || done || win.isDestroyed()) return;
+          showing = true;
           try {
             win.showInactive();
             if (!win.isVisible()) return finish(false);
@@ -710,7 +763,19 @@ button:hover{background:#dc2626}
           } catch {
             finish(false);
           }
+        };
+        // Normally the page is painted first ("ready-to-show"). On some computers that signal comes late
+        // or never (a busy graphics card, a big window just opened): the page has loaded, so show it anyway.
+        win.once("ready-to-show", show);
+        let loaded = false;
+        win.webContents.once("did-finish-load", () => {
+          loaded = true;
+          setTimeout(show, 800);
         });
+        const timer = setTimeout(() => {
+          if (loaded) show();
+          setTimeout(() => finish(false), 1500);
+        }, 5000);
         win.webContents.once("did-fail-load", () => finish(false));
         win.once("closed", () => finish(false));
         win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(html)}`).catch(() => finish(false));
@@ -727,4 +792,4 @@ button:hover{background:#dc2626}
   return { bridge, init };
 }
 
-module.exports = { createDesktopControl };
+module.exports = { createDesktopControl, pickSource };

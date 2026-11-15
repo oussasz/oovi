@@ -73,7 +73,7 @@ export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_notes",
     description:
-      "The team's shared notes files for this chat: long text that doesn't belong in a chat message (findings, a draft, a detailed report, a review with corrections). There is no length limit worth worrying about: write as much as the work needs, in Markdown. append adds to the end, write replaces the file, read returns it. Your chat message stays short and names the file.",
+      "The team's shared notes files for this chat: long text that doesn't belong in a chat message (findings, a draft, a detailed report, a review with corrections). The file itself has room for as much as the work needs, in Markdown, but one call can only carry so much: write a long text in parts (write with the first sections, then append a few sections per call). append adds to the end, write replaces the file, read returns it. Your chat message stays short and names the file.",
     parameters: {
       type: "object",
       properties: {
