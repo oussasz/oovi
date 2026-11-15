@@ -3,6 +3,9 @@ import type { ReactNode } from "react";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { listReleases } from "@/lib/releases";
+import { resolveNotes, versionOfTag, type Notes as ReleaseNotes } from "@/lib/release-notes";
+import { SEED_NOTES } from "@/lib/release-notes-seed";
+import { getNotesOverrides } from "@/lib/release-notes-db";
 
 export const metadata: Metadata = {
   title: "What's new",
@@ -10,7 +13,7 @@ export const metadata: Metadata = {
 };
 export const revalidate = 300;
 
-const version = (tag: string) => tag.replace(/^v/, "");
+const version = versionOfTag;
 const when = (iso?: string | null) =>
   iso ? new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric", timeZone: "UTC" }) : "";
 
@@ -77,22 +80,56 @@ function Notes({ body, id }: { body: string; id: string }) {
   return <>{blocks}</>;
 }
 
+/** One version in the standard shape: headline, then New / Improved / Fixed / Good to know. */
+function Standard({ notes, id }: { notes: ReleaseNotes; id: string }) {
+  return (
+    <>
+      {notes.headline && <p className="rn-headline">{notes.headline}</p>}
+      {notes.sections.map((sec) => (
+        <div key={sec.title} className={`rn-section rn-${sec.title.toLowerCase().replace(/\s+/g, "-")}`}>
+          <h3>{sec.title}</h3>
+          <ul>
+            {sec.items.map((it, j) => (
+              <li key={j}>{inline(it, `${id}-${sec.title}-${j}`)}</li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </>
+  );
+}
+
 export default async function ChangelogPage() {
-  const releases = await listReleases();
+  const [releases, overrides] = await Promise.all([listReleases(), getNotesOverrides()]);
+  const shown = releases
+    .map((r) => ({ r, res: resolveNotes(version(r.tag_name), r.body, overrides, SEED_NOTES) }))
+    .filter((x) => x.res.kind !== "hidden");
   return (
     <>
       <SiteNav />
       <main className="container page page-narrow">
         <article className="legal changelog">
           <h1>What’s new in oovi</h1>
-          <p className="meta">oovi updates itself. On Windows from the Microsoft Store, the Store keeps it up to date.</p>
-          {releases.length === 0 && <p>The release notes can’t be shown right now. Please try again in a few minutes.</p>}
-          {releases.map((r) => (
+          <p className="meta">Every version, newest first.</p>
+          <aside className="summary rn-update" aria-label="Installing and updating">
+            <b>Updating oovi</b>
+            <ul>
+              <li>oovi updates itself: click “Restart now” when it asks. Everything you set up is kept.</li>
+              <li>From the Microsoft Store, the Store updates it for you.</li>
+              <li>On Linux, download the new file from the <a href="/download">download page</a>.</li>
+              <li>On a Mac, the first time: open oovi, click Done, then System Settings › Privacy &amp; Security › Open Anyway.</li>
+            </ul>
+          </aside>
+          {shown.length === 0 && <p>The release notes can’t be shown right now. Please try again in a few minutes.</p>}
+          {shown.map(({ r, res }, i) => (
             <section key={r.tag_name} id={r.tag_name} style={{ scrollMarginTop: 96 }}>
               <h2>
-                oovi {version(r.tag_name)} <span className="meta" style={{ fontSize: "0.6em", fontWeight: 500 }}>{when(r.published_at)}</span>
+                oovi {version(r.tag_name)}{" "}
+                {i === 0 && <span className="rn-latest">Latest</span>}
+                <span className="meta rn-date">{when(r.published_at)}</span>
               </h2>
-              <Notes body={r.body ?? ""} id={r.tag_name} />
+              {res.kind === "notes" && <Standard notes={res.notes} id={r.tag_name} />}
+              {res.kind === "legacy" && <Notes body={res.markdown} id={r.tag_name} />}
             </section>
           ))}
         </article>
