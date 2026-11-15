@@ -13,6 +13,7 @@ export const EVENTS = [
   { key: "refund", label: "Refund or chargeback", help: "Money goes back to a customer.", on: true },
   { key: "cancel", label: "Subscription canceled", help: "A customer cancels their plan.", on: true },
   { key: "feedback", label: "New feedback", help: "A problem or an idea sent from the app or the website.", on: true },
+  { key: "problem", label: "New problem from the app", help: "The app reports something it couldn't do for a customer: once per new problem, and once if a fixed one comes back.", on: true },
   { key: "pilotRequest", label: "New pilot request", help: "Someone asks to join the pilot.", on: true },
   { key: "capacity", label: "theOovi paused: daily budget reached", help: "The daily AI budget ran out, so theOovi stops until midnight UTC.", on: true },
   { key: "providerError", label: "theOovi down: AI key rejected", help: "The AI provider refused your key, so theOovi can't answer anyone.", on: true },

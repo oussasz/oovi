@@ -250,7 +250,7 @@ const tr: Dict = {
   "settings.data.syncNote": "Şifreli bir bulut yedeğiyle ekibini tüm bilgisayarlarında eşit tut. Bu sürümde kullanılamaz.",
 
   "settings.about.lead": "oovi {version}: tescilli yazılım. Tüm hakları saklıdır.",
-  "settings.about.crash": "oovi'nin düzeltilmesine yardım etmek için hata raporlarını ve araç sorunlarını gönder. Uygulama sürümünü, işletim sistemini, hatayı ve hangi oovi aracının hangi web sitesinde başarısız olduğuna dair kısa notları içerir; asla sohbetlerini, dosyalarını veya anahtarlarını içermez.",
+  "settings.about.crash": "oovi'nin düzeltilmesine yardım etmek için hata raporlarını ve sorunları gönder. Uygulama sürümünü, işletim sistemini, hatayı, hangi oovi aracının hangi web sitesinde başarısız olduğunu ve bir bot bir görevi yapamadığında görevin türünü genel sözcüklerle içerir. Asla sohbetlerini, dosyalarını, adlarını veya anahtarlarını içermez.",
 
   "side.menu": "Menü",
   "side.home": "Ana sayfa",

@@ -207,6 +207,18 @@ await pool.query(`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+  -- Admin > Problems (keep in sync with lib/problems.ts PROBLEM_DDL).
+  ALTER TABLE feedback ADD COLUMN IF NOT EXISTS problem_key TEXT NULL;
+  ALTER TABLE feedback ADD COLUMN IF NOT EXISTS tag TEXT NULL;
+  ALTER TABLE feedback ADD COLUMN IF NOT EXISTS tool TEXT NULL;
+  ALTER TABLE feedback ADD COLUMN IF NOT EXISTS site TEXT NULL;
+  CREATE INDEX IF NOT EXISTS feedback_problem_key_idx ON feedback (problem_key, created_at DESC) WHERE problem_key IS NOT NULL;
+  CREATE TABLE IF NOT EXISTS problem_fixes (
+    problem_key TEXT PRIMARY KEY,
+    fixed_in    TEXT NOT NULL,
+    fixed_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    fixed_by    TEXT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS admin_audit (
     id          BIGSERIAL PRIMARY KEY,

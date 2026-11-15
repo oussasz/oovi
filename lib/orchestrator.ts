@@ -15,6 +15,8 @@
 import fs from "node:fs";
 import { currentUser } from "./account";
 import { complete, HostedError, type ToolSpec } from "./llm";
+import { PROBLEM_SYSTEM, parseProblemReview, runProblems, wentWrong } from "./run-report";
+import { reportsAllowed, sendProblems } from "./tool-notes";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, leanTools, recallHistory } from "./context";
 import { hostedMaxInput, hostedStatus } from "./hosted";
 import { memoryPrompt } from "./memory";
@@ -1902,8 +1904,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   // Self-learning: review real work and keep what's worth remembering, after the reply has
   // gone out (Telegram, the group's report, a routine's result don't wait for it).
   // (Not after a routine's unattended run: the same task every day would only repeat the same lessons.)
-  if (!signal.aborted && settings.learning !== false && !chat.pending && !input.routine) {
-    learnLater(chat.id, bots, settings, [...chat.entries].reverse().find((e) => e.kind === "bot")?.id);
+  // Problem reports (what failed, what a bot couldn't do) go out whether learning is on or not, and for
+  // routines too; they follow their own switch in Settings ("Send crash reports and problems").
+  if (!signal.aborted && !chat.pending) {
+    learnLater(chat.id, bots, settings, [...chat.entries].reverse().find((e) => e.kind === "bot")?.id, settings.learning !== false && !input.routine);
   }
 }
 
@@ -1994,7 +1998,7 @@ function saveProgress(chat: Chat) {
 const isRunning = (chatId: string) => !!(globalThis as typeof globalThis & { __ooviRuns?: Map<string, unknown> }).__ooviRuns?.has(chatId);
 
 /** Run the learning review once the run has ended; write the note only if no newer run holds the chat. */
-function learnLater(chatId: string, bots: Bot[], settings: Settings, lastEntryId: string | undefined) {
+function learnLater(chatId: string, bots: Bot[], settings: Settings, lastEntryId: string | undefined, learn: boolean) {
   const lastBotId = (c: Chat) => [...c.entries].reverse().find((e) => e.kind === "bot")?.id;
   setTimeout(() => {
     void (async () => {
@@ -2002,7 +2006,10 @@ function learnLater(chatId: string, bots: Bot[], settings: Settings, lastEntryId
       const chat = getChat(chatId);
       // Something was added since (a report, a new message): this run's work is no longer the latest.
       if (!chat || lastBotId(chat) !== lastEntryId) return;
-      const learned = await learnFromRun(chat, bots, settings, AbortSignal.timeout(90_000));
+      const run = sinceLastUser(chat);
+      const reviewed = { done: false };
+      const learned = learn ? await learnFromRun(chat, bots, settings, AbortSignal.timeout(90_000), reviewed) : null;
+      await reportRun(run, settings, reviewed.done, AbortSignal.timeout(60_000));
       if (!learned || isRunning(chatId)) return;
       // Re-read: the chat may have changed while the review ran (a report, a cleared chat).
       const fresh = getChat(chatId);
@@ -2014,8 +2021,54 @@ function learnLater(chatId: string, bots: Bot[], settings: Settings, lastEntryId
   }, 300); // after the run has let go of the chat
 }
 
+/** The user's last message, the one before it from the bots, and the bots' work since. */
+function sinceLastUser(chat: Chat): { user?: UserEntry; work: BotEntry[]; correcting: boolean } {
+  let u = -1;
+  for (let i = chat.entries.length - 1; i >= 0; i--) if (chat.entries[i]?.kind === "user") ((u = i), (i = -1));
+  const user = chat.entries[u];
+  if (!user || user.kind !== "user") return { work: [], correcting: false };
+  const work = chat.entries.slice(u + 1).filter((e): e is BotEntry => e.kind === "bot");
+  const prev = chat.entries.slice(0, u).reverse().find((e): e is BotEntry => e.kind === "bot" && !!e.text);
+  return { user, work, correcting: !!prev && CORRECTION.test(user.text.trim()) };
+}
+
+/**
+ * Tells oovi's developers what went wrong in this run (lib/run-report.ts): tool errors and stopped turns
+ * straight from the run, and, when the run went wrong and the learning review didn't already look at it,
+ * one short review of what the bot couldn't do. Never throws.
+ */
+async function reportRun(run: { user?: UserEntry; work: BotEntry[]; correcting: boolean }, settings: Settings, reviewed: boolean, signal: AbortSignal): Promise<void> {
+  try {
+    if (!run.user || !run.work.length || !reportsAllowed()) return;
+    const work = run.work.map((entry) => ({ entry }));
+    const notes = runProblems(work);
+    if (!reviewed && wentWrong(work, run.correcting)) {
+      const did = run.work
+        .map((e) => {
+          const lines: string[] = [];
+          for (const s of e.steps as Msg[]) {
+            if (s.role === "assistant") for (const c of s.toolCalls) lines.push(`- tool ${c.name}`);
+            else if (s.role === "tool") for (const r of s.results) if (r.isError) lines.push(`  ! ${r.name} failed: ${r.content.slice(0, 200)}`);
+          }
+          if (e.error) lines.push(`! stopped with error: ${e.error.slice(0, 200)}`);
+          lines.push(`Final answer: ${e.text.slice(0, 1200) || "(none)"}`);
+          return lines.join("\n");
+        })
+        .join("\n\n")
+        .slice(0, 8000);
+      const out = await complete(settings, PROBLEM_SYSTEM, [{ role: "user", content: `User's request:\n${run.user.text.slice(0, 1500)}\n\nWhat the bots did:\n${did}` }], [], signal, { effort: "low" });
+      const r = parseProblemReview(out.text);
+      if (r.unmet) notes.push({ tag: "unmet", message: r.unmet });
+      for (const t of r.tools) notes.push({ tag: "tool", message: t });
+    }
+    if (notes.length) await sendProblems(notes);
+  } catch {
+    /* a report is a bonus; never disturb the chat */
+  }
+}
+
 /** Run a reflection on the work since the user's last message, when it's worth it. */
-async function learnFromRun(chat: Chat, bots: Bot[], settings: Settings, signal: AbortSignal): Promise<BotEntry | null> {
+async function learnFromRun(chat: Chat, bots: Bot[], settings: Settings, signal: AbortSignal, reviewed: { done: boolean }): Promise<BotEntry | null> {
   let u = -1;
   for (let i = chat.entries.length - 1; i >= 0; i--) if (chat.entries[i]?.kind === "user") ((u = i), (i = -1));
   const user = chat.entries[u];
@@ -2032,6 +2085,7 @@ async function learnFromRun(chat: Chat, bots: Bot[], settings: Settings, signal:
   if (toolCalls < 3 && !user.deep && !correcting) return null;
   const withBots = work.map((entry) => ({ entry, bot: bots.find((b) => b.id === entry.botId) })).filter((x): x is { entry: BotEntry; bot: Bot } => !!x.bot);
   try {
+    reviewed.done = true;
     const note = await reflect(settings, { request: user.text, previous: correcting ? prev?.text : undefined, work: withBots }, signal);
     if (!note) return null;
     last.learned = mergeLearned(last.learned, note);

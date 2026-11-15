@@ -19,7 +19,7 @@ import { dataDir, type Settings } from "./settings";
 import { tokens } from "./skills";
 import type { Bot, BotEntry, LearnedNote, Msg } from "./types";
 import { TECHNICAL_LESSON, WRONG_LESSON, bansAbility } from "./lesson-rules";
-import { sendToolNotes } from "./tool-notes";
+import { sendProblems, sendToolNotes } from "./tool-notes";
 export { WRONG_LESSON };
 
 export type Lesson = {
@@ -189,7 +189,7 @@ export const CORRECTION = new RegExp(
 const REFLECT_SYSTEM = `You help an AI assistant team learn from finished work so it does better next time.
 You get the user's request, what the bots did (tools used, errors, final answer) and sometimes the user's feedback or correction.
 Return ONLY a JSON object, no other text:
-{"lessons": Item[], "user": Item[], "tools": string[], "skill": null | {"name": string, "description": string, "steps": string[]}}
+{"lessons": Item[], "user": Item[], "tools": string[], "unmet": string | null, "skill": null | {"name": string, "description": string, "steps": string[]}}
 Item is {"text": string, "replaces": string | null}.
 
 You are shown what is ALREADY saved (lessons with their ids, and the facts about the user). Before returning anything, compare with it:
@@ -205,6 +205,7 @@ Never turn a guess about why something failed into a lesson ("the site is down",
 user: 0-1 fact about the user, and only one that will matter in many future tasks: who they are, their business, a lasting preference (format, tone, tools), the people they work with. The profile is small, so keep only the most important things: not the details of the current task. Only if clearly shown. Never record which language the user wrote in (they switch languages); only an explicit request like "always answer me in French".
 tools: 0-2 notes for oovi's developers (they are not shown to the user and not saved as lessons). Only when one of oovi's own tools failed, returned nothing useful, misled the bots or lacked something the task needed. Say which tool, what happened and on which site, in English, max 200 characters. Example: "read_url returned no phone numbers on dzadvisor.com listing pages; the number is behind a button." Never include the user's name, words, file names, numbers or anything from their content. Nothing to report is the normal case.
 Never save a lesson or a fact that takes an ability away from the bots or tells them to do less for the user ("the user doesn't want the bots to use their PC", "don't use the browser", "tell the user to do it themselves instead"). When the user says "don't use X, use Y", they are choosing the way for the task: what to remember, if anything, is the positive part ("for their own accounts, the user wants their own browser, through desktop control"). When the bots refused or failed, that is not a wish of the user: never turn it into one. A lasting ban is saved only when the user wrote it as a rule for the future, in plain words.
+unmet: for oovi's developers too. When the bots did NOT do what the user asked (they gave up, said they can't, stopped with an error, or the user had to correct them): one line in English, max 200 characters, with the kind of task in general words and what blocked it ("User asked to change the desktop wallpaper; screenshots kept failing, bot stopped."). Never the user's words, names, files or content. Null when the task was done or what blocked it is normal (the user said no, a site needs the user's own login and the bot offered their browser).
 skill: only when this was a multi-step procedure that worked well and is likely to be asked again; name (2-5 words), one-line description of when to use it, and 3-8 concrete steps. Otherwise null.
 Save only what the user said in plain words in this exchange (a correction, a rule for the future, a lasting preference, a fact about themselves). Never save your reading of an unclear message, and never save what comes from the bots' own understanding of a request: the bots may have misunderstood (they took the Darija "كابتير" (capture, a screenshot) for a CAPTCHA; they took "a picture with simple numbers" for something the user dislikes). When the bots refused, misread or the user had to explain again, save nothing about it.
 Empty arrays are normal. Never invent lessons.`;
@@ -226,11 +227,11 @@ function describeWork(work: { bot: Bot; entry: BotEntry }[]): string {
   return out.join("\n").slice(0, 12_000);
 }
 
-function parseJson(text: string): { lessons?: unknown; user?: unknown; tools?: unknown; skill?: unknown } | null {
+function parseJson(text: string): { lessons?: unknown; user?: unknown; tools?: unknown; unmet?: unknown; skill?: unknown } | null {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) return null;
   try {
-    return JSON.parse(m[0]) as { lessons?: unknown; user?: unknown; tools?: unknown; skill?: unknown };
+    return JSON.parse(m[0]) as { lessons?: unknown; user?: unknown; tools?: unknown; unmet?: unknown; skill?: unknown };
   } catch {
     return null;
   }
@@ -302,7 +303,9 @@ export async function reflect(
   // Technical notes about oovi's own tools aren't lessons about the user's work (the model is told so; this makes sure).
   // Notes about oovi's own tools go to oovi's developers instead of the user's lessons (lib/tool-notes.ts).
   const all = items(j.lessons, 3);
-  void sendToolNotes([...strings(j.tools, 2), ...(input.feedback ? [] : all.filter((x) => TECHNICAL_LESSON.test(x.text)).map((x) => x.text))]);
+  void sendToolNotes([...strings(j.tools, 2), ...(input.feedback ? [] : all.filter((x) => TECHNICAL_LESSON.test(x.text)).map((x) => x.text))]).then(() =>
+    typeof j.unmet === "string" && j.unmet.trim().length >= 15 ? sendProblems([{ tag: "unmet", message: j.unmet.trim().slice(0, 300) }]) : 0,
+  );
   const saved = all
     .filter((x) => input.feedback || (!TECHNICAL_LESSON.test(x.text) && !bansAbility(x.text)))
     .slice(0, input.feedback || input.previous ? 2 : 1)

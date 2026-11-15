@@ -4,6 +4,7 @@ import { pool } from "@/lib/db";
 import { parsePlatform, parseVersion } from "@/lib/telemetry";
 import { notify } from "@/lib/notify";
 import { later } from "@/lib/user-signals";
+import { PROBLEM_TAGS, PROBLEM_TAG_LABELS, saveProblem, type ProblemTag } from "@/lib/problems";
 
 export const dynamic = "force-dynamic";
 
@@ -14,21 +15,30 @@ export async function POST(req: Request) {
   if (!session) return apiError("Sign in to send feedback.", 401);
   const body = await readJson(req, 32 * 1024);
   if (!body) return apiError("Invalid request.", 400);
-  // A note from the app's bots about one of oovi's own tools (lib/tool-notes.ts in the app): short,
-  // already cleaned of personal details there, stored once per user, shown under "From bots" in the console.
+  // A problem report from the app (lib/run-report.ts and lib/tool-notes.ts there): a tool error, a task that
+  // stopped, or what a bot couldn't do. Short, already cleaned of personal details there, stored once per
+  // user and app version, grouped on Admin > Problems.
   if (body.source === "bot") {
     if (!rateLimit(`toolnote:${session.user.id}`, 20, 60 * 60_000)) return noContent();
     const note = typeof body.message === "string" ? body.message.replace(/\s+/g, " ").trim().slice(0, 300) : "";
     if (note.length < 15) return apiError("Too short.", 400);
-    const seen = await pool.query("SELECT 1 FROM feedback WHERE user_id = $1 AND source = 'bot' AND message = $2 AND created_at > now() - interval '30 days' LIMIT 1", [session.user.id, note]);
-    if (!seen.rowCount) {
-      await pool.query("INSERT INTO feedback (user_id, kind, message, source, app_version, platform) VALUES ($1, 'problem', $2, 'bot', $3, $4)", [
-        session.user.id,
-        note,
-        parseVersion(req.headers.get("x-oovi-version")),
-        parsePlatform(req.headers.get("x-oovi-platform")),
-      ]);
-    }
+    const tag = PROBLEM_TAGS.includes(body.tag as ProblemTag) ? (body.tag as ProblemTag) : "tool";
+    const word = (v: unknown, max: number) => (typeof v === "string" && /^[\w.:-]{1,100}$/.test(v.trim()) ? v.trim().slice(0, max) : null);
+    const version = parseVersion(req.headers.get("x-oovi-version"));
+    const platform = parsePlatform(req.headers.get("x-oovi-platform"));
+    const fresh = await saveProblem({ userId: session.user.id, message: note, tag, tool: word(body.tool, 60), site: word(body.site, 100), version, platform });
+    // One email per problem: the first time anyone reports it, and the first time it comes back after a fix.
+    if (fresh)
+      later(() =>
+        notify({
+          event: "problem",
+          title: fresh === "new" ? `New problem: ${PROBLEM_TAG_LABELS[tag]}` : `A fixed problem came back (${PROBLEM_TAG_LABELS[tag]})`,
+          lead: fresh === "new" ? "The desktop app reported something it couldn't do for a customer. Same reports from others are counted on the Problems page, without more emails." : "This problem was marked fixed, and the app reported it again from the fixed version or a newer one.",
+          rows: [["App version", version ?? "–"], ["Platform", platform ?? "–"]],
+          quote: note,
+          button: { label: "Open Problems", path: "/admin/problems" },
+        }),
+      );
     return noContent();
   }
   if (!rateLimit(`feedback:${session.user.id}`, 10, 10 * 60_000)) return apiError("You've sent a lot of feedback in a short time. Please wait a few minutes.", 429);

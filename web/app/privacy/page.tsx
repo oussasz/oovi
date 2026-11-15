@@ -113,7 +113,10 @@ export default function PrivacyPage() {
       </p>
       <p>
         With the same setting, the App may also send short notes about a problem with one of its own tools (for
-        example, that a tool could not read a kind of page), with the name of the website concerned. Before a note is
+        example, that a tool could not read a kind of page), with the name of the website concerned, and, when a bot
+        could not complete a task, a one-line description of the kind of task in general words and what blocked it
+        (for example, &ldquo;changing the desktop wallpaper; the screen could not be captured&rdquo;), never its
+        details. Before a note is
         sent, the App removes email addresses, phone numbers and other numbers, file paths, quoted text and the rest
         of a page&rsquo;s address. You can turn crash reports and these notes off in the App&rsquo;s Settings.
       </p>
