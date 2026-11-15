@@ -17,6 +17,7 @@ const LINKS = [
   { href: "/admin/crashes", label: "Crashes" },
   { href: "/admin/usage", label: "Usage" },
   { href: "/admin/marketplace", label: "Marketplace" },
+  { href: "/admin/releases", label: "Release notes" },
   { href: "/admin/audit", label: "Audit log" },
 ];
 
