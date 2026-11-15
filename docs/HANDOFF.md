@@ -1,5 +1,11 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## First run, made personal (2026-11-15, not released yet)
+- Owner: "instead of three bots and a Studio group and the same leader for everyone, a personalized experience". Onboarding (components/AccountGate.tsx) is now: You (name, photo; theOovi set up by itself, own key in Settings) → Chief (5 characters: calm Oovi, warm Lina, direct Rex, funny Momo, thoughtful Sage; rename, shuffle) → Goals (the Chief asks "what will you use me for?": 10 tappable goals + "something else") → Team (3-4 Marketplace setups suggested for those goals, best two ticked; "Create my team" or "Just me for now") → Ready.
+- lib/onboarding-core.ts (pure, tests/unit/onboarding.test.mts): LEADERS, GOALS→setups, suggestSetups (best fit per goal + 1 per other goal; typed words match setup texts; hidden setups never suggested; nothing chosen → classic "Starter team"), leaderNotes (character + goals added to the Chief's instructions).
+- app/api/onboarding: GET suggestions (with faces), GET ?mine=1 the goals (home examples follow them: home.idea.g.*), POST applies once (onboarding.json; 409 after): Chief renamed/new face/notes and pinned; the old Scout/Quill/Nova/Studio removed only if untouched and not chosen; setups installed with installPlugin. Seed in lib/store.ts unchanged (tests rely on it). tests/e2e/onboarding-scenario.cjs (9 checks); server.cjs takes OOVI_TEST_ONBOARDED=0.
+- Known: setup names and descriptions are English only (as in the Marketplace).
+
 ## Sign-up: 18 or older (2026-11-14, owner's choice)
 - The sign-up checkbox (app and website) now says "I'm 18 or older and I agree to the Terms and the Privacy Policy" (6 languages). Terms (section 1) and Privacy (12. Children) say 18; TERMS_VERSION and LEGAL_LAST_UPDATED are 2026-11-14 (only new sign-ups are checked against it). Reason: Anthropic counts anyone under 18 as a minor and asks products for minors for extra safeguards. The app's form also shows "At least 8 characters" under the password (the website already did).
 

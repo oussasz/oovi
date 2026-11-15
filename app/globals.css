@@ -949,3 +949,45 @@ a.tag { text-decoration: none; }
 .ask-done { margin: 6px 0; padding: 10px 14px; display: grid; gap: 8px; border: 1px solid var(--border); border-radius: 14px; max-width: 560px; font-size: 13.5px; }
 .ask-done dt { color: var(--muted); }
 .ask-done dd { margin: 2px 0 0; font-weight: 600; }
+
+/* First run, made personal: the Chief's character, its question, the suggested team */
+.onb-back { font-size: 13px; margin-top: 2px; }
+.onb .fine { font-size: 12.5px; max-width: 460px; }
+.chief-pick { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; width: 100%; margin: 6px 0 2px; }
+.chief-card { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 12px 6px 10px; border: 1.5px solid var(--border); border-radius: 16px; background: var(--bg); color: var(--text); font: inherit; cursor: pointer; transition: border-color 0.12s, transform 0.12s, background 0.12s; }
+.chief-card:hover { border-color: var(--primary); }
+.chief-card:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.chief-card.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 7%, var(--bg)); transform: translateY(-2px); }
+.chief-card b { font-size: 14px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.chief-card small { font-size: 11.5px; color: var(--muted); line-height: 1.25; }
+.chief-edit { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: end; width: 100%; text-align: start; }
+.chief-says { display: flex; align-items: flex-start; gap: 12px; width: 100%; text-align: start; }
+.chief-bubble { position: relative; flex: 1; padding: 12px 14px; border-radius: 4px 16px 16px 16px; background: var(--soft); }
+[dir="rtl"] .chief-bubble { border-radius: 16px 4px 16px 16px; }
+.chief-bubble > b { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 2px; }
+.chief-bubble p { margin: 0; max-width: none; }
+.chief-bubble .chief-q { font-weight: 700; font-size: 16.5px; line-height: 1.35; margin-bottom: 4px; }
+.goal-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 8px 0 4px; }
+.goal-chip { display: inline-flex; align-items: center; gap: 5px; padding: 8px 13px; border: 1.5px solid var(--border); border-radius: 999px; background: var(--bg); color: var(--text); font: inherit; font-size: 13.5px; font-weight: 600; cursor: pointer; transition: border-color 0.12s, background 0.12s, color 0.12s; }
+.goal-chip:hover { border-color: var(--primary); }
+.goal-chip:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.goal-chip.on { border-color: var(--primary); background: var(--primary); color: var(--on-primary); }
+.team-suggest { display: grid; gap: 8px; width: 100%; margin: 6px 0 2px; text-align: start; }
+.team-card { position: relative; display: grid; grid-template-columns: auto 1fr auto; gap: 12px; align-items: center; padding: 12px 14px; border: 1.5px solid var(--border); border-radius: 16px; background: var(--bg); cursor: pointer; transition: border-color 0.12s, background 0.12s; }
+.team-card:hover { border-color: var(--primary); }
+.team-card.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 6%, var(--bg)); }
+.team-card input { position: absolute; opacity: 0; pointer-events: none; }
+.team-card:has(input:focus-visible) { outline: 2px solid var(--primary); outline-offset: 2px; }
+.team-card-text { display: grid; gap: 2px; min-width: 0; }
+.team-card-text b { font-size: 15px; }
+.team-card-text .muted { font-size: 13px; line-height: 1.35; }
+.team-card-tag { justify-self: start; font-size: 11px; font-weight: 800; padding: 2px 8px; border-radius: 999px; background: var(--soft); color: var(--muted); }
+.team-check { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--border); color: var(--on-primary); }
+.team-card.on .team-check { background: var(--primary); border-color: var(--primary); }
+.ready-faces { margin-top: 4px; }
+.ready-team { list-style: none; margin: 4px 0; padding: 0; display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.ready-team li { display: inline-flex; align-items: center; gap: 5px; padding: 5px 11px; border-radius: 999px; background: var(--soft); font-size: 13px; font-weight: 700; }
+@media (max-width: 560px) {
+  .chief-pick { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .chief-edit { grid-template-columns: 1fr; }
+}

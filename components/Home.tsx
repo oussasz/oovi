@@ -14,6 +14,19 @@ import SettingsLink from "./SettingsLink";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
 const IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
+/** One example per goal chosen at the first run (lib/onboarding-core.ts), first; the general ones fill the rest. */
+const GOAL_IDEAS: Record<string, TKeyIdea> = {
+  marketing: "home.idea.g.marketing",
+  clients: "home.idea.g.clients",
+  business: "home.idea.g.business",
+  shop: "home.idea.g.shop",
+  study: "home.idea.g.study",
+  research: "home.idea.g.research",
+  writing: "home.idea.g.writing",
+  code: "home.idea.g.code",
+  people: "home.idea.g.people",
+};
+type TKeyIdea = "home.idea.g.marketing" | "home.idea.g.clients" | "home.idea.g.business" | "home.idea.g.shop" | "home.idea.g.study" | "home.idea.g.research" | "home.idea.g.writing" | "home.idea.g.code" | "home.idea.g.people";
 
 export default function Home() {
   const router = useRouter();
@@ -25,6 +38,7 @@ export default function Home() {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showHidden, setShowHidden] = useState(false);
+  const [goals, setGoals] = useState<string[]>([]);
   const box = useRef<HTMLTextAreaElement>(null);
   const { t, rich } = useI18n();
 
@@ -35,6 +49,9 @@ export default function Home() {
         setChats(c);
         setSettings(s);
       })
+      .catch(() => {});
+    api<{ goals: string[] }>("/api/onboarding?mine=1")
+      .then((r) => setGoals(r.goals))
       .catch(() => {});
     api<{ botId: string | null }>("/api/main")
       .then((m) => setChiefId(m.botId))
@@ -110,7 +127,7 @@ export default function Home() {
             </form>
             {error && <div className="notice error">{error}</div>}
             <div className="ideas home-ideas">
-              {IDEAS.map((k) => (
+              {[...new Set([...goals.map((g) => GOAL_IDEAS[g]).filter((k): k is TKeyIdea => !!k), ...IDEAS])].slice(0, 4).map((k) => (
                 <button
                   key={k}
                   type="button"
