@@ -39,6 +39,11 @@ export type AiConfig = {
   /** Temporarily stop all hosted calls (emergencies). */
   paused: boolean;
   pausedMessage: string;
+  /**
+   * Apps older than this ("0.10.7") get a message asking them to update instead of an answer from theOovi.
+   * "" = no minimum. Their own API keys keep working (those calls never reach this server).
+   */
+  minAppVersion: string;
   /** The white-label name users see. */
   displayName: string;
   /** Provider model ID behind the white label (Anthropic). */
@@ -101,6 +106,7 @@ export const DEFAULT_AI: AiConfig = {
   maxInputTokens: 100_000,
   maxOutputTokens: 16_000,
   maxEffort: "high",
+  minAppVersion: "",
   maxConcurrent: 3,
   dailyBudgetUsd: 25,
   signupCredits: 1000,
@@ -137,6 +143,7 @@ export function normalizeAi(raw: unknown): AiConfig {
     enabled: bool(r.enabled, d.enabled),
     paused: bool(r.paused, d.paused),
     pausedMessage: str(r.pausedMessage, d.pausedMessage) || d.pausedMessage,
+    minAppVersion: /^\d{1,4}\.\d{1,4}\.\d{1,5}$/.test(str(r.minAppVersion, "", 20)) ? str(r.minAppVersion, "", 20) : "",
     displayName: str(r.displayName, d.displayName, 40).trim() || d.displayName,
     model: str(r.model, d.model, 100).trim() || d.model,
     backupModel: str(r.backupModel, d.backupModel, 100).trim(),
@@ -325,3 +332,5 @@ export async function saveProviderKey(key: string | null, by: string): Promise<v
   else await save("ai_secret", seal(key), by);
   kg.__ooviAiKey = undefined;
 }
+
+export { compareVersions, tooOld } from "./versions";

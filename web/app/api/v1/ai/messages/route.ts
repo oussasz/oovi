@@ -9,7 +9,9 @@
 //   - calls the provider with the key from the console (never sent to anyone)
 //   - charges what the call really cost and records it for the console's KPIs
 import { clientIp, getRequestSession, json, rateLimit } from "@/lib/api";
-import { EFFORTS, getAiConfig, getProviderKey, type AiConfig, type Effort } from "@/lib/ai-config";
+import { EFFORTS, getAiConfig, getProviderKey, tooOld, type AiConfig, type Effort } from "@/lib/ai-config";
+import { parseVersion } from "@/lib/telemetry";
+import { siteUrl } from "@/lib/site";
 import { COMPUTER_TOOLSET_TOKENS, cleanCache, cleanTools, hasComputerToolset, supportsComputerToolset } from "@/lib/ai-tools";
 import {
   bumpSpend,
@@ -57,6 +59,16 @@ const MAX_PDF_PAGES = 100;
 
 type Block = Record<string, unknown>;
 type Message = { role: "user" | "assistant"; content: string | Block[] };
+
+/** "Please update", in the language the person writes in (Arabic, French or English), from their latest message. */
+function updateMessage(messages: unknown[], name: string, version: string): string {
+  const last = [...messages].reverse().find((m) => (m as { role?: string }).role === "user") as { content?: unknown } | undefined;
+  const text = typeof last?.content === "string" ? last.content : Array.isArray(last?.content) ? last.content.map((b) => (b && typeof b === "object" && typeof (b as { text?: unknown }).text === "string" ? (b as { text: string }).text : "")).join(" ") : "";
+  const link = `${siteUrl()}/download`;
+  if (/[\u0600-\u06FF]/.test(text)) return `يُرجى تحديث oovi لمواصلة استخدام ${name}: هذا الإصدار (${version}) قديم. اضغط على "تحديث" في أعلى oovi، أو حمّل الإصدار الجديد من ${link} (إذا ثبّتّه من متجر مايكروسوفت، حدّثه من المتجر). محادثاتك وبوتاتك تبقى كما هي.`;
+  if (/[àâçéèêëîïôûùüÿœ]|\b(je|tu|vous|est|les|des|pour|une|merci|bonjour|avec)\b/i.test(text)) return `Merci de mettre oovi à jour pour continuer à utiliser ${name} : cette version (${version}) est trop ancienne. Cliquez sur « Mettre à jour » en haut d'oovi, ou téléchargez la nouvelle version sur ${link} (installé depuis le Microsoft Store ? Mettez-le à jour dans le Store). Vos discussions et vos bots restent tels quels.`;
+  return `Please update oovi to keep using ${name}: this version (${version}) is too old. Click "Update" at the top of oovi, or download the new version at ${link} (installed from the Microsoft Store? Update it in the Store). Your chats and bots stay as they are.`;
+}
 
 function fail(status: number, code: string, message: string, extra: Record<string, unknown> = {}) {
   return json({ error: message, code, ...extra }, status);
@@ -268,6 +280,12 @@ export async function POST(req: Request) {
   const system = cleanSystem(raw.system);
   const tools = cleanTools(raw.tools);
   if (!messages || system === null || tools === null) return fail(400, "bad_request", "Invalid request.");
+  // Too old an app (Admin > theOovi > Minimum app version): ask to update, in the chat, with the download link.
+  // Older apps show this text as it is (any version since 0.10).
+  const appVersion = parseVersion(req.headers.get("x-oovi-version"));
+  if (tooOld(appVersion, cfg)) {
+    return fail(426, "update_required", updateMessage(messages, cfg.displayName, appVersion ?? ""), { minAppVersion: cfg.minAppVersion });
+  }
   // Who is calling: counted after the answer is on its way, and it can never fail the request.
   runAfter(() => recordAiCall(userId, req.headers, tools.length > 0));
   const requestedOut = typeof raw.max_tokens === "number" && raw.max_tokens > 0 ? Math.floor(raw.max_tokens) : 8192;

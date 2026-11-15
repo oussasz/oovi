@@ -229,6 +229,33 @@ export function pilotApproved(to: string, name: string, credits: number, days: n
   );
 }
 
+/** Asks someone on an older app to update (Admin > Users > "Ask to update"). Not sent automatically. */
+export function updateAsk(to: string, name: string, current: string, latest: string, platform: string | null): Mail {
+  const store = "Installed from the Microsoft Store? It updates there: open the Store, then Library, then Get updates.";
+  const mac = platform === "mac" || platform === "darwin";
+  return render(
+    {
+      preheader: `oovi ${latest} is ready. You're on ${current}.`,
+      title: "A new version of oovi is ready",
+      hello: `Hi ${firstName(name)},`,
+      blocks: [
+        { kind: "p", text: `You&rsquo;re using oovi <b>${esc(current)}</b>. Version <b>${esc(latest)}</b> is out, with fixes and improvements, and some features need it to work well.` },
+        {
+          kind: "p",
+          text: mac
+            ? "Download the new version with the button below and open it: your chats, bots and settings stay as they are."
+            : "Open oovi and click <b>Update</b> in the bar at the top, or download the new version with the button below. Your chats, bots and settings stay as they are.",
+        },
+        ...(mac ? [] : [{ kind: "p" as const, text: esc(store) }]),
+      ],
+      button: { label: "Get the new version", url: `${siteUrl()}/download` },
+      note: `See what&rsquo;s new at ${siteUrl()}/changelog. Already updated? You can ignore this email.`,
+    },
+    to,
+    `oovi ${latest} is ready`,
+  );
+}
+
 /** A personal invitation to the pilot, for someone who has already tried oovi. Not sent automatically. */
 export function pilotInvite(to: string, name: string): Mail {
   return render(
@@ -308,6 +335,7 @@ export function previews(to: string): Record<string, Mail> {
     changed: passwordChanged(to, "Sara Benali"),
     pilot: pilotApproved(to, "Sara Benali", 10_000, 60, 5_000),
     invite: pilotInvite(to, "Sara Benali"),
+    update: updateAsk(to, "Sara Benali", "0.10.6", "0.10.13", "win32"),
     test: testEmail(to),
   };
 }

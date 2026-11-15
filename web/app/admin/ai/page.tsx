@@ -228,6 +228,13 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
             <Field id="pausedMessage" label="Message while paused" help="Shown in the app when you press “Pause theOovi now”. 10 to 500 characters.">
               <textarea id="pausedMessage" name="pausedMessage" className="input" rows={2} maxLength={500} defaultValue={cfg.pausedMessage} required />
             </Field>
+            <Field
+              id="minAppVersion"
+              label="Minimum app version (optional)"
+              help="Apps older than this, e.g. 0.10.7, get a message asking them to update instead of an answer from theOovi (with the download link). Their own API keys keep working. Leave empty for no minimum. Never set it to a version released today: Microsoft Store users get new versions a day or two later."
+            >
+              <input id="minAppVersion" name="minAppVersion" className="input" placeholder="e.g. 0.10.7" pattern="\d{1,4}\.\d{1,4}\.\d{1,5}" maxLength={20} defaultValue={cfg.minAppVersion} />
+            </Field>
           </fieldset>
 
           <fieldset className="adm-fieldset">

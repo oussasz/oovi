@@ -33,6 +33,7 @@ const LABELS: Record<string, string> = {
   changed: "Password changed",
   pilot: "Pilot approved",
   invite: "Pilot invitation (personal)",
+  update: "Ask to update (people on an older app)",
   test: "Test",
 };
 

@@ -1,5 +1,9 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Bringing people to the latest version without a new release (2026-11-15)
+- Admin > Users > "Ask to update": emails everyone whose app is older than the latest release (web/lib/update-ask.ts, template updateAsk, preview "update" in Admin > Email). Once per person per version (admin_audit "update.ask"), blocked accounts and unconfirmed emails left out, 150 per press. Mac people get "download"; Windows people get "click Update" + the Microsoft Store way.
+- Admin > theOovi > "Minimum app version": apps older than it get, instead of a theOovi answer, a message (Arabic, French or English, from the person's last message) asking them to update with the download link (HTTP 426, code update_required; old apps show the server's text as it is, checked in 0.10.6's code; not retried). Own API keys keep working. web/lib/versions.ts (tests/unit/versions.test.mts). Never set it to a version released the same day (Store delay).
+
 ## First run v2 (2026-11-15, owner's review: "simple, practical, personal"; "I may just want to explore")
 - Two screens (components/AccountGate.tsx): 1) Chief: "Hi {name}! Choose your Chief" (name from sign-up; no photo/name step; theOovi set up by itself); 2) "What are you curious about? nothing is fixed": goal chips + "something else", and the suggested team appears and updates live below (only the best fit ticked); "Create my team" or "Skip, I'll explore". Then straight into the app. The "Ready"/first-task screen was removed (it repeated the home screen's ideas, owner's feedback); the home's ideas (ideasFor: at most 2 from the goals, the rest general) do that job. Reopened after the team was made: the app opens directly.
 - The Chief's notes say the first interests are only a start, not a limit: follow what the user asks now.

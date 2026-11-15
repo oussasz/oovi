@@ -3055,3 +3055,4 @@ textarea.input {
 .changelog .rn-update ul { margin: 8px 0 0; }
 .adm-muted { color: var(--muted); }
 .adm-check { display: inline-flex; align-items: center; gap: 8px; font-weight: 700; }
+.adm-note { margin: 0 0 12px; font-size: 14px; line-height: 1.55; color: var(--ink-2, inherit); word-break: break-word; }

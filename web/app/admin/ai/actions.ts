@@ -73,6 +73,8 @@ export async function saveAiSettings(fd: FormData): Promise<ActionState> {
   if (backupModel && backupModel === model) errors.push("The backup model must be different from the main model (or empty).");
   const pausedMessage = fdStr(fd, "pausedMessage", 1000).trim();
   if (pausedMessage.length < 10 || pausedMessage.length > 500) errors.push("Paused message must be 10 to 500 characters.");
+  const minAppVersion = fdStr(fd, "minAppVersion", 20).trim();
+  if (minAppVersion && !/^\d{1,4}\.\d{1,4}\.\d{1,5}$/.test(minAppVersion)) errors.push("Minimum app version must look like 0.10.7, or be empty.");
   const subscribeUrl = fdStr(fd, "subscribeUrl", 600).trim();
   if (subscribeUrl) {
     let ok = false;
@@ -114,6 +116,7 @@ export async function saveAiSettings(fd: FormData): Promise<ActionState> {
     // Pausing has its own button at the top of the page, so a stale form can't undo it.
     paused: before.paused,
     pausedMessage,
+    minAppVersion,
     displayName,
     model,
     backupModel,

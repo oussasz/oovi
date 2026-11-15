@@ -7,6 +7,9 @@ import { assess, countryLabel, getSignals } from "@/lib/user-signals";
 import { VerdictBadge } from "@/components/admin/Verdict";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { CsvButton } from "@/components/admin/CsvButton";
+import { ActionForm } from "@/components/admin/ActionForm";
+import { latestVersion, peopleBehind } from "@/lib/update-ask";
+import { sendUpdateAsk } from "./actions";
 import { fmtAgo, fmtDate, fmtInt, fmtNumber, platformLabel } from "@/components/admin/format";
 
 export const dynamic = "force-dynamic";
@@ -41,7 +44,8 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.slice(0, 100) : "";
   const page = Math.min(10_000, Math.max(1, Number.parseInt(sp.page ?? "1", 10) || 1));
-  const [{ rows, total }, planList] = await Promise.all([listUsers(q, page), getPlans()]);
+  const [{ rows, total }, planList, latest] = await Promise.all([listUsers(q, page), getPlans(), latestVersion().catch(() => null)]);
+  const behind = latest ? await peopleBehind(latest).catch(() => null) : null;
   const plans = new Map(planList.map((p) => [p.id, p]));
   // Country and "does it look like a person?". Null if the signal columns can't be read: the list still works.
   const signals = await getSignals(rows.map((r) => r.id));
@@ -59,6 +63,34 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
       >
         <CsvButton report="users" label="All accounts CSV" />
       </PageHead>
+      {latest && behind && (
+        <Section
+          title="Ask to update"
+          sub={`An email to the people whose app is older than ${latest}, asking them to update (with the download button). Each person gets it once per version; blocked accounts and unconfirmed emails are left out.`}
+        >
+          {behind.length ? (
+            <>
+              <p className="adm-note">
+                <b>{fmtInt(behind.length)}</b> {behind.length === 1 ? "person uses" : "people use"} an older version: {behind.slice(0, 12).map((b) => `${b.email} (${b.version})`).join(" · ")}
+                {behind.length > 12 ? ` · and ${fmtInt(behind.length - 12)} more` : ""}
+              </p>
+              <ActionForm
+                action={sendUpdateAsk}
+                submitLabel={`Send to ${fmtInt(Math.min(behind.length, 150))} ${behind.length === 1 ? "person" : "people"}`}
+                pendingLabel="Sending…"
+                confirm={`Send the "Please update" email to ${behind.length} ${behind.length === 1 ? "person" : "people"} now? They receive a real email from oovi.`}
+                extraButtons={
+                  <a href="/admin/email/preview?t=update" target="_blank" rel="noreferrer" className="btn btn-ghost btn-sm">
+                    Preview the email
+                  </a>
+                }
+              />
+            </>
+          ) : (
+            <Empty>Everyone with a confirmed email is on {latest}, or has already been asked for it.</Empty>
+          )}
+        </Section>
+      )}
       <Section
         title={q ? `Results for “${q}”` : "All accounts"}
         actions={
