@@ -25,9 +25,6 @@
   .h2 { font-weight: 800; font-size: 96px; line-height: 1.0; letter-spacing: -0.045em; }
   .lead { font-weight: 500; font-size: 42px; line-height: 1.2; letter-spacing: -0.02em; color: var(--muted); }
   .cap { font-weight: 700; font-size: 54px; line-height: 1.08; letter-spacing: -0.035em; white-space: nowrap; }
-  .chip { position: absolute; left: 0; width: 1080px; display: flex; justify-content: center; opacity: 0; }
-  .chip span { display: inline-flex; align-items: center; gap: 12px; padding: 11px 20px 11px 16px; border-radius: 999px; background: rgba(255,255,255,.75); border: 1px solid var(--line); backdrop-filter: blur(10px); font-weight: 650; font-size: 20px; letter-spacing: .16em; text-transform: uppercase; color: #2b2e38; box-shadow: 0 6px 20px rgba(30,34,60,.06); }
-  .chip i { width: 9px; height: 9px; border-radius: 50%; background: var(--blue); box-shadow: 0 0 0 4px rgba(75,99,232,.18); }
   .pill { position: absolute; display: flex; align-items: center; justify-content: center; gap: 16px; height: 88px; padding: 0 22px 0 44px; border-radius: 999px; background: linear-gradient(#1b1d24, #0c0d11); color: #fff; font-weight: 650; font-size: 31px; letter-spacing: -0.015em; opacity: 0; box-shadow: 0 22px 44px rgba(14,16,20,.22), inset 0 1px 0 rgba(255,255,255,.14); white-space: nowrap; }
   .pill em { display: inline-flex; width: 48px; height: 48px; border-radius: 50%; background: #fff; color: #0E1014; align-items: center; justify-content: center; font-style: normal; font-size: 26px; }
   .pill.light { background: #fff; color: var(--ink); border: 1px solid var(--line); box-shadow: 0 16px 36px rgba(30,34,60,.12); }
@@ -51,6 +48,8 @@
   #hey b { position: absolute; inset: 0; border-radius: 56px; background: linear-gradient(#FFDE55, #FFC928); box-shadow: 0 18px 34px rgba(245,184,46,.38), inset 0 2px 0 rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; font-family: "Inter"; font-weight: 800; font-style: italic; font-size: 64px; letter-spacing: -0.04em; color: #1B2A8C; }
   #hey i { position: absolute; left: 6px; bottom: -22px; width: 40px; height: 40px; background: #FFC928; clip-path: polygon(0 0, 100% 0, 18% 100%); transform: translateX(14px); }
   #edisc, #eplant, #eperson { position: absolute; will-change: transform, opacity; }
+  #edisc { z-index: 1; } #eplant { z-index: 2; } #eperson { z-index: 4; }
+  #cta { z-index: 3; }
   #ebtnglint { position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent); transform: skewX(-18deg); }
   .logo { position: absolute; width: 112px; height: 112px; opacity: 0; left: 484px; top: 160px; }
   #win { position: absolute; left: 60px; top: 262px; width: 960px; height: 600px; border-radius: 22px; background: #fff; box-shadow: 0 50px 100px rgba(30,34,60,.22), 0 0 0 1px rgba(14,16,20,.10); opacity: 0; overflow: hidden; will-change: transform, opacity; }
@@ -141,7 +140,7 @@
     <div class="t h1" id="h-l1" style="top:196px"><span class="wm"><span class="wi">A</span></span> <span class="wm"><span class="wi">new</span></span> <span class="wm"><span class="wi">mind</span></span></div>
     <div class="t h1" id="h-l2" style="top:290px"><span class="wm"><span class="wi">just</span></span> <span class="wm"><span class="wi">joined</span></span> <span class="wm"><span class="wi">the</span></span> <span class="wm"><span class="wi">team.</span></span></div>
     <div class="t sub" id="subtitle" style="top:416px"><span id="sub1">Meet <b id="sub-name"></b></span><br><span id="sub2">on <b>oovi</b>.</span></div>
-        <div class="card" id="card"><img id="photo" alt=""><div><div class="nm" id="card-name"></div><div class="rl"><i></i><span id="card-role"></span></div></div></div>
+        <div class="card" id="card"><img id="photo" alt=""><div><div class="nm" id="card-name"></div><div class="rl"><span id="card-role"></span></div></div></div>
     <div class="pill" id="cta" style="top:950px"></div>
     <!-- B -->
     <!-- C -->
@@ -152,11 +151,10 @@
         <svg id="cursor" viewBox="0 0 28 34" xmlns="http://www.w3.org/2000/svg"><path d="M3 2 L3 26 L9 20.5 L13.5 31 L18 29 L13.6 18.8 L22 18.5 Z" fill="#fff" stroke="#0e1014" stroke-width="2" stroke-linejoin="round"/></svg>
       </div></div>
     <!-- D -->
-    <div class="chip" id="inv0" style="top:300px"><span><i></i>For experts</span></div>
-    <div class="t h2" id="inv1" style="top:378px"></div>
-    <div class="t lead" id="inv2" style="top:502px"></div>
-    <div class="pill light" id="apply" style="top:660px"></div>
-    <div class="url" id="applyurl" style="top:790px"></div>
+    <div class="t h2" id="inv1" style="top:330px"></div>
+    <div class="t lead" id="inv2" style="top:454px"></div>
+    <div class="pill light" id="apply" style="top:610px"></div>
+    <div class="url" id="applyurl" style="top:740px"></div>
     <!-- E -->
     <div class="t h2" id="fin1" style="top:138px;font-size:92px"></div>
     <div class="t h2" id="fin2" style="top:226px;font-size:92px"></div>
@@ -224,8 +222,9 @@ const SIP = C.sip, SS = 0.72, OX = 136, OY = 82;           // picture -> canvas 
 const pImg = new Image(); pImg.src = SIP.person.file;
 const mImg = $("sip-machine"); mImg.src = SIP.machine.file;
 const pc = $("sip-person"), pctx = pc.getContext("2d");
-pc.width = SIP.person.size[0]; pc.height = SIP.person.size[1];
-pc.style.left = (OX + SIP.person.at[0] * SS) + "px"; pc.style.top = (OY + SIP.person.at[1] * SS) + "px"; pc.style.transform = `scale(${SS})`;
+const PADX = 60, PADY = 70;                                    // free space around him: a nod or a bend must never cut the picture
+pc.width = SIP.person.size[0] + 2 * PADX; pc.height = SIP.person.size[1] + PADY;
+pc.style.left = (OX + SIP.person.at[0] * SS - PADX * SS) + "px"; pc.style.top = (OY + SIP.person.at[1] * SS - PADY * SS) + "px"; pc.style.transform = `scale(${SS})`;
 mImg.style.left = (OX + SIP.machine.at[0] * SS) + "px"; mImg.style.top = (OY + SIP.machine.at[1] * SS) + "px"; mImg.style.width = SIP.machine.size[0] + "px"; mImg.style.transform = `scale(${SS})`;
 const P2C = (x, y) => [OX + x * SS, OY + y * SS];   // a point of the picture -> the canvas
 const SUN = { x: OX + 541 * SS, y: OY + 575 * SS, r: 393 * SS };
@@ -240,7 +239,7 @@ bt.innerHTML = '<span class="dots"><b></b><b></b><b></b></span>' + words_.map(([
 const wordEls = [...bt.querySelectorAll(".w")], dotsEl = bt.querySelector(".dots");
 
 function drawPuppet(t) {
-  const W = pc.width, H = pc.height; pctx.clearRect(0, 0, W, H);
+  const W = SIP.person.size[0], H = SIP.person.size[1]; pctx.clearRect(0, 0, pc.width, pc.height);
   const into = smooth(P(t, B.in, 0.8)), sway = 0.4 + 0.6 * into;
   const nodA = smooth(P(t, B.sip, 0.35)) * (1 - smooth(P(t, B.lower, 0.35)));          // the sip: head goes back a little
   const laugh = Math.sin(P(t, B.line2 + 0.7, 1.0) * Math.PI) * (t > B.line2 + 0.7 ? 1 : 0); // a small laugh on "fixing"
@@ -252,7 +251,7 @@ function drawPuppet(t) {
     const headK = clamp((340 - y) / 340);                                              // 1 at the top of the head, 0 at the neck
     const nod = -14 * nodA * headK * headK - (3.2 * laugh * Math.sin(t * 34)) * headK;
     const y0 = H - (H - y) * breath + nod, y1 = H - (H - y - STEP) * breath + (-14 * nodA * Math.pow(clamp((340 - y - STEP) / 340), 2) - (3.2 * laugh * Math.sin(t * 34)) * clamp((340 - y - STEP) / 340));
-    pctx.drawImage(pImg, 0, y, W, STEP, bend, y0, W, Math.max(1, y1 - y0) + 0.6);
+    pctx.drawImage(pImg, 0, y, W, STEP, PADX + bend, PADY + y0, W, Math.max(1, y1 - y0) + 0.6);
   }
 }
 function sipXf(t) { const o = 1 - smooth(P(t, B.out, 0.45)); return { o, a: -(1 - o) * 30, z: 1 + 0.045 * P(t, B.in, B.out - B.in) }; }
@@ -311,8 +310,9 @@ const EL = C.end, ES = 0.86, FOOT = 922, REFX = 535, REFY = 1020;
 const eImg = (src) => { const i = new Image(); i.src = src; return i; };
 const ptImg = eImg(EL.point.file), wvImg = eImg(EL.wave.file), plImg = eImg(EL.plant.file);
 const RX0 = 190, RY0 = 360, RW = 690, RH = 670;                 // the part of the original picture we draw (picture pixels)
-const ec = $("eperson"), ectx = ec.getContext("2d"); ec.width = RW; ec.height = RH;
-ec.style.left = (540 - (REFX - RX0)) + "px"; ec.style.top = (FOOT - (REFY - RY0)) + "px"; ec.style.transformOrigin = `${REFX - RX0}px ${REFY - RY0}px`;   // the feet are the pivot: he squashes on the button
+const EPX = 60, EPY = 70;
+const ec = $("eperson"), ectx = ec.getContext("2d"); ec.width = RW + 2 * EPX; ec.height = RH + EPY;
+ec.style.left = (540 - (REFX - RX0) - EPX) + "px"; ec.style.top = (FOOT - (REFY - RY0) - EPY) + "px"; ec.style.transformOrigin = `${REFX - RX0 + EPX}px ${REFY - RY0 + EPY}px`;   // the feet are the pivot   // the feet are the pivot: he squashes on the button
 const epl = $("eplant"), eplx = epl.getContext("2d"); epl.width = EL.plant.size[0]; epl.height = EL.plant.size[1];
 epl.style.left = (540 + (EL.plant.at[0] - REFX) * ES) + "px"; epl.style.top = (FOOT - (REFY - EL.plant.at[1] - 0) * ES - 4) + "px"; epl.style.transformOrigin = "50% 100%";
 // the waving hand is a separate layer so it can wave without moving the arm
@@ -326,8 +326,8 @@ function prepWave() {
   wReady = true;
 }
 function drawEnd(t, wave, rotHand) {
-  ectx.clearRect(0, 0, RW, RH);
-  const pose = wave ? EL.wave : EL.point, offx = pose.at[0] - RX0, offy = pose.at[1] - RY0, H = pose.size[1], STEP = 2;
+  ectx.clearRect(0, 0, ec.width, ec.height);
+  const pose = wave ? EL.wave : EL.point, offx = pose.at[0] - RX0 + EPX, offy = pose.at[1] - RY0 + EPY, H = pose.size[1], STEP = 2;
   const src = wave ? (wReady ? wBase : wvImg) : ptImg;
   const sway = Math.sin(t * 1.5 + 0.3), tap = lastTapPulse(t);
   for (let y = 0; y < H; y += STEP) {
@@ -449,8 +449,7 @@ window.seek = function (t) {
   $("ring").style.opacity = ringIn; $("ring").style.transform = `scale(${1 + Math.sin(t * 5) * 0.008})`;
 
   // ---- D: invite experts ----
-  const ip = expo(P(t, D.in, 0.6)); htmlT($("inv0"), ip * (1 - smooth(P(t, D.out, 0.35))), 0, (1 - ip) * 18);
-  reveal($("inv1"), t, D.in + 0.1, D.out, 36); reveal($("inv2"), t, D.inv2, D.out, 28);
+    reveal($("inv1"), t, D.in + 0.1, D.out, 36); reveal($("inv2"), t, D.inv2, D.out, 28);
   reveal($("apply"), t, D.apply, D.out, 28); $("applyurl").style.opacity = expo(P(t, D.url, 0.5)) * (1 - smooth(P(t, D.out, 0.35)));
 
   // ---- E: the call ----
