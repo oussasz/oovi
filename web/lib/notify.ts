@@ -14,6 +14,7 @@ export const EVENTS = [
   { key: "cancel", label: "Subscription canceled", help: "A customer cancels their plan.", on: true },
   { key: "feedback", label: "New feedback", help: "A problem or an idea sent from the app or the website.", on: true },
   { key: "pilotRequest", label: "New pilot request", help: "Someone asks to join the pilot.", on: true },
+  { key: "expertApplication", label: "New expert application", help: "Someone asks to be added as an expert on oovi.", on: true },
   { key: "capacity", label: "theOovi paused: daily budget reached", help: "The daily AI budget ran out, so theOovi stops until midnight UTC.", on: true },
   { key: "providerError", label: "theOovi down: AI key rejected", help: "The AI provider refused your key, so theOovi can't answer anyone.", on: true },
   { key: "crash", label: "New crash report", help: "The desktop app crashed for someone. Can be frequent.", on: false },

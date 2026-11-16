@@ -194,6 +194,31 @@ await pool.query(`
   -- The pilot form's answers (taps, stars, faces) as one JSON object. lib/pilot-answers.ts also creates it on first use.
   ALTER TABLE pilot_requests ADD COLUMN IF NOT EXISTS answers JSONB NULL;
 
+  -- Expert applications (/experts/apply). lib/expert-db.ts also creates it on first use.
+  CREATE TABLE IF NOT EXISTS expert_applications (
+    id                  BIGSERIAL PRIMARY KEY,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    status              TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new', 'accepted', 'declined')),
+    name                TEXT NOT NULL,
+    email               TEXT NOT NULL,
+    profile_url         TEXT NOT NULL,
+    field               TEXT NOT NULL,
+    bio                 TEXT NOT NULL,
+    languages           TEXT[] NOT NULL DEFAULT '{}',
+    known_as            TEXT NULL,
+    consent_version     TEXT NOT NULL,
+    consent_text_hash   TEXT NOT NULL,
+    signed_name         TEXT NOT NULL,
+    signature_png       BYTEA NULL,
+    ip_hash             TEXT NULL,
+    user_agent          TEXT NULL,
+    reviewed_at         TIMESTAMPTZ NULL,
+    reviewed_by         TEXT NULL,
+    review_note         TEXT NULL
+  );
+  CREATE UNIQUE INDEX IF NOT EXISTS expert_applications_email_idx ON expert_applications (email);
+  CREATE INDEX IF NOT EXISTS expert_applications_status_idx ON expert_applications (status, created_at DESC);
+
   CREATE TABLE IF NOT EXISTS feedback (
     id           BIGSERIAL PRIMARY KEY,
     user_id      TEXT NULL REFERENCES "user"(id) ON DELETE CASCADE,
