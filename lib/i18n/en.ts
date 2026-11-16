@@ -1042,6 +1042,7 @@ const en = {
   "bot.squishTitle": "{name}: press to make it hop",
   "bot.noRole": "No role yet",
   "bot.squishHint": "Press the face to make it hop.",
+  "bot.pictureHint": "This picture comes with the bot. Pick any look below to use a slime face instead.",
   "bot.previewMood": "Preview expression",
   "bot.shuffleLook": "Shuffle look",
   "bot.editTitle": "Edit {name}",

@@ -93,3 +93,27 @@
 @media (prefers-reduced-motion: reduce) {
   .root, .root * { animation: none !important; transition: none !important; }
 }
+
+/* A marketplace picture instead of the slime: shown whole, never cropped; it bobs gently while the bot works. */
+.picture {
+  object-fit: contain;
+  display: inline-block;
+  flex: none;
+  user-select: none;
+}
+.picture[data-mood="thinking"],
+.picture[data-mood="reading"],
+.picture[data-mood="computer"],
+.picture[data-mood="working"] {
+  animation: pictureBob 1.6s ease-in-out infinite;
+}
+@keyframes pictureBob {
+  50% {
+    transform: translateY(-4%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .picture {
+    animation: none !important;
+  }
+}

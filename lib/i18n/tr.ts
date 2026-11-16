@@ -1025,6 +1025,7 @@ const tr: Dict = {
   "bot.squishTitle": "{name}: zıplaması için bas",
   "bot.noRole": "Henüz rol yok",
   "bot.squishHint": "Zıplaması için yüze bas.",
+  "bot.pictureHint": "Bu resim botla birlikte gelir. Bunun yerine bir slime yüzü kullanmak için aşağıdan herhangi bir görünüm seç.",
   "bot.previewMood": "İfade önizlemesi",
   "bot.shuffleLook": "Görünümü karıştır",
   "bot.editTitle": "{name} düzenle",

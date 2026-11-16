@@ -7,6 +7,7 @@ import { pool } from "@/lib/db";
 import { isCatalogKind, parseJsonText, validateCatalogData, validateCatalogId, validateSort } from "@/lib/catalog";
 import { BUILTIN_ITEMS, builtinById, type BuiltinItem } from "@/lib/builtin-catalog";
 import { audit } from "@/lib/credits";
+import { MAX_AVATAR_BYTES, isAvatarPng, saveAvatar } from "@/lib/avatars";
 
 export type SaveState = { errors: string[] } | null;
 
@@ -142,4 +143,20 @@ export async function restoreBuiltin(fd: FormData): Promise<void> {
   await pool.query(`UPDATE catalog_items SET kind = $2, data = $3::jsonb, updated_at = now() WHERE id = $1`, [id, it.kind, JSON.stringify(it.data)]);
   await audit(admin.email, "catalog.restore", id).catch(() => {});
   revalidatePath("/admin/marketplace");
+}
+
+/** A picture for a bot's face, from the editor (already resized there to 256 px): checked, stored, its id returned. */
+export async function uploadAvatar(dataUrl: string): Promise<{ id?: string; error?: string }> {
+  const admin = await requireAdmin();
+  const m = /^data:image\/png;base64,([A-Za-z0-9+/]+={0,2})$/.exec(String(dataUrl ?? "").slice(0, MAX_AVATAR_BYTES * 2));
+  const png = m ? Buffer.from(m[1]!, "base64") : null;
+  if (!png || !isAvatarPng(png)) return { error: "That picture can't be used. Use a PNG, JPG or WebP image (it is made 256 px wide, under 300 KB)." };
+  try {
+    const id = await saveAvatar(png, admin.email);
+    await audit(admin.email, "catalog.avatar", `avatar:${id}`, { bytes: png.length });
+    return { id };
+  } catch (err) {
+    console.error("avatar upload failed", err instanceof Error ? err.message : err);
+    return { error: "The picture could not be saved. Try again." };
+  }
 }

@@ -1025,6 +1025,7 @@ const fr: Dict = {
   "bot.squishTitle": "{name} : appuyez pour le faire sauter",
   "bot.noRole": "Pas encore de rôle",
   "bot.squishHint": "Appuyez sur le visage pour le faire sauter.",
+  "bot.pictureHint": "Cette image est fournie avec le bot. Choisissez un style ci-dessous pour utiliser un visage slime à la place.",
   "bot.previewMood": "Aperçu de l'expression",
   "bot.shuffleLook": "Mélanger l'apparence",
   "bot.editTitle": "Modifier {name}",

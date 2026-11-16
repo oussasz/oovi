@@ -1,7 +1,6 @@
+import Face from "@/components/Face";
 import { isHttpsUrl, type CatalogKind } from "@/lib/catalog";
 
-// Same palette as the desktop app's slime faces (lib/faces.ts FACE_COLORS).
-const FACE_COLORS = ["#A9BCF7", "#FDDA80", "#FF9F86", "#D8D5A6", "#E5B08C", "#EDB9BB", "#E4E4E0", "#BBD8C4", "#CDBFEA"];
 
 type Obj = Record<string, unknown>;
 const s = (v: unknown, fallback = ""): string => (typeof v === "string" ? v : fallback);
@@ -103,11 +102,10 @@ function Plugin({ d }: { d: Obj }) {
         {bots.map((b, i) => {
           const face = obj(b.face);
           const tools = obj(b.tools);
-          const color = FACE_COLORS[Number(face.color)] ?? FACE_COLORS[0];
           const toolNames = [tools.web === true && "web", tools.browser === true && "browser", tools.accounts === true && "accounts"].filter(Boolean);
           return (
             <li key={i}>
-              <span className="adm-face" style={{ background: color }} aria-hidden />
+              <Face face={face} size={36} />
               <span>
                 <b>{s(b.name, "?")}</b> <span className="fine">{s(b.role)}</span>
                 {b.lead === true && (

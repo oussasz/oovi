@@ -383,8 +383,10 @@ function validatePlugin(d: Obj): string[] {
     if (!isObj(b.face)) bc.errors.push(`${path}.face is required (${FACE_KEYS.join(", ")}).`);
     else {
       const fc = new Checker(b.face, `${path}.face`);
-      fc.only(FACE_KEYS);
+      fc.only([...FACE_KEYS, "image"]);
       for (const k of FACE_KEYS) fc.int(k, 0, 63);
+      const img = (b.face as Record<string, unknown>).image;
+      if (img !== undefined && !(typeof img === "string" && /^[0-9a-f]{32}$/.test(img))) fc.errors.push(`${path}.face.image must be the id of an uploaded picture (use “Upload a picture”).`);
       bc.errors.push(...fc.errors);
     }
     c.errors.push(...bc.errors);

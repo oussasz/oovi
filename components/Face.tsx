@@ -9,6 +9,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, type Face as FaceT, type Mood } from "@/lib/faces";
 import s from "./Face.module.css";
+import { avatarSrc } from "@/lib/avatar-src";
 
 const INK = "#1d1d1b";
 const PAPER = "#ffffff";
@@ -229,7 +230,7 @@ function Top({ type }: { type: (typeof TOPS)[number] }) {
       return (
         <g transform="translate(64 19)" strokeWidth={1.6}>
           {[0, 72, 144, 216, 288].map((a) => (
-            <circle key={a} cx={Math.cos((a * Math.PI) / 180) * 4.4} cy={Math.sin((a * Math.PI) / 180) * 4.4} r={3.5} fill={PAPER} />
+            <circle key={a} cx={+(Math.cos((a * Math.PI) / 180) * 4.4).toFixed(3)} cy={+(Math.sin((a * Math.PI) / 180) * 4.4).toFixed(3)} r={3.5} fill={PAPER} />
           ))}
           <circle r={2.8} fill="#FDDA80" />
         </g>
@@ -326,6 +327,8 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
   const ref = useRef<SVGSVGElement>(null);
   const [look, setLook] = useState({ x: 0, y: 0 });
   const [poke, setPoke] = useState<"" | "down" | "up">("");
+  // A marketplace picture that couldn't be loaded (offline, removed): the slime is shown instead.
+  const [broken, setBroken] = useState<string | null>(null);
 
   // Big faces follow the pointer (one rAF per move, no layout work).
   useEffect(() => {
@@ -434,6 +437,25 @@ export default function Face({ face: raw, mood = "idle", size = 40, title, class
   }
 
   const cls = ["face", s.root, interactive ? s.interactive : "", className ?? ""].filter(Boolean).join(" ");
+
+  if (face.image && broken !== face.image) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={avatarSrc(face.image)}
+        width={size}
+        height={size}
+        className={`${cls} ${s.picture}`}
+        data-mood={mood}
+        alt={title ?? ""}
+        title={title}
+        aria-hidden={title ? undefined : true}
+        draggable={false}
+        decoding="async"
+        onError={() => setBroken(face.image ?? null)}
+      />
+    );
+  }
 
   return (
     <svg

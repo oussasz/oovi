@@ -1,6 +1,8 @@
 "use client";
 
 import { SKILL_CATEGORIES, type CatalogKind } from "@/lib/catalog";
+import { uploadAvatar } from "@/app/admin/marketplace/actions";
+import { FacePicker } from "./FacePicker";
 
 type Obj = Record<string, unknown>;
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v);
@@ -123,6 +125,7 @@ export function CatalogFields({ kind, data, onChange }: { kind: CatalogKind; dat
               <Text id={`f-bn-${i}`} label="Name (one word)" value={str(bot.name)} onChange={(v) => set(["bots", i, "name"], v)} />
               <Text id={`f-br-${i}`} label="Role" value={str(bot.role)} onChange={(v) => set(["bots", i, "role"], v)} />
             </div>
+            <FacePicker id={`f-face-${i}`} value={bot.face} onChange={(f) => onChange(setIn(data, ["bots", i, "face"], f))} upload={uploadAvatar} />
             <Text id={`f-ba-${i}`} label="One line in its own voice (optional)" help="Shown on its card, e.g. a motto." value={str(bot.about)} onChange={(v) => set(["bots", i, "about"], v)} />
             <Text id={`f-bi-${i}`} label="Instructions" help="Who it is and how it works. This is the bot's whole personality." value={str(bot.instructions)} onChange={(v) => set(["bots", i, "instructions"], v)} rows={16} />
             <div className="row-actions" style={{ flexWrap: "wrap", gap: 18 }}>
@@ -144,7 +147,7 @@ export function CatalogFields({ kind, data, onChange }: { kind: CatalogKind; dat
           </fieldset>
         );
       })}
-      <p className="fine">The face and the skills are in the JSON below.</p>
+      <p className="fine">The skills are in the JSON below.</p>
     </div>
   );
 }

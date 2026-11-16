@@ -28,7 +28,25 @@ export const TOPS = ["none", "hat", "beret", "headphones", "crown", "bow", "flow
 /** Things on the face. */
 export const WEAR = ["none", "glasses", "shades", "monocle", "mustache", "patch", "star"] as const;
 
-export type Face = { color: number; shape: number; hair: number; eyes: number; nose: number; mouth: number; cheeks: number; top: number; wear: number };
+export type Face = {
+  color: number;
+  shape: number;
+  hair: number;
+  eyes: number;
+  nose: number;
+  mouth: number;
+  cheeks: number;
+  top: number;
+  wear: number;
+  /**
+   * A picture from the marketplace (the id of a PNG the oovi team uploaded) shown instead of the slime.
+   * The slime parts stay: they are the fallback when the picture can't be loaded, and in older apps.
+   */
+  image?: string;
+};
+
+/** The id of a marketplace picture: 32 hex characters (never a path or an address). */
+export const IMAGE_ID = /^[0-9a-f]{32}$/;
 
 /**
  * What the bot is doing, shown on its face.
@@ -88,7 +106,14 @@ export function normalizeFace(f: unknown): Face {
     cheeks: has("cheeks") ? clamp(o.cheeks, CHEEKS.length) : 1,
     top: clamp(top, TOPS.length),
     wear: clamp(wear, WEAR.length),
+    ...(typeof o.image === "string" && IMAGE_ID.test(o.image) ? { image: o.image } : {}),
   };
+}
+
+/** The same face without its picture: the slime itself. */
+export function slimeOf(f: Face): Face {
+  const { image: _image, ...rest } = f;
+  return rest;
 }
 
 export const cleanFace = normalizeFace;

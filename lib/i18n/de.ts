@@ -1025,6 +1025,7 @@ const de: Dict = {
   "bot.squishTitle": "{name}: drücken, damit es hüpft",
   "bot.noRole": "Noch keine Rolle",
   "bot.squishHint": "Drück auf das Gesicht, damit es hüpft.",
+  "bot.pictureHint": "Dieses Bild gehört zum Bot. Wähle unten einen Look, um stattdessen ein Schleim-Gesicht zu nutzen.",
   "bot.previewMood": "Gesichtsausdruck in der Vorschau",
   "bot.shuffleLook": "Aussehen würfeln",
   "bot.editTitle": "{name} bearbeiten",

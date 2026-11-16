@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ABOUT_MAX, ROLE_MAX } from "@/lib/bot-limits";
 import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
-import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, type Face as FaceT, type Mood } from "@/lib/faces";
+import { CHEEKS, EYES, FACE_COLORS, HAIR, MOUTHS, NOSES, SHAPES, TOPS, WEAR, normalizeFace, randomFace, slimeOf, type Face as FaceT, type Mood } from "@/lib/faces";
 import { chainOf, enabledRefs, priceText, refKey, type ModelInfo } from "@/lib/model-list";
 import { PROVIDER_IDS, PROVIDERS, providerName, type ProviderId } from "@/lib/providers-meta";
 import type { PublicSettings } from "@/lib/settings";
@@ -101,7 +101,8 @@ export default function BotEditor({ id }: { id: string }) {
     setD({ ...d, ...p });
     setSaved(false);
   };
-  const setFace = (p: Partial<FaceT>) => set({ face: { ...d.face, ...p } });
+  // Any slime choice replaces a marketplace picture: the bot becomes the slime the user is making.
+  const setFace = (p: Partial<FaceT>) => set({ face: { ...slimeOf(d.face), ...p } });
 
   async function save() {
     setSaving(true);
@@ -147,7 +148,7 @@ export default function BotEditor({ id }: { id: string }) {
       <div className="opt-grid">
         {list.map((name, i) => (
           <button type="button" key={name} className={`opt${(d.face[key] ?? 0) === i ? " on" : ""}`} onClick={() => setFace({ [key]: i, ...reveal(key) })} title={name} aria-label={`${label}: ${name}`} aria-pressed={(d.face[key] ?? 0) === i}>
-            <Face face={{ ...d.face, [key]: i, ...reveal(key) }} size={48} />
+            <Face face={{ ...slimeOf(d.face), [key]: i, ...reveal(key) }} size={48} />
           </button>
         ))}
       </div>
@@ -184,7 +185,7 @@ export default function BotEditor({ id }: { id: string }) {
               {d.about.trim()}
             </p>
           )}
-          <p className="hint">{t("bot.squishHint")}</p>
+          <p className="hint">{d.face.image ? t("bot.pictureHint") : t("bot.squishHint")}</p>
           <div className="mood-row" role="group" aria-label={t("bot.previewMood")}>
             {MOODS.map((m) => (
               <button key={m} type="button" className={`chip${mood === m ? " on" : ""}`} onClick={() => setMood(m)}>
