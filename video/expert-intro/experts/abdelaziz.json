@@ -29,9 +29,7 @@
     "your startup needs fixing."
   ],
   "look": {
-    "hero": "#FAD56F",
-    "other": "#D9D4F8",
-    "glasses": "#111",
-    "hands": "#FCE190"
+    "heroFill": "url(#gYellow)",
+    "glasses": "#14151A"
   }
 }

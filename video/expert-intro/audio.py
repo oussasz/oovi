@@ -149,155 +149,197 @@ PF_KNOCK_A = pclip(3.95, 4.85)   # a hard knock with a low thud
 PF_KNOCK_B = pclip(7.45, 8.10)   # a second knock, lower
 PF_TICKS = pclip(5.20, 5.50)
 
-# ---------------------------------------------------------------- made sounds
-def env_k(n, a=0.003): e = np.ones(n); k = max(1, int(a * SR)); e[:k] = np.linspace(0, 1, k); return e
-def marimba(f, dur=1.2):
-    t = t_of(dur); y = np.sin(2 * np.pi * f * t) * np.exp(-t * 4.5) + 0.35 * np.sin(2 * np.pi * 3.99 * f * t) * np.exp(-t * 20) + 0.08 * np.sin(2 * np.pi * 9.2 * f * t) * np.exp(-t * 40)
-    y[:int(0.003 * SR)] *= np.linspace(0, 1, int(0.003 * SR)); return y
-def bell(f, dur=1.6):
-    t = t_of(dur); y = sum(a * np.sin(2 * np.pi * f * r * t) * np.exp(-t * d) for r, a, d in [(1, 1, 3.2), (2.76, .35, 5), (5.4, .15, 9)])
-    y[:int(0.002 * SR)] *= np.linspace(0, 1, int(0.002 * SR)); return y
-def bass(f, dur=0.6):
-    t = t_of(dur); y = (np.sin(2 * np.pi * f * t) + 0.25 * np.sin(4 * np.pi * f * t)) * np.exp(-t * 5.5); y[:int(0.004 * SR)] *= np.linspace(0, 1, int(0.004 * SR)); return y
-def kick(dur=0.3):
-    t = t_of(dur); f = 45 + 90 * np.exp(-t * 30); return np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 14)
+# ---------------------------------------------------------------- made sounds (modern, restrained)
+def lowpass_fft(x, fc, order=4):
+    n = len(x); nfft = 1 << int(np.ceil(np.log2(n + 8)))
+    fr = np.fft.rfftfreq(nfft, 1 / SR); g = 1 / np.sqrt(1 + (fr / fc) ** (2 * order))
+    return np.fft.irfft(np.fft.rfft(x, nfft) * g, nfft)[:n]
+def highpass_fft(x, fc, order=2):
+    n = len(x); nfft = 1 << int(np.ceil(np.log2(n + 8)))
+    fr = np.fft.rfftfreq(nfft, 1 / SR); r = (fr / fc) ** (2 * order); g = np.sqrt(r / (1 + r))
+    return np.fft.irfft(np.fft.rfft(x, nfft) * g, nfft)[:n]
 def noise(d): return rng.standard_normal(int(d * SR))
-def hp(x, a=0.95):
-    y = np.zeros_like(x); px = 0.0; py = 0.0
-    for i, v in enumerate(x): py = a * (py + v - px); px = v; y[i] = py
-    return y
-def lp_sweep(x, f0, f1):
-    y = np.zeros_like(x); s = 0.0; n = len(x)
-    for i in range(n):
-        f = f0 + (f1 - f0) * (i / max(1, n - 1)); a = 1 - math.exp(-2 * math.pi * f / SR); s += a * (x[i] - s); y[i] = s
-    return y
-def shaker(dur=0.07, acc=1.0): return hp(noise(dur)) * np.exp(-t_of(dur) * 55) * 0.5 * acc
-def clap(dur=0.16):
-    t = t_of(dur); return hp(noise(dur), 0.9) * np.exp(-t * 28) * (1 + 0.8 * (np.sin(2 * np.pi * 90 * t) > 0)) * 0.35
-def sfx_pop(f=520, dur=0.16):
-    t = t_of(dur); return np.sin(2 * np.pi * np.cumsum(f * (0.75 + 0.9 * (1 - np.exp(-t * 40)))) / SR) * np.exp(-t * 26) * 0.9
-def sfx_boing(f=300, dur=0.5):
-    t = t_of(dur); fr = f * (1 + 0.9 * np.exp(-t * 9)) * (1 + 0.05 * np.sin(2 * np.pi * 14 * t)); ph = np.cumsum(fr) / SR
-    return (np.sin(2 * np.pi * ph) + 0.3 * np.sin(4 * np.pi * ph)) * np.exp(-t * 7) * 0.7
-def sfx_whoosh(dur=0.5, up=True, level=0.5):
-    y = lp_sweep(noise(dur), 300, 5000) if up else lp_sweep(noise(dur), 5000, 300)
-    return y * np.sin(np.pi * np.clip(t_of(dur) / dur, 0, 1)) ** 1.6 * level * 0.5
-def sfx_twinkle(base=2093, dur=0.9):
-    out = np.zeros(int(dur * SR))
-    for k, r in enumerate([1, 1.26, 1.5, 2.0]):
-        s = np.sin(2 * np.pi * base * r * t_of(dur)) * np.exp(-t_of(dur) * 7); d = int(k * 0.06 * SR); out[d:] += s[: len(out) - d] * 0.35
+def adsr(n, a, r):
+    e = np.ones(n); na = max(1, int(a * SR)); nr = max(1, int(r * SR)); e[:na] = np.linspace(0, 1, na); e[-nr:] *= np.linspace(1, 0, nr); return e
+def saw_bl(f, t, nh=14):
+    return sum(np.sin(2 * np.pi * f * k * t) / k for k in range(1, nh + 1) if f * k < 9000) * 0.55
+
+def pad_chord(tones, dur, cutoff=1500):
+    t = t_of(dur); out = np.zeros(len(t))
+    for m in tones:
+        for det in (-9, 0, 9):
+            out += saw_bl(note(m) * 2 ** (det / 1200), t) / (3 * len(tones))
+    out = lowpass_fft(out, cutoff, 3)
+    return out * adsr(len(t), 0.5, 0.9)
+def pluck(f, dur=0.5):
+    t = t_of(dur); y = (np.sin(2 * np.pi * f * t) + 0.35 * np.sin(4 * np.pi * f * t) * np.exp(-t * 14) + 0.12 * np.sin(6 * np.pi * f * t) * np.exp(-t * 25)) * np.exp(-t * 8.5)
+    y[:int(0.002 * SR)] *= np.linspace(0, 1, int(0.002 * SR)); return y
+def sub(f, dur=0.9):
+    t = t_of(dur); y = (np.sin(2 * np.pi * f * t) + 0.18 * np.sin(4 * np.pi * f * t)) * np.exp(-t * 2.6); y *= adsr(len(t), 0.01, 0.12); return y
+def kick(dur=0.34):
+    t = t_of(dur); f = 48 + 100 * np.exp(-t * 34); return np.sin(2 * np.pi * np.cumsum(f) / SR) * np.exp(-t * 11) * 0.95
+def hat(v=1.0, dur=0.05): t = t_of(dur); return highpass_fft(noise(dur), 7000, 2) * np.exp(-t * 80) * 0.22 * v
+def rim(dur=0.14):
+    t = t_of(dur); n = lowpass_fft(highpass_fft(noise(dur), 900, 2), 5200, 2) * np.exp(-t * 30); return (n * 0.6 + np.sin(2 * np.pi * 330 * t) * np.exp(-t * 40) * 0.3) * 0.5
+def bell(f, dur=1.6):
+    t = t_of(dur); y = sum(a * np.sin(2 * np.pi * f * r * t) * np.exp(-t * d) for r, a, d in [(1, 1, 3.4), (2.76, .3, 5.5), (5.4, .12, 10)])
+    y[:int(0.002 * SR)] *= np.linspace(0, 1, int(0.002 * SR)); return y
+
+def reverb_stereo(buf, rt=1.7, wet=0.22):
+    out = np.zeros_like(buf)
+    for ch in range(2):
+        r = np.random.default_rng(31 + ch); t = t_of(rt * 1.3)
+        ir = r.standard_normal(len(t)) * np.exp(-t * 6.9 / rt); ir = lowpass_fft(ir, 4200, 2); ir[:int(0.012 * SR)] *= np.linspace(0, 1, int(0.012 * SR)); ir /= np.sqrt((ir ** 2).sum())
+        nfft = 1 << int(np.ceil(np.log2(buf.shape[1] + len(ir))))
+        out[ch] = np.fft.irfft(np.fft.rfft(buf[ch], nfft) * np.fft.rfft(ir, nfft), nfft)[: buf.shape[1]]
+    return buf * (1 - wet * 0.5) + out * wet * 2.0
+def pingpong(buf, time, fb=0.34, mix_=0.5, taps=5):
+    out = buf.copy(); d = int(time * SR)
+    for k in range(1, taps + 1):
+        src = buf * (fb ** k) * mix_
+        ch = k % 2  # alternate sides
+        sh = d * k
+        if sh >= buf.shape[1]: break
+        out[ch, sh:] += src[0 if ch == 0 else 1, : buf.shape[1] - sh] * 0.8 + src[1 - ch, : buf.shape[1] - sh] * 0.3
     return out
-def sfx_click(dur=0.06):
-    t = t_of(dur); return hp(noise(dur), 0.8) * np.exp(-t * 160) * 0.6 + np.sin(2 * np.pi * 1800 * t) * np.exp(-t * 120) * 0.5
-def sfx_clink(dur=0.4):
-    t = t_of(dur); return (np.sin(2 * np.pi * 3520 * t) * np.exp(-t * 14) + 0.6 * np.sin(2 * np.pi * 5230 * t) * np.exp(-t * 20) + 0.3 * np.sin(2 * np.pi * 7050 * t) * np.exp(-t * 28)) * 0.5
-def sfx_tick(dur=0.05): t = t_of(dur); return np.sin(2 * np.pi * 1200 * t) * np.exp(-t * 90) * 0.5
-def sfx_swish(dur=0.25): return sfx_whoosh(dur, True, 0.35)
-def sfx_scratch(dur=0.55):
-    """The music stops: a record scratch (a quick pitch drop and a rasp)."""
-    t = t_of(dur); f = 900 * np.exp(-t * 5) + 60; saw = 2 * ((np.cumsum(f) / SR) % 1) - 1
-    rasp = hp(noise(dur), 0.7) * 0.5
-    return (saw * 0.5 + rasp) * np.exp(-t * 4.5) * np.clip(t / 0.01, 0, 1) * 0.9
-def sfx_riser(dur=0.55):
-    t = t_of(dur); y = lp_sweep(noise(dur), 400, 7000) * 0.4 + np.sin(2 * np.pi * np.cumsum(200 + 1400 * (t / dur) ** 2) / SR) * 0.18
-    return y * (t / dur) ** 1.4
-def sfx_boom(dur=0.9):
-    t = t_of(dur); return np.sin(2 * np.pi * np.cumsum(38 + 90 * np.exp(-t * 14)) / SR) * np.exp(-t * 4.2) * 0.9
+
+# interface sounds: small, dry, quiet. Nothing cartoonish.
+def ui_tap(f=1500, dur=0.09):
+    t = t_of(dur); return (np.sin(2 * np.pi * f * t) * np.exp(-t * 55) * 0.5 + highpass_fft(noise(dur), 2500, 2) * np.exp(-t * 220) * 0.25)
+def ui_click(dur=0.07):
+    t = t_of(dur); return highpass_fft(noise(dur), 1800, 2) * np.exp(-t * 170) * 0.55 + np.sin(2 * np.pi * 220 * t) * np.exp(-t * 70) * 0.45
+def air(dur=0.5, up=True, level=0.5, fc0=500, fc1=6500):
+    n = highpass_fft(noise(dur), 250, 2)
+    # a smooth sweep: crossfade through three low-pass versions
+    a, b, c = lowpass_fft(n, fc0, 2), lowpass_fft(n, (fc0 * fc1) ** 0.5, 2), lowpass_fft(n, fc1, 2)
+    t = np.clip(t_of(dur) / dur, 0, 1); k = t if up else 1 - t
+    y = np.where(k < 0.5, a * (1 - 2 * k) + b * (2 * k), b * (2 - 2 * k) + c * (2 * k - 1))
+    return y * np.sin(np.pi * t) ** 1.5 * level * 0.45
+def bloom(dur=0.9, f=330):
+    """A soft swell for something appearing: air plus a faint rising tone."""
+    t = t_of(dur); tone = np.sin(2 * np.pi * np.cumsum(f * (1 + 0.5 * t / dur)) / SR) * 0.1
+    return (air(dur, True, 0.35, 300, 3500) + tone * np.sin(np.pi * t / dur) ** 2)
+def ping(f=1760, dur=0.9): return bell(f, dur) * 0.5
+def power_down(dur=0.7):
+    t = t_of(dur); tone = np.sin(2 * np.pi * np.cumsum(260 * np.exp(-t * 5.5) + 38) / SR) * np.exp(-t * 3.2) * 0.7
+    return tone + air(dur, False, 0.45, 300, 4500)
+def sub_hit(dur=0.9):
+    t = t_of(dur); return np.sin(2 * np.pi * np.cumsum(55 + 85 * np.exp(-t * 18)) / SR) * np.exp(-t * 3.6) * 0.9
+def riser(dur=0.6):
+    t = t_of(dur); y = air(dur, True, 0.9, 400, 9000) * (t / dur) ** 1.3 + np.sin(2 * np.pi * np.cumsum(180 + 1500 * (t / dur) ** 2) / SR) * 0.1 * (t / dur) ** 1.4
+    return y
 def sfx_pump(dur=0.8):
-    """An espresso pump: a low buzzing hum with a little wobble, fading in and out."""
     t = t_of(dur); y = (np.sin(2 * np.pi * 95 * t) + 0.5 * np.sin(2 * np.pi * 190 * t) + 0.25 * np.sin(2 * np.pi * 285 * t)) * (1 + 0.15 * np.sin(2 * np.pi * 23 * t))
-    return y * np.clip(t / 0.06, 0, 1) * np.clip((dur - t) / 0.12, 0, 1) * 0.22
+    return y * np.clip(t / 0.06, 0, 1) * np.clip((dur - t) / 0.12, 0, 1) * 0.2
 def sfx_pour(dur=0.9):
-    """Coffee falling into a cup: a thin stream whose pitch climbs as the cup fills, with small bubbles."""
-    t = t_of(dur); stream = lp_sweep(hp(noise(dur), 0.9), 1800, 4200) * 0.35
-    fl = 500 + 1500 * (t / dur) ** 1.3
-    tone = np.sin(2 * np.pi * np.cumsum(fl) / SR) * 0.07 * (1 + np.sin(2 * np.pi * 31 * t))
+    t = t_of(dur); stream = lowpass_fft(highpass_fft(noise(dur), 1500, 2), 4200, 2) * 0.35
+    tone = np.sin(2 * np.pi * np.cumsum(500 + 1500 * (t / dur) ** 1.3) / SR) * 0.06 * (1 + np.sin(2 * np.pi * 31 * t))
     b = np.zeros_like(t)
     for _ in range(int(dur * 14)):
         at = rng.uniform(0, dur - 0.08); f0 = rng.uniform(600, 1700); k = int(at * SR); tt = t_of(0.07)
-        b[k:k + len(tt)] += np.sin(2 * np.pi * f0 * (1 + 4 * tt) * tt) * np.exp(-tt * 55) * 0.14
+        b[k:k + len(tt)] += np.sin(2 * np.pi * f0 * (1 + 4 * tt) * tt) * np.exp(-tt * 55) * 0.12
     return (stream + tone + b) * np.clip(t / 0.05, 0, 1) * np.clip((dur - t) / 0.2, 0, 1)
-def sfx_steam(dur=2.2): t = t_of(dur); return hp(noise(dur), 0.97) * np.clip(t / 0.3, 0, 1) * np.clip((dur - t) / 0.8, 0, 1) * 0.07
+def sfx_clink(dur=0.4):
+    t = t_of(dur); return (np.sin(2 * np.pi * 3520 * t) * np.exp(-t * 14) + 0.6 * np.sin(2 * np.pi * 5230 * t) * np.exp(-t * 20) + 0.3 * np.sin(2 * np.pi * 7050 * t) * np.exp(-t * 28)) * 0.4
+def sfx_steam(dur=2.2): t = t_of(dur); return highpass_fft(noise(dur), 4000, 2) * np.clip(t / 0.3, 0, 1) * np.clip((dur - t) / 0.8, 0, 1) * 0.07
 def sfx_sip(dur=0.7):
-    """A small slurp: a bubbly sweep, then a soft swallow."""
-    t = t_of(dur); sl = lp_sweep(hp(noise(0.45), 0.9), 900, 2600) * np.sin(np.pi * np.clip(t_of(0.45) / 0.45, 0, 1)) * 0.28
-    out = np.zeros(len(t)); out[: len(sl)] += sl
+    t = t_of(dur); n = lowpass_fft(highpass_fft(noise(0.45), 700, 2), 2600, 2) * np.sin(np.pi * np.clip(t_of(0.45) / 0.45, 0, 1)) * 0.3
+    out = np.zeros(len(t)); out[: len(n)] += n
     k = int(0.52 * SR); tt = t_of(0.14); out[k:k + len(tt)] += np.sin(2 * np.pi * np.cumsum(180 - 90 * tt / 0.14) / SR) * np.exp(-tt * 22) * 0.4
     return out
 
 # ---------------------------------------------------------------- sound effects, placed from the timeline
 A, B, C, D, E = TL["A"], TL["B"], TL["C"], TL["D"], TL["E"]
 sfx = np.zeros((2, N))
-add(sfx, A["logo"], sfx_pop(780), 0.8); add(sfx, A["logo"] + 0.02, sfx_twinkle(2637, 0.6), 0.4)
-for i, ts in enumerate(A["h1"]): add(sfx, ts, sfx_pop(420 + 60 * i), 0.5, -0.2)
-for i, ts in enumerate(A["h2"]): add(sfx, ts, sfx_pop(500 + 55 * i), 0.5, 0.2)
-add(sfx, A["swirl"], sfx_whoosh(0.7, True, 0.3), 0.7, -0.5); add(sfx, A["spark"], sfx_twinkle(2349, 0.8), 0.6, -0.4)
-add(sfx, A["sub1"], sfx_tick(), 0.7); add(sfx, A["sub2"], sfx_tick(), 0.7); add(sfx, A["arrow"], sfx_whoosh(0.4, False, 0.3), 0.7, 0.5)
-for i, (ts, f) in enumerate(zip(A["slimes"], [196, 247, 294, 220])): add(sfx, ts, sfx_boing(f), 0.7, [-0.5, -0.2, 0.5, 0.0][i])
-add(sfx, A["card"], sfx_whoosh(0.35, True, 0.45), 0.8); add(sfx, A["card"] + 0.3, bell(1319, 1.0), 0.4)
-add(sfx, A["photo"], sfx_pop(900), 0.6); add(sfx, A["ticks"], sfx_twinkle(3136, 0.7), 0.5)
-add(sfx, A["pill"], sfx_pop(360), 0.8); add(sfx, A["pill"] + 0.05, bell(1047, 0.8), 0.3)
+add(sfx, 0.02, bloom(1.0, 260), 0.5); add(sfx, A["logo"] + 0.0, ping(1568, 1.2), 0.3)
+for i, ts in enumerate(A["h1"] + A["h2"]): add(sfx, ts + 0.02, ui_tap(1300 + 90 * i), 0.38, -0.2 if i % 2 else 0.2)
+add(sfx, A["swirl"] + 0.0, air(0.6, True, 0.25), 0.7, -0.3)
+for i, ts in enumerate(A["slimes"]): add(sfx, ts, bloom(0.6, 220 + 40 * i), 0.6, [-0.5, -0.2, 0.5, 0.0][i])
+add(sfx, A["sub1"], ui_tap(1900), 0.35); add(sfx, A["sub2"], ui_tap(2100), 0.3)
+add(sfx, A["card"], air(0.4, True, 0.4), 0.7); add(sfx, A["card"] + 0.25, ping(1318, 1.0), 0.4)
+add(sfx, A["photo"], ui_tap(1700), 0.4); add(sfx, A["pill"], ui_click(), 0.6); add(sfx, A["pill"] + 0.02, sub_hit(0.6), 0.35)
 # he asks for the music to stop
-add(sfx, B["in"], sfx_scratch(), 0.9); add(sfx, B["in"] + 0.03, sfx_whoosh(0.5, False, 0.6), 0.7)
+add(sfx, B["in"] - 0.05, power_down(), 0.9)
 # the coffee: his machine's own sounds, then the pump and the pour
-add(sfx, B["machine"], sfx_whoosh(0.4, True, 0.45), 0.7, -0.4); add(sfx, B["machine"] + 0.22, PF_KNOCK_A, 0.9, -0.4)
-add(sfx, B["go"], sfx_whoosh(0.35, True, 0.3), 0.6, -0.2)
+add(sfx, B["machine"], air(0.4, True, 0.4), 0.6, -0.4); add(sfx, B["machine"] + 0.22, PF_KNOCK_A, 0.9, -0.4)
+add(sfx, B["go"], air(0.35, True, 0.2), 0.5, -0.2)
 add(sfx, B["lock"], PF_KNOCK_B, 0.9, -0.4)
 add(sfx, B["brew"] - 0.1, PF_HISS, 0.8, -0.4)
 add(sfx, B["brew"] + 0.05, sfx_pump(0.95), 0.9, -0.4); add(sfx, B["brew"] + 0.2, sfx_pour(0.85), 0.95, -0.3); add(sfx, B["brew"] + 0.3, sfx_steam(1.6), 0.9, -0.3)
-add(sfx, B["grab"], sfx_clink(), 0.8, -0.2); add(sfx, B["back"], sfx_whoosh(0.4, True, 0.25), 0.6)
-add(sfx, B["sip"], sfx_sip(), 0.9); add(sfx, B["sip"] + 0.55, sfx_twinkle(2093, 0.8), 0.5)
-add(sfx, B["lower"], sfx_clink(), 0.5)
-add(sfx, B["musicBack"] - 0.55, sfx_riser(0.55), 0.9); add(sfx, B["musicBack"], sfx_boom(), 0.9)
+add(sfx, B["grab"], sfx_clink(), 0.7, -0.2); add(sfx, B["back"], air(0.4, True, 0.2), 0.5)
+add(sfx, B["sip"], sfx_sip(), 0.9); add(sfx, B["sip"] + 0.55, ping(2093, 0.9), 0.25)
+add(sfx, B["lower"], sfx_clink(), 0.4)
+add(sfx, B["musicBack"] - 0.6, riser(0.6), 0.9); add(sfx, B["musicBack"], sub_hit(), 0.9)
 # the app, the mouse
-add(sfx, C["in"], sfx_whoosh(0.5, True, 0.5), 0.7); add(sfx, C["cursorStart"] + 0.1, sfx_whoosh(0.9, True, 0.12), 0.6)
-add(sfx, C["tabClick"], sfx_click(), 1.0); add(sfx, C["tabClick"] + 0.05, sfx_swish(), 0.55); add(sfx, C["ring"], sfx_twinkle(2093, 0.8), 0.5)
-add(sfx, C["cardMove"] + 0.1, sfx_whoosh(0.7, True, 0.12), 0.6)
-add(sfx, C["cardClick"], sfx_click(), 1.0); add(sfx, C["cardClick"] + 0.08, sfx_pop(640), 0.8); add(sfx, C["zoom"], sfx_whoosh(0.9, True, 0.45), 0.7)
-add(sfx, C["zoom"] + 0.3, bell(1568, 1.0), 0.3); add(sfx, C["out"], sfx_whoosh(0.4, True, 0.55), 0.7)
-add(sfx, D["in"], sfx_pop(520), 0.8); add(sfx, D["inv2"], sfx_pop(600), 0.7); add(sfx, D["apply"], sfx_pop(440), 0.8)
-add(sfx, D["url"], sfx_tick(), 0.7); add(sfx, D["out"], sfx_whoosh(0.4, True, 0.55), 0.7)
-add(sfx, E["in"], sfx_pop(780), 0.8); add(sfx, E["in"] + 0.02, sfx_twinkle(2637, 0.7), 0.45)
-add(sfx, E["fin1"], sfx_pop(480), 0.8); add(sfx, E["fin2"], sfx_pop(540), 0.8); add(sfx, E["cta"], sfx_pop(320), 0.9)
-for k, m in enumerate([72, 76, 79, 84]): add(sfx, E["cta"] + 0.08 + k * 0.09, bell(note(m), 1.8), 0.35)
-add(sfx, E["site"], sfx_tick(), 0.7)
+add(sfx, C["in"], air(0.5, True, 0.4), 0.7); add(sfx, C["cursorStart"] + 0.1, air(0.9, True, 0.1, 800, 4000), 0.6)
+add(sfx, C["tabClick"], ui_click(), 1.0); add(sfx, C["tabClick"] + 0.05, air(0.25, True, 0.25), 0.5); add(sfx, C["ring"], ping(2093, 0.8), 0.3)
+add(sfx, C["cardMove"] + 0.1, air(0.7, True, 0.1, 800, 4000), 0.6)
+add(sfx, C["cardClick"], ui_click(), 1.0); add(sfx, C["cardClick"] + 0.06, bloom(0.5, 400), 0.7); add(sfx, C["zoom"], air(0.9, True, 0.4), 0.7)
+add(sfx, C["zoom"] + 0.3, ping(1568, 1.0), 0.3); add(sfx, C["out"], air(0.4, True, 0.4), 0.6)
+add(sfx, D["in"], bloom(0.6, 300), 0.6); add(sfx, D["inv2"], ui_tap(1500), 0.4); add(sfx, D["apply"], ui_click(), 0.6)
+add(sfx, D["url"], ui_tap(2000), 0.35); add(sfx, D["out"], air(0.4, True, 0.4), 0.6)
+add(sfx, E["in"], ping(1568, 1.2), 0.3); add(sfx, E["fin1"], ui_tap(1400), 0.45); add(sfx, E["fin2"], ui_tap(1600), 0.45)
+add(sfx, E["cta"], ui_click(), 0.7); add(sfx, E["cta"] + 0.02, sub_hit(0.7), 0.45)
+add(sfx, E["site"], ui_tap(2000), 0.35)
 
-# ---------------------------------------------------------------- music: marimba, bass, light drums, 104 BPM, C - Am - F - G
-BPM = 104.0; beat = 60.0 / BPM; bar = 4 * beat
-chords = [(48, [60, 64, 67]), (45, [57, 60, 64]), (41, [57, 60, 65]), (43, [55, 59, 62])]
-motif = [[(0, 79), (1.5, 76), (2, 79), (3, 81)], [(0, 81), (1.5, 79), (2, 76), (3, 72)], [(0, 77), (1.5, 81), (2, 84), (3, 81)], [(0, 79), (1, 83), (2, 79), (3.5, 74)]]
-music = np.zeros((2, N))
-def play(t_from, t_to, soft_from=None, soft_to=None, tune=True):
+# ---------------------------------------------------------------- music: warm electronic pad, soft pulse, pluck arpeggio, light drums, 100 BPM
+BPM = 100.0; beat = 60.0 / BPM; bar = 4 * beat
+CH = [  # Am9, Fmaj7, Cmaj7, G6: pad tones, bass root, arpeggio tones
+    ([57, 60, 64, 71], 33, [69, 72, 76, 79]),
+    ([53, 57, 60, 64], 29, [65, 69, 72, 76]),
+    ([55, 59, 64, 67], 36, [67, 71, 76, 79]),
+    ([55, 59, 62, 64], 31, [67, 71, 74, 76]),
+]
+padbus = np.zeros((2, N)); plbus = np.zeros((2, N)); drums = np.zeros((2, N)); basbus = np.zeros((2, N))
+def play(t_from, t_to, arp_level=1.0, drums_from=None, intro=False):
     nb = int((t_to - t_from) / bar) + 1
     for b in range(nb):
-        t0 = t_from + b * bar; root, tones = chords[b % 4]
-        soft = 0.55 if (soft_from is not None and soft_from <= t0 < soft_to) else 1.0
-        for s in range(8):
-            tt = t0 + s * beat / 2
-            if tt >= t_to: break
-            m = tones[[0, 1, 2, 1, 0, 1, 2, 1][s]] + (12 if s % 4 == 2 else 0)
-            add(music, tt, marimba(note(m), 0.9), 0.20 * soft, -0.3 if s % 2 else 0.3)
-            add(music, tt, shaker(acc=1.0 if s % 2 else 0.5), 0.5 * soft, 0.4 if s % 2 else -0.4)
-        if tune:
-            for bt, m in motif[b % 4]:
-                if t0 + bt * beat < t_to and (b >= 1 or t_from > 1): add(music, t0 + bt * beat, marimba(note(m), 1.1), 0.24 * soft, 0.2)
-        for bt in (0, 2.5):
-            if t0 + bt * beat < t_to: add(music, t0 + bt * beat, bass(note(root), 0.6), 0.5)
-        for bt in (0, 2):
-            if t0 + bt * beat < t_to: add(music, t0 + bt * beat, kick(), 0.55 * soft)
-        for bt in (1, 3):
-            if t0 + bt * beat < t_to: add(music, t0 + bt * beat, clap(), 0.4 * soft)
-play(0.0, B["in"])                               # the poster
+        t0 = t_from + b * bar
+        if t0 >= t_to: break
+        pad_t, root, arp = CH[b % 4]
+        d = min(bar + 0.9, t_to - t0 + 0.9)
+        add(padbus, t0, pad_chord(pad_t, d, 2400), 0.7 if not intro else 0.65, 0.0)
+        for bt, ln in ((0, 0.9), (2.5, 0.5)):
+            if t0 + bt * beat < t_to: add(basbus, t0 + bt * beat, sub(note(root + 12), ln), 0.26)
+        # arpeggio in 16ths with a gentle accent pattern
+        pat = [0, 2, 1, 3, 2, 1, 3, 2, 0, 2, 1, 3, 2, 3, 1, 2]
+        vel = [1, .45, .6, .45, .8, .45, .6, .45, 1, .45, .6, .45, .8, .45, .6, .5]
+        for s in range(16):
+            tt = t0 + s * beat / 4
+            if tt >= t_to or tt < (t_from + (0.4 if intro else 0)): continue
+            add(plbus, tt, pluck(note(arp[pat[s]]), 0.45), 0.5 * vel[s] * arp_level, -0.35 if s % 2 else 0.35)
+        if drums_from is not None and t0 >= drums_from - 0.01 or (drums_from is None):
+            for bt in (0, 2):
+                if t0 + bt * beat < t_to: add(drums, t0 + bt * beat, kick(), 0.3)
+            for bt in (1, 3):
+                if t0 + bt * beat < t_to: add(drums, t0 + bt * beat, rim(), 0.8)
+            for s in range(16):
+                tt = t0 + s * beat / 4
+                if tt < t_to: add(drums, tt, hat([1, .35, .6, .35][s % 4]), 1.2, 0.3 if s % 2 else -0.3)
+        elif t0 + 0.01 >= t_from:
+            pass
+play(0.0, B["in"], 1.0, drums_from=1.2, intro=True)                  # the opening: pad swell, pluck, drums join after a beat
 END_HIT = V["cut"] + V["o2"] + (V["tail"] - V["cut"]) + 0.2
-play(B["musicBack"], END_HIT, C["in"], C["out"])  # after his sentence
-# cut cleanly where the music has to stop or end (a short fade so there is no click)
+play(B["musicBack"], END_HIT, 1.0)
+# the mid part (the app) steps back a little
+def duck_region(buf, a, b, g=0.55):
+    i, j = int(a * SR), int(b * SR); buf[:, i:j] *= g
+for bus in (plbus, drums): duck_region(bus, C["in"], C["out"], 0.55)
+music = padbus * 0.55 + plbus * 0.9 + basbus * 0.9 + drums * 0.8
+music = pingpong(music * 1.0, beat * 0.75, 0.38, 0.5)
+music = reverb_stereo(music, 1.8, 0.2)
+# cut where the music has to stop or end (a short fade so there is no click)
 def stop_at(buf, t, fade=0.05, until=None):
     i = int(t * SR); n = int(fade * SR); j = N if until is None else int(until * SR)
     buf[:, i:i + n] *= np.linspace(1, 0, n); buf[:, i + n:j] = 0
-stop_at(music, B["in"], 0.12, B["musicBack"] - 0.02)
-stop_at(music, END_HIT - 0.0, 0.04)
-for m in (48, 60, 64, 67, 72): add(music, END_HIT, marimba(note(m), 2.6), 0.28)
-add(music, END_HIT, bell(note(84), 2.6), 0.25); add(music, END_HIT, kick(), 0.5)
+stop_at(music, B["in"], 0.35, B["musicBack"] - 0.02)
+stop_at(music, END_HIT, 0.05)
+# the closing chord, left to ring
+fin = np.zeros((2, N))
+add(fin, END_HIT, pad_chord([55, 59, 64, 67, 71], 3.0, 2400), 1.0); add(fin, END_HIT, sub(note(36), 2.2), 0.35); add(fin, END_HIT, kick(), 0.3)
+for k, m in enumerate([79, 83, 86, 91]): add(fin, END_HIT + 0.02 + k * 0.08, pluck(note(m), 1.6), 0.28)
+fin = reverb_stereo(fin, 2.4, 0.3)
+music = music + fin * 0.55
 
 # ---------------------------------------------------------------- mix: the music steps back under every voice
 def smooth_env(x, win=0.18):
