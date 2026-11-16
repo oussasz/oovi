@@ -8,6 +8,8 @@
 import { pool } from "./db";
 import { planForPrice } from "./billing";
 import { USAGE_COUNT_KEYS, USAGE_TOTAL_KEYS } from "./telemetry";
+import { ensureExpertTable } from "./expert-db";
+import { LANGUAGES as EXPERT_LANGUAGES } from "./expert-form";
 import { assess, getSignals, type Signals } from "./user-signals";
 import { CALL, FACES, HEARD, IMPROVE, LANGUAGES, MOBILE, PAY, PAY_METHODS, ROLES, SYSTEMS, TOOLS, USES, labelOf, labelsOf, readAnswers } from "./pilot-form";
 
@@ -295,6 +297,25 @@ async function pilot(days: number | null): Promise<Table> {
   );
 }
 
+/** Applications to become an expert. The drawn signature is not in the file (it is a picture, see it in the console). */
+async function expertApplications(days: number | null): Promise<Table> {
+  await ensureExpertTable();
+  const { rows } = await pool.query(
+    `SELECT id, created_at, status, name, email, profile_url, field, bio, languages, known_as, signed_name, (signature_png IS NOT NULL) AS drawn,
+            consent_version, consent_text_hash, reviewed_at, reviewed_by, review_note
+       FROM expert_applications WHERE ${WHEN("created_at")} ORDER BY created_at DESC LIMIT ${ROW_LIMIT + 1}`,
+    [days],
+  );
+  return table(
+    ["id", "received_utc", "status", "name", "email", "profile_link", "expert_in", "bio", "languages", "known_as", "typed_signature", "drawn_signature", "consent_version", "consent_text_sha256", "reviewed_utc", "reviewed_by", "your_note"],
+    rows.map((r) => [
+      num(r.id), iso(r.created_at), r.status, r.name, r.email, r.profile_url, r.field, r.bio,
+      (r.languages as string[]).map((l) => EXPERT_LANGUAGES.find((x) => x.value === l)?.label ?? l).join(", "),
+      r.known_as, r.signed_name, !!r.drawn, r.consent_version, r.consent_text_hash, iso(r.reviewed_at), r.reviewed_by, r.review_note,
+    ]),
+  );
+}
+
 export const REPORTS: ReportDef[] = [
   { key: "payments", group: "Money", title: "Payments", period: true, build: payments,
     description: "Every payment Paddle reported: what the customer paid, tax, Paddle's fee and what you earn, with the plan and whether it was refunded." },
@@ -320,4 +341,6 @@ export const REPORTS: ReportDef[] = [
     description: "Every problem and idea people sent, with who, version and system, and your own notes." },
   { key: "pilot", group: "People", title: "Pilot requests", period: true, build: pilot,
     description: "Every pilot request: who asked, what they will use oovi for, and what you decided." },
+  { key: "expert-applications", group: "People", title: "Expert applications", period: true, build: expertApplications,
+    description: "Everyone who asked to be added as an expert: their details, which consent text they agreed to, and what you decided. The drawn signature is not included." },
 ];

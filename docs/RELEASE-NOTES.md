@@ -17,6 +17,7 @@ A point is `**Short title.** One sentence.` Plain words, a person's point of vie
 - Install or update instructions (the page has one box for those), code-signing warnings, download lists.
 - Anyone's feedback, names, accounts or numbers from real users.
 - Links to the code host. Promises about the future ("soon", "next week").
+- New Marketplace items (a new expert, setup, connector or skill): they are added from the dashboard without an app update, so they are not release news. A change to how the Marketplace itself works is.
 - Tiny internal changes nobody would notice: leave them out, or hide the version.
 - Two versions with the same text: show the newest and hide the other.
 

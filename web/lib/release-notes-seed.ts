@@ -45,20 +45,17 @@ export const SEED_NOTES: NotesMap = {
       "**A new bot pointer.** A soft rounded arrow in the same colors as the edges, so you can see where the bot is working.",
     ],
   }),
-  "0.10.9": n("Details before you add, and a startup coach", {
+  "0.10.9": n("See the details before you add", {
     new: [
       "**Marketplace details.** Click any bot, team, connector or skill to see everything about it before adding it: its bots, abilities, instructions, skills and the fields it needs.",
-      "**New expert: Abdelaziz Benkirat.** A funny, cool and brutally honest startup coach who helps you turn an idea into a startup people pay for.",
     ],
     improved: ["**Glow on every screen.** When a bot uses your computer, the screen edges glow with soft, moving waves of color."],
   }),
-  "0.10.8": n("More connectors, a skills library and new setups", {
+  "0.10.8": n("Several screens, connector details and Setups", {
     new: [
       "**Several screens.** The bot works on the screen of the window it uses, sees it clearly, and can switch screens.",
       "**Connector details.** Each connector shows what it does, how it connects and its tools, and has a Disconnect button.",
-      "**New one-click connectors:** Apollo.io, Calendly, Airwallex, WordPress.com, Mermaid Chart and Jam.",
-      "**A skills library.** 326 ready-made skills from open-source collections, each with its source and licence.",
-      "**Setups.** “Plugins” are now “Setups”, with 11 new expert bots (SEO, copywriter, ads, email marketing, finance, contracts, recruiter, product, data, tutor, translator) and 5 new teams (marketing agency, startup studio, online shop, study group, website team).",
+      "**Setups.** “Plugins” are now called “Setups” in the app.",
     ],
     improved: [
       "**A glow while a bot is in control,** in oovi’s colors on every screen.",
@@ -73,7 +70,6 @@ export const SEED_NOTES: NotesMap = {
       "**Email confirmation at sign-up.** New accounts confirm their email with a 6-digit code while signing up.",
       "**Send a screenshot (Windows).** A bot can send you a real picture of your screen.",
       "**Choose where bots save files:** Settings › Safety › Files on this computer.",
-      "**New connector:** Trello.",
     ],
     improved: [
       "**Typing on your computer (Windows)** works in every language and keyboard: Arabic, French, English and emoji.",

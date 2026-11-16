@@ -11,6 +11,7 @@ const LINKS = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/ai", label: "theOovi" },
   { href: "/admin/pilot", label: "Pilot" },
+  { href: "/admin/experts", label: "Experts" },
   { href: "/admin/email", label: "Email" },
   { href: "/admin/feedback", label: "Feedback" },
   { href: "/admin/problems", label: "Problems" },

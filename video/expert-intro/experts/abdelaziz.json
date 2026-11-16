@@ -1,0 +1,37 @@
+{
+  "name": "Abdelaziz Benkirat",
+  "nameLines": [
+    "Abdelaziz",
+    "Benkirat"
+  ],
+  "role": "Startup coach & critic",
+  "photo": "assets/abdelaziz-photo-from-poster.png",
+  "shotTitle": "Find him in the Marketplace",
+  "expertInvite": [
+    "Are you an expert?",
+    "Add your own assistant to oovi."
+  ],
+  "applyButton": "Apply to join",
+  "applyUrl": "oovi.conuron.com/experts/apply",
+  "finalTitle": [
+    "Try Abdelaziz",
+    "on oovi."
+  ],
+  "cta": "Download for Mac + Windows",
+  "site": "oovi.conuron.com",
+  "screens": [
+    "assets/app-marketplace.png",
+    "assets/app-setups.png",
+    "assets/app-coach.png"
+  ],
+  "captions": [
+    "Hold on, let me get my coffee,",
+    "your startup needs fixing."
+  ],
+  "look": {
+    "hero": "#FAD56F",
+    "other": "#D9D4F8",
+    "glasses": "#111",
+    "hands": "#FCE190"
+  }
+}
