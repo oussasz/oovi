@@ -102,14 +102,14 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
         <div className="adm-action" style={{ marginTop: 16 }}>
           <h3>Correct the email address</h3>
           <p className="adm-sub">
-            For an address typed wrong at sign-up (an underscore instead of a dot, a missing letter). The new address gets a confirmation email and stays “not confirmed” until the person confirms it. Copy it from a message they sent you.
+            For an address typed wrong at sign-up (an underscore instead of a dot, a missing letter). The account stays exactly as it is, confirmed or not. The person gets one short message at the new address saying the address was updated from the old one to the new one, and nothing else. Copy the new address from a message they sent you.
           </p>
           <ActionForm
             action={correctEmailAction}
-            submitLabel="Change email and send confirmation"
+            submitLabel="Change email and send the notice"
             pendingLabel="Saving…"
             submitClassName="btn btn-light btn-sm"
-            confirm={`Change ${user.email} to the new address? They must confirm it by email. Check that it is typed exactly right.`}
+            confirm={`Change ${user.email} to the new address? They get one short message there saying it was updated. Check that it is typed exactly right.`}
           >
             <input type="hidden" name="userId" value={user.id} />
             <div className="field">

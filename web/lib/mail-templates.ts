@@ -229,6 +229,24 @@ export function pilotApproved(to: string, name: string, credits: number, days: n
   );
 }
 
+/** One short notice after the team corrected the address of an account (Admin > Users > Correct the email address). Nothing else is asked of the person. */
+export function emailChanged(to: string, name: string, from: string, now: string): Mail {
+  return render(
+    {
+      preheader: "The email address of your oovi account was updated.",
+      title: "Your email address was updated",
+      hello: `Hi ${firstName(name)},`,
+      blocks: [
+        { kind: "p", text: `The email address of your oovi account was updated:` },
+        { kind: "p", text: `<b>${esc(from)}</b><br>→ <b>${esc(now)}</b>` },
+        { kind: "p", text: "Sign in with the new address from now on. Everything else in your account stays the same." },
+      ],
+    },
+    to,
+    "Your oovi email address was updated",
+  );
+}
+
 /** Asks someone on an older app to update (Admin > Users > "Ask to update"). Not sent automatically. */
 export function updateAsk(to: string, name: string, current: string, latest: string, platform: string | null): Mail {
   const store = "Installed from the Microsoft Store? It updates there: open the Store, then Library, then Get updates.";
@@ -333,6 +351,7 @@ export function previews(to: string): Record<string, Mail> {
     verify: verifyEmail(to, "Sara Benali", `${base}/api/auth/verify-email?token=example`),
     reset: resetPassword(to, "Sara Benali", `${base}/reset-password?token=example`),
     changed: passwordChanged(to, "Sara Benali"),
+    emailChanged: emailChanged(to, "Sara Benali", "sara_benali@gmail.com", "sara.benali@gmail.com"),
     pilot: pilotApproved(to, "Sara Benali", 10_000, 60, 5_000),
     invite: pilotInvite(to, "Sara Benali"),
     update: updateAsk(to, "Sara Benali", "0.10.6", "0.10.13", "win32"),
