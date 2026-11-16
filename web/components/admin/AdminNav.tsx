@@ -13,6 +13,7 @@ const LINKS = [
   { href: "/admin/pilot", label: "Pilot" },
   { href: "/admin/experts", label: "Experts" },
   { href: "/admin/email", label: "Email" },
+  { href: "/admin/announcements", label: "Announcements" },
   { href: "/admin/feedback", label: "Feedback" },
   { href: "/admin/problems", label: "Problems" },
   { href: "/admin/downloads", label: "Downloads" },

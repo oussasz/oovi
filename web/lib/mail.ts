@@ -107,7 +107,7 @@ export async function saveSmtp(cfg: SmtpConfig, password: string | null | undefi
   g.__ooviSmtp = undefined;
 }
 
-export type Mail = { to: string; subject: string; html: string; text: string };
+export type Mail = { to: string; subject: string; html: string; text: string; /** e.g. List-Unsubscribe on news emails. */ headers?: Record<string, string> };
 
 /** Sends one email. Throws a plain-English error (never containing the password). */
 export async function sendMail(m: Mail): Promise<void> {
@@ -132,6 +132,7 @@ export async function sendMail(m: Mail): Promise<void> {
       subject: m.subject.replace(/[\r\n]+/g, " ").slice(0, 200),
       html: m.html,
       text: m.text,
+      ...(m.headers ? { headers: m.headers } : {}),
       disableFileAccess: true,
       disableUrlAccess: true,
     });

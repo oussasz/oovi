@@ -961,6 +961,7 @@ const en = {
   "update.now": "Update now",
   "update.download": "Download",
   "update.whatsNew": "What's new",
+  "ann.open": "Open",
   "update.later": "Later",
   "update.downloading": "Downloading oovi {version}… {progress}%",
   "update.ready": "oovi {version} is ready. Restart to finish updating.",

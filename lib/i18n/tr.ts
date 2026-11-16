@@ -945,6 +945,7 @@ const tr: Dict = {
   "update.now": "Şimdi güncelle",
   "update.download": "İndir",
   "update.whatsNew": "Yenilikler",
+  "ann.open": "Aç",
   "update.later": "Sonra",
   "update.downloading": "oovi {version} indiriliyor… %{progress}",
   "update.ready": "oovi {version} hazır. Güncellemeyi bitirmek için yeniden başlat.",

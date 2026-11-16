@@ -11,6 +11,8 @@ import { ResendVerification } from "@/components/ResendVerification";
 import { AccountClient } from "./AccountClient";
 import { CreditsCard } from "./CreditsCard";
 import { BillingCard } from "./BillingCard";
+import { NewsCard } from "./NewsCard";
+import { newsOptedOut } from "@/lib/announcements";
 import { billingFor } from "@/lib/billing";
 
 export const metadata: Metadata = { title: "Your account" };
@@ -38,6 +40,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
     (await smtpStatus()
       .then((s) => s.ready)
       .catch(() => false));
+  const newsOn = !(await newsOptedOut(session.user.id).catch(() => false));
   return (
     <>
       <SiteNav />
@@ -52,6 +55,7 @@ export default async function AccountPage({ searchParams }: { searchParams: Prom
                 status={billing ? billing.status : undefined}
                 notice={billingNotice === "none" || billingNotice === "unavailable" ? billingNotice : undefined}
               />
+              <NewsCard on={newsOn} />
             </>
           }
           notice={

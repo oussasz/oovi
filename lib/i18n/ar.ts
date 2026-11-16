@@ -954,6 +954,7 @@ const ar: Dict = {
   "update.now": "حدّث الآن",
   "update.download": "تنزيل",
   "update.whatsNew": "ما الجديد",
+  "ann.open": "فتح",
   "update.later": "لاحقًا",
   "update.downloading": "جارٍ تنزيل oovi {version}… {progress}%",
   "update.ready": "oovi {version} جاهز. أعد التشغيل لإكمال التحديث.",

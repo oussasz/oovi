@@ -317,9 +317,9 @@ a.tag { text-decoration: none; }
 .face-stack > span { position: absolute; }
 
 /* ---------- app shell ---------- */
-.app { display: grid; grid-template-columns: 284px minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px)); }
+.app { display: grid; grid-template-columns: 284px minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px) - var(--ann-h, 0px)); }
 /* position: relative: anything absolutely positioned in a page scrolls with the page, never the window. */
-.main { position: relative; min-width: 0; height: calc(100dvh - var(--bar-h, 0px)); overflow-y: auto; }
+.main { position: relative; min-width: 0; height: calc(100dvh - var(--bar-h, 0px) - var(--ann-h, 0px)); overflow-y: auto; }
 .mobile-bar, .scrim { display: none; }
 
 .sidebar { display: flex; flex-direction: column; background: var(--side); border-right: 1px solid var(--border); min-height: 0; }
@@ -396,7 +396,7 @@ a.tag { text-decoration: none; }
 .how b { color: var(--text); }
 
 /* ---------- chat ---------- */
-.chatview { display: grid; grid-template-columns: minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px)); }
+.chatview { display: grid; grid-template-columns: minmax(0, 1fr); height: calc(100dvh - var(--bar-h, 0px) - var(--ann-h, 0px)); }
 .chatview.with-live { grid-template-columns: minmax(0, 1fr) 380px; }
 .chat-col { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .chat-head { position: relative; z-index: 20; display: flex; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--border); background: color-mix(in srgb, var(--bg) 85%, transparent); backdrop-filter: blur(8px); }
@@ -723,8 +723,8 @@ a.tag { text-decoration: none; }
   .app { grid-template-columns: 1fr; }
   .mobile-bar { display: flex; align-items: center; gap: 8px; height: 54px; padding: 0 10px; border-bottom: 1px solid var(--border); background: var(--side); position: sticky; top: 0; z-index: 30; }
   .brand-sm img { display: block; height: 26px; width: auto; }
-  .main { height: calc(100dvh - 54px - var(--bar-h, 0px)); }
-  .chatview { height: calc(100dvh - 54px - var(--bar-h, 0px)); }
+  .main { height: calc(100dvh - 54px - var(--bar-h, 0px) - var(--ann-h, 0px)); }
+  .chatview { height: calc(100dvh - 54px - var(--bar-h, 0px) - var(--ann-h, 0px)); }
   .sidebar { position: fixed; z-index: 50; top: 0; bottom: 0; left: 0; width: min(300px, 86vw); transform: translateX(-102%); transition: transform 0.2s; box-shadow: var(--shadow); }
   .sidebar.open { transform: none; }
   .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.3); }
@@ -1001,3 +1001,12 @@ a.tag { text-decoration: none; }
 .ready-ideas { width: 100%; display: grid; gap: 8px; margin-top: 6px; text-align: start; }
 .ready-ideas .ideas { display: grid; gap: 8px; }
 .ready-ideas .idea { text-align: start; }
+
+/* ---------- announcements from the oovi team (components/Announcements.tsx) ---------- */
+.ann-bar { background: color-mix(in srgb, var(--yellow, #fdda80) 35%, var(--soft)); }
+.ann-scrim { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 24px; background: rgba(20, 20, 20, 0.45); animation: ann-in 0.18s ease-out; }
+.ann-window { position: relative; width: min(640px, 100%); height: min(720px, calc(100dvh - 48px)); background: #fff; border-radius: 22px; overflow: hidden; box-shadow: 0 24px 70px rgba(0, 0, 0, 0.35); outline: none; }
+.ann-frame { width: 100%; height: 100%; border: 0; display: block; background: #fff; }
+.ann-close { position: absolute; top: 10px; inset-inline-end: 10px; z-index: 1; background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15); }
+@keyframes ann-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ann-scrim { animation: none; } }

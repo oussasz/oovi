@@ -945,6 +945,7 @@ const es: Dict = {
   "update.now": "Actualizar ahora",
   "update.download": "Descargar",
   "update.whatsNew": "Novedades",
+  "ann.open": "Abrir",
   "update.later": "Más tarde",
   "update.downloading": "Descargando oovi {version}… {progress} %",
   "update.ready": "oovi {version} está listo. Reinicia para terminar la actualización.",

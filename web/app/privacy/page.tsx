@@ -166,7 +166,12 @@ export default function PrivacyPage() {
         <li>to understand how oovi is used, using usage numbers and download counts;</li>
         <li>to run theOovi: check and charge credits, enforce daily limits, and prevent abuse;</li>
         <li>to review pilot requests and act on your feedback;</li>
-        <li>to contact you about important changes to the Service, your account, or these policies.</li>
+        <li>to contact you about important changes to the Service, your account, or these policies;</li>
+        <li>
+          to tell you about oovi news (a new expert, a new feature) in the App and by email. We note whether you saw
+          or closed a piece of news in the App, so it isn’t shown again. You can stop news emails at any time with the
+          link at the bottom of each one or on your account page; emails about your account still come.
+        </li>
       </ul>
       <p>
         We rely on the following legal bases where they apply: performing our contract with you (running your

@@ -232,6 +232,31 @@ await pool.query(`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+  -- Announcements (keep in sync with lib/announcements.ts ANN_DDL).
+  CREATE TABLE IF NOT EXISTS announcements (
+    id         BIGSERIAL PRIMARY KEY,
+    title      TEXT NOT NULL,
+    bar_text   TEXT NOT NULL DEFAULT '',
+    html       TEXT NOT NULL,
+    ch_email   BOOLEAN NOT NULL DEFAULT false,
+    ch_window  BOOLEAN NOT NULL DEFAULT true,
+    ch_bar     BOOLEAN NOT NULL DEFAULT false,
+    test_email TEXT NOT NULL DEFAULT '',
+    status     TEXT NOT NULL DEFAULT 'draft',
+    starts_at  TIMESTAMPTZ NULL,
+    ends_at    TIMESTAMPTZ NULL,
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS announcement_events (
+    announcement_id BIGINT NOT NULL REFERENCES announcements(id) ON DELETE CASCADE,
+    user_id         TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,
+    at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (announcement_id, user_id, kind)
+  );
+  ALTER TABLE "user" ADD COLUMN IF NOT EXISTS news_opt_out BOOLEAN NOT NULL DEFAULT false;
   -- Telegram relay (keep in sync with lib/telegram-relay.ts RELAY_DDL).
   CREATE TABLE IF NOT EXISTS telegram_relays (
     user_id      TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,

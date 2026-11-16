@@ -945,6 +945,7 @@ const fr: Dict = {
   "update.now": "Mettre à jour",
   "update.download": "Télécharger",
   "update.whatsNew": "Nouveautés",
+  "ann.open": "Ouvrir",
   "update.later": "Plus tard",
   "update.downloading": "Téléchargement d'oovi {version}… {progress} %",
   "update.ready": "oovi {version} est prêt. Redémarrez pour terminer la mise à jour.",

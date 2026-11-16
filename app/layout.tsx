@@ -4,6 +4,7 @@ import AccountGate from "@/components/AccountGate";
 import { I18nProvider } from "@/components/I18n";
 import Sidebar from "@/components/Sidebar";
 import { UpdateBanner } from "@/components/Updates";
+import { Announcements } from "@/components/Announcements";
 import "./globals.css";
 import "./styles/updates.css";
 import "./styles/attachments.css";
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <I18nProvider>
           <UpdateBanner />
+          <Announcements />
           <AccountGate>
             <div className="app">
               <Sidebar />
