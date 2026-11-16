@@ -64,7 +64,7 @@
         <g stroke="#111" stroke-width="7" stroke-linecap="round" id="tick-blue"><path d="M150 676 L166 706"/><path d="M182 664 L190 692"/></g>
       </g>
       <g id="s-yellow">
-        <circle cx="395" cy="835" r="108" fill="#FAD56F"/>
+        <circle id="other-dome" cx="395" cy="835" r="108" fill="#FAD56F"/>
         <g stroke="#111" stroke-width="8" stroke-linecap="round" fill="none" id="eyes-yellow"><path d="M352 790 Q364 778 378 792"/><path d="M406 784 L430 794 L406 806"/></g>
         <path id="curl-y" d="M372 718 C364 690 392 686 392 706 C392 722 372 712 386 700 M404 716 C398 692 424 688 424 706" stroke="#111" stroke-width="6" fill="none" stroke-linecap="round"/>
       </g>
@@ -75,17 +75,15 @@
         <g id="tick-pink" stroke="#111" stroke-width="7" stroke-linecap="round"><path d="M1004 722 L1018 740"/><path d="M1020 712 L1034 726"/></g>
       </g>
       <g id="s-purple">
-        <circle cx="660" cy="790" r="168" fill="#D9D4F8"/>
+        <circle id="hero-dome" cx="660" cy="790" r="168" fill="#D9D4F8"/>
         <ellipse cx="610" cy="690" rx="90" ry="40" fill="#fff" opacity=".28"/>
-        <g id="hair"><circle cx="505" cy="757" r="22" fill="#9d9cab"/><circle cx="511" cy="721" r="19" fill="#6d6c79"/><circle cx="535" cy="693" r="22" fill="#6d6c79"/><circle cx="557" cy="663" r="19" fill="#9d9cab"/><circle cx="591" cy="648" r="22" fill="#6d6c79"/><circle cx="623" cy="630" r="19" fill="#6d6c79"/><circle cx="660" cy="632" r="22" fill="#9d9cab"/><circle cx="697" cy="630" r="19" fill="#6d6c79"/><circle cx="729" cy="648" r="22" fill="#6d6c79"/><circle cx="763" cy="663" r="19" fill="#9d9cab"/><circle cx="785" cy="693" r="22" fill="#6d6c79"/><circle cx="809" cy="721" r="19" fill="#6d6c79"/><circle cx="815" cy="757" r="22" fill="#9d9cab"/><circle cx="519" cy="739" r="15" fill="#c2c1ce"/><circle cx="801" cy="739" r="15" fill="#c2c1ce"/></g>
-        <g id="beard"><path d="M621 738 Q614 804 679 812 Q744 804 737 738 Q708 754 679 750 Q650 754 621 738Z" fill="#5d5c69"/><ellipse cx="679" cy="797" rx="26" ry="9" fill="#a9a8b6"/></g>
-        <clipPath id="domeclip"><circle cx="660" cy="790" r="168"/></clipPath><g id="scarf" clip-path="url(#domeclip)" opacity="0"><path d="M470 814 Q679 872 870 814 L870 868 Q679 926 470 868 Z" fill="#1F4FD8"/><path d="M470 842 Q679 900 870 842" fill="none" stroke="#F28B1F" stroke-width="12"/></g>
+        
         <g id="eyes-purple">
           <g fill="none" stroke="#111" stroke-width="7" stroke-linecap="round"><path d="M600 705 Q618 686 636 705"/><path d="M716 708 Q736 688 756 708"/></g>
         </g>
-        <g fill="none" stroke="#111" stroke-width="9"><rect x="564" y="660" width="108" height="86" rx="30"/><rect x="684" y="664" width="112" height="90" rx="30"/><path d="M668 702 Q678 696 686 704"/><path d="M568 700 L560 694"/></g>
-        <path id="mouth-static" d="M666 752 q13 12 26 0" stroke="#F4F1FE" stroke-width="6" fill="none" stroke-linecap="round"/>
-        <ellipse id="mouth-talk" cx="679" cy="754" rx="10" ry="3" fill="#7b2d2d" stroke="#F4F1FE" stroke-width="4" opacity="0"/>
+        <g id="glasses" fill="none" stroke="#111" stroke-width="9"><rect x="564" y="660" width="108" height="86" rx="30"/><rect x="684" y="664" width="112" height="90" rx="30"/><path d="M668 702 Q678 696 686 704"/><path d="M568 700 L560 694"/></g>
+        <path id="mouth-static" d="M672 742 q6 8 14 0" stroke="#111" stroke-width="6" fill="none" stroke-linecap="round"/>
+        <ellipse id="mouth-talk" cx="679" cy="747" rx="10" ry="3" fill="#4a2020" stroke="#111" stroke-width="5" opacity="0"/>
         <g id="glint" stroke="#fff" stroke-linecap="round" opacity="0"><path d="M588 676 L606 662" stroke-width="9"/><path d="M612 686 L620 680" stroke-width="6"/><path d="M706 682 L724 668" stroke-width="9"/><path d="M730 692 L738 686" stroke-width="6"/></g>
         <g id="tick-purple" stroke="#FAD56F" stroke-width="12" stroke-linecap="round"><path d="M720 574 L728 604"/><path d="M758 586 L778 612"/><path d="M790 622 L818 636"/></g>
       </g>
@@ -176,6 +174,7 @@ const amp = (t) => { if (!MOUTH) return 0; const i = (t - MOUTH.t0) * MOUTH.fps;
 
 // ---- words from the config ----
 $("sub-name").textContent = C.name;
+if (C.look) { for (const [id, attr, v] of [["hero-dome", "fill", C.look.hero], ["other-dome", "fill", C.look.other], ["glasses", "stroke", C.look.glasses]]) if (v) $(id).setAttribute(attr, v); }
 $("photo").src = C.photo; $("card-name").innerHTML = C.nameLines.join("<br>");
 $("cap1").textContent = C.captions[0]; $("cap2").textContent = C.captions[1];
 $("im1").src = C.screens[0]; $("im2").src = C.screens[1]; $("im3").src = C.screens[2];
@@ -238,12 +237,11 @@ function coffeeScene(t) {
   const a = clamp(amp(t));
   $("mouth-talk").setAttribute("rx", 9 + 5 * a); $("mouth-talk").setAttribute("ry", 3 + 16 * a); $("mouth-talk").setAttribute("opacity", a > 0.05 ? 1 : 0);
   $("mouth-static").setAttribute("opacity", a > 0.05 ? 0 : 1);
-  $("scarf").setAttribute("opacity", inOut(P(t, B.in + 0.1, 0.5)) * (1 - clamp(P(t, B.out + 0.2, 0.3))));
   // glasses glint on "fixing"
   const g = P(t, B.line2 + 1.05, 0.3); $("glint").setAttribute("opacity", g > 0 && g < 1 ? Math.sin(Math.PI * g) : 0); svgT($("glint"), g * 22, -g * 8, 1, 1);
 
   const vis = inB ? 1 : 0;
-  const L0 = mapSlime(pose, [500, 846]), R0 = mapSlime(pose, [830, 846]), M = mapSlime(pose, [679, 754]);
+  const L0 = mapSlime(pose, [500, 846]), R0 = mapSlime(pose, [830, 846]), M = mapSlime(pose, [679, 747]);
   const out = inOut(P(t, B.out, 0.5)) * 480;
   // machine slides in with a bounce, shakes when it works
   const mp = P(t, B.machine, 0.55), mb = back(mp);
