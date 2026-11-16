@@ -1,0 +1,51 @@
+{
+ "ref": [
+  1195,
+  1316
+ ],
+ "point": {
+  "file": "assets/end-point.png",
+  "at": [
+   227,
+   368
+  ],
+  "size": [
+   604,
+   652
+  ]
+ },
+ "wave": {
+  "file": "assets/end-wave.png",
+  "at": [
+   261,
+   378
+  ],
+  "size": [
+   556,
+   645
+  ]
+ },
+ "plant": {
+  "file": "assets/end-plant.png",
+  "at": [
+   932,
+   688
+  ],
+  "size": [
+   234,
+   253
+  ]
+ },
+ "hand": {
+  "rect": [
+   8,
+   56,
+   138,
+   160
+  ],
+  "pivot": [
+   69,
+   214
+  ]
+ }
+}

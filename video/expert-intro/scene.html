@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <title>oovi expert intro</title>
 <style>
+  @font-face { font-family: "Nunito"; src: url("fonts/nunito-latin.woff2") format("woff2"); font-weight: 200 1000; font-style: normal; }
   @font-face { font-family: "Inter"; src: url("fonts/inter-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
   :root { --bg: #F6F5F1; --ink: #0E1014; --muted: #5A5E6B; --line: rgba(14,16,20,.10); --accent: #F5B82E; --blue: #4B63E8; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -43,6 +44,14 @@
   #bubble-text .w { transition: none; }
   #bubble-text .dots { display: inline-flex; gap: 10px; align-items: center; height: 46px; }
   #bubble-text .dots b { width: 14px; height: 14px; border-radius: 50%; background: #9aa0ad; display: inline-block; }
+  #lockup { position: absolute; left: 0; width: 1080px; top: 46px; display: flex; align-items: center; justify-content: center; gap: 14px; opacity: 0; }
+  #lockup img { width: 78px; height: 78px; }
+  #lockup span { font-family: "Nunito", sans-serif; font-weight: 900; font-size: 56px; letter-spacing: -0.04em; line-height: 1; color: #0E1014; }
+  #hey { position: absolute; width: 232px; height: 120px; left: 672px; top: 384px; opacity: 0; z-index: 8; transform-origin: 8% 92%; will-change: transform, opacity; }
+  #hey b { position: absolute; inset: 0; border-radius: 56px; background: linear-gradient(#FFDE55, #FFC928); box-shadow: 0 18px 34px rgba(245,184,46,.38), inset 0 2px 0 rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; font-family: "Inter"; font-weight: 800; font-style: italic; font-size: 64px; letter-spacing: -0.04em; color: #1B2A8C; }
+  #hey i { position: absolute; left: 6px; bottom: -22px; width: 40px; height: 40px; background: #FFC928; clip-path: polygon(0 0, 100% 0, 18% 100%); transform: translateX(14px); }
+  #edisc, #eplant, #eperson { position: absolute; will-change: transform, opacity; }
+  #ebtnglint { position: absolute; top: 0; left: -60%; width: 40%; height: 100%; background: linear-gradient(100deg, transparent, rgba(255,255,255,.28), transparent); transform: skewX(-18deg); }
   .logo { position: absolute; width: 112px; height: 112px; opacity: 0; left: 484px; top: 160px; }
   #win { position: absolute; left: 60px; top: 262px; width: 960px; height: 600px; border-radius: 22px; background: #fff; box-shadow: 0 50px 100px rgba(30,34,60,.22), 0 0 0 1px rgba(14,16,20,.10); opacity: 0; overflow: hidden; will-change: transform, opacity; }
   #bar { height: 30px; background: linear-gradient(#F3F1EC, #E9E6E0); border-bottom: 1px solid rgba(14,16,20,.08); display: flex; align-items: center; gap: 8px; padding-left: 16px; }
@@ -128,12 +137,11 @@
       <div id="bubble"><div id="bubble-text"></div><i></i></div>
     </div>
     <!-- A -->
-    <div class="chip" id="eyebrow" style="top:100px"><span><i></i>New on oovi</span></div>
+    <div id="lockup"><img src="assets/mark.png" alt=""><span>oovi</span></div>
     <div class="t h1" id="h-l1" style="top:196px"><span class="wm"><span class="wi">A</span></span> <span class="wm"><span class="wi">new</span></span> <span class="wm"><span class="wi">mind</span></span></div>
     <div class="t h1" id="h-l2" style="top:290px"><span class="wm"><span class="wi">just</span></span> <span class="wm"><span class="wi">joined</span></span> <span class="wm"><span class="wi">the</span></span> <span class="wm"><span class="wi">team.</span></span></div>
     <div class="t sub" id="subtitle" style="top:416px"><span id="sub1">Meet <b id="sub-name"></b></span><br><span id="sub2">on <b>oovi</b>.</span></div>
-    <img class="logo" id="logo" src="assets/mark.png" alt="">
-    <div class="card" id="card"><img id="photo" alt=""><div><div class="nm" id="card-name"></div><div class="rl"><i></i><span id="card-role"></span></div></div></div>
+        <div class="card" id="card"><img id="photo" alt=""><div><div class="nm" id="card-name"></div><div class="rl"><i></i><span id="card-role"></span></div></div></div>
     <div class="pill" id="cta" style="top:950px"></div>
     <!-- B -->
     <!-- C -->
@@ -150,9 +158,12 @@
     <div class="pill light" id="apply" style="top:660px"></div>
     <div class="url" id="applyurl" style="top:790px"></div>
     <!-- E -->
-    <div class="t h2" id="fin1" style="top:330px;font-size:108px"></div>
-    <div class="t h2" id="fin2" style="top:450px;font-size:108px"></div>
-    <div class="url" id="site" style="top:900px"></div>
+    <div class="t h2" id="fin1" style="top:138px;font-size:92px"></div>
+    <div class="t h2" id="fin2" style="top:226px;font-size:92px"></div>
+    <svg class="layer" id="esparks" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" style="z-index:9"><g id="es1" fill="none" stroke="#F5B82E" stroke-width="8" stroke-linecap="round" opacity="0"><path d="M812 118 L828 160"/><path d="M846 138 L880 164"/><path d="M868 196 L906 198"/></g><g id="es2" fill="none" stroke="#F5B82E" stroke-width="8" stroke-linecap="round" opacity="0"><path d="M286 470 L322 452"/><path d="M276 510 L316 514"/><path d="M296 436 L306 398"/></g></svg>
+    <div id="edisc"></div><canvas id="eplant"></canvas><canvas id="eperson"></canvas>
+    <div id="hey"><b>Hey!</b><i></i></div>
+    <div class="url" id="site" style="top:1036px"></div>
   </div>
 </div>
 
@@ -295,6 +306,89 @@ function sipScene(t) {
   });
 }
 
+// ---- E: Abdelaziz sits on the download button, points at it, then waves "Hey!" ----
+const EL = C.end, ES = 0.86, FOOT = 922, REFX = 535, REFY = 1020;
+const eImg = (src) => { const i = new Image(); i.src = src; return i; };
+const ptImg = eImg(EL.point.file), wvImg = eImg(EL.wave.file), plImg = eImg(EL.plant.file);
+const RX0 = 190, RY0 = 360, RW = 690, RH = 670;                 // the part of the original picture we draw (picture pixels)
+const ec = $("eperson"), ectx = ec.getContext("2d"); ec.width = RW; ec.height = RH;
+ec.style.left = (540 - (REFX - RX0)) + "px"; ec.style.top = (FOOT - (REFY - RY0)) + "px"; ec.style.transformOrigin = `${REFX - RX0}px ${REFY - RY0}px`;   // the feet are the pivot: he squashes on the button
+const epl = $("eplant"), eplx = epl.getContext("2d"); epl.width = EL.plant.size[0]; epl.height = EL.plant.size[1];
+epl.style.left = (540 + (EL.plant.at[0] - REFX) * ES) + "px"; epl.style.top = (FOOT - (REFY - EL.plant.at[1] - 0) * ES - 4) + "px"; epl.style.transformOrigin = "50% 100%";
+// the waving hand is a separate layer so it can wave without moving the arm
+const wBase = document.createElement("canvas"), wHand = document.createElement("canvas");
+let wReady = false;
+function prepWave() {
+  const [hx, hy, hw, hh] = EL.hand.rect, W = wvImg.width, H = wvImg.height;
+  wBase.width = W; wBase.height = H; const b = wBase.getContext("2d"); b.drawImage(wvImg, 0, 0); b.clearRect(hx, hy, hw, hh - 8);
+  wHand.width = hw; wHand.height = hh; const h = wHand.getContext("2d"); h.drawImage(wvImg, hx, hy, hw, hh, 0, 0, hw, hh);
+  h.globalCompositeOperation = "destination-in"; const g = h.createLinearGradient(0, hh - 22, 0, hh); g.addColorStop(0, "rgba(0,0,0,1)"); g.addColorStop(1, "rgba(0,0,0,0)"); h.fillStyle = g; h.fillRect(0, 0, hw, hh);
+  wReady = true;
+}
+function drawEnd(t, wave, rotHand) {
+  ectx.clearRect(0, 0, RW, RH);
+  const pose = wave ? EL.wave : EL.point, offx = pose.at[0] - RX0, offy = pose.at[1] - RY0, H = pose.size[1], STEP = 2;
+  const src = wave ? (wReady ? wBase : wvImg) : ptImg;
+  const sway = Math.sin(t * 1.5 + 0.3), tap = lastTapPulse(t);
+  for (let y = 0; y < H; y += STEP) {
+    const k = (H - y) / H, bend = (7 * Math.pow(k, 1.5) * sway + 2.2 * Math.pow(k, 2) * Math.sin(t * 2.6)) + tap * 5 * Math.pow(k, 1.6);
+    const breath = 1 + 0.005 * Math.sin(t * 2.2), y0 = H - (H - y) * breath, y1 = H - (H - y - STEP) * breath;
+    ectx.drawImage(src, 0, y, pose.size[0], STEP, offx + bend, offy + y0, pose.size[0], Math.max(1, y1 - y0) + 0.6);
+  }
+  if (wave && wReady) {
+    const [hx, hy, hw, hh] = EL.hand.rect, [px, py] = EL.hand.pivot, k = (H - py) / H;
+    const bend = 7 * Math.pow(k, 1.5) * sway + 2.2 * Math.pow(k, 2) * Math.sin(t * 2.6);
+    ectx.save(); ectx.translate(offx + px + bend, offy + py); ectx.rotate(rotHand * Math.PI / 180); ectx.drawImage(wHand, hx - px, hy - py); ectx.restore();
+  }
+}
+const tapAt = (t) => { for (const tt of E.taps) { const k = P(t, tt, 0.3); if (k > 0 && k < 1) return Math.sin(Math.PI * k); } return 0; };
+const lastTapPulse = tapAt;
+function endScene(t) {
+  const ein = t >= E.in - 0.05;
+  // the lockup (the real logo: the three-slime mark and the word) opens the first and the last scene
+  const lk = $("lockup");
+  const lkA = t < 12 ? expo(P(t, 0.05, 0.7)) * (1 - smooth(P(t, A.out, 0.45))) : expo(P(t, E.in, 0.7));
+  htmlT(lk, lkA, 0, (1 - lkA) * -14 + (t < 12 ? (1 - (1 - smooth(P(t, A.out, 0.45)))) * -46 : 0));
+  // the disc behind him: the same circle as in the coffee scene
+  const dd = $("edisc"), dp = expo(P(t, E.in + 0.1, 0.9));
+  const R = 300, cx = 540, cy = 664;
+  dd.style.cssText += `;left:${cx - R}px;top:${cy - R}px;width:${2 * R}px;height:${2 * R}px;border-radius:50%;background:radial-gradient(circle at 42% 35%,#FFF6D0 0%,#FCE08A 60%,#F6C752 100%);box-shadow:0 30px 80px rgba(245,184,46,.25)`;
+  dd.style.opacity = clamp(dp * 2.5) * (ein ? 1 : 0); dd.style.transform = `translate(${-Math.sin(t * 1.5 + 0.3) * 2}px, ${Math.sin(t * 1.1) * 3}px) scale(${0.72 + 0.28 * dp})`;
+  // the plant
+  const pp = expo(P(t, E.in + 0.5, 0.9)); eplx.clearRect(0, 0, epl.width, epl.height);
+  if (plImg.complete) { for (let y = 0; y < epl.height; y += 2) { const k = (epl.height - y) / epl.height; eplx.drawImage(plImg, 0, y, epl.width, 2, 5 * Math.pow(k, 1.6) * Math.sin(t * 1.3 + 1), y, epl.width, 2.6); } }
+  epl.style.width = (EL.plant.size[0] * ES) + "px"; epl.style.height = (EL.plant.size[1] * ES) + "px";
+  epl.style.opacity = clamp(pp * 2.5) * (ein ? 1 : 0); epl.style.transform = `translateY(${(1 - pp) * 30}px)`;
+  // him: drops onto the button, points at it, hops, then waves
+  if (!wReady && wvImg.complete) prepWave();
+  const sit = P(t, E.sit, 0.6), drop = 0, pop0 = back2(sit);
+  const land = Math.sin(Math.PI * P(t, E.sit + 0.5, 0.28)) * (t > E.sit + 0.5 ? 1 : 0);
+  const hop = Math.sin(Math.PI * P(t, E.swap - 0.22, 0.46)), swapped = t >= E.swap;
+  const hopY = -34 * hop, landSq = Math.sin(Math.PI * P(t, E.swap + 0.24, 0.24)) * (t > E.swap + 0.24 ? 1 : 0);
+  const grow = 0.6 + 0.4 * pop0, sy = grow * (1 - 0.05 * land - 0.05 * landSq + 0.03 * hop), sx2 = grow * (1 + 0.03 * land + 0.03 * landSq - 0.015 * hop);
+  const wavePhase = Math.max(0, t - E.hey), rot = swapped ? 12 * Math.sin(wavePhase * 11) * expo(P(t, E.hey, 0.3)) - 3 : 0;
+  if (t >= E.sit - 0.05 && ein) drawEnd(t, swapped, rot);
+  ec.style.opacity = t >= E.sit - 0.05 && ein ? clamp(sit * 3) : 0;
+  ec.style.transform = `translateY(${drop + hopY}px) scale(${ES * sx2}, ${ES * sy})`;
+  // the button: it is the seat. It dips when he lands, and reacts to every tap
+  const cta = $("cta");
+  if (t >= 12) {
+    cta.style.top = "915px";
+    const p = expo(P(t, E.cta, 0.7)), tapp = tapAt(t), press = Math.max(land * 0.5, tapp * 0.6, landSq * 0.4);
+    htmlT(cta, clamp(p * 3), 0, (1 - p) * 60 + press * 5, (1.12) * (1 - 0.01 * press), 1.12 * (1 - 0.05 * press));
+    let g = cta.querySelector("#ebtnglint"); if (!g) { g = document.createElement("div"); g.id = "ebtnglint"; cta.style.overflow = "hidden"; cta.appendChild(g); }
+    g.style.left = (-60 + 170 * smooth(P(t, E.in + 1.55, 0.9))) + "%";
+    const arrow = cta.querySelector("em"); if (arrow) arrow.style.transform = `translateX(${Math.sin(t * 5) * 3 * expo(P(t, E.cta + 0.6, 0.4))}px)`;
+  }
+  // "Hey!"
+  const hb = $("hey"), hp = P(t, E.hey, 0.5), pop = hp < 1 ? back2(hp) : 1 + 0.015 * Math.sin((t - E.hey) * 6);
+  hb.style.opacity = clamp(hp * 4); hb.style.transform = `translateY(${hopY * 0.4}px) scale(${pop}) rotate(${-4 + 2 * Math.sin(t * 5)}deg)`;
+  // sparks: by the headline, and by the waving hand
+  $("es1").setAttribute("opacity", ein ? (expo(P(t, E.fin2 + 0.2, 0.4)) * (0.55 + 0.45 * Math.sin(t * 6))) : 0);
+  const w = P(t, E.hey, 1.2); $("es2").setAttribute("opacity", w > 0 ? Math.min(1, w * 3) * (0.5 + 0.5 * Math.sin(t * 9)) : 0);
+}
+const back2 = (x) => { const c1 = 1.1, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+
 // cursor path in the app's own pixels (1920x1080)
 const bez = (p0, p1, p2, p3, u) => { const v = 1 - u; return [0, 1].map((i) => v * v * v * p0[i] + 3 * v * v * u * p1[i] + 3 * v * u * u * p2[i] + u * u * u * p3[i]); };
 const TAB = [834, 160], CARD = [1440, 600], START = [1560, 880];
@@ -316,9 +410,6 @@ window.seek = function (t) {
 
   // ---- A: the opening, built on the narrator's words ----
   const Aout = 1 - smooth(P(t, A.out, 0.45)), lift = (1 - Aout) * -46;
-  const ep = expo(P(t, 0.05, 0.6)); htmlT($("eyebrow"), ep * Aout, 0, (1 - ep) * -16 + lift);
-  const lg = $("logo");
-  if (t < 12) lg.style.opacity = 0; else { const p = expo(P(t, E.in, 0.8)); lg.style.opacity = clamp(p * 3); lg.style.top = (172 + (1 - p) * 24 + Math.sin(t * 1.6) * 3) + "px"; }
   words("#h-l1", t, A.h1, A.out); words("#h-l2", t, A.h2, A.out);
   for (const id of ["h-l1", "h-l2"]) { $(id).style.opacity = 1; $(id).style.transform = `translateY(${lift}px)`; }
   const sub = $("subtitle"); sub.style.opacity = Aout; sub.style.transform = `translateY(${lift}px)`;
@@ -330,10 +421,8 @@ window.seek = function (t) {
   const cpp = expo(P(t, A.card, 0.8));
   htmlT($("card"), clamp(cpp * 3) * (1 - smooth(P(t, B.in, 0.35))), 0, (1 - cpp) * 60 + Math.sin(t * 1.7 + 0.6) * 4, 1, 1);
   const cta = $("cta");
-  cta.style.top = t < 12 ? "950px" : "780px";
-  if (t < 12) { const p = expo(P(t, A.pill, 0.7)); htmlT(cta, clamp(p * 3) * Aout, 0, (1 - p) * 40 + lift * 0.4); }
-  else if (t >= E.cta - 0.1) { const p = expo(P(t, E.cta, 0.7)), pu = 1 + Math.sin((t - E.cta - 0.7) * 3.2) * 0.012 * clamp(t - E.cta - 0.7); htmlT(cta, clamp(p * 3), 0, (1 - p) * 40, pu, pu); }
-  else htmlT(cta, 0, 0, 0);
+  if (t < 12) { cta.style.top = "950px"; const p = expo(P(t, A.pill, 0.7)); htmlT(cta, clamp(p * 3) * Aout, 0, (1 - p) * 40 + lift * 0.4); }
+  else if (t < E.cta - 0.1) htmlT(cta, 0, 0, 0);
 
   // ---- B: his own sentence, and the coffee ----
   sipScene(t);
@@ -367,6 +456,7 @@ window.seek = function (t) {
   // ---- E: the call ----
   reveal($("fin1"), t, E.fin1, 99, 40, 0.8); reveal($("fin2"), t, E.fin2, 99, 40, 0.8);
   $("site").style.opacity = expo(P(t, E.site, 0.6));
+  endScene(t);
 };
 window.seek(0);
 </script>

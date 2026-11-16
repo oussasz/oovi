@@ -281,6 +281,11 @@ add(sfx, D["url"], ui_tap(2000), 0.35); add(sfx, D["out"], air(0.4, True, 0.4), 
 add(sfx, E["in"], ping(1568, 1.2), 0.3); add(sfx, E["fin1"], ui_tap(1400), 0.45); add(sfx, E["fin2"], ui_tap(1600), 0.45)
 add(sfx, E["cta"], ui_click(), 0.7); add(sfx, E["cta"] + 0.02, sub_hit(0.7), 0.45)
 add(sfx, E["site"], ui_tap(2000), 0.35)
+# he sits on the button, taps it, hops, waves
+add(sfx, E["sit"], bloom(0.5, 300), 0.7); add(sfx, E["sit"] + 0.42, sub_hit(0.5), 0.5); add(sfx, E["sit"] + 0.5, ui_click(), 0.5)
+for tt in E["taps"]: add(sfx, tt, ui_click(), 0.8); add(sfx, tt + 0.01, sub_hit(0.3), 0.25)
+add(sfx, E["swap"] - 0.2, air(0.35, True, 0.35), 0.7); add(sfx, E["swap"] + 0.22, sub_hit(0.4), 0.35)
+add(sfx, E["hey"], ping(1976, 0.9), 0.5); add(sfx, E["hey"] - 0.02, bloom(0.4, 520), 0.8)
 
 # ---------------------------------------------------------------- music: warm electronic pad, soft pulse, pluck arpeggio, light drums, 100 BPM
 BPM = 100.0; beat = 60.0 / BPM; bar = 4 * beat
