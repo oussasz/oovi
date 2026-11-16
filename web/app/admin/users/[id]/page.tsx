@@ -12,7 +12,7 @@ import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/c
 import { USAGE_LABELS } from "@/components/admin/usage-labels";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { CreditsPanel } from "./CreditsPanel";
-import { markEmailVerifiedAction, resendVerificationAction } from "./actions";
+import { correctEmailAction, markEmailVerifiedAction, resendVerificationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "User" };
@@ -99,6 +99,25 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
             {fmtInt(counts.events)} events · {fmtInt(counts.crashes)} crash reports · {fmtInt(counts.usageDays)} days of usage
           </dd>
         </dl>
+        <div className="adm-action" style={{ marginTop: 16 }}>
+          <h3>Correct the email address</h3>
+          <p className="adm-sub">
+            For an address typed wrong at sign-up (an underscore instead of a dot, a missing letter). The new address gets a confirmation email and stays “not confirmed” until the person confirms it. Copy it from a message they sent you.
+          </p>
+          <ActionForm
+            action={correctEmailAction}
+            submitLabel="Change email and send confirmation"
+            pendingLabel="Saving…"
+            submitClassName="btn btn-light btn-sm"
+            confirm={`Change ${user.email} to the new address? They must confirm it by email. Check that it is typed exactly right.`}
+          >
+            <input type="hidden" name="userId" value={user.id} />
+            <div className="field">
+              <label htmlFor="new-email">New email address</label>
+              <input id="new-email" name="newEmail" className="input" type="email" autoComplete="off" maxLength={254} placeholder="name@gmail.com" required />
+            </div>
+          </ActionForm>
+        </div>
         {!user.emailVerified && (
           <div className="adm-row-actions" style={{ marginTop: 16 }}>
             <ActionForm

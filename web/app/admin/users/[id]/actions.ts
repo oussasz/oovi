@@ -9,7 +9,7 @@ import { fdNum, fdStr } from "@/lib/form";
 import { auth } from "@/lib/auth";
 import { pool } from "@/lib/db";
 import { rateLimit } from "@/lib/api";
-import { smtpStatus } from "@/lib/mail";
+import { isEmail, smtpStatus } from "@/lib/mail";
 import type { ActionState } from "@/components/admin/ActionForm";
 
 function refresh(userId: string) {
@@ -177,4 +177,38 @@ export async function resendVerificationAction(fd: FormData): Promise<ActionStat
     return { errors: ["Couldn't send the email. Try a test email on the Email page to check the settings."] };
   }
   return { ok: `Confirmation email sent to ${u.email}.` };
+}
+
+/**
+ * Fix an address typed wrong at sign-up (an underscore instead of a dot, a missing letter). The account keeps everything
+ * else; the new address is NOT trusted until its owner confirms it, so a confirmation email goes there.
+ */
+export async function correctEmailAction(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const userId = await target(fd);
+  if (!userId) return { errors: ["This account no longer exists."] };
+  const next = fdStr(fd, "newEmail", 400).trim().toLowerCase();
+  if (!isEmail(next)) return { errors: ["That doesn't look like an email address. Copy it from a message the person sent you."] };
+  const { rows } = await pool.query<{ email: string }>(`SELECT email FROM "user" WHERE id = $1`, [userId]);
+  const current = rows[0]?.email;
+  if (!current) return { errors: ["This account no longer exists."] };
+  if (current.toLowerCase() === next) return { errors: ["That is already this account's address."] };
+  const taken = await pool.query(`SELECT 1 FROM "user" WHERE lower(email) = $1 AND id <> $2`, [next, userId]);
+  if (taken.rowCount) return { errors: ["Another account already uses this address."] };
+  if (!rateLimit(`admin-correct-email:${userId}`, 3, 10 * 60_000)) return { errors: ["The address was changed a few times already. Wait a few minutes."] };
+  try {
+    await pool.query(`UPDATE "user" SET email = $2, "emailVerified" = false, "updatedAt" = now() WHERE id = $1`, [userId, next]);
+    await audit(admin.email, "email.correct", userId, { from: current, to: next });
+  } catch (err) {
+    return fail(err, "correct email");
+  }
+  refresh(userId);
+  if (!(await smtpStatus()).ready) return { ok: `Email changed to ${next}. Mail isn't set up, so no confirmation was sent: use “Resend confirmation email” once it is.` };
+  try {
+    await auth.api.sendVerificationEmail({ body: { email: next, callbackURL: "/verified" } });
+  } catch (err) {
+    console.error("confirmation after email correction failed", err instanceof Error ? err.message : "unknown error");
+    return { ok: `Email changed to ${next}, but the confirmation email could not be sent. Use “Resend confirmation email”.` };
+  }
+  return { ok: `Email changed to ${next}. A confirmation email was sent there; the person must confirm it.` };
 }
