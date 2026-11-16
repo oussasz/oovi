@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
-import { AdminNav } from "@/components/admin/AdminNav";
+import { AdminNav, SectionTabs } from "@/components/admin/AdminNav";
+import { adminBadges } from "@/lib/admin-badges";
 import { requireAdmin } from "@/lib/admin";
 
 export const dynamic = "force-dynamic";
@@ -12,6 +13,7 @@ export const metadata: Metadata = {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const admin = await requireAdmin();
+  const badges = await adminBadges().catch(() => ({}));
   return (
     <div className="adm">
       <header className="adm-top">
@@ -27,8 +29,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
         </div>
       </header>
       <div className="adm-shell">
-        <AdminNav />
-        <main className="adm-main">{children}</main>
+        <AdminNav badges={badges} />
+        <main className="adm-main">
+          <SectionTabs badges={badges} />
+          {children}
+        </main>
       </div>
     </div>
   );

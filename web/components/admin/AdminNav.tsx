@@ -1,45 +1,68 @@
 "use client";
 
+// The admin menu: sections on the left (with what's waiting, as a number), and the section's pages as
+// tabs above the content (components/admin/nav-config.ts).
+import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { locate, SECTIONS, type BadgeKey, type NavSection } from "./nav-config";
 
-const LINKS = [
-  { href: "/admin", label: "Overview" },
-  { href: "/admin/finance", label: "Finance" },
-  { href: "/admin/costs", label: "Costs" },
-  { href: "/admin/reports", label: "Reports" },
-  { href: "/admin/users", label: "Users" },
-  { href: "/admin/ai", label: "theOovi" },
-  { href: "/admin/pilot", label: "Pilot" },
-  { href: "/admin/experts", label: "Experts" },
-  { href: "/admin/email", label: "Email" },
-  { href: "/admin/announcements", label: "Announcements" },
-  { href: "/admin/feedback", label: "Feedback" },
-  { href: "/admin/problems", label: "Problems" },
-  { href: "/admin/downloads", label: "Downloads" },
-  { href: "/admin/crashes", label: "Crashes" },
-  { href: "/admin/usage", label: "Usage" },
-  { href: "/admin/marketplace", label: "Marketplace" },
-  { href: "/admin/releases", label: "Release notes" },
-  { href: "/admin/audit", label: "Audit log" },
-];
+const total = (s: NavSection, badges: Partial<Record<BadgeKey, number>>) => s.pages.reduce((n, p) => n + (p.badge ? (badges[p.badge] ?? 0) : 0), 0);
 
-export function AdminNav() {
-  const pathname = usePathname();
+function Count({ n, label }: { n: number; label: string }) {
+  if (!n) return null;
   return (
-    <nav className="adm-nav" aria-label="Admin">
+    <span className="adm-count" aria-label={label}>
+      {n > 99 ? "99+" : n}
+    </span>
+  );
+}
+
+export function AdminNav({ badges, path }: { badges: Partial<Record<BadgeKey, number>>; path?: string }) {
+  const current = usePathname();
+  const here = locate(path ?? current);
+  const nav = useRef<HTMLElement>(null);
+  // On a phone the sections are one scrolling row: keep the current one in view.
+  useEffect(() => {
+    nav.current?.querySelector<HTMLElement>("a.on")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  }, [here?.section.key]);
+  return (
+    <nav className="adm-nav" aria-label="Admin sections" ref={nav}>
       <ul>
-        {LINKS.map((l) => {
-          const on = l.href === "/admin" ? pathname === "/admin" : pathname.startsWith(l.href);
+        {SECTIONS.map((s) => {
+          const on = here?.section.key === s.key;
+          const n = total(s, badges);
           return (
-            <li key={l.href}>
-              <Link href={l.href} className={on ? "on" : undefined} aria-current={on ? "page" : undefined}>
-                {l.label}
+            <li key={s.key}>
+              <Link href={s.pages[0]!.href} className={on ? "on" : undefined} aria-current={on ? "page" : undefined}>
+                <span>{s.label}</span>
+                <Count n={n} label={`${n} waiting`} />
               </Link>
             </li>
           );
         })}
       </ul>
+    </nav>
+  );
+}
+
+/** The current section's pages, when it has more than one. */
+export function SectionTabs({ badges, path }: { badges: Partial<Record<BadgeKey, number>>; path?: string }) {
+  const current = usePathname();
+  const here = locate(path ?? current);
+  if (!here || here.section.pages.length < 2) return null;
+  return (
+    <nav className="adm-tabs" aria-label={`${here.section.label} pages`}>
+      {here.section.pages.map((p) => {
+        const on = p.href === here.page.href;
+        const n = p.badge ? (badges[p.badge] ?? 0) : 0;
+        return (
+          <Link key={p.href} href={p.href} className={on ? "on" : undefined} aria-current={on ? "page" : undefined}>
+            {p.label}
+            <Count n={n} label={`${n} waiting`} />
+          </Link>
+        );
+      })}
     </nav>
   );
 }

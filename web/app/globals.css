@@ -3103,3 +3103,13 @@ textarea.input {
 .adm-ann-actions { border: 1.5px solid var(--border); border-radius: 16px; padding: 14px 16px; background: var(--surface); }
 .adm-errors { margin: 0; padding-left: 18px; color: var(--coral-ink, #b42318); font-weight: 600; }
 @media (max-width: 1000px) { .adm-ann { grid-template-columns: 1fr; } .adm-ann-side { position: static; } }
+
+/* ---------- admin menu: sections, counts, section tabs (components/admin/AdminNav.tsx) ---------- */
+.adm-nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.adm-count { min-width: 22px; height: 22px; padding: 0 7px; border-radius: 999px; display: inline-grid; place-items: center; font-size: 12px; font-weight: 900; background: var(--coral, #ff9f86); color: #1d1d1b; }
+.adm-tabs { display: flex; gap: 4px; flex-wrap: wrap; padding: 4px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--border); align-self: flex-start; max-width: 100%; overflow-x: auto; }
+.adm-tabs a { display: inline-flex; align-items: center; gap: 8px; padding: 8px 16px; border-radius: 12px; text-decoration: none; font-weight: 800; color: var(--muted); white-space: nowrap; }
+.adm-tabs a:hover { color: var(--ink); }
+.adm-tabs a.on { background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm); }
+.adm-tabs a:focus-visible, .adm-nav a:focus-visible { outline: 3px solid var(--blue-ink); outline-offset: 2px; }
+@media (max-width: 860px) { .adm-tabs { flex-wrap: nowrap; } }
