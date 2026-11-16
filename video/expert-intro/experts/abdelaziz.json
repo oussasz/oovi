@@ -24,12 +24,80 @@
     "assets/app-setups.png",
     "assets/app-coach.png"
   ],
-  "captions": [
-    "Hold on, let me get my coffee,",
-    "your startup needs fixing."
-  ],
   "look": {
     "heroFill": "url(#gYellow)",
     "glasses": "#14151A"
+  },
+  "sip": {
+    "person": {
+      "file": "assets/sip-person.png",
+      "at": [
+        309,
+        44
+      ],
+      "size": [
+        540,
+        1302
+      ]
+    },
+    "machine": {
+      "file": "assets/sip-machine.png",
+      "at": [
+        89,
+        729
+      ],
+      "size": [
+        256,
+        308
+      ]
+    }
+  },
+  "speech": {
+    "words": [
+      [
+        "Hold",
+        0.0
+      ],
+      [
+        "on,",
+        0.14
+      ],
+      [
+        "let",
+        0.64
+      ],
+      [
+        "me",
+        0.78
+      ],
+      [
+        "get",
+        0.94
+      ],
+      [
+        "my",
+        1.12
+      ],
+      [
+        "coffee,",
+        1.3
+      ],
+      [
+        "your",
+        1.94
+      ],
+      [
+        "startup",
+        2.06
+      ],
+      [
+        "needs",
+        2.46
+      ],
+      [
+        "fixing.",
+        2.72
+      ]
+    ]
   }
 }

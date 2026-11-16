@@ -37,6 +37,12 @@
   .card .nm { font-weight: 750; font-size: 29px; line-height: 1.05; letter-spacing: -0.03em; color: #14151a; }
   .card .rl { margin-top: 7px; font-weight: 550; font-size: 17px; letter-spacing: .01em; color: var(--muted); display: flex; align-items: center; gap: 8px; }
   .card .rl i { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+  #bubble { position: absolute; left: 694px; top: 170px; width: 340px; padding: 24px 28px 26px; overflow: visible; border-radius: 34px; background: #fff; border: 1px solid rgba(14,16,20,.08); box-shadow: 0 26px 56px rgba(30,34,60,.16); opacity: 0; transform-origin: 0% 70%; will-change: transform, opacity; z-index: 7; }
+  #bubble i { position: absolute; left: -22px; top: 128px; width: 46px; height: 46px; background: #fff; transform: rotate(45deg) skew(10deg, 10deg); border-left: 1px solid rgba(14,16,20,.08); border-bottom: 1px solid rgba(14,16,20,.08); border-radius: 0 0 0 10px; }
+  #bubble-text { font-weight: 700; font-size: 35px; line-height: 1.22; letter-spacing: -0.03em; color: #9aa0ad; position: relative; }
+  #bubble-text .w { transition: none; }
+  #bubble-text .dots { display: inline-flex; gap: 10px; align-items: center; height: 46px; }
+  #bubble-text .dots b { width: 14px; height: 14px; border-radius: 50%; background: #9aa0ad; display: inline-block; }
   .logo { position: absolute; width: 112px; height: 112px; opacity: 0; left: 484px; top: 160px; }
   #win { position: absolute; left: 60px; top: 262px; width: 960px; height: 600px; border-radius: 22px; background: #fff; box-shadow: 0 50px 100px rgba(30,34,60,.22), 0 0 0 1px rgba(14,16,20,.10); opacity: 0; overflow: hidden; will-change: transform, opacity; }
   #bar { height: 30px; background: linear-gradient(#F3F1EC, #E9E6E0); border-bottom: 1px solid rgba(14,16,20,.08); display: flex; align-items: center; gap: 8px; padding-left: 16px; }
@@ -94,45 +100,31 @@
           <ellipse cx="606" cy="676" rx="96" ry="38" fill="#fff" opacity=".42" filter="url(#soft)"/>
           <g id="eyes-hero" fill="none" stroke="#14151A" stroke-width="7" stroke-linecap="round"><path d="M598 706 Q616 688 634 706"/><path d="M716 710 Q736 690 756 710"/></g>
           <g id="glasses" fill="rgba(255,255,255,.18)" stroke="#14151A" stroke-width="8" stroke-linejoin="round"><rect x="564" y="660" width="108" height="86" rx="30"/><rect x="684" y="664" width="112" height="90" rx="30"/><path d="M672 698 Q678 692 684 700" fill="none"/><path d="M564 690 L548 684" fill="none"/><path d="M796 694 L812 688" fill="none"/></g>
-          <path id="mouth-static" d="M672 744 q7 9 15 0" stroke="#14151A" stroke-width="6" fill="none" stroke-linecap="round"/>
-          <ellipse id="mouth-talk" cx="679" cy="749" rx="10" ry="3" fill="#3a1c1c" stroke="#14151A" stroke-width="5" opacity="0"/>
-          <g id="glint" stroke="#fff" stroke-linecap="round" opacity="0"><path d="M588 676 L606 662" stroke-width="9"/><path d="M612 686 L620 680" stroke-width="6"/><path d="M706 682 L724 668" stroke-width="9"/><path d="M730 692 L738 686" stroke-width="6"/></g>
+          <path d="M672 744 q7 9 15 0" stroke="#14151A" stroke-width="6" fill="none" stroke-linecap="round"/>
         </g>
       </g>
     </svg>
 
-    <svg class="layer" id="bfront" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg" style="z-index:6">
-      <g id="machine" opacity="0">
-        <ellipse cx="160" cy="940" rx="160" ry="14" fill="#1b1d26" opacity=".12"/>
-        <rect x="20" y="900" width="280" height="30" rx="12" fill="url(#gSteel)" stroke="rgba(14,16,20,.18)" stroke-width="2"/>
-        <rect x="48" y="626" width="224" height="282" rx="30" fill="url(#gSteel)" stroke="rgba(14,16,20,.18)" stroke-width="2"/>
-        <rect x="38" y="590" width="244" height="64" rx="24" fill="url(#gDark)"/>
-        <rect x="78" y="672" width="164" height="46" rx="12" fill="#101218"/>
-        <g id="lcd"><rect x="92" y="688" width="60" height="6" rx="3" fill="#3b4150"/><rect x="92" y="702" width="38" height="6" rx="3" fill="#3b4150"/></g>
-        <circle id="lamp" cx="214" cy="695" r="8" fill="#555b6b"/>
-        <circle cx="116" cy="620" r="22" fill="#fff" stroke="#0e1014" stroke-width="4"/>
-        <path id="needle" d="M116 620 L116 603" stroke="#0e1014" stroke-width="4" stroke-linecap="round"/>
-        <rect x="102" y="764" width="116" height="46" rx="12" fill="url(#gDark)"/>
-        <g id="pf"><ellipse cx="160" cy="826" rx="40" ry="14" fill="#14161C"/><path d="M124 828 L40 852" stroke="#14161C" stroke-width="16" stroke-linecap="round"/></g>
-        <g id="drips" stroke="#7a4a2a" stroke-width="6" stroke-linecap="round"><path id="stream" d="M160 842 L160 880"/></g>
-        <path d="M268 690 Q312 696 308 752 L308 806" fill="none" stroke="#9aa1b1" stroke-width="8" stroke-linecap="round"/>
-        <g id="steam-m" fill="none" stroke="#9aa1b1" stroke-width="5" stroke-linecap="round" opacity="0"><path d="M302 676 C294 662 312 654 304 638"/></g>
-      </g>
-      <g id="cupg" opacity="0">
-        <clipPath id="cupclip"><path d="M-44 -40 L44 -40 L38 38 Q35 50 22 50 L-22 50 Q-35 50 -38 38 Z"/></clipPath>
-        <g id="steam-c" fill="none" stroke="#9aa1b1" stroke-width="6" stroke-linecap="round" opacity=".8">
-          <path id="sc1" d="M-18 -52 C-30 -70 -6 -78 -18 -96"/><path id="sc2" d="M10 -52 C-2 -70 22 -78 10 -96"/><path id="sc3" d="M34 -50 C24 -66 44 -72 34 -88"/>
+    <div id="sip" style="position:absolute;inset:0;opacity:0">
+      <svg class="layer" id="sip-bg" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+        <defs><radialGradient id="gSun" cx="42%" cy="35%" r="75%"><stop offset="0" stop-color="#FFF6D0"/><stop offset=".6" stop-color="#FCE08A"/><stop offset="1" stop-color="#F6C752"/></radialGradient>
+          <radialGradient id="gSh"><stop offset="0" stop-color="#1b1d26" stop-opacity=".22"/><stop offset="1" stop-color="#1b1d26" stop-opacity="0"/></radialGradient></defs>
+        <circle id="sun" cx="0" cy="0" r="10" fill="url(#gSun)"/>
+        <ellipse id="sh-p" cx="0" cy="0" rx="10" ry="10" fill="url(#gSh)"/>
+        <ellipse id="sh-m" cx="0" cy="0" rx="10" ry="10" fill="url(#gSh)"/>
+      </svg>
+      <img id="sip-machine" src="" alt="" style="position:absolute;transform-origin:0 0">
+      <canvas id="sip-person" style="position:absolute;transform-origin:0 0"></canvas>
+      <svg class="layer" id="sip-fx" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+        <circle id="lamp-glow" cx="0" cy="0" r="14" fill="#FFC83D" opacity="0" filter="url(#soft)"/>
+        <circle id="lamp-dot" cx="0" cy="0" r="4.5" fill="#FFD25A" opacity="0"/>
+        <g id="steam-mach" fill="none" stroke="#8d95a6" stroke-width="6" stroke-linecap="round" opacity="0">
+          <path d="M-14 0 C-26 -26 0 -40 -12 -70 C-22 -94 -4 -108 -10 -132"/><path d="M14 8 C2 -18 28 -32 16 -62 C6 -86 24 -100 18 -124"/>
         </g>
-        <path d="M44 -20 Q78 -20 74 8 Q70 34 38 28" fill="none" stroke="#d3d8e2" stroke-width="9" stroke-linecap="round"/>
-        <path d="M-44 -40 L44 -40 L38 38 Q35 50 22 50 L-22 50 Q-35 50 -38 38 Z" fill="url(#gCup)"/>
-        <g clip-path="url(#cupclip)"><g id="liquidg"><rect id="liquid" x="-90" y="38" width="180" height="120" fill="url(#gCoffee)"/><rect id="crema" x="-90" y="38" width="180" height="7" fill="#C99A68" opacity=".9"/></g></g>
-        <path d="M-44 -40 L44 -40 L38 38 Q35 50 22 50 L-22 50 Q-35 50 -38 38 Z" fill="none" stroke="rgba(14,16,20,.28)" stroke-width="3" stroke-linejoin="round"/>
-      </g>
-      <g id="hand-L" opacity="0"><ellipse cx="0" cy="0" rx="42" ry="30" fill="#FCE190" stroke="#fff" stroke-width="3"/><ellipse cx="-10" cy="-10" rx="22" ry="9" fill="#fff" opacity=".35"/></g>
-      <g id="hand-R" opacity="0"><ellipse cx="0" cy="0" rx="42" ry="30" fill="#FCE190" stroke="#fff" stroke-width="3"/><ellipse cx="-10" cy="-10" rx="22" ry="9" fill="#fff" opacity=".35"/></g>
-      <g id="sparks" fill="none" stroke="#F5B82E" stroke-width="7" stroke-linecap="round" opacity="0"><path d="M700 520 L712 546"/><path d="M742 508 L748 538"/><path d="M782 526 L804 546"/></g>
-    </svg>
-
+        <g id="sparks2" fill="none" stroke="#F5B82E" stroke-width="7" stroke-linecap="round" opacity="0"><path d="M0 30 L24 2"/><path d="M34 44 L66 30"/><path d="M26 16 L40 -18"/></g>
+      </svg>
+      <div id="bubble"><div id="bubble-text"></div><i></i></div>
+    </div>
     <!-- A -->
     <div class="chip" id="eyebrow" style="top:100px"><span><i></i>New on oovi</span></div>
     <div class="t h1" id="h-l1" style="top:196px"><span class="wm"><span class="wi">A</span></span> <span class="wm"><span class="wi">new</span></span> <span class="wm"><span class="wi">mind</span></span></div>
@@ -142,8 +134,6 @@
     <div class="card" id="card"><img id="photo" alt=""><div><div class="nm" id="card-name"></div><div class="rl"><i></i><span id="card-role"></span></div></div></div>
     <div class="pill" id="cta" style="top:950px"></div>
     <!-- B -->
-    <div class="t cap" id="cap1" style="top:110px"></div>
-    <div class="t cap" id="cap2" style="top:190px"></div>
     <!-- C -->
     <div class="t lead" id="shot-title" style="top:150px"></div>
     <div id="win"><div id="bar"><i></i><i></i><i></i></div>
@@ -181,7 +171,6 @@ const amp = (t) => { if (!MOUTH) return 0; const i = (t - MOUTH.t0) * MOUTH.fps;
 $("sub-name").textContent = C.name;
 if (C.look) { for (const [id, attr, v] of [["hero-dome", "fill", C.look.heroFill], ["glasses", "stroke", C.look.glasses]]) if (v) $(id).setAttribute(attr, v); }
 $("photo").src = C.photo; $("card-name").innerHTML = C.nameLines.join("<br>"); $("card-role").textContent = C.role;
-$("cap1").textContent = C.captions[0]; $("cap2").textContent = C.captions[1];
 $("im1").src = C.screens[0]; $("im2").src = C.screens[1]; $("im3").src = C.screens[2];
 $("shot-title").textContent = C.shotTitle;
 $("inv1").textContent = C.expertInvite[0]; $("inv2").textContent = C.expertInvite[1];
@@ -217,86 +206,77 @@ const slime = (id, cx, cy, t, s, bob, ph) => {
   el.setAttribute("opacity", clamp(p * 3) * (1 - out));
 };
 
-// ---- Abdelaziz: the close-up, the machine, the cup ----
-const PIV = [660, 940];
-function slimePose(t) {
-  const p = expo(P(t, A.slimes[3], 0.9));
-  const idle = Math.sin(t * 1.7 + 0.6) * 5;
-  const into = smooth(P(t, B.in, 0.9)), outB = smooth(P(t, B.out, 0.55));
-  const go = smooth(P(t, B.go, 0.6)), comeBack = smooth(P(t, B.back, 0.75));
-  const shift = -95 * go * (1 - comeBack);
-  const lean = -4 * go * (1 - comeBack);
-  const s = (1 + 0.7 * into) * (0.94 + 0.06 * p);
-  return { tx: -10 * into + shift, ty: (1 - p) * 300 + idle + outB * 480, sx: s, sy: s, rot: lean };
-}
-function mapSlime(pose, p) {
-  let q = [(p[0] - PIV[0]) * pose.sx, (p[1] - PIV[1]) * pose.sy];
-  q = rot2(q[0], q[1], pose.rot);
-  return [q[0] + PIV[0] + pose.tx, q[1] + PIV[1] + pose.ty];
-}
-const CUP_TRAY = [165, 868];
+// ---- B: the illustration of Abdelaziz sipping his coffee, moved as a puppet ----
+const SIP = C.sip, SS = 0.72, OX = 136, OY = 82;           // picture -> canvas scale and offset
+const pImg = new Image(); pImg.src = SIP.person.file;
+const mImg = $("sip-machine"); mImg.src = SIP.machine.file;
+const pc = $("sip-person"), pctx = pc.getContext("2d");
+pc.width = SIP.person.size[0]; pc.height = SIP.person.size[1];
+pc.style.left = (OX + SIP.person.at[0] * SS) + "px"; pc.style.top = (OY + SIP.person.at[1] * SS) + "px"; pc.style.transform = `scale(${SS})`;
+mImg.style.left = (OX + SIP.machine.at[0] * SS) + "px"; mImg.style.top = (OY + SIP.machine.at[1] * SS) + "px"; mImg.style.width = SIP.machine.size[0] + "px"; mImg.style.transform = `scale(${SS})`;
+const P2C = (x, y) => [OX + x * SS, OY + y * SS];   // a point of the picture -> the canvas
+{ const [sx, sy] = P2C(541, 575); const sun = $("sun"); sun.setAttribute("cx", sx); sun.setAttribute("cy", sy); sun.setAttribute("r", 393 * SS); sun.dataset.r = 393 * SS; sun.dataset.cy = sy;
+  const [px, py] = P2C(555, 1308); const sp = $("sh-p"); sp.setAttribute("cx", px); sp.setAttribute("cy", py); sp.setAttribute("rx", 330 * SS); sp.setAttribute("ry", 24 * SS);
+  const [mx, my] = P2C(215, 1040); const sm = $("sh-m"); sm.setAttribute("cx", mx); sm.setAttribute("cy", my); sm.setAttribute("rx", 190 * SS); sm.setAttribute("ry", 16 * SS);
+  const [lx, ly] = P2C(266, 823); for (const id of ["lamp-glow", "lamp-dot"]) { $(id).setAttribute("cx", lx); $(id).setAttribute("cy", ly); } $("lamp-glow").setAttribute("r", 18 * SS); $("lamp-dot").setAttribute("r", 7 * SS);
+  const [tx, ty] = P2C(262, 700); $("steam-mach").dataset.x = tx; $("steam-mach").dataset.y = ty; $("steam-mach").setAttribute("transform", `translate(${tx} ${ty}) scale(${SS / 0.66})`);
+  const [kx, ky] = P2C(640, 150); $("sparks2").setAttribute("transform", `translate(${kx} ${ky}) scale(${SS / 0.66})`);
+  const [bx, by] = P2C(560, 238); const bub = $("bubble"); bub.style.left = "694px"; bub.style.top = (by - 150) + "px"; bub.querySelector("i").style.top = "124px"; }
+const words_ = C.speech.words; const bt = $("bubble-text");
+bt.innerHTML = '<span class="dots"><b></b><b></b><b></b></span>' + words_.map(([w]) => `<span class="w" style="display:none">${w}</span>`).join(" ");
+const wordEls = [...bt.querySelectorAll(".w")], dotsEl = bt.querySelector(".dots");
 
-function coffeeScene(t) {
-  const inB = t >= B.in - 0.05 && t < B.out + 0.7;
-  const pose = slimePose(t);
-  svgT($("s-hero"), pose.tx, pose.ty, pose.sx, pose.sy, pose.rot, PIV[0], PIV[1]);
-  $("s-hero").setAttribute("opacity", clamp(P(t, A.slimes[3], 0.2)) * (1 - clamp(P(t, B.out + 0.2, 0.3))));
-  const a = clamp(amp(t));
-  $("mouth-talk").setAttribute("rx", 9 + 5 * a); $("mouth-talk").setAttribute("ry", 3 + 16 * a); $("mouth-talk").setAttribute("opacity", a > 0.05 ? 1 : 0);
-  $("mouth-static").setAttribute("opacity", a > 0.05 ? 0 : 1);
-  const g = P(t, B.line2 + 1.05, 0.35); $("glint").setAttribute("opacity", g > 0 && g < 1 ? Math.sin(Math.PI * g) : 0); svgT($("glint"), g * 22, -g * 8, 1, 1);
-
-  const vis = inB ? 1 : 0;
-  const L0 = mapSlime(pose, [500, 846]), R0 = mapSlime(pose, [830, 846]), M = mapSlime(pose, [679, 749]);
-  const out = smooth(P(t, B.out, 0.55)) * 480;
-  const mp = expo(P(t, B.machine, 0.8));
-  const lock = P(t, B.lock, 0.18), brewP = P(t, B.brew, 0.85);
-  const shake = (Math.sin(Math.PI * lock) * 4 + (brewP > 0 && brewP < 1 ? 1.2 : 0)) * Math.sin(t * 60);
-  $("machine").setAttribute("opacity", clamp(mp * 3) * vis);
-  svgT($("machine"), (1 - mp) * -340 + shake, out, 1, 1);
-  $("lamp").setAttribute("fill", t >= B.lock ? "#F5B82E" : "#555b6b");
-  const nd = -55 + 100 * brewP + Math.sin(t * 17) * 3 * (brewP > 0 && brewP < 1 ? 1 : 0); svgT($("needle"), 0, 0, 1, 1, nd, 116, 620);
-  svgT($("pf"), 0, Math.sin(Math.PI * lock) * -4, 1, 1);
-  const sm = $("steam-m"); sm.setAttribute("opacity", brewP > 0 && t < B.back ? 0.7 : 0); svgT(sm, Math.sin(t * 7) * 3, -((t * 40) % 40), 1, 1);
-
-  const level = t < B.brew ? 0 : t < B.grab ? 0.8 * cubic(brewP) : 0.8 - 0.15 * smooth(P(t, B.sip + 0.3, 0.3));
-  const carry = smooth(P(t, B.grab, 0.55));
-  const reach = smooth(P(t, B.go + 0.15, 0.45)) * (1 - carry);
-  const handHold = [L0[0] - 12, L0[1] - 46];
-  const sipUp = smooth(P(t, B.sip, 0.35)) * (1 - smooth(P(t, B.lower, 0.3)));
-  const tilt = 10 * sipUp + 14 * smooth(P(t, B.sip + 0.3, 0.25)) * (1 - smooth(P(t, B.lower, 0.25)));
-  const handTray = [CUP_TRAY[0] + 72, CUP_TRAY[1] + 6];
-  let cupC;
-  if (t < B.grab) cupC = [CUP_TRAY[0], CUP_TRAY[1]];
-  else {
-    const carried = [mix(CUP_TRAY[0], handHold[0] - 72, carry), mix(CUP_TRAY[1], handHold[1] - 6, carry) - Math.sin(Math.PI * carry) * 70];
-    const mouthC = [M[0] - 6, M[1] + 74];
-    cupC = [mix(carried[0], mouthC[0], sipUp), mix(carried[1], mouthC[1], sipUp)];
+function drawPuppet(t) {
+  const W = pc.width, H = pc.height; pctx.clearRect(0, 0, W, H);
+  const into = smooth(P(t, B.in, 0.8)), sway = 0.4 + 0.6 * into;
+  const nodA = smooth(P(t, B.sip, 0.35)) * (1 - smooth(P(t, B.lower, 0.35)));          // the sip: head goes back a little
+  const laugh = Math.sin(P(t, B.line2 + 0.7, 1.0) * Math.PI) * (t > B.line2 + 0.7 ? 1 : 0); // a small laugh on "fixing"
+  const STEP = 2;
+  for (let y = 0; y < H; y += STEP) {
+    const k = (H - y) / H;                                                             // 0 at the feet, 1 at the head
+    const bend = 10 * Math.pow(k, 1.5) * Math.sin(t * 1.5 + 0.4) * sway + 3 * Math.pow(k, 2) * Math.sin(t * 2.7);
+    const breath = 1 + 0.006 * Math.sin(t * 2.3);
+    const headK = clamp((340 - y) / 340);                                              // 1 at the top of the head, 0 at the neck
+    const nod = -14 * nodA * headK * headK - (3.2 * laugh * Math.sin(t * 34)) * headK;
+    const y0 = H - (H - y) * breath + nod, y1 = H - (H - y - STEP) * breath + (-14 * nodA * Math.pow(clamp((340 - y - STEP) / 340), 2) - (3.2 * laugh * Math.sin(t * 34)) * clamp((340 - y - STEP) / 340));
+    pctx.drawImage(pImg, 0, y, W, STEP, bend, y0, W, Math.max(1, y1 - y0) + 0.6);
   }
-  const cscale = mix(0.9, 1.1, carry);
-  const bob = t > B.grab ? Math.sin(t * 1.9 + 1) * 3 * (1 - sipUp) : 0;
-  const cp = $("cupg");
-  cp.setAttribute("opacity", clamp(P(t, B.machine + 0.25, 0.25)) * vis);
-  svgT(cp, cupC[0], cupC[1] + bob + out, cscale, cscale, tilt, 0, 0);
-  const ly = 50 - level * 88; $("liquid").setAttribute("y", ly); $("crema").setAttribute("y", ly); $("crema").setAttribute("opacity", level > 0.02 ? 0.9 : 0);
-  $("liquidg").setAttribute("transform", `rotate(${-tilt})`);
-  document.querySelectorAll("#steam-c path").forEach((p, i) => { const Ln = p.getTotalLength(); p.style.strokeDasharray = `${Ln * 0.55} ${Ln}`; p.style.strokeDashoffset = -((t * 34 + i * 30) % (Ln * 1.55)) + Ln * 0.2; });
-  $("steam-c").setAttribute("opacity", level > 0.3 ? 0.75 : 0);
-  const st = $("stream"), streaming = brewP > 0 && brewP < 1;
-  const topY = CUP_TRAY[1] + (50 - level * 88) * 0.9; st.setAttribute("d", `M160 842 L160 ${Math.max(850, topY)}`);
-  $("drips").setAttribute("opacity", streaming ? 1 : 0);
-  const hr = smooth(P(t, B.hold - 0.1, 0.35)) * (1 - smooth(P(t, B.go - 0.05, 0.3)));
-  const raise = [R0[0] + 40, R0[1] - 190];
-  const wave = Math.sin(t * 11) * 10 * hr;
-  const hrPos = [mix(R0[0], raise[0], hr), mix(R0[1], raise[1], hr)];
-  const hl = [mix(L0[0], handTray[0], reach), mix(L0[1], handTray[1], reach)];
-  let hlPos = hl;
-  if (t >= B.grab) { const cr = rot2(72, 6, tilt); hlPos = [mix(mix(handTray[0], handHold[0], carry), cupC[0] + cr[0], sipUp), mix(mix(handTray[1], handHold[1], carry), cupC[1] + cr[1], sipUp) - (t < B.grab + 0.55 ? Math.sin(Math.PI * carry) * 70 : 0)]; }
-  const hv = clamp(P(t, B.in + 0.3, 0.3)) * vis * (1 - clamp(P(t, B.out + 0.2, 0.3)));
-  $("hand-R").setAttribute("opacity", hv); svgT($("hand-R"), hrPos[0], hrPos[1] + out + (1 - hr) * Math.sin(t * 1.9 + 2) * 4, 1, 1, wave + 12 * hr, 0, 0);
-  $("hand-L").setAttribute("opacity", hv); svgT($("hand-L"), hlPos[0], hlPos[1] + out + Math.sin(t * 1.9 + 1) * 3, 1, 1, tilt * 0.6, 0, 0);
-  const sp = P(t, B.sip + 0.4, 0.6); $("sparks").setAttribute("opacity", sp > 0 && sp < 1 ? Math.sin(Math.PI * sp) * 0.85 : 0);
-  svgT($("sparks"), (M[0] - 740), (M[1] - 640), 1, 1);
+}
+function sipScene(t) {
+  const sc = $("sip"), inP = smooth(P(t, B.in + 0.2, 0.7)), outP = 1 - smooth(P(t, B.out, 0.45));
+  const o = inP * outP; sc.style.opacity = o;
+  const z = 0.97 + 0.03 * expo(P(t, B.in, 1.0)) + 0.035 * P(t, B.in, B.out - B.in);
+  sc.style.transform = `translateY(${(1 - inP) * 30 - (1 - outP) * 30}px) scale(${z})`; sc.style.transformOrigin = "540px 560px";
+  if (o <= 0) return;
+  if (pImg.complete) drawPuppet(t);
+  // the sun behind him breathes a little; shadows follow the sway
+  const sun = $("sun"); sun.setAttribute("r", Number(sun.dataset.r) + 4 * Math.sin(t * 1.3)); sun.setAttribute("cy", Number(sun.dataset.cy) + 3 * Math.sin(t * 0.9));
+  // the machine: wakes up with a knock, hums while it brews
+  const lock = P(t, B.lock, 0.18), brewP = P(t, B.brew, 0.85), working = t >= B.machine + 0.22 && t < B.back;
+  const knock = Math.sin(Math.PI * P(t, B.machine + 0.22, 0.2)) * 3 + Math.sin(Math.PI * lock) * 3;
+  const hum = brewP > 0 && brewP < 1 ? 1.4 * Math.sin(t * 70) : 0;
+  mImg.style.transform = `translate(${hum}px, ${-knock + hum * 0.4}px) scale(${SS})`;
+  const lampOn = t >= B.lock;
+  $("lamp-dot").setAttribute("opacity", lampOn ? 1 : 0); $("lamp-glow").setAttribute("opacity", lampOn ? 0.55 + 0.25 * Math.sin(t * 9) : 0);
+  const sm = $("steam-mach"); sm.setAttribute("opacity", working && brewP > 0 ? 0.75 * Math.min(1, brewP * 4) * (t < B.grab + 0.6 ? 1 : 0.5) : 0);
+  document.querySelectorAll("#steam-mach path").forEach((p, i) => { const L = p.getTotalLength(); p.style.strokeDasharray = `${L * 0.5} ${L}`; p.style.strokeDashoffset = -((t * 38 + i * 40) % (L * 1.5)) + L * 0.2; });
+  // sparks when he sips and when he says "fixing"
+  const sp1 = P(t, B.sip + 0.2, 0.7), sp2 = P(t, B.line2 + 0.85, 0.6), sp = Math.max(sp1 > 0 && sp1 < 1 ? Math.sin(Math.PI * sp1) : 0, sp2 > 0 && sp2 < 1 ? Math.sin(Math.PI * sp2) : 0);
+  $("sparks2").setAttribute("opacity", sp * (0.65 + 0.35 * Math.sin(t * 22)));
+  // the speech bubble: three dots first, then his words as he says them; it pulses with his voice
+  const bIn = expo(P(t, B.machine + 0.2, 0.55)), bOut = 1 - smooth(P(t, B.lower + 0.15, 0.35));
+  const bub = $("bubble"), a = clamp(amp(t));
+  bub.style.width = mix(128, 340, expo(P(t, B.hold - 0.05, 0.4))) + "px"; bub.style.opacity = Math.min(bIn, bOut); bub.style.transform = `translateY(${(1 - bIn) * 18 - (1 - bOut) * 14}px) scale(${(0.92 + 0.08 * bIn) * (1 + 0.022 * a)})`;
+  const talking = t >= B.hold - 0.02;
+  dotsEl.style.display = talking ? "none" : "inline-flex";
+  [...dotsEl.children].forEach((d, i) => { d.style.opacity = 0.35 + 0.65 * Math.max(0, Math.sin(t * 7 - i * 0.9)); });
+  words_.forEach(([w, rel], i) => {
+    const el = wordEls[i], at = B.hold + rel, on = t >= at - 0.01;
+    el.style.display = talking ? "inline" : "none";
+    el.style.color = on ? "#0E1014" : "#C3C7D1";
+    const cur = on && (i === words_.length - 1 ? t < at + 0.6 : t < B.hold + words_[i + 1][1]);
+    el.style.textDecoration = cur ? "underline" : "none"; el.style.textDecorationColor = "#F5B82E"; el.style.textDecorationThickness = "4px"; el.style.textUnderlineOffset = "5px";
+  });
 }
 
 // cursor path in the app's own pixels (1920x1080)
@@ -328,7 +308,7 @@ window.seek = function (t) {
   const sub = $("subtitle"); sub.style.opacity = Aout; sub.style.transform = `translateY(${lift}px)`;
   for (const [id, s] of [["sub1", A.sub1], ["sub2", A.sub2]]) { const e = $(id), v = expo(P(t, s, 0.7)); e.style.display = "inline-block"; e.style.opacity = v; e.style.transform = `translateY(${(1 - v) * 22}px)`; }
 
-  slime("s-blue", 212, 870, t, A.slimes[0], 4, 0.0); slime("s-lilac", 395, 835, t, A.slimes[1], 5, 1.3); slime("s-pink", 920, 840, t, A.slimes[2], 4, 2.4);
+  slime("s-blue", 212, 870, t, A.slimes[0], 4, 0.0); slime("s-lilac", 395, 835, t, A.slimes[1], 5, 1.3); slime("s-pink", 920, 840, t, A.slimes[2], 4, 2.4); slime("s-hero", 660, 790, t, A.slimes[3], 5, 0.6);
   const eyeBlink = (id, cx, cy, off) => svgT($(id), 0, 0, 1, blinkOf(t, off), 0, cx, cy);
   eyeBlink("eyes-blue", 218, 794, 0.5); eyeBlink("eyes-lilac", 392, 792, 1.7); eyeBlink("eyes-pink", 914, 788, 0.9); eyeBlink("eyes-hero", 678, 704, 2.4);
   const cpp = expo(P(t, A.card, 0.8));
@@ -340,9 +320,7 @@ window.seek = function (t) {
   else htmlT(cta, 0, 0, 0);
 
   // ---- B: his own sentence, and the coffee ----
-  coffeeScene(t);
-  const capOut = B.lower + 0.15;
-  reveal($("cap1"), t, B.hold, capOut, 26, 0.6, 0.35); reveal($("cap2"), t, B.line2, capOut, 26, 0.6, 0.35);
+  sipScene(t);
 
   // ---- C: the real app, with a mouse ----
   const win = $("win"), sIn = expo(P(t, SC.in, 0.9)), sOut = 1 - smooth(P(t, SC.out, 0.45));

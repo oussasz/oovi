@@ -1,0 +1,28 @@
+{
+ "person": {
+  "file": "assets/sip-person.png",
+  "at": [
+   309,
+   44
+  ],
+  "size": [
+   540,
+   1302
+  ]
+ },
+ "machine": {
+  "file": "assets/sip-machine.png",
+  "at": [
+   89,
+   729
+  ],
+  "size": [
+   256,
+   308
+  ]
+ },
+ "image": [
+  1122,
+  1402
+ ]
+}
