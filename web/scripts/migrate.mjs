@@ -232,6 +232,14 @@ await pool.query(`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+  -- The user's setup for their other computers (keep in sync with lib/account-setup.ts SETUP_DDL).
+  CREATE TABLE IF NOT EXISTS account_setup (
+    user_id    TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+    version    INTEGER NOT NULL,
+    data       JSONB NOT NULL,
+    bytes      INTEGER NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
   -- Marketplace pictures for bots' faces (keep in sync with lib/avatars.ts AVATAR_DDL).
   CREATE TABLE IF NOT EXISTS catalog_avatars (
     id         TEXT PRIMARY KEY,

@@ -1,4 +1,5 @@
 import { CloudError, clearSession, cloud, cloudUrl, currentSession, saveSession, setOnboarded, updateSessionUser, type AccountUser } from "@/lib/account";
+import { syncSetup } from "@/lib/setup-sync";
 import { guard } from "@/lib/guard";
 
 export const runtime = "nodejs";
@@ -29,6 +30,19 @@ export async function GET(req: Request) {
 }
 
 /**
+ * Signed in on a computer that hasn't got this account's setup yet: it is brought from the account
+ * (lib/setup-sync.ts), and the first-run screens are skipped. Never blocks sign-in for more than 20 s.
+ */
+async function restoreSetup(): Promise<void> {
+  if (currentSession()?.onboarded) {
+    void syncSetup();
+    return;
+  }
+  const r = await Promise.race([syncSetup(), new Promise<null>((ok) => setTimeout(() => ok(null), 20_000))]);
+  if (r?.restored) setOnboarded(true);
+}
+
+/**
  * {action: "signin" | "signup" | "verify" | "resend" | "onboarded", ...}
  * signin/signup answer {..., verify: {email}} when the email must be confirmed first: the app then asks
  * for the 6-digit code from the email (verify: {email, code}; resend: {email} sends a new one).
@@ -47,11 +61,13 @@ export async function POST(req: Request) {
       if (r.verify) return Response.json({ ...state(), verify: { email: String(r.email ?? body.email) } });
       if (!r.token || !r.user) return Response.json({ error: "The account service gave an unexpected answer. Please try again." }, { status: 502 });
       saveSession(r.token, r.user);
+      await restoreSetup();
       return Response.json(state());
     }
     if (b.action === "verify") {
       const r = await cloud<{ token: string; user: AccountUser }>("/api/v1/auth/verify-email", { method: "POST", body: { email: String(b.email ?? "").trim(), code: String(b.code ?? "").trim() } });
       saveSession(r.token, r.user);
+      await restoreSetup();
       return Response.json(state());
     }
     if (b.action === "resend") {

@@ -170,6 +170,29 @@ export function addServer(s: Omit<McpServer, "id" | "createdAt">): McpServer {
   return server;
 }
 
+/**
+ * A connector made on another of the user's computers (lib/setup-sync.ts), added with the same id so the
+ * bots that use it find it. Its keys never travel: they arrive empty, and a connector that needs keys or
+ * a sign-in stays off until the user fills them in here.
+ */
+export function importServer(s: { id: string; name: string; transport: "stdio" | "http"; command?: string; args?: string[]; url?: string; auth?: "oauth"; envKeys: string[]; headerKeys: string[]; enabled: boolean; trusted: boolean; createdAt?: number }): void {
+  const all = readRaw();
+  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(s.id) || all.some((x) => x.id === s.id)) return;
+  const blank = (keys: string[]) => Object.fromEntries(keys.filter((k) => /^[\w.-]{1,80}$/.test(k)).map((k) => [k, encryptSecret("")]));
+  const needsSecrets = s.envKeys.length > 0 || s.headerKeys.length > 0 || s.auth === "oauth";
+  const v = validateServer({ name: s.name, transport: s.transport, url: s.url, command: s.command, args: s.args, auth: s.auth });
+  if (typeof v === "string") return;
+  const server: McpServer = {
+    ...v,
+    id: s.id,
+    ...(v.transport === "http" ? { headers: blank(s.headerKeys) } : { env: blank(s.envKeys) }),
+    enabled: s.enabled && !needsSecrets,
+    trusted: s.trusted,
+    createdAt: s.createdAt ?? Date.now(),
+  };
+  writeRaw([...all, server]);
+}
+
 export async function updateServer(id: string, patch: { enabled?: boolean; trusted?: boolean }): Promise<void> {
   const all = readRaw();
   const s = all.find((x) => x.id === id);

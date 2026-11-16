@@ -16,5 +16,8 @@ export async function register() {
     // Also repairs chats a closed app left showing "working…".
     const { startDelegations } = await import("./lib/delegations");
     startDelegations();
+    // The user's setup (bots, groups, skills…, never chats) follows their account to their other computers.
+    const { startSetupSync } = await import("./lib/setup-sync");
+    startSetupSync();
   }
 }
