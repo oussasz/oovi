@@ -163,7 +163,6 @@ export function parseExpertForm(get: Get): ParsedExpert {
   else if (field.length > LIMITS.field) errors.push(`“What you are an expert in” must be under ${LIMITS.field} characters.`);
   if (bio.length < MIN_BIO) errors.push(`Write a short bio (at least ${MIN_BIO} characters).`);
   else if (bio.length > LIMITS.bio) errors.push(`Your bio must be under ${LIMITS.bio} characters.`);
-  if (!languages.length) errors.push("Pick at least one language you work in.");
   if (knownAs.length > LIMITS.knownAs) errors.push(`“How should your assistant be known” must be under ${LIMITS.knownAs} characters.`);
 
   if (seenVersion !== CONSENT_VERSION) errors.push("The statement below was updated. Please read it again, then confirm.");

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
-import { CONSENT_TEXT, CONSENT_VERSION, LANGUAGES, LIMITS } from "@/lib/expert-form";
+import { CONSENT_TEXT, CONSENT_VERSION, LIMITS } from "@/lib/expert-form";
 import { ExpertForm } from "./ExpertForm";
 
 export const metadata: Metadata = {
@@ -25,7 +25,7 @@ export default function ExpertApplyPage() {
           </p>
         </div>
         <section className="card">
-          <ExpertForm config={{ version: CONSENT_VERSION, text: CONSENT_TEXT, languages: LANGUAGES, limits: LIMITS }} />
+          <ExpertForm config={{ version: CONSENT_VERSION, text: CONSENT_TEXT, limits: LIMITS }} />
         </section>
       </main>
       <SiteFooter />

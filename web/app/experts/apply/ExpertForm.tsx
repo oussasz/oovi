@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import type { LangValue } from "@/lib/expert-form";
 import { applyAsExpert, type ExpertFormState } from "./actions";
 import { SignaturePad } from "./SignaturePad";
 
@@ -10,12 +9,11 @@ import { SignaturePad } from "./SignaturePad";
 export type ExpertFormConfig = {
   version: string;
   text: readonly string[];
-  languages: readonly { value: LangValue; label: string }[];
   limits: { name: number; email: number; url: number; field: number; bio: number; knownAs: number };
 };
 
 export function ExpertForm({ config }: { config: ExpertFormConfig }) {
-  const { version: CONSENT_VERSION, text: CONSENT_TEXT, languages: LANGUAGES, limits: LIMITS } = config;
+  const { version: CONSENT_VERSION, text: CONSENT_TEXT, limits: LIMITS } = config;
   const [state, setState] = useState<ExpertFormState>(null);
   const [pending, startTransition] = useTransition();
   const [name, setName] = useState("");
@@ -24,7 +22,6 @@ export function ExpertForm({ config }: { config: ExpertFormConfig }) {
   const [field, setField] = useState("");
   const [bio, setBio] = useState("");
   const [knownAs, setKnownAs] = useState("");
-  const [langs, setLangs] = useState<LangValue[]>([]);
   const [signedName, setSignedName] = useState("");
   const [signature, setSignature] = useState("");
   const [typedOnly, setTypedOnly] = useState(false);
@@ -39,7 +36,6 @@ export function ExpertForm({ config }: { config: ExpertFormConfig }) {
     );
   }
 
-  const toggle = (v: LangValue) => setLangs((l) => (l.includes(v) ? l.filter((x) => x !== v) : [...l, v]));
 
   return (
     <form
@@ -88,20 +84,6 @@ export function ExpertForm({ config }: { config: ExpertFormConfig }) {
         <textarea id="ex-bio" name="bio" className="input" rows={5} value={bio} onChange={(e) => setBio(e.target.value)} maxLength={LIMITS.bio} required />
         <span className="ex-hint">{bio.trim().length}/{LIMITS.bio}. Who you help, and how.</span>
       </div>
-
-      <fieldset className="pf-group">
-        <legend>
-          Languages you work in <span className="pf-req">*</span>
-        </legend>
-        <div className="pf-chips">
-          {LANGUAGES.map((l) => (
-            <label key={l.value} className="pf-chip">
-              <input type="checkbox" name="languages" value={l.value} checked={langs.includes(l.value)} onChange={() => toggle(l.value)} />
-              <span>{l.label}</span>
-            </label>
-          ))}
-        </div>
-      </fieldset>
 
       <div className="field">
         <label htmlFor="ex-known">

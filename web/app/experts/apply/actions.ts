@@ -6,7 +6,7 @@ import { later } from "@/lib/user-signals";
 import { notify } from "@/lib/notify";
 import { requestIp } from "@/lib/request-ip";
 import { applicationsToday, ensureExpertTable, saveApplication } from "@/lib/expert-db";
-import { CONSENT_VERSION, LANGUAGES, consentHash, ipHash, parseExpertForm } from "@/lib/expert-form";
+import { CONSENT_VERSION, consentHash, ipHash, parseExpertForm } from "@/lib/expert-form";
 
 export type ExpertFormState = { ok?: boolean; errors?: string[] } | null;
 
@@ -46,7 +46,6 @@ export async function applyAsExpert(_prev: ExpertFormState, fd: FormData): Promi
             ["Name", v.name],
             ["Email", v.email],
             ["Expert in", v.field],
-            ["Languages", v.languages.map((l) => LANGUAGES.find((x) => x.value === l)?.label ?? l).join(", ")],
             ["Profile", v.profileUrl],
             ["Signature", v.typedOnly ? "Typed name only" : "Drawn and typed"],
           ],

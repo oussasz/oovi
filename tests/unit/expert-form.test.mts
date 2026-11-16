@@ -66,8 +66,9 @@ test("every missing or wrong thing is named in plain words", () => {
   miss({ field: "" }, /expert in/);
   miss({ bio: "short" }, /bio/);
   miss({ bio: "x".repeat(601) }, /bio/);
-  miss({ languages: [] }, /language/);
   miss({ consent: "" }, /agree/);
+  // Languages are no longer asked: a request without them is accepted.
+  assert.deepEqual(parseExpertForm(good({ languages: [] })).errors, []);
   miss({ consentVersion: "old" }, /updated/);
   miss({ signedName: "" }, /Type your full name/);
   miss({ signedName: "Somebody Else" }, /same as your full name/);

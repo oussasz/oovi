@@ -29,7 +29,7 @@ export default async function AdminExpertView({ searchParams }: { searchParams: 
     ["Email", <a key="m" href={`mailto:${encodeURIComponent(r.email)}`}>{r.email}</a>],
     ["Public profile", /^https:\/\//.test(r.profile_url) ? <a key="p" href={r.profile_url} target="_blank" rel="noreferrer noopener">{r.profile_url}</a> : r.profile_url],
     ["Expert in", r.field],
-    ["Languages", langs],
+    ...(langs ? [["Languages", langs] as [string, string]] : []),
     ["Known as", r.known_as ?? "–"],
     ["Received", fmtDateTime(r.created_at.toISOString())],
   ];
