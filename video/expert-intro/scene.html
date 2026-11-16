@@ -174,7 +174,7 @@ const amp = (t) => { if (!MOUTH) return 0; const i = (t - MOUTH.t0) * MOUTH.fps;
 
 // ---- words from the config ----
 $("sub-name").textContent = C.name;
-if (C.look) { for (const [id, attr, v] of [["hero-dome", "fill", C.look.hero], ["other-dome", "fill", C.look.other], ["glasses", "stroke", C.look.glasses]]) if (v) $(id).setAttribute(attr, v); }
+if (C.look) { for (const [id, attr, v] of [["hero-dome", "fill", C.look.hero], ["other-dome", "fill", C.look.other], ["glasses", "stroke", C.look.glasses], ["hands", "fill", C.look.hands], ["hand-L", "fill", C.look.hands], ["hand-R", "fill", C.look.hands]]) if (v) $(id).setAttribute(attr, v); }
 $("photo").src = C.photo; $("card-name").innerHTML = C.nameLines.join("<br>");
 $("cap1").textContent = C.captions[0]; $("cap2").textContent = C.captions[1];
 $("im1").src = C.screens[0]; $("im2").src = C.screens[1]; $("im3").src = C.screens[2];
