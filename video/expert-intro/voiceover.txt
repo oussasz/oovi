@@ -1,21 +1,13 @@
-Plot twist. A new mind just joined the team. Meet Abdelaziz Benkirat.
+(Recorded: narrator file + the expert's own sentence. Text kept here for the record.)
 
-He doesn't clap for ideas. He claps for customers who pay. But first... coffee. Then we fix your startup.
+A new mind just joined the team. Meet Abdelaziz Benkirat.
 
-Open the Marketplace. Tap Setups. Find Abdelaziz.
+[Abdelaziz, in his own voice] Hold on, let me get my coffee, your startup needs fixing.
+
+Open the marketplace. Tap Setups. Find Abdelaziz.
 
 He'll roast your idea, then help you find your first customers.
 
 Are you an expert too? Apply, and join him.
 
 Download oovi for Mac and Windows. Go say hi to Abdelaziz.
-
------ timing (for the video, not for the voice) -----
-Each paragraph below must END before the next picture starts. If a line runs long, tell me and I move the picture.
-1  0:00.2 - 0:04.4   Plot twist ... Abdelaziz Benkirat.
-2  0:04.8 - 0:10.3   He doesn't clap ... fix your startup.
-3  0:10.7 - 0:13.8   Open the Marketplace ... Find Abdelaziz.
-4  0:14.0 - 0:17.3   He'll roast your idea ... first customers.
-5  0:17.7 - 0:20.9   Are you an expert too? Apply, and join him.
-6  0:21.3 - 0:25.0   Download oovi ... say hi to Abdelaziz.
-Voice: warm, quick, a smile in it. One file per paragraph is best; one single file with short pauses also works.

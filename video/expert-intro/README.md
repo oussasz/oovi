@@ -4,10 +4,10 @@ A 25.6 s square video (1080x1080, 30 fps) that introduces an expert who joined o
 
 ## Make a new one
 1. Copy `experts/abdelaziz.json` to `experts/<name>.json` and change the words.
-2. Put the expert's photo (square, at least 400x400) in `assets/` and point `photo` at it.
+2. Put the expert's picture in `assets/` with the background removed (a face, square, at least 400x400, transparent PNG) and point `photo` at it. The slime in the scene wears his hair, beard, glasses and scarf: change them in `scene.html` (`#hair`, `#beard`, `#scarf`, the glasses) for another expert.
 3. Take three real screenshots of the app (1920x1080) into `assets/`: the Marketplace, the Setups tab with the expert's card, and the expert's details window; list them in `screens`. (The ones in `assets/` were taken from the real app built from this repo, with a throwaway account.)
-4. Make the sound once: `python3 audio.py` (music + sound effects, placed from `timeline.json`; `--voice voice.mp3` also writes a mix where the music ducks under the voice).
-5. `node render.cjs experts/<name>.json out/<name>.mp4 --audio out/mix.wav` (or `out/mix-voice.wav`)
+4. Put the sound files in `inputs/` (kept out of git): `narrator.mp3` (the narration), `abdelaziz-voice.wav` (the expert's own sentence), `portafilter.wav` (coffee-machine clicks and knocks). Then run `python3 audio.py`: it matches the two voices (tone, loudness, the same small room), adds music and sound effects placed from `timeline.json`, makes the expert's mouth move with his voice (`out/mouth.json`) and masters everything to -16 LUFS.
+5. `node render.cjs experts/<name>.json out/<name>.mp4 --audio out/mix.wav`
    - only still pictures to check the look: `--at 4.5,10,15` (seconds)
 6. Needs Node, the repo's Playwright (Chromium) and `ffmpeg` on the machine. Nothing is uploaded anywhere.
 
@@ -17,5 +17,5 @@ Font: Nunito (open licence), the same as the website.
 
 ## Before you publish a video
 - The photo must be one the expert gave you (or approved) for this use.
-- `assets/abdelaziz-photo-from-poster.png` is a small crop of the poster (blurry). Replace it with his real photo.
+- `assets/abdelaziz-face.png` and `abdelaziz-character.png` are cut from the picture the owner gave (white background removed).
 - The "Apply to join" page address is in the config (`applyUrl`): check it is live.

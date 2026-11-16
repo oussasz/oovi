@@ -1,8 +1,10 @@
 {
-  "total": 25.0,
-  "A": { "logo": 0.1, "h1": [0.25, 0.35, 0.45], "h2": [0.6, 0.7, 0.8, 0.9], "swirl": 0.4, "spark": 0.8, "sub1": 1.25, "sub2": 1.5, "arrow": 1.6, "slimes": [1.2, 1.35, 1.5, 1.65], "card": 2.2, "photo": 2.45, "ticks": 2.7, "pill": 3.0, "out": 4.5 },
-  "B": { "beat1": 4.8, "beat2": 5.8, "out": 7.4, "coffee": 7.6, "cup": 7.9, "slimesOut": 10.2 },
-  "C": { "in": 10.5, "titleOut": 12.0, "cursorStart": 10.9, "tabArrive": 12.0, "tabClick": 12.3, "ring": 12.55, "cardMove": 12.7, "cardClick": 13.9, "zoom": 14.0, "out": 17.4 },
-  "D": { "in": 17.7, "inv2": 18.1, "apply": 18.6, "url": 19.1, "out": 21.0 },
-  "E": { "in": 21.3, "fin1": 21.5, "fin2": 21.65, "cta": 22.0, "site": 22.6 }
+  "total": 23.6,
+  "voice": { "o1": 0.3, "cut": 3.65, "o2": 5.5, "tail": 16.75 },
+  "his": { "v0": 4.9, "dur": 3.4 },
+  "A": { "logo": 0.1, "h1": [0.44, 0.6, 0.9], "h2": [1.14, 1.36, 1.5, 1.62], "swirl": 0.5, "spark": 0.9, "slimes": [1.0, 1.12, 1.24, 1.36], "sub1": 2.34, "sub2": 2.62, "arrow": 2.7, "card": 2.55, "photo": 2.8, "ticks": 3.0, "pill": 3.2, "out": 3.95 },
+  "B": { "in": 3.95, "machine": 4.2, "hold": 4.9, "go": 5.5, "lock": 5.95, "brew": 6.2, "grab": 6.85, "back": 6.9, "line2": 6.85, "sip": 8.2, "lower": 8.85, "musicBack": 8.95, "out": 9.1 },
+  "C": { "in": 9.15, "titleOut": 10.5, "cursorStart": 9.3, "tabArrive": 10.55, "tabClick": 10.88, "ring": 11.1, "cardMove": 11.2, "cardClick": 12.5, "zoom": 12.6, "out": 15.85 },
+  "D": { "in": 15.95, "inv2": 16.35, "apply": 17.42, "url": 17.9, "out": 18.55 },
+  "E": { "in": 18.6, "fin1": 18.75, "fin2": 18.95, "cta": 19.1, "site": 19.7 }
 }

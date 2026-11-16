@@ -5,7 +5,7 @@
     "Benkirat"
   ],
   "role": "Startup coach & critic",
-  "photo": "assets/abdelaziz-photo-from-poster.png",
+  "photo": "assets/abdelaziz-face.png",
   "shotTitle": "Find him in the Marketplace",
   "expertInvite": [
     "Are you an expert?",
@@ -19,17 +19,13 @@
   ],
   "cta": "Download for Mac + Windows",
   "site": "oovi.conuron.com",
-  "quoteBeats": [
-    "I don’t clap for ideas.",
-    "I clap for customers who pay."
-  ],
-  "coffee": [
-    "Coffee first,",
-    "then we fix your startup."
-  ],
   "screens": [
     "assets/app-marketplace.png",
     "assets/app-setups.png",
     "assets/app-coach.png"
+  ],
+  "captions": [
+    "Hold on, let me get my coffee,",
+    "your startup needs fixing."
   ]
 }
