@@ -1,17 +1,35 @@
 {
   "name": "Abdelaziz Benkirat",
-  "nameLines": ["Abdelaziz", "Benkirat"],
+  "nameLines": [
+    "Abdelaziz",
+    "Benkirat"
+  ],
   "role": "Startup coach & critic",
   "photo": "assets/abdelaziz-photo-from-poster.png",
-  "traits": ["Funny.", "Cool.", "Brutally honest."],
-  "quote": "I don’t clap for ideas. I clap for customers who pay.",
-  "promise": "Turn your idea into a startup people pay for.",
-  "shot": "assets/marketplace-old.png",
   "shotTitle": "Find him in the Marketplace",
-  "expertInvite": ["Are you an expert?", "Add your own assistant to oovi."],
+  "expertInvite": [
+    "Are you an expert?",
+    "Add your own assistant to oovi."
+  ],
   "applyButton": "Apply to join",
   "applyUrl": "oovi.conuron.com/experts/apply",
-  "finalTitle": ["Try Abdelaziz", "on oovi."],
+  "finalTitle": [
+    "Try Abdelaziz",
+    "on oovi."
+  ],
   "cta": "Download for Mac + Windows",
-  "site": "oovi.conuron.com"
+  "site": "oovi.conuron.com",
+  "quoteBeats": [
+    "I don’t clap for ideas.",
+    "I clap for customers who pay."
+  ],
+  "coffee": [
+    "Coffee first,",
+    "then we fix your startup."
+  ],
+  "screens": [
+    "assets/app-marketplace.png",
+    "assets/app-setups.png",
+    "assets/app-coach.png"
+  ]
 }

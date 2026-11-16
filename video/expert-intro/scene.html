@@ -16,15 +16,20 @@
   .h1 { font-weight: 900; font-size: 98px; line-height: 1.04; letter-spacing: -0.035em; }
   .sub { font-weight: 700; font-size: 50px; line-height: 1.2; color: var(--muted); letter-spacing: -0.01em; }
   .sub b { color: var(--ink); font-weight: 900; }
-  .trait { font-weight: 900; font-size: 128px; letter-spacing: -0.04em; line-height: 1; }
+  .trait { font-weight: 900; font-size: 128px; }
   .quote { font-weight: 800; font-size: 62px; line-height: 1.16; letter-spacing: -0.02em; padding: 0 90px; }
   .cite { font-weight: 800; font-size: 34px; color: var(--muted); }
   .promise { font-weight: 900; font-size: 84px; line-height: 1.06; letter-spacing: -0.035em; padding: 0 70px; }
   .pill { position: absolute; display: flex; align-items: center; justify-content: center; gap: 18px; height: 100px; padding: 0 56px; border-radius: 999px; background: #111; color: #fff; font-weight: 800; font-size: 38px; letter-spacing: -0.01em; opacity: 0; box-shadow: 0 18px 36px rgba(0,0,0,.18); will-change: transform, opacity; white-space: nowrap; }
   .pill.light { background: #fff; color: #111; box-shadow: 0 14px 30px rgba(60,50,120,.16); border: 2px solid #ece8f7; }
   .url { position: absolute; left: 0; width: 1080px; text-align: center; font-weight: 800; font-size: 40px; color: var(--muted); opacity: 0; }
-  .shotwrap { position: absolute; left: 90px; top: 290px; width: 900px; height: 506px; border-radius: 26px; overflow: hidden; background: #fff; box-shadow: 0 40px 80px rgba(60,50,120,.22), 0 0 0 2px #ece8f7; opacity: 0; will-change: transform, opacity; }
-  .shotwrap img { width: 100%; height: 100%; object-fit: cover; display: block; will-change: transform; }
+  .shotwrap { position: absolute; left: 60px; top: 290px; border-radius: 26px; overflow: hidden; background: #fff; box-shadow: 0 40px 80px rgba(60,50,120,.22), 0 0 0 2px #ece8f7; opacity: 0; will-change: transform, opacity; }
+  .shotwrap { width: 960px; height: 540px; }
+  #cam { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; will-change: transform; }
+  #cam img { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; display: block; }
+  #ring { position: absolute; left: 1272px; top: 508px; width: 324px; height: 188px; border-radius: 26px; border: 7px solid #F4B93E; box-shadow: 0 0 0 10px rgba(244,185,62,.25); opacity: 0; }
+  #cursor { position: absolute; left: 0; top: 0; width: 40px; height: 40px; opacity: 0; will-change: transform; filter: drop-shadow(0 4px 5px rgba(0,0,0,.35)); }
+  #ripple { position: absolute; width: 50px; height: 50px; margin: -25px 0 0 -25px; border-radius: 50%; border: 5px solid #5b6ee8; opacity: 0; }
   .card { position: absolute; left: 497px; top: 783px; width: 326px; height: 98px; border-radius: 30px; background: linear-gradient(#F4F1FE, #E6E1FA); box-shadow: 0 16px 30px rgba(110,100,190,.28), inset 0 2px 0 rgba(255,255,255,.9); display: flex; align-items: center; gap: 16px; padding: 0 20px; opacity: 0; will-change: transform, opacity; z-index: 5; }
   .card img { width: 62px; height: 62px; border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 3px #fff; }
   .card span { font-weight: 800; font-size: 31px; line-height: 1.05; letter-spacing: -0.01em; color: #2b2a35; }
@@ -49,6 +54,17 @@
       <path id="spark" d="M105 288 Q108 316 135 322 Q108 328 105 362 Q102 328 72 322 Q102 316 105 288Z" fill="#F9D56E" stroke="none"/>
       <g id="tick-a" stroke="#111" stroke-width="7"><path d="M833 218 L846 244"/><path d="M866 240 L888 262"/></g>
       <g id="tick-logo" stroke="#111" stroke-width="5"><path d="M492 92 L506 112"/><path d="M512 90 L519 106"/></g>
+    </g>
+    <g id="cup" opacity="0">
+      <g id="steam" fill="none" stroke="#9a8f86" stroke-width="7" stroke-linecap="round" opacity=".75">
+        <path id="st1" d="M505 520 C 490 500, 520 485, 505 462 C 495 445, 515 438, 508 420"/>
+        <path id="st2" d="M545 524 C 530 504, 560 489, 545 466 C 535 449, 555 442, 548 424"/>
+        <path id="st3" d="M585 520 C 570 500, 600 485, 585 462 C 575 445, 595 438, 588 420"/>
+      </g>
+      <path d="M470 540 L610 540 L598 628 Q594 650 572 650 L508 650 Q486 650 482 628 Z" fill="#fff" stroke="#111" stroke-width="7" stroke-linejoin="round"/>
+      <path d="M610 556 Q652 556 650 592 Q648 626 600 624" fill="none" stroke="#111" stroke-width="7" stroke-linecap="round"/>
+      <path d="M478 560 L602 560" stroke="#C68A5B" stroke-width="16" stroke-linecap="round"/>
+      <ellipse cx="540" cy="662" rx="92" ry="12" fill="#111" opacity=".07"/>
     </g>
     <g id="slimes">
       <g id="s-blue">
@@ -95,15 +111,17 @@
   <div class="t h1" id="h-l2" style="top:330px"><span class="w">just</span> <span class="w">joined</span> <span class="w">the</span> <span class="w">team.</span></div>
   <div class="t sub" id="subtitle" style="top:452px"><span id="sub1">Meet <b id="sub-name"></b></span><br><span id="sub2">on <b>oovi</b>.</span></div>
 
-  <div class="t trait" id="trait0" style="top:190px"></div>
-  <div class="t trait" id="trait1" style="top:340px"></div>
-  <div class="t trait" id="trait2" style="top:490px"></div>
-  <div class="t quote" id="quote" style="top:230px"></div>
-  <div class="t cite" id="cite" style="top:520px"></div>
-  <div class="t promise" id="promise" style="top:250px"></div>
+  <div class="t quote" id="beat1" style="top:170px"></div>
+  <div class="t quote" id="beat2" style="top:300px"></div>
+  <div class="t quote" id="coffee1" style="top:150px;font-size:112px;font-weight:900;letter-spacing:-.035em"></div>
+  <div class="t quote" id="coffee2" style="top:290px;font-size:78px;font-weight:900;letter-spacing:-.03em"></div>
 
   <div class="t promise" id="shot-title" style="top:120px;font-size:64px;padding:0 40px"></div>
-  <div class="shotwrap" id="shot"><img id="shot-img" alt=""></div>
+  <div class="shotwrap" id="shot">
+    <div id="cam"><img id="im1" alt=""><img id="im2" alt=""><img id="im3" alt=""><div id="ring"></div></div>
+    <div id="ripple"></div>
+    <svg id="cursor" viewBox="0 0 28 34" xmlns="http://www.w3.org/2000/svg"><path d="M3 2 L3 26 L9 20.5 L13.5 31 L18 29 L13.6 18.8 L22 18.5 Z" fill="#fff" stroke="#111" stroke-width="2.2" stroke-linejoin="round"/></svg>
+  </div>
 
   <div class="t promise" id="inv1" style="top:230px;font-size:100px"></div>
   <div class="t promise" id="inv2" style="top:360px;font-size:64px;color:#3b3a45"></div>
@@ -120,29 +138,27 @@
 </div>
 
 <script>
-const C = window.CONFIG;
+const C = window.CONFIG, TL = window.TIMELINE;
 const $ = (id) => document.getElementById(id);
 const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
 const P = (t, s, d) => clamp((t - s) / d);
 const out3 = (x) => 1 - Math.pow(1 - x, 3);
 const inOut = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
 const back = (x) => { const c1 = 1.9, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const { A, B, C: SC, D, E } = TL;
+window.DURATION = TL.total;
 
-// ---- fill text from the config ----
+// ---- words from the config ----
 $("sub-name").textContent = C.name;
 $("photo").src = C.photo; $("card-name").innerHTML = C.nameLines.join("<br>");
-C.traits.forEach((w, i) => ($("trait" + i).textContent = w));
-$("quote").textContent = "“" + C.quote.replace(/^“|”$/g, "") + "”";
-$("cite").textContent = C.name + " · " + C.role;
-$("promise").textContent = C.promise;
-$("shot-title").textContent = C.shotTitle; $("shot-img").src = C.shot;
+$("beat1").textContent = C.quoteBeats[0]; $("beat2").textContent = C.quoteBeats[1];
+$("coffee1").textContent = C.coffee[0]; $("coffee2").textContent = C.coffee[1];
+$("im1").src = C.screens[0]; $("im2").src = C.screens[1]; $("im3").src = C.screens[2];
+$("shot-title").textContent = C.shotTitle;
 $("inv1").textContent = C.expertInvite[0]; $("inv2").textContent = C.expertInvite[1];
 $("apply").innerHTML = C.applyButton + " <span>→</span>"; $("applyurl").textContent = C.applyUrl;
 $("fin1").textContent = C.finalTitle[0]; $("fin2").textContent = C.finalTitle[1];
 $("cta").innerHTML = C.cta + " <span>→</span>"; $("site").textContent = C.site;
-const traitColors = ["#F4B93E", "#7C93F0", "#EE7C74"];
-C.traits.forEach((_, i) => ($("trait" + i).style.color = traitColors[i % 3]));
-// centre the pills (width depends on the text)
 for (const id of ["apply", "cta"]) { const e = $(id); e.style.left = (1080 - e.offsetWidth) / 2 + "px"; }
 $("logo").style.left = "465px";
 
@@ -153,35 +169,40 @@ function svgT(el, x, y, sx, sy, rot = 0, px = 0, py = 0) {
 function htmlT(el, o, x = 0, y = 0, sx = 1, sy = 1, rot = 0) {
   el.style.opacity = o; el.style.transform = `translate(${x}px, ${y}px) rotate(${rot}deg) scale(${sx}, ${sy})`;
 }
-// a pop: overshoot scale + stretch, from below
-function pop(el, t, s, d = 0.55, rise = 46) {
-  const p = P(t, s, d), b = back(p), o = clamp(p * 3);
+function pop(el, t, s, d = 0.45, rise = 46) {
+  const p = P(t, s, d), b = back(p), o = clamp(p * 4);
   const squash = Math.sin(Math.PI * p) * (1 - p) * 0.22;
   htmlT(el, o, 0, (1 - out3(p)) * rise, b * (1 - squash * 0.5), b * (1 + squash));
 }
-function fade(el, t, a, b, rise = 24) { // in at a (0.5s), out at b (0.4s)
-  const i = out3(P(t, a, 0.5)), o = 1 - inOut(P(t, b, 0.4));
-  htmlT(el, Math.min(i, o), 0, (1 - i) * rise - (1 - o) * 30);
+function show(el, t, a, b, rise = 24, d = 0.4) { // fades in at a, out at b
+  const i = out3(P(t, a, d)), o = 1 - inOut(P(t, b, 0.3));
+  htmlT(el, Math.min(i, o), 0, (1 - i) * rise - (1 - o) * 26);
 }
-const slime = (id, cx, cy, t, s, delay, bob, ph) => {
-  const el = $(id), p = P(t, s, 0.7), b = back(p);
-  const idle = Math.sin(t * 2.2 + ph) * bob, breathe = 1 + Math.sin(t * 2.2 + ph + 1.1) * 0.012;
-  const out = inOut(P(t, SC.slimesOut, 0.6));
+const slimeFns = {};
+const slime = (id, cx, cy, t, s, bob, ph) => {
+  const el = $(id), p = P(t, s, 0.6), b = back(p);
+  const idle = Math.sin(t * 2.6 + ph) * bob, breathe = 1 + Math.sin(t * 2.6 + ph + 1.1) * 0.012;
+  const out = inOut(P(t, B.slimesOut, 0.5));
   const y = (1 - out3(p)) * 330 + idle + out * 420;
-  const sx = b * (1 - Math.sin(Math.PI * p) * (1 - p) * 0.12) * breathe, sy = b * (1 + Math.sin(Math.PI * p) * (1 - p) * 0.12) / breathe;
-  svgT(el, 0, y, sx, sy, 0, cx, cy + 140);
+  const k = Math.sin(Math.PI * p) * (1 - p) * 0.12;
+  svgT(el, 0, y, b * (1 - k) * breathe, b * (1 + k) / breathe, 0, cx, cy + 140);
   el.setAttribute("opacity", clamp(p * 4) * (1 - out));
 };
-const blinkOf = (t, off) => { const k = (t + off) % 3.4; return k > 3.2 ? 1 - Math.sin(Math.PI * (k - 3.2) / 0.2) * 0.92 : 1; };
+const blinkOf = (t, off) => { const k = (t + off) % 3.0; return k > 2.85 ? 1 - Math.sin(Math.PI * (k - 2.85) / 0.15) * 0.92 : 1; };
 
-// ---- the timeline (seconds) ----
-const SC = { slimesOut: 13.1, headOut: 7.2 };
-const T = { total: 25.6 };
-window.DURATION = T.total;
+// cursor path in the app's own pixels (1920x1080)
+const bez = (p0, p1, p2, p3, u) => { const v = 1 - u; return [0, 1].map((i) => v * v * v * p0[i] + 3 * v * v * u * p1[i] + 3 * v * u * u * p2[i] + u * u * u * p3[i]); };
+const TAB = [834, 160], CARD = [1440, 600], START = [1560, 880];
+function cursorAt(t) {
+  if (t < SC.tabArrive) return bez(START, [1400, 700], [1000, 90], TAB, inOut(P(t, SC.cursorStart, SC.tabArrive - SC.cursorStart)));
+  if (t < SC.cardMove) return [TAB[0] + Math.sin(t * 6) * 1.5, TAB[1] + Math.cos(t * 5) * 1.5];
+  return bez(TAB, [900, 330], [1300, 700], CARD, inOut(P(t, SC.cardMove, SC.cardClick - 0.45 - SC.cardMove)));
+}
+const CAM_S = 0.5;
 
 window.seek = function (t) {
-  // corner blobs: grow in, then drift
-  const bp = out3(P(t, 0, 0.9)), drift = Math.sin(t * 0.7);
+  // corner blobs
+  const bp = out3(P(t, 0, 0.6)), drift = Math.sin(t * 0.8);
   svgT($("bl-tl"), -20 * (1 - bp) + drift * 6, -20 * (1 - bp), 0.6 + 0.4 * bp, 0.6 + 0.4 * bp, 0, 90, -10);
   svgT($("bl-tr"), 20 * (1 - bp), -20 * (1 - bp) + drift * 5, 0.6 + 0.4 * bp, 0.6 + 0.4 * bp, 0, 1050, -20);
   svgT($("bl-tr2"), 60 * (1 - bp), drift * 8, bp, bp, 0, 1110, 240);
@@ -190,92 +211,99 @@ window.seek = function (t) {
   svgT($("fb-bl"), 0, 60 * (1 - bp) - drift * 5, bp, bp, 0, 60, 1130);
   svgT($("fb-br"), 0, 60 * (1 - bp) + drift * 6, bp, bp, 0, 980, 1170);
 
-  // logo trio: pops at the top, then comes back at the end
+  // logo trio
   const lg = $("logo"); let lo, ly, ls;
-  if (t < 12) { const p = P(t, 0.35, 0.7), q = inOut(P(t, SC.headOut, 0.5)); lo = clamp(p * 3) * (1 - q); ls = back(p); ly = 84 - q * 70; }
-  else { const p = P(t, 21.5, 0.7); lo = clamp(p * 3); ls = back(p); ly = 150 + (1 - out3(p)) * 50 + Math.sin(t * 2.4) * 6; }
+  if (t < 12) { const p = P(t, A.logo, 0.5), q = inOut(P(t, A.out, 0.4)); lo = clamp(p * 4) * (1 - q); ls = back(p); ly = 84 - q * 70; }
+  else { const p = P(t, E.in, 0.6); lo = clamp(p * 3); ls = back(p); ly = 150 + (1 - out3(p)) * 50 + Math.sin(t * 2.4) * 6; }
   lg.style.top = ly + "px"; lg.style.opacity = lo; lg.style.transform = `scale(${ls}) rotate(${Math.sin(t * 2) * 3}deg)`;
-  const tl = $("tick-logo"); tl.setAttribute("opacity", t < 12 ? clamp(P(t, 0.7, 0.2)) * (1 - P(t, SC.headOut, 0.3)) * (0.5 + 0.5 * Math.sin(t * 9)) : 0);
+  $("tick-logo").setAttribute("opacity", t < 12 ? clamp(P(t, A.logo + 0.3, 0.15)) * (1 - P(t, A.out, 0.3)) * (0.5 + 0.5 * Math.sin(t * 9)) : 0);
 
-  // ---- scene A: headline, subtitle, doodles (0 – 7.6) ----
-  const A = 1 - inOut(P(t, SC.headOut, 0.5)); // leaves
-  const lift = (1 - A) * -70;
-  document.querySelectorAll("#h-l1 .w").forEach((w, i) => pop(w, t, 0.85 + i * 0.16));
-  document.querySelectorAll("#h-l2 .w").forEach((w, i) => pop(w, t, 1.35 + i * 0.16));
-  for (const id of ["h-l1", "h-l2"]) { const e = $(id); e.style.opacity = A; e.style.transform = `translateY(${lift}px)`; }
-  const s1 = out3(P(t, 2.35, 0.5)), s2 = out3(P(t, 2.6, 0.5));
-  const sub = $("subtitle"); sub.style.opacity = A; sub.style.transform = `translateY(${lift}px)`;
-  $("sub1").style.display = "inline-block"; $("sub2").style.display = "inline-block";
-  $("sub1").style.opacity = s1; $("sub1").style.transform = `translateY(${(1 - s1) * 30}px)`;
-  $("sub2").style.opacity = s2; $("sub2").style.transform = `translateY(${(1 - s2) * 30}px)`;
-  // doodles draw themselves
-  const draw = (id, p) => { const e = $(id), L = e.getTotalLength(); e.style.strokeDasharray = L; e.style.strokeDashoffset = L * (1 - p); e.setAttribute("opacity", A); };
-  draw("swirl", out3(P(t, 1.0, 1.3))); draw("arrow", out3(P(t, 3.0, 0.7))); draw("arrowhead", out3(P(t, 3.55, 0.25)));
-  const sp = P(t, 1.6, 0.6); svgT($("spark"), 0, 0, back(sp) * (0.9 + 0.1 * Math.sin(t * 4)), back(sp) * (0.9 + 0.1 * Math.sin(t * 4)), Math.sin(t * 1.5) * 20, 105, 322);
-  $("spark").setAttribute("opacity", clamp(sp * 3) * A);
-  $("tick-a").setAttribute("opacity", clamp(P(t, 1.2, 0.2)) * A * (0.55 + 0.45 * Math.sin(t * 8)));
+  // ---- A: the poster, built fast ----
+  const Aout = 1 - inOut(P(t, A.out, 0.4)), lift = (1 - Aout) * -70;
+  document.querySelectorAll("#h-l1 .w").forEach((w, i) => pop(w, t, A.h1[i], 0.4));
+  document.querySelectorAll("#h-l2 .w").forEach((w, i) => pop(w, t, A.h2[i], 0.4));
+  for (const id of ["h-l1", "h-l2", "subtitle"]) { const e = $(id); e.style.opacity = Aout; e.style.transform = `translateY(${lift}px)`; }
+  const s1 = out3(P(t, A.sub1, 0.35)), s2 = out3(P(t, A.sub2, 0.35));
+  for (const [id, v] of [["sub1", s1], ["sub2", s2]]) { const e = $(id); e.style.display = "inline-block"; e.style.opacity = v; e.style.transform = `translateY(${(1 - v) * 30}px)`; }
+  const draw = (id, p) => { const e = $(id), L = e.getTotalLength(); e.style.strokeDasharray = L; e.style.strokeDashoffset = L * (1 - p); e.setAttribute("opacity", Aout); };
+  draw("swirl", out3(P(t, A.swirl, 0.8))); draw("arrow", out3(P(t, A.arrow, 0.5))); draw("arrowhead", out3(P(t, A.arrow + 0.4, 0.2)));
+  const sp = P(t, A.spark, 0.4); svgT($("spark"), 0, 0, back(sp) * (0.9 + 0.1 * Math.sin(t * 4)), back(sp) * (0.9 + 0.1 * Math.sin(t * 4)), Math.sin(t * 1.5) * 20, 105, 322);
+  $("spark").setAttribute("opacity", clamp(sp * 3) * Aout);
+  $("tick-a").setAttribute("opacity", clamp(P(t, 0.9, 0.15)) * Aout * (0.55 + 0.45 * Math.sin(t * 8)));
 
-  // slimes rise (stay through scene B, sink before the screenshot)
-  slime("s-blue", 212, 870, t, 2.55, 0, 5, 0.0);
-  slime("s-yellow", 395, 835, t, 2.75, 0, 6, 1.3);
-  slime("s-pink", 920, 840, t, 2.95, 0, 5, 2.4);
-  slime("s-purple", 660, 790, t, 3.15, 0, 7, 0.6);
-  // blinking: eyes squash vertically
+  // slimes
+  slime("s-blue", 212, 870, t, A.slimes[0], 5, 0.0); slime("s-yellow", 395, 835, t, A.slimes[1], 6, 1.3);
+  slime("s-pink", 920, 840, t, A.slimes[2], 5, 2.4); slime("s-purple", 660, 790, t, A.slimes[3], 7, 0.6);
   const eyeBlink = (id, cx, cy, off) => svgT($(id), 0, 0, 1, blinkOf(t, off), 0, cx, cy);
   eyeBlink("eyes-blue", 218, 794, 0.5); eyeBlink("eyes-yellow", 392, 792, 1.7); eyeBlink("eyes-pink", 913, 785, 0.9); eyeBlink("eyes-purple", 678, 702, 2.4);
-  // curls/ticks wiggle
   const wig = (id, a, cx, cy, ph) => svgT($(id), 0, 0, 1, 1, Math.sin(t * 3 + ph) * a, cx, cy);
   wig("curl-y", 5, 400, 720, 0); wig("curl-p", 5, 925, 725, 2);
-  const tp = clamp(P(t, 4.5, 0.2)) * (1 - inOut(P(t, SC.slimesOut, 0.3)));
-  $("tick-purple").setAttribute("opacity", tp * (0.5 + 0.5 * Math.sin(t * 7)));
-  $("tick-blue").setAttribute("opacity", clamp(P(t, 3.3, 0.2)) * (1 - inOut(P(t, SC.slimesOut, 0.3))) * (0.6 + 0.4 * Math.sin(t * 6 + 1)));
-  $("tick-pink").setAttribute("opacity", clamp(P(t, 3.6, 0.2)) * (1 - inOut(P(t, SC.slimesOut, 0.3))) * (0.6 + 0.4 * Math.sin(t * 6 + 2)));
-  // ground + hands follow the slimes down
-  const down = inOut(P(t, SC.slimesOut, 0.6)) * 420;
-  svgT($("ground"), 0, down * 0.0, 1, 1); $("ground").setAttribute("opacity", 1 - inOut(P(t, SC.slimesOut + 0.2, 0.4)));
-  const hp = P(t, 4.0, 0.5), hb = back(hp);
-  $("hands").setAttribute("opacity", clamp(hp * 3) * (1 - inOut(P(t, SC.slimesOut, 0.4))));
-  svgT($("hands"), 0, (1 - out3(hp)) * 40 + Math.sin(t * 2.2 + 0.6) * 7 + down, hb, hb, 0, 665, 780);
+  const gone = 1 - inOut(P(t, B.slimesOut, 0.3));
+  $("tick-purple").setAttribute("opacity", clamp(P(t, A.ticks, 0.15)) * gone * (0.5 + 0.5 * Math.sin(t * 7)));
+  $("tick-blue").setAttribute("opacity", clamp(P(t, A.slimes[0] + 0.5, 0.15)) * gone * (0.6 + 0.4 * Math.sin(t * 6 + 1)));
+  $("tick-pink").setAttribute("opacity", clamp(P(t, A.slimes[2] + 0.5, 0.15)) * gone * (0.6 + 0.4 * Math.sin(t * 6 + 2)));
+  const down = inOut(P(t, B.slimesOut, 0.5)) * 420;
+  $("ground").setAttribute("opacity", 1 - inOut(P(t, B.slimesOut + 0.2, 0.3)));
+  const hp = P(t, A.card, 0.5), hb = back(hp);
+  $("hands").setAttribute("opacity", clamp(hp * 3) * gone);
+  svgT($("hands"), 0, (1 - out3(hp)) * 40 + Math.sin(t * 2.6 + 0.6) * 7 + down, hb, hb, 0, 665, 780);
+  const card = $("card"), cp = P(t, A.card, 0.5), cb = back(cp);
+  htmlT(card, clamp(cp * 3) * gone, 0, (1 - out3(cp)) * 110 + Math.sin(t * 2.6 + 0.6) * 7 + down, cb, cb);
+  const ph = $("photo"), pp = P(t, A.photo, 0.4); ph.style.transform = `scale(${back(pp)})`; ph.style.opacity = clamp(pp * 3);
 
-  // name card slides up out of the purple slime's hands
-  const card = $("card"), cp = P(t, 4.0, 0.6), cb = back(cp);
-  const cardY = (1 - out3(cp)) * 110 + Math.sin(t * 2.2 + 0.6) * 7 + down;
-  htmlT(card, clamp(cp * 3) * (1 - inOut(P(t, SC.slimesOut, 0.4))), 0, cardY, cb, cb);
-  const ph = $("photo"), pp = P(t, 4.45, 0.5); ph.style.transform = `scale(${back(pp)})`; ph.style.opacity = clamp(pp * 3);
-
-  // download pill (like the poster)
+  // download pill (poster) and, at the end, the big one
   const cta = $("cta");
   cta.style.top = t < 12 ? "938px" : "770px";
-  if (t < 12) { pop(cta, t, 4.9, 0.6, 40); const a = 1 - inOut(P(t, SC.headOut, 0.4)); cta.style.opacity = Math.min(cta.style.opacity, a); }
-  else if (t >= 21.9) { pop(cta, t, 22.2, 0.6, 50); const pulse = 1 + Math.sin((t - 22.8) * 4) * 0.025 * clamp(t - 22.8); cta.style.transform += ` scale(${pulse})`; }
+  if (t < 12) { pop(cta, t, A.pill, 0.45, 40); cta.style.opacity = Math.min(cta.style.opacity, Aout); }
+  else if (t >= E.cta - 0.1) { pop(cta, t, E.cta, 0.5, 50); const pulse = 1 + Math.sin((t - E.cta - 0.6) * 4.5) * 0.025 * clamp(t - E.cta - 0.6); cta.style.transform += ` scale(${pulse})`; }
   else htmlT(cta, 0, 0, 0);
 
-  // ---- scene B: traits, quote, promise (7.7 – 13.2) ----
-  const B0 = 7.7;
-  ["trait0", "trait1", "trait2"].forEach((id, i) => {
-    const e = $(id), s = B0 + 0.2 + i * 0.5, out = 1 - inOut(P(t, 10.0, 0.4)); pop(e, t, s, 0.6, 60); e.style.opacity = Math.min(e.style.opacity, out);
-  });
-  fade($("quote"), t, 10.45, 12.1); fade($("cite"), t, 11.0, 12.1);
-  fade($("promise"), t, 12.2, 13.3);
+  // ---- B: his line, then the coffee ----
+  const bOut = 1 - inOut(P(t, B.out, 0.3));
+  for (const [id, s] of [["beat1", B.beat1], ["beat2", B.beat2]]) { const e = $(id); pop(e, t, s, 0.5, 60); e.style.opacity = Math.min(e.style.opacity, bOut); }
+  const cOut = 1 - inOut(P(t, B.slimesOut, 0.3));
+  pop($("coffee1"), t, B.coffee, 0.5, 60); $("coffee1").style.opacity = Math.min($("coffee1").style.opacity, cOut);
+  pop($("coffee2"), t, B.coffee + 0.35, 0.5, 60); $("coffee2").style.opacity = Math.min($("coffee2").style.opacity, cOut);
+  const cu = P(t, B.cup, 0.55), cb2 = back(cu);
+  $("cup").setAttribute("opacity", clamp(cu * 4) * cOut);
+  svgT($("cup"), 120, -35 + (1 - out3(cu)) * -150 + Math.sin(t * 2.6 + 0.6) * 5 + down * 0, cb2, cb2, 0, 540, 650);
+  document.querySelectorAll("#steam path").forEach((p, i) => { const L = p.getTotalLength(); p.style.strokeDasharray = `${L * 0.55} ${L}`; p.style.strokeDashoffset = -((t * 40 + i * 30) % (L * 1.55)) + L * 0.2; });
 
-  // ---- scene C: the Marketplace screenshot (13.4 – 17.7) ----
-  const sh = $("shot"), sp2 = P(t, 13.5, 0.8), so = 1 - inOut(P(t, 17.2, 0.5));
-  htmlT(sh, clamp(sp2 * 2) * so, 0, (1 - out3(sp2)) * 160 - (1 - so) * 60, 0.94 + 0.06 * out3(sp2), 0.94 + 0.06 * out3(sp2));
-  $("shot-img").style.transform = `scale(${1 + (t - 13.5) * 0.012})`;
-  fade($("shot-title"), t, 13.5, 17.2);
+  // ---- C: the real app, with a mouse ----
+  const sh = $("shot"), sIn = P(t, SC.in, 0.7), sOut = 1 - inOut(P(t, SC.out, 0.4));
+  htmlT(sh, clamp(sIn * 2) * sOut, 0, (1 - out3(sIn)) * 150 - (1 - sOut) * 50, 0.94 + 0.06 * out3(sIn), 0.94 + 0.06 * out3(sIn));
+  show($("shot-title"), t, SC.in, SC.titleOut, 24);
+  const sw1 = P(t, SC.tabClick + 0.05, 0.15), sw2 = P(t, SC.cardClick + 0.05, 0.2);
+  $("im2").style.opacity = sw1; $("im3").style.opacity = sw2;
+  // camera: calm slow push in, then a zoom on the details
+  const z = 1 + 0.06 * P(t, SC.in, 3) + 0.88 * inOut(P(t, SC.zoom, 0.9));
+  const fz = inOut(P(t, SC.zoom, 0.9)), F = [960, 540 + 5 * fz];
+  const camX = 480 - F[0] * CAM_S * z, camY = 270 - F[1] * CAM_S * z;
+  $("cam").style.transform = `translate(${camX}px, ${camY}px) scale(${CAM_S * z})`;
+  const map = (p) => [camX + p[0] * CAM_S * z, camY + p[1] * CAM_S * z];
+  const cur = $("cursor"), cp2 = map(cursorAt(t));
+  const click = (c) => { const k = P(t, c, 0.25); return k > 0 && k < 1 ? 1 - Math.sin(Math.PI * k) * 0.18 : 1; };
+  const cs = Math.min(click(SC.tabClick), click(SC.cardClick));
+  cur.style.opacity = clamp(P(t, SC.cursorStart - 0.05, 0.2)) * (1 - P(t, SC.cardClick + 0.5, 0.3));
+  cur.style.transform = `translate(${cp2[0] - 4}px, ${cp2[1] - 3}px) scale(${cs * 1.15})`;
+  const rp = (c) => P(t, c, 0.5);
+  const rip = $("ripple"), r1 = rp(SC.tabClick), r2 = rp(SC.cardClick), r = r1 > 0 && r1 < 1 ? r1 : r2 > 0 && r2 < 1 ? r2 : 0;
+  const rpos = map(r1 > 0 && r1 < 1 ? TAB : CARD);
+  rip.style.left = rpos[0] + "px"; rip.style.top = rpos[1] + "px"; rip.style.opacity = r ? 1 - r : 0; rip.style.transform = `scale(${0.4 + r * 2})`;
+  const ringIn = out3(P(t, SC.ring, 0.35)) * (1 - P(t, SC.cardClick + 0.1, 0.15));
+  $("ring").style.opacity = ringIn; $("ring").style.transform = `scale(${1 + Math.sin(t * 8) * 0.012})`;
 
-  // ---- scene D: invite experts (17.8 – 21.5) ----
-  const D = 1 - inOut(P(t, 21.2, 0.4));
-  const inv1 = $("inv1"), inv2 = $("inv2"); pop(inv1, t, 17.9, 0.6, 50); pop(inv2, t, 18.4, 0.6, 40);
-  inv1.style.opacity = Math.min(inv1.style.opacity, D); inv2.style.opacity = Math.min(inv2.style.opacity, D);
-  const ap = $("apply"); pop(ap, t, 19.0, 0.6, 40); ap.style.opacity = Math.min(ap.style.opacity, D);
-  const au = $("applyurl"); au.style.opacity = out3(P(t, 19.6, 0.5)) * D;
+  // ---- D: invite experts ----
+  const Dout = 1 - inOut(P(t, D.out, 0.35));
+  const inv1 = $("inv1"), inv2 = $("inv2"), ap = $("apply");
+  pop(inv1, t, D.in, 0.5, 50); pop(inv2, t, D.inv2, 0.5, 40); pop(ap, t, D.apply, 0.5, 40);
+  for (const e of [inv1, inv2, ap]) e.style.opacity = Math.min(e.style.opacity, Dout);
+  $("applyurl").style.opacity = out3(P(t, D.url, 0.4)) * Dout;
 
-  // ---- scene E: download call (21.5 – end) ----
-  const f1 = $("fin1"), f2 = $("fin2"); pop(f1, t, 21.9, 0.6, 50); pop(f2, t, 22.1, 0.6, 50);
-  f1.style.top = "330px"; f2.style.top = "450px";
-  const si = $("site"); si.style.opacity = out3(P(t, 23.0, 0.5));
-  si.style.top = "900px";
+  // ---- E: the call ----
+  pop($("fin1"), t, E.fin1, 0.5, 50); pop($("fin2"), t, E.fin2, 0.5, 50);
+  $("fin1").style.top = "330px"; $("fin2").style.top = "450px";
+  $("site").style.opacity = out3(P(t, E.site, 0.4)); $("site").style.top = "900px";
 };
 window.seek(0);
 </script>
