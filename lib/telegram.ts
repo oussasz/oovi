@@ -22,7 +22,10 @@ import { plainText } from "./delegations-core";
 import { isRunning, onRunEnd, startRun, stopRun, subscribe, whenIdle } from "./runner";
 import { takeTelegramFollowUp } from "./telegram-followups";
 import { listRoutines } from "./routines";
-import { dataDir, decryptSecret, encryptSecret } from "./settings";
+import { dataDir, decryptSecret, encryptSecret, loadSettings } from "./settings";
+import { cloud, CloudError, sessionToken } from "./account";
+import { resolveLocale } from "./i18n";
+import { localeOfText } from "./text-locale";
 import { dmId, getChat, listBots, listChats } from "./store";
 import { mainBot } from "./team";
 import { approvalCommand, canApprove, cleanLabel, parseChatId, planAnswer, routeUpdate, yesNo, type TgDetected, type TgLink, type TgMessage, type TgUpdate } from "./telegram-links";
@@ -42,6 +45,8 @@ type Stored = {
   detected?: TgDetected[];
   /** Chats that already got the one "not linked yet" notice. */
   noticed?: number[];
+  /** When the user connected this bot (here or on another of their computers): a disconnect after it wins. */
+  connectedAt?: number;
 };
 /** Chat IDs go to the UI as strings (exact, and easy to show and type). The bot token never does. */
 export type TelegramLinkInfo = { chatId: string; groupId: string; groupName?: string; label: string };
@@ -149,7 +154,7 @@ export async function connect(rawToken: string): Promise<TelegramStatus> {
     throw new Error(`Telegram didn't accept that token: ${(e as Error).message}`);
   }
   await tg(tok, "deleteWebhook", { drop_pending_updates: true }).catch(() => {});
-  write({ token: encryptSecret(tok), botUsername: me.username, botName: me.first_name, pairCode: crypto.randomBytes(6).toString("hex") });
+  write({ token: encryptSecret(tok), botUsername: me.username, botName: me.first_name, pairCode: crypto.randomBytes(6).toString("hex"), connectedAt: Date.now() });
   lastError = undefined;
   startTelegram();
   return status();
@@ -164,6 +169,9 @@ export function disconnect(): TelegramStatus {
   } catch {
     /* already gone */
   }
+  // The oovi service forgets the bot and its waiting messages (and Telegram stops sending there).
+  if (sessionToken()) void turnRelayOff();
+  if (tok) void tg(tok, "deleteWebhook", { drop_pending_updates: false }).catch(() => {});
   lastError = undefined;
   return status();
 }
@@ -706,6 +714,139 @@ async function handle(tok: string, u: TgUpdate) {
   return handleMain(tok, s, m);
 }
 
+// ---------- the hub through the oovi service (web/lib/telegram-hub.ts) ----------
+// Telegram sends the bot's messages to the oovi service, which tells the user at once when this computer
+// is off ("open oovi to continue") and keeps each message until oovi collects it here. Needs the user
+// signed in; otherwise (or if the service can't be reached) oovi reads Telegram directly, as before.
+
+const hub: { on: boolean; wasOn: boolean; key: string; checkedAt: number; cursor: number | null } = { on: false, wasOn: false, key: "", checkedAt: 0, cursor: null };
+const cursorFile = () => path.join(dataDir(), "telegram-hub.json");
+
+/** The language the "open oovi" notice is written in: the user's own messages, else the app's. */
+function ownerLanguage(): string {
+  const bot = mainBot();
+  const fromText = localeOfText(bot ? lastUserText(getChat(dmId(bot.id))) : undefined);
+  if (fromText) return fromText.slice(0, 2);
+  let system: string[] = [];
+  try {
+    system = [Intl.DateTimeFormat().resolvedOptions().locale];
+  } catch {
+    system = [];
+  }
+  return resolveLocale(loadSettings().language || "auto", system).slice(0, 2);
+}
+
+/** This computer, so the service gives Telegram's messages to one computer at a time. */
+function deviceId(): string {
+  const f = path.join(dataDir(), "device-id");
+  try {
+    const id = fs.readFileSync(f, "utf8").trim();
+    if (/^[0-9a-f]{24}$/.test(id)) return id;
+  } catch {
+    /* made below */
+  }
+  const id = crypto.randomBytes(12).toString("hex");
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, id);
+  return id;
+}
+
+/** What another computer needs to use the same bot (never the pairing code). */
+const connectionOf = (s: Stored) => ({ botUsername: s.botUsername, botName: s.botName, chatId: s.chatId, userName: s.userName, links: s.links ?? [] });
+
+let adoptCheckedAt = 0;
+/**
+ * Telegram isn't connected here: if the user connected it on another computer, use the same bot here too.
+ * Checked every 2 minutes while signed in. True when this computer was just connected.
+ */
+async function adoptConnection(): Promise<boolean> {
+  if (!sessionToken() || Date.now() - adoptCheckedAt < 2 * 60_000) return false;
+  adoptCheckedAt = Date.now();
+  try {
+    const c = await cloud<{ token?: string; config?: ReturnType<typeof connectionOf>; connectedAt?: number } | undefined>("/api/v1/telegram/relay", { auth: true });
+    if (!c?.token || !/^\d{5,}:[\w-]{30,}$/.test(c.token)) return false;
+    const cfg = c.config ?? ({} as ReturnType<typeof connectionOf>);
+    write({
+      token: encryptSecret(c.token),
+      ...(typeof cfg.botUsername === "string" ? { botUsername: cfg.botUsername } : {}),
+      ...(typeof cfg.botName === "string" ? { botName: cfg.botName } : {}),
+      ...(typeof cfg.chatId === "number" ? { chatId: cfg.chatId } : { pairCode: crypto.randomBytes(6).toString("hex") }),
+      ...(typeof cfg.userName === "string" ? { userName: cfg.userName } : {}),
+      links: Array.isArray(cfg.links) ? cfg.links.slice(0, MAX_LINKS) : [],
+      connectedAt: Number(c.connectedAt) || Date.now(),
+    });
+    return true;
+  } catch {
+    return false; // not connected on the account, or offline: checked again later
+  }
+}
+
+async function relayReady(tok: string, s: Stored): Promise<boolean> {
+  if (!sessionToken()) return false;
+  const chats = [s.chatId, ...(s.links ?? []).map((l) => l.chatId)].filter((x): x is number => typeof x === "number");
+  const language = ownerLanguage();
+  const config = connectionOf(s);
+  const key = crypto.createHash("sha256").update(JSON.stringify([tok, chats, language, config, s.connectedAt ?? 0])).digest("hex");
+  const age = Date.now() - hub.checkedAt;
+  if (hub.key === key && (hub.on ? age < 6 * 3600_000 : age < 10 * 60_000)) return hub.on;
+  try {
+    const r = await cloud<{ ok?: boolean } | undefined>("/api/v1/telegram/relay", { method: "POST", auth: true, body: { token: tok, chats, language, config, connectedAt: s.connectedAt ?? 0 } });
+    if (r?.ok !== true) throw new Error("no relay");
+    Object.assign(hub, { on: true, wasOn: true, key, checkedAt: Date.now() });
+  } catch (e) {
+    if (e instanceof CloudError && e.status === 410) {
+      // Disconnected on another of the user's computers: this one lets go of the bot too.
+      try {
+        fs.rmSync(file(), { force: true });
+      } catch {
+        /* already gone */
+      }
+      Object.assign(hub, { on: false, wasOn: false, key: "", checkedAt: 0 });
+      adoptCheckedAt = Date.now();
+      return false;
+    }
+    Object.assign(hub, { on: false, key, checkedAt: Date.now() });
+  }
+  return hub.on;
+}
+
+async function relayCollect(): Promise<TgUpdate[]> {
+  if (hub.cursor === null) {
+    try {
+      hub.cursor = Number((JSON.parse(fs.readFileSync(cursorFile(), "utf8")) as { cursor?: number }).cursor) || 0;
+    } catch {
+      hub.cursor = 0;
+    }
+  }
+  try {
+    const r = await cloud<{ updates: { id: number; update: TgUpdate }[] }>(`/api/v1/telegram/updates?after=${hub.cursor}&device=${deviceId()}`, { auth: true });
+    if (!Array.isArray(r?.updates)) throw new Error("no relay");
+    const list = r.updates.filter((x) => x && typeof x.id === "number" && x.id > (hub.cursor ?? 0));
+    if (list.length) {
+      hub.cursor = list[list.length - 1]!.id;
+      fs.writeFileSync(cursorFile(), JSON.stringify({ cursor: hub.cursor }));
+    }
+    return list.map((x) => x.update);
+  } catch (e) {
+    // Off on the service (404) or not reachable: try again later, reading Telegram directly meanwhile.
+    hub.on = false;
+    hub.checkedAt = Date.now();
+    // 404: the relay is off on the service (disconnected on another computer?): ask again now, the
+    // answer says whether to turn it back on or to let go of the bot here too (410).
+    if (e instanceof CloudError && e.status === 404) hub.key = "";
+    else await new Promise((r) => setTimeout(r, 3000));
+    return [];
+  }
+}
+
+/** Telegram was disconnected in Settings: the service forgets the bot and its waiting messages. */
+async function turnRelayOff(): Promise<void> {
+  hub.on = false;
+  hub.wasOn = false;
+  hub.key = "";
+  await cloud("/api/v1/telegram/relay", { method: "DELETE", auth: true }).catch(() => {});
+}
+
 // ---------- long polling ----------
 
 type State = { gen: number; offReport?: () => void; offFollowUps?: () => void; lanes: Map<number, Promise<void>>; outboxTimer?: ReturnType<typeof setInterval> };
@@ -758,11 +899,25 @@ export function startTelegram(): void {
       const s = read();
       const tok = token(s);
       if (!tok) {
-        await new Promise((r) => setTimeout(r, 5000));
+        hub.on = false;
+        if (!(await adoptConnection())) await new Promise((r) => setTimeout(r, 5000));
         continue;
       }
       try {
-        const updates = await tg<TgUpdate[]>(tok, "getUpdates", { offset, timeout: 25, allowed_updates: ["message"] }, 35_000);
+        // Through the oovi service when it can (so the user hears at once when this computer is off),
+        // else straight from Telegram.
+        let updates: TgUpdate[];
+        if (await relayReady(tok, s)) {
+          updates = await relayCollect();
+          if (state.gen !== gen) break;
+        } else {
+          if (hub.wasOn) {
+            // The service can't be used now: Telegram must stop sending to it before it can be read directly.
+            await tg(tok, "deleteWebhook", { drop_pending_updates: false }).catch(() => {});
+            hub.wasOn = false;
+          }
+          updates = await tg<TgUpdate[]>(tok, "getUpdates", { offset, timeout: 25, allowed_updates: ["message"] }, 35_000);
+        }
         lastError = undefined;
         for (const u of updates) {
           offset = u.update_id + 1;

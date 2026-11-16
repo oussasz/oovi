@@ -232,6 +232,30 @@ await pool.query(`
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS feedback_status_idx ON feedback (status, created_at DESC);
+  -- Telegram relay (keep in sync with lib/telegram-relay.ts RELAY_DDL).
+  CREATE TABLE IF NOT EXISTS telegram_relays (
+    user_id      TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+    hook_id      TEXT NOT NULL UNIQUE,
+    secret       TEXT NOT NULL,
+    token        JSONB NULL,
+    config       JSONB NULL,
+    connected_at BIGINT NOT NULL DEFAULT 0,
+    disconnected_at BIGINT NULL,
+    active_device TEXT NULL,
+    active_seen_at TIMESTAMPTZ NULL,
+    chats        BIGINT[] NOT NULL DEFAULT '{}',
+    language     TEXT NOT NULL DEFAULT 'en',
+    notices      JSONB NOT NULL DEFAULT '{}',
+    last_poll_at TIMESTAMPTZ NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE TABLE IF NOT EXISTS telegram_inbox (
+    id         BIGSERIAL PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    data       JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS telegram_inbox_user_idx ON telegram_inbox (user_id, id);
   -- The user's setup for their other computers (keep in sync with lib/account-setup.ts SETUP_DDL).
   CREATE TABLE IF NOT EXISTS account_setup (
     user_id    TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,

@@ -108,8 +108,10 @@ export default function TermsPage() {
       <h2>7. Your content</h2>
       <p>
         Your prompts, files, chats, memories, skills and the results your bots produce (“Your Content”) belong to you,
-        to the extent the law and your AI provider’s terms allow. Your Content is stored locally on your device; we
-        don’t receive it and don’t claim any rights to it. You are responsible for having the rights to anything you
+        to the extent the law and your AI provider’s terms allow. Your chats, prompts and files are stored locally on
+        your device. To bring your setup to your other computers, a copy of your bots, skills, routines, settings and
+        what your bots learned is kept, encrypted, with your account, as the Privacy Policy describes. We use it only
+        for that and don’t claim any rights to Your Content. You are responsible for having the rights to anything you
         give your bots.
       </p>
 

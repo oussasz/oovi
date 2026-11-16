@@ -11,12 +11,15 @@ export default function PrivacyPage() {
       title="Privacy Policy"
       summary={
         <p>
-          <b>The short version:</b> your bots, chats, memories, skills and API keys are saved on your computer. If you
+          <b>The short version:</b> your chats, files and API keys are saved on your computer. Your setup (bots, groups,
+          skills, routines, settings and what your bots learned about you) is also kept, encrypted, with your oovi account
+          so it follows you to your other computers; your chats never are. If you
           use theOovi, our built-in model, each request passes through our server to our AI provider to be answered; we
           don’t store or read it, and we keep only numbers (how many credits and tokens it used). With your own API key,
           requests go straight from your computer to your provider. Your oovi account stores what we need to sign you in
           and run your credits, plus crash reports, usage numbers and anything you choose to send us (feedback, a pilot
-          request). You can delete your account at any time.
+          request). If you connect Telegram, your Telegram messages to your bot pass through our server until oovi on your
+          computer collects them. You can delete your account at any time.
         </p>
       }
     >
@@ -29,10 +32,27 @@ export default function PrivacyPage() {
       <h2>2. What stays on your device</h2>
       <p>The oovi App is designed to keep your work local. The following is stored only on your own computer:</p>
       <ul>
-        <li>your bots and their settings, chats, prompts, files, memories and skills;</li>
+        <li>your chats, prompts and files (including what your bots make in a chat);</li>
         <li>your AI provider API keys, which are stored encrypted;</li>
         <li>results and content your bots produce.</li>
       </ul>
+      <p>
+        <b>Your setup, on every computer.</b> So that your oovi is the same on every computer you sign in on, a copy of
+        your setup is kept with your account: your bots (their names, roles, instructions and looks), your groups (who
+        is in them, not their messages), skills, routines, the connectors you added (without their keys or sign-ins),
+        a few settings (such as the language and approvals), and what your bots learned about you (your profile,
+        notes and lessons). It is stored compressed and encrypted, used only to bring your setup to your computers,
+        and deleted with your account. Your chats, files, API keys and connector keys are never part of it.
+      </p>
+      <p>
+        <b>Telegram.</b> If you connect a Telegram bot to oovi, Telegram sends the messages for that bot to our server,
+        which keeps each one, encrypted, only until oovi on your computer collects it (24 hours at most). When your
+        computer is off or oovi is closed, our server answers right away that you need to open oovi to continue. To do
+        this, and so that every computer you sign in on can use the same bot, our server keeps your bot’s token
+        (encrypted), the chats your bot answers and your language; they are deleted when you disconnect Telegram in
+        oovi (on any of your computers) or delete your account. oovi’s answers go from your computer straight to
+        Telegram.
+      </p>
       <p>
         When your bots use <b>your own API key</b>, requests go directly from your device to the AI provider you chose.
         That provider processes your data under its own privacy policy and terms, so please review them. Likewise,
@@ -102,7 +122,10 @@ export default function PrivacyPage() {
         Paddle processes your payment and billing details under its own{" "}
         <a href="https://www.paddle.com/legal/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
       </p>
-      <p>We do <b>not</b> store the content of your chats, prompts, memories, skills or files.</p>
+      <p>
+        We do <b>not</b> store the content of your chats, prompts or files. Your setup and Telegram messages are kept
+        only as described in section 2.
+      </p>
 
       <h2>4. Crash reports and usage statistics</h2>
       <p>
@@ -166,6 +189,7 @@ export default function PrivacyPage() {
         <li>Sign-in sessions expire after about 60 days of inactivity, or when you sign out.</li>
         <li>Crash reports are kept only as long as useful for fixing bugs, and no longer than 12 months.</li>
         <li>Credit records, theOovi usage numbers, pilot requests and feedback are kept while your account exists.</li>
+        <li>Your setup copy is kept while your account exists. Telegram messages are kept until oovi collects them, 24 hours at most.</li>
         <li>Billing and payment records are kept as long as tax and accounting laws require, even after you delete your account.</li>
       </ul>
 
@@ -173,7 +197,8 @@ export default function PrivacyPage() {
       <p>
         You can delete your account at any time from your <Link href="/account">account page</Link>. This permanently
         deletes your account data (email, name, profile photo, terms acceptance, sessions), your credits and their
-        history, theOovi usage numbers, pilot requests, feedback and crash reports linked to your account. Backups, if any, are overwritten in the normal course. Deleting your account does not remove data
+        history, theOovi usage numbers, pilot requests, feedback, crash reports, your setup copy and your Telegram
+        relay data linked to your account. Backups, if any, are overwritten in the normal course. Deleting your account does not remove data
         stored in the App on your own computer; you can remove that by uninstalling the App and deleting its data
         folder.
       </p>

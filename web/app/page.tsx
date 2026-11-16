@@ -265,7 +265,7 @@ function HowItWorks() {
       title: "Skills",
       text: "When you ask for the same kind of task again, a bot can save the steps as a skill and reuse them next time.",
     },
-    { title: "On your computer", text: "Chats, memory and keys stay on your device. Keys are encrypted." },
+    { title: "On your computer", text: "Chats, files and keys stay on your device. Keys are encrypted." },
   ];
   return (
     <section id="how" className="how container">
@@ -307,8 +307,8 @@ function About() {
           final say.
         </p>
         <p>
-          oovi is in a free pilot while we improve it. Your oovi account only holds your email, name and photo; your
-          chats never leave your computer. <Link href="/privacy" className="text-link">Privacy Policy</Link>
+          oovi is in a free pilot while we improve it. Your oovi account holds your email, name, photo and your setup
+          (so it follows you to your other computers); your chats never leave your computer. <Link href="/privacy" className="text-link">Privacy Policy</Link>
         </p>
       </div>
     </section>
