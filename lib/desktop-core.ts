@@ -34,7 +34,7 @@ export const SYSTEM_WINDOW = "This window can run programs or change the system 
 export const OWN_WINDOW = "That is oovi's own window, and bots can't control oovi itself. oovi moves its window aside by itself: take a new screenshot and go on.";
 export const UNKNOWN_WINDOW = "oovi can't tell which window this would reach, so it won't act there. Take a new screenshot, or ask the user.";
 export const ELEVATED_WINDOW =
-  "This window runs as administrator. Windows doesn't let apps control it (nor User Account Control prompts or the lock screen). If what's left is opening a page or playing a video, open the exact address with open_in_user_browser instead (a YouTube watch link plays by itself: find it with read_url on the YouTube search page). Otherwise ask the user to do this part, in one short sentence.";
+  "This window runs as administrator (on Linux: as root, or as another user). The system doesn't let apps control it (nor admin password prompts or the lock screen). If what's left is opening a page or playing a video, open the exact address with open_in_user_browser instead (a YouTube watch link plays by itself: find it with read_url on the YouTube search page). Otherwise ask the user to do this part, in one short sentence.";
 /** An approved desktop action must run within this long, or the user is asked again. */
 export const APPROVAL_TTL_MS = 20 * 60_000;
 /** Typing is sent in chunks this long, and the window is checked again before each one. */
@@ -137,7 +137,7 @@ export type Refusal = { reason: "unknown" | "own" | "elevated" | "password" | "s
 const PASSWORD_EXE = new Set(["1password.exe", "bitwarden.exe", "keepass.exe", "keepassxc.exe", "lastpass.exe", "dashlane.exe", "keeperpasswordmanager.exe", "keeper.exe", "nordpass.exe", "proton pass.exe", "protonpass.exe", "roboform.exe", "robotaskbaricon.exe", "enpass.exe"]);
 const PASSWORD_TITLE = /1password|bitwarden|keepass|lastpass|dashlane|keeper password|keeper security|nordpass|proton pass|roboform|enpass/i;
 const SECURITY_EXE = new Set(["consent.exe", "credentialuibroker.exe", "lockapp.exe", "logonui.exe", "sechealthui.exe", "securityhealthhost.exe"]);
-const SECURITY_TITLE = /windows security|credential manager|enter (network )?credentials|user account control|windows hello|sécurité windows|windows-sicherheit|seguridad de windows|windows güvenliği|أمان windows/i;
+const SECURITY_TITLE = /windows security|credential manager|enter (network )?credentials|user account control|windows hello|sécurité windows|windows-sicherheit|seguridad de windows|windows güvenliği|أمان windows|authentication required|authentification requise|authentifizierung erforderlich|autenticación necesaria|kimlik doğrulama gerekli|المصادقة مطلوبة|unlock (login )?keyring|déverrouiller le trousseau/i;
 /** Programs that run commands or change the system (Windows Terminal, consoles, Settings, Store, Start, Search, MMC snap-ins…). */
 const SYSTEM_EXE = new Set([
   "cmd.exe", "powershell.exe", "powershell_ise.exe", "pwsh.exe", "windowsterminal.exe", "wt.exe", "openconsole.exe", "conhost.exe",
@@ -165,6 +165,25 @@ const SYSTEM_TITLE = new RegExp(
   ].join("|"),
   "i",
 );
+// ---- Linux (X11): program names (/proc/<pid>/exe) and window classes (WM_CLASS), lower case ----
+/** Password managers and keyrings. */
+const LINUX_PASSWORD = new Set(["keepassxc", "keepass2", "bitwarden", "1password", "seahorse", "kwalletmanager5", "kwalletmanager6", "enpass", "proton-pass", "nordpass", "keeper", "lastpass", "gnome-keyring-daemon", "secrets", "passwordsafe", "gnome-passwordsafe"]);
+/** Password and admin prompts: polkit agents, pinentry, SSH askpass, screen lockers. */
+const LINUX_SECURITY = /^(polkit-[\w-]*agent[\w-]*|polkit-gnome-authentication-agent-1|lxpolkit|mate-polkit|gcr-prompter|pinentry[\w-]*|ssh-askpass[\w-]*|ksshaskpass|x11-ssh-askpass|gnome-screensaver|xscreensaver|light-locker|i3lock|xfce4-screensaver|kscreenlocker_greet|cinnamon-screensaver|mate-screensaver|unlock-dialog)$/;
+/** Terminals, run boxes, settings, system tools, software installers, panels and launchers. */
+const LINUX_SYSTEM = new Set([
+  "gnome-terminal", "gnome-terminal-server", "kgx", "ptyxis", "konsole", "xterm", "uxterm", "xfce4-terminal", "mate-terminal", "lxterminal", "qterminal",
+  "tilix", "terminator", "kitty", "alacritty", "wezterm", "wezterm-gui", "foot", "guake", "tilda", "yakuake", "cool-retro-term", "st", "urxvt", "rxvt",
+  "sakura", "terminology", "deepin-terminal", "blackbox", "contour", "rio", "warp", "tabby", "hyper", "termite", "x-terminal-emulator",
+  "gnome-control-center", "systemsettings", "systemsettings5", "xfce4-settings-manager", "mate-control-center", "cinnamon-settings", "unity-control-center",
+  "budgie-control-center", "lxqt-config", "gnome-system-monitor", "plasma-systemmonitor", "ksysguard", "xfce4-taskmanager", "lxtask", "mate-system-monitor",
+  "synaptic", "gnome-software", "plasma-discover", "update-manager", "software-properties-gtk", "software-properties-qt", "mintupdate", "mintinstall",
+  "pamac-manager", "gnome-disks", "gparted", "kde-partitionmanager", "dconf-editor", "gufw", "nm-connection-editor", "gnome-logs", "ksystemlog",
+  "users-admin", "gnome-shell", "plasmashell", "krunner", "xfce4-panel", "xfce4-appfinder", "mate-panel", "cinnamon", "budgie-panel", "lxpanel",
+  "lxqt-panel", "tint2", "polybar", "rofi", "dmenu", "albert", "ulauncher", "plank", "docky", "pkexec", "gksu", "kdesu", "sudo", "su", "bash", "sh", "zsh", "fish",
+]);
+const linuxName = (s: string) => s.toLowerCase().replace(/\.(desktop|appimage)$/, "");
+
 /** Banking, payment, crypto and broker words, matched anywhere in the title ("Rabobank", "MyBank"). Best effort. */
 const MONEY_ANYWHERE =
   /bank|banque|bancaire|banco|banca|paypal|wallet|portefeuille|crypto|coinbase|binance|kraken|bitstamp|metamask|brokerage|courtier|revolut|venmo|zelle|stripe|checkout|payment|paiement|zahlung|ödeme|hsbc|barclays|santander|natwest|lloyds|schwab|fidelity|robinhood|e\*?trade|ameritrade|interactive brokers|wells ?fargo|capital ?one|american express|amex|credit card|debit card|carte bancaire|kreditkarte|tarjeta|monzo|klarna|western union|moneygram|cash app|apple pay|google pay|bunq|trade republic|degiro|etoro|boursorama|sparkasse|volksbank|commerzbank|postfinance|بنك|مصرف|دفع/i;
@@ -179,10 +198,12 @@ export function windowVerdict(w: WinInfo | null | undefined): Refusal | null {
   if (w.own) return { reason: "own", message: OWN_WINDOW };
   const title = (w.title || "").normalize("NFKC").trim();
   const exe = (w.exe || "").toLowerCase();
-  if (PASSWORD_EXE.has(exe) || PASSWORD_TITLE.test(title)) return { reason: "password", message: PROTECTED };
-  if (SECURITY_EXE.has(exe) || SECURITY_TITLE.test(title)) return { reason: "security", message: PROTECTED };
+  const cls = linuxName(w.className || "");
+  const lx = linuxName(exe);
+  if (PASSWORD_EXE.has(exe) || LINUX_PASSWORD.has(lx) || LINUX_PASSWORD.has(cls) || PASSWORD_TITLE.test(title)) return { reason: "password", message: PROTECTED };
+  if (SECURITY_EXE.has(exe) || LINUX_SECURITY.test(lx) || LINUX_SECURITY.test(cls) || SECURITY_TITLE.test(title)) return { reason: "security", message: PROTECTED };
   if (w.elevated) return { reason: "elevated", message: ELEVATED_WINDOW };
-  if (SYSTEM_EXE.has(exe) || SYSTEM_CLASS.has(w.className) || SYSTEM_TITLE.test(title)) return { reason: "system", message: SYSTEM_WINDOW };
+  if (SYSTEM_EXE.has(exe) || SYSTEM_CLASS.has(w.className) || LINUX_SYSTEM.has(lx) || LINUX_SYSTEM.has(cls) || SYSTEM_TITLE.test(title)) return { reason: "system", message: SYSTEM_WINDOW };
   if (moneyTitle(title)) return { reason: "money", message: PROTECTED };
   if (!title && !exe) return { reason: "unknown", message: UNKNOWN_WINDOW };
   return null;
@@ -365,7 +386,10 @@ export function parseCombo(text: string): KeyCombo | string {
  */
 export function forbiddenCombo(c: KeyCombo): string | null {
   const m = new Set(c.modifiers);
-  if (c.key === "command" || m.has("command")) return "The Windows key can't be used (it opens Start, Run and Settings). Click what you need instead.";
+  if (c.key === "command" || m.has("command")) return "The Windows (Super) key can't be used (it opens Start, Activities, Run and Settings). Click what you need instead.";
+  // Linux desktops: Alt+F1/F2 open the app menu or a Run box, Ctrl+Alt+T a terminal, Ctrl+Alt+F1-F12 switch to a text console.
+  if (m.has("alt") && !m.has("control") && (c.key === "f1" || c.key === "f2")) return "Alt+F1 and Alt+F2 can't be used (they open the app menu or a Run box). Click what you need instead.";
+  if (m.has("control") && m.has("alt") && (c.key === "t" || c.key === "backspace" || /^f([1-9]|1[0-2])$/.test(c.key))) return "That shortcut opens a terminal or leaves the desktop: it can't be used.";
   if (m.has("alt") && (c.key === "tab" || c.key === "escape")) return "Alt+Tab and Alt+Esc can't be used. Click the window you need instead (take a screenshot first).";
   if (m.has("control") && c.key === "escape") return "Ctrl+Esc and Ctrl+Shift+Esc can't be used.";
   if (m.has("alt") && c.key === "f4") return "Alt+F4 can't be used. Ask the user to close windows.";
@@ -725,7 +749,7 @@ export function windowLines(list: AppWindow[]): { lines: string[]; shown: AppWin
     const v = windowVerdict(w);
     const state = w.minimized ? " (minimized)" : w.maximized ? " (maximized)" : "";
     if (v && (v.reason === "password" || v.reason === "security" || v.reason === "money")) return `${i + 1}. (a private window oovi doesn't touch)${state}`;
-    if (v) return `${i + 1}. ${w.title} — ${appName(w)}${state} (oovi doesn't act on this one: ${v.reason === "system" ? "it can run programs or change the system" : v.reason === "elevated" ? "it runs as administrator" : "unknown window"})`;
+    if (v) return `${i + 1}. ${w.title} — ${appName(w)}${state} (oovi doesn't act on this one: ${v.reason === "system" ? "it can run programs or change the system" : v.reason === "elevated" ? "it runs as administrator or root" : "unknown window"})`;
     return `${i + 1}. ${w.title} — ${appName(w)}${state}${i === 0 && !w.minimized ? " (in front)" : ""}`;
   });
   return { lines, shown };

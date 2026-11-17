@@ -5,8 +5,21 @@
 // password managers.
 // Pure (no imports): tests/unit/desktop-apps.test.mts.
 
-/** store: a Microsoft Store app (path "shell:AppsFolder\\<package id>!<app>", no shortcut file). */
-export type AppEntry = { name: string; path: string; target?: string; store?: boolean };
+/** store: a Microsoft Store app (path "shell:AppsFolder\\<package id>!<app>", no shortcut file). desktop: a Linux menu entry (.desktop file; target = its program). */
+export type AppEntry = { name: string; path: string; target?: string; store?: boolean; desktop?: boolean };
+
+/** Linux programs never opened by a bot: terminals, settings, system tools, installers, password managers, run boxes. */
+const BLOCKED_LINUX = new Set([
+  "gnome-terminal", "kgx", "ptyxis", "konsole", "xterm", "uxterm", "xfce4-terminal", "mate-terminal", "lxterminal", "qterminal", "tilix", "terminator",
+  "kitty", "alacritty", "wezterm", "wezterm-gui", "foot", "guake", "tilda", "yakuake", "cool-retro-term", "urxvt", "rxvt", "sakura", "terminology",
+  "deepin-terminal", "blackbox", "contour", "tabby", "hyper", "x-terminal-emulator", "gnome-control-center", "systemsettings", "systemsettings5",
+  "xfce4-settings-manager", "mate-control-center", "cinnamon-settings", "unity-control-center", "budgie-control-center", "lxqt-config",
+  "gnome-system-monitor", "plasma-systemmonitor", "ksysguard", "xfce4-taskmanager", "lxtask", "mate-system-monitor", "synaptic", "synaptic-pkexec",
+  "gnome-software", "plasma-discover", "update-manager", "software-properties-gtk", "software-properties-qt", "mintupdate", "mintinstall",
+  "pamac-manager", "gnome-disks", "gparted", "partitionmanager", "dconf-editor", "gufw", "nm-connection-editor", "gnome-logs", "ksystemlog",
+  "users-admin", "pkexec", "gksu", "kdesu", "krunner", "xfce4-appfinder", "rofi", "dmenu", "albert", "ulauncher", "keepassxc", "keepass2",
+  "bitwarden", "1password", "seahorse", "kwalletmanager5", "kwalletmanager6", "enpass", "bash", "sh", "zsh", "fish", "python3", "python", "perl",
+]);
 
 /** Store packages that run commands or change the system (Terminal, PowerShell, Settings, the Store itself, Dev Home…). */
 const BLOCKED_PACKAGE = /WindowsTerminal|PowerShell|immersivecontrolpanel|Microsoft\.WindowsStore|Microsoft\.DevHome|Microsoft\.WinGet|DesktopAppInstaller|Microsoft\.SecHealthUI|Microsoft\.Windows\.SecHealthUI|Microsoft\.Windows\.Shell|Microsoft\.Windows\.Search|windows\.immersive|MicrosoftCorporationII\.QuickAssist|Microsoft\.RemoteDesktop|WindowsSubsystemForLinux|CanonicalGroupLimited|TheDebianProject|SUSE|KaliLinux|AutoHotkey|1Password|Bitwarden|KeePass|LastPass|Dashlane|NordPass|Keeper/i;
@@ -30,6 +43,12 @@ export function blockedApp(a: AppEntry): string | null {
   if (a.store) {
     if (!/^shell:AppsFolder\\[\w.\-]+![\w.\-]+$/.test(a.path)) return "It isn't a program";
     if (BLOCKED_PACKAGE.test(a.path) || BLOCKED_NAME.test(a.name)) return "It can run commands, change the system or holds passwords";
+    return null;
+  }
+  if (a.desktop) {
+    const prog = exeOf(a.target).replace(/\.(appimage|sh|py)$/, "");
+    if (BLOCKED_LINUX.has(prog) || /\.(sh|py|pl)$/i.test(a.target ?? "")) return "It can run commands or change the system";
+    if (BLOCKED_NAME.test(a.name)) return "It can run commands, change the system or holds passwords";
     return null;
   }
   const exe = exeOf(a.target);
@@ -58,7 +77,7 @@ export function findApp(apps: AppEntry[], wanted: string): AppMatch {
     })
     .filter((x) => x.score > 0)
     .sort((x, y) => y.score - x.score || x.n.length - y.n.length);
-  if (!scored.length) return { error: `No installed app is called "${wanted}" (Start menu and Microsoft Store apps were searched; the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.` };
+  if (!scored.length) return { error: `No installed app is called "${wanted}" (the installed apps were searched; on Windows the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.` };
   const best = scored.filter((x) => x.score === scored[0]!.score);
   // The same app listed twice (for this user and for all users) is one app.
   const names = [...new Set(best.map((x) => x.n))];

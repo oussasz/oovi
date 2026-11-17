@@ -60,6 +60,7 @@
     "asar": true,
     "asarUnpack": [
       "node_modules/@nut-tree-fork/libnut-win32/build/Release/*.node",
+      "node_modules/@nut-tree-fork/libnut-linux/build/Release/*.node",
       "node_modules/@koromix/koffi-*/**/*.node"
     ],
     "files": [
@@ -163,5 +164,8 @@
     ],
     "afterPack": "scripts/after-pack.cjs"
   },
-  "homepage": "https://oovi.conuron.com"
+  "homepage": "https://oovi.conuron.com",
+  "optionalDependencies": {
+    "@nut-tree-fork/libnut-linux": "2.7.5"
+  }
 }

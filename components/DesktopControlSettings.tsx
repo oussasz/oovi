@@ -8,7 +8,7 @@ import { api } from "@/lib/client";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
-type State = { platform: boolean; app: boolean; appReason?: string; model: boolean; enabled: boolean; consented: boolean; askEvery: boolean };
+type State = { platform: boolean; app: boolean; appReason?: string; appCode?: string; os?: string; model: boolean; enabled: boolean; consented: boolean; askEvery: boolean };
 
 export default function DesktopControlSettings() {
   const { t } = useI18n();
@@ -53,7 +53,7 @@ export default function DesktopControlSettings() {
           <Icon name="cursor" size={16} /> {t("desk.risk.input")}
         </li>
         <li className="dc-warn">
-          <Icon name="shield" size={16} /> {t("desk.risk.never")}
+          <Icon name="shield" size={16} /> {t(s.os === "linux" ? "desk.risk.never.linux" : "desk.risk.never")}
         </li>
         <li>
           <Icon name="stop" size={16} /> {t("desk.risk.stop")}
@@ -63,7 +63,7 @@ export default function DesktopControlSettings() {
       {!s.platform ? (
         <p className="notice small">{t("desk.mac")}</p>
       ) : !s.app ? (
-        <p className="notice small">{s.appReason || t("desk.noApp")}</p>
+        <p className="notice small">{s.appCode === "wayland" ? t("desk.wayland") : s.appReason || t("desk.noApp")}</p>
       ) : (
         <>
           {!s.model && <p className="notice small">{t("desk.noModel")}</p>}
@@ -98,7 +98,7 @@ export default function DesktopControlSettings() {
           )}
         </>
       )}
-      <p className="note">{t("desk.blocked")}</p>
+      <p className="note">{t(s.os === "linux" ? "desk.blocked.linux" : "desk.blocked")}</p>
       {err && <div className="notice error">{err}</div>}
     </div>
   );

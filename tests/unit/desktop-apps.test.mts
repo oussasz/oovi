@@ -24,7 +24,7 @@ test("an app is found by its name, whatever the case or accents", () => {
   assert.equal(name(findApp(apps, "excel")), "Excel");
   assert.equal(name(findApp(apps, "Google Chrome")), "Google Chrome"); // listed twice: still one app
   assert.equal(name(findApp(apps, "chrome")), "Google Chrome");
-  assert.equal(name(findApp(apps, "vs code")), "ERR No installed app is called \"vs code\" (Start menu and Microsoft Store apps were searched; the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.");
+  assert.equal(name(findApp(apps, "vs code")), "ERR No installed app is called \"vs code\" (the installed apps were searched; on Windows the Store list is read a few seconds after oovi starts). Check the name, or the app may not be installed: if the user wants it opened anyway, take a screenshot and open it from a shortcut you see on the desktop or in an open window.");
   assert.equal(name(findApp(apps, "Visual Studio Code")), "Visual Studio Code");
 });
 
@@ -46,7 +46,7 @@ test("terminals, uninstallers, password managers and shortcuts to them are never
 test("nonsense input is refused; unknown apps get a useful answer", () => {
   assert.match(name(findApp(apps, "")), /^ERR Give the app's name/);
   assert.match(name(findApp(apps, "x".repeat(200))), /^ERR Give the app's name/);
-  assert.match(name(findApp(apps, "ChatGPT")), /Start menu and Microsoft Store apps were searched/);
+  assert.match(name(findApp(apps, "ChatGPT")), /the installed apps were searched/);
   assert.match(name(findApp(apps, "..\\..\\Windows\\System32\\cmd.exe")), /^ERR No installed app/);
   assert.equal(blockedApp({ name: "Run script", path: "x.lnk", target: "C:\\a\\go.bat" }), "It can run commands or change the system");
   assert.equal(blockedApp({ name: "Paint", path: "x.lnk" }), null); // target unknown: the name decides

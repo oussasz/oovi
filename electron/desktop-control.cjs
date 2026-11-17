@@ -70,6 +70,9 @@ const CONSENT_TEXT = {
 };
 
 /** HWND from Electron's native handle buffer, as a number. */
+const WAYLAND =
+  "Controlling this computer needs an X11 session, and this computer is using Wayland, which doesn't let apps see or control other windows. To use it: sign out, and on the sign-in screen choose an X11 session (on Ubuntu: the gear button, then “Ubuntu on Xorg”), then sign in again.";
+
 function hwndOf(win) {
   try {
     const b = win.getNativeWindowHandle();
@@ -112,7 +115,7 @@ function pickSource(sources, d, displays) {
 
 function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, powerMonitor, dialog, nativeImage, shell }) {
   const fs = require("node:fs");
-  const { execFile, spawn } = require("node:child_process");
+  const { execFile, execFileSync, spawn } = require("node:child_process");
   const path = require("node:path");
   // oovi's own windows, minimized while a bot controls the computer. They cover the screen the bot must
   // see (and are blacked out in its screenshots), so a bot started from a maximized oovi saw only black.
@@ -287,6 +290,20 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     return { x: Math.round(d.bounds.x + x / k), y: Math.round(d.bounds.y + y / k) };
   }
 
+  /** The Linux applications menu, read at most once a minute. */
+  let linuxAppCache = { at: 0, list: [] };
+  function linuxAppsCached() {
+    if (Date.now() - linuxAppCache.at < 60_000) return linuxAppCache.list;
+    let list = [];
+    try {
+      list = require("./linux-apps.cjs").linuxApps();
+    } catch {
+      list = [];
+    }
+    linuxAppCache = { at: Date.now(), list };
+    return list;
+  }
+
   /** Start-menu shortcuts (this user's and everyone's): the apps a bot may be allowed to open. */
   let appCache = { at: 0, list: [] };
   function startMenuApps() {
@@ -358,13 +375,29 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
 
   function native() {
     if ((nut && win32) || loadError) return nut && win32 ? nut : null;
-    if (process.platform !== "win32") {
-      loadError = "Desktop control is only available on Windows for now.";
+    if (process.platform === "linux") {
+      // Wayland doesn't let one program see or move another program's windows, or take a screenshot without
+      // asking each time. X11 does (as Windows does). Most Linux desktops still offer an X11 session.
+      if (String(process.env.XDG_SESSION_TYPE || "").toLowerCase() === "wayland" || (!process.env.DISPLAY && process.env.WAYLAND_DISPLAY)) {
+        loadError = WAYLAND;
+        return null;
+      }
+      if (!process.env.DISPLAY) {
+        loadError = "oovi can't find this computer's screen (no X11 display).";
+        return null;
+      }
+    } else if (process.platform !== "win32") {
+      loadError = "Desktop control is only available on Windows and Linux for now.";
       return null;
     }
     try {
-      nut = require("@nut-tree-fork/libnut-win32");
-      win32 = require("./win32-windows.cjs").load(require("koffi"));
+      if (process.platform === "linux") {
+        nut = require("@nut-tree-fork/libnut-linux");
+        win32 = require("./x11-windows.cjs").load(require("koffi"));
+      } else {
+        nut = require("@nut-tree-fork/libnut-win32");
+        win32 = require("./win32-windows.cjs").load(require("koffi"));
+      }
     } catch (e) {
       loadError = `The mouse and keyboard modules couldn't load: ${(e && e.message) || e}`;
       nut = null;
@@ -382,8 +415,46 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     return win32;
   };
 
+  /**
+   * Linux: is the session locked? Desktops tell logind (LockedHint), whichever locker they use. Read at
+   * most every 3 seconds; unknown = not locked (a locked screen still captures as the lock screen, and
+   * oovi never types passwords there).
+   */
+  let lockRead = { at: 0, locked: false };
+  function linuxLocked() {
+    if (process.platform !== "linux") return false;
+    if (Date.now() - lockRead.at < 3000) return lockRead.locked;
+    let v = false;
+    try {
+      const id = process.env.XDG_SESSION_ID;
+      const out = execFileSync("loginctl", id ? ["show-session", id, "-p", "LockedHint", "--value"] : ["show-session", "self", "-p", "LockedHint", "--value"], { timeout: 1500, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      v = out.trim() === "yes";
+    } catch {
+      v = false;
+    }
+    lockRead = { at: Date.now(), locked: v };
+    return v;
+  }
+
   /** Called once the app is ready (powerMonitor needs it). */
   function init() {
+    if (process.platform === "linux") {
+      // No lock events from Electron on Linux: watched while someone listens (a bot is using the computer).
+      setInterval(() => {
+        if (!lockListeners.size) return;
+        const now = linuxLocked();
+        if (now && !locked) {
+          locked = true;
+          for (const f of lockListeners) {
+            try {
+              f();
+            } catch {
+              /* a listener must not break the others */
+            }
+          }
+        } else if (!now) locked = false;
+      }, 3000).unref();
+    }
     try {
       powerMonitor.on("lock-screen", () => {
         locked = true;
@@ -414,7 +485,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
     /** { ok } or { ok: false, reason } — reason is shown to the user. */
     available() {
       const n = native();
-      return n ? { ok: true } : { ok: false, reason: loadError || "Desktop control isn't available." };
+      return n ? { ok: true } : { ok: false, reason: loadError || "Desktop control isn't available.", ...(loadError === WAYLAND ? { code: "wayland" } : {}) };
     },
     /** The primary display: size in DIPs, Windows scale factor, and the size the input library sees (physical pixels). */
     display() {
@@ -454,7 +525,8 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       // The glow and the pointer are left out of screenshots by Windows itself (content protection) from
       // Windows 10 version 2004. Older Windows would show them as black bands over what the bot must see:
       // there they are made see-through for the moment of the capture.
-      const deco = OLD_WINDOWS ? [...edges, pointerWin].filter((w) => w && !w.isDestroyed()) : [];
+      // Linux has no such exclusion at all: the banner is hidden for that moment too.
+      const deco = OLD_WINDOWS ? [...edges, pointerWin].filter((w) => w && !w.isDestroyed()) : process.platform === "linux" ? [...edges, pointerWin, overlay].filter((w) => w && !w.isDestroyed()) : [];
       const all = screen.getAllDisplays();
       let src = null;
       // Two tries: right after a change on screen (a new wallpaper, a window animating) Windows can
@@ -578,7 +650,7 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
       need().typeString(String(text));
     },
     locked() {
-      return locked;
+      return locked || linuxLocked();
     },
     /** Called when the screen locks. Returns an unsubscribe function. */
     onLock(fn) {
@@ -599,13 +671,18 @@ function createDesktopControl({ app, BrowserWindow, screen, desktopCapturer, pow
         /* a bonus: the real pointer still moves */
       }
     },
-    /** Installed apps: Start-menu shortcuts, and Microsoft Store apps ({ name, path: "shell:AppsFolder\\<id>", store: true }). Windows only. */
+    /** Installed apps: Start-menu shortcuts and Microsoft Store apps on Windows; the applications menu on Linux. */
     apps() {
+      if (process.platform === "linux") return linuxAppsCached();
       return process.platform === "win32" ? [...startMenuApps(), ...storeApps()] : [];
     },
     /** Start one of those apps (the server checked it and the user said yes). Resolves "" or an error text. */
     async openApp(file) {
-      if (process.platform !== "win32") return "Desktop control is only available on Windows for now.";
+      if (process.platform === "linux") {
+        if (!linuxAppsCached().some((a) => a.path === file)) return "That isn't an app from the applications menu.";
+        return await require("./linux-apps.cjs").launch(file);
+      }
+      if (process.platform !== "win32") return "Desktop control is only available on Windows and Linux for now.";
       const store = storeApps().find((a) => a.path === file);
       if (store) {
         // A Store app has no file to open: Windows starts it from its app id, as the Start menu does.

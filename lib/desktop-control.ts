@@ -80,7 +80,7 @@ import { findApp, type AppEntry, type AppMatch } from "./desktop-apps-core";
 
 /** What electron/desktop-control.cjs exposes. Coordinates are physical pixels of the primary display. */
 export type Bridge = {
-  available(): { ok: boolean; reason?: string };
+  available(): { ok: boolean; reason?: string; code?: string };
   display(): { dip: Size; scaleFactor: number; native: Size | null };
   /** screen: which screen (an id from screens()); the main one when missing. */
   capture(o: { real: Size; out: Size; fit?: boolean; crop?: { x: number; y: number; width: number; height: number } | null; mask?: Rect[]; quality?: number; screen?: number | null }): Promise<{ jpeg: Buffer; width: number; height: number }>;
@@ -192,7 +192,7 @@ export async function runOpenApp(call: ToolCall): Promise<ToolResult> {
   if ("error" in m) return { id: call.id, name: call.name, content: m.error, isError: true };
   try {
     const err = await bridge()!.openApp!(m.app.path);
-    if (err) return { id: call.id, name: call.name, content: `Windows couldn't open ${m.app.name}: ${err}`, isError: true };
+    if (err) return { id: call.id, name: call.name, content: `The computer couldn't open ${m.app.name}: ${err}`, isError: true };
   } catch (e) {
     return { id: call.id, name: call.name, content: `Couldn't open ${m.app.name}: ${(e as Error).message}`, isError: true };
   }
@@ -313,7 +313,7 @@ export const SEND_SHOT_SPEC: ToolSpec = {
 /** The screen as a file for the user (full resolution, private windows blacked out, oovi's own window aside). */
 export async function runSendScreenshot(call: ToolCall, ctx: DesktopCtx): Promise<ToolResult> {
   const b = bridge();
-  if (process.platform !== "win32") return fail(call, "Screenshots of the screen are only available on Windows for now.");
+  if (!DESKTOP_OS) return fail(call, "Screenshots of the screen are only available on Windows and Linux for now.");
   if (!b) return fail(call, "Screenshots need the oovi desktop app.");
   const av = b.available();
   if (!av.ok) return fail(call, av.reason ?? "Desktop control isn't available.");
@@ -357,11 +357,19 @@ const SHOT_PREFIX = "desk-";
 
 // ---------- availability ----------
 
-/** platform: Windows only for now. app: needs the desktop app (and its native modules). model: needs a supported Claude model. */
+const LINUX = process.platform === "linux";
+/** Where desktop control works: Windows, and Linux in an X11 session (the bridge says when it's Wayland). */
+const DESKTOP_OS = process.platform === "win32" || process.platform === "linux";
+
+/** platform: Windows and Linux for now. app: needs the desktop app (and its native modules). model: needs a supported Claude model. */
 export type DesktopState = {
   platform: boolean;
   app: boolean;
   appReason?: string;
+  /** "wayland": a Linux Wayland session (the screen explains how to pick an X11 one). */
+  appCode?: string;
+  /** The system, for the right wording ("win32", "linux", "darwin"). */
+  os: string;
   model: boolean;
   enabled: boolean;
   consented: boolean;
@@ -378,13 +386,15 @@ export function desktopModelOk(s: Settings): boolean {
 }
 
 export function desktopState(s: Settings = loadSettings()): DesktopState {
-  const platform = process.platform === "win32";
+  const platform = DESKTOP_OS;
   const b = bridge();
-  const av = platform && b ? b.available() : { ok: false, reason: platform ? "Open oovi's desktop app to use this." : undefined };
+  const av: { ok: boolean; reason?: string; code?: string } = platform && b ? b.available() : { ok: false, reason: platform ? "Open oovi's desktop app to use this." : undefined };
   return {
     platform,
+    os: process.platform,
     app: av.ok,
     ...(av.ok || !av.reason ? {} : { appReason: av.reason }),
+    ...(av.code ? { appCode: av.code } : {}),
     model: desktopModelOk(s),
     enabled: s.desktopControl.enabled,
     consented: !!s.desktopControl.consentAt,
@@ -401,7 +411,7 @@ export function desktopOffered(s: Settings): boolean {
 /** The app's native "turn on desktop control?" dialog. Without the desktop app, never. */
 export async function confirmDesktopConsent(lang: string): Promise<boolean> {
   const b = bridge();
-  if (!b || process.platform !== "win32") return false;
+  if (!b || !DESKTOP_OS) return false;
   try {
     return (await b.confirmConsent(lang)) === true;
   } catch {
@@ -716,7 +726,7 @@ export type DesktopCtx = {
 /** Runs one desktop call. The orchestrator has already checked the user's OK. */
 export async function runDesktopCall(call: ToolCall, ctx: DesktopCtx): Promise<ToolResult> {
   const b = bridge();
-  if (process.platform !== "win32") return fail(call, "Desktop control is only available on Windows for now.");
+  if (!DESKTOP_OS) return fail(call, "Desktop control is only available on Windows and Linux for now.");
   if (!b) return fail(call, "Desktop control needs the oovi desktop app.");
   const av = b.available();
   if (!av.ok) return fail(call, av.reason ?? "Desktop control isn't available.");
@@ -783,8 +793,8 @@ export async function runDesktopCall(call: ToolCall, ctx: DesktopCtx): Promise<T
     if (st.session === s) s.lastPos = read(() => b.cursor()) ?? s.lastPos;
     if (e instanceof Refused) return fail(call, e.message);
     const msg = (e as Error).message || String(e);
-    if (msg === "unavailable") return fail(call, "The screen can't be captured right now (locked, a User Account Control prompt, or another protected screen). Ask the user.");
-    return fail(call, `That action failed: ${msg.slice(0, 200)}. Windows running as administrator, User Account Control prompts and the lock screen can't be controlled.`);
+    if (msg === "unavailable") return fail(call, `The screen can't be captured right now (locked, ${LINUX ? "an admin password prompt" : "a User Account Control prompt"}, or another protected screen). Ask the user.`);
+    return fail(call, `That action failed: ${msg.slice(0, 200)}. ${LINUX ? "Windows running as root, admin password prompts" : "Windows running as administrator, User Account Control prompts"} and the lock screen can't be controlled.`);
   }
 }
 
@@ -1065,7 +1075,11 @@ export const DESKTOP_PROMPT = `Desktop control (Beta): you can see this computer
 - Start with a screenshot. Coordinates are pixels in the latest screenshot. With several screens, a screenshot shows one screen (the one with the window you work in) and lists the others: what you need may be on another one; bring its window to the front (manage_window switch) or look there (manage_window screen). Click into a window before typing: keys go to the window that has the focus. Your last action of each turn comes back with a fresh screenshot of the result: use it, don't take another. To be fast, chain steps whose result you can predict in one turn (click a field, type, press Enter; several keys), and look only when you need to see what happened.
 - The user approves the first action of each task, and may approve every action. The user can press Stop at any time.
 - Never type passwords, PINs, card numbers, security answers or one-time codes, and never type into a field that looks like a password field: ask the user to do that part. oovi refuses password managers, banking and payment windows, and blacks them out in screenshots.
-- To start an app that isn't open, call open_app with its name (the user approves it, unless they already allowed the mouse and keyboard for this task). You can't use terminals, Run, Settings, Task Manager, the Windows key, the taskbar, Start or Search, Alt+Tab, or windows running as administrator. open_app also starts Microsoft Store apps (WhatsApp, the new Outlook…).
+- To start an app that isn't open, call open_app with its name (the user approves it, unless they already allowed the mouse and keyboard for this task). ${
+  LINUX
+    ? "This computer runs Linux. You can't use terminals, a Run box (Alt+F2), Settings, the system monitor, software installers, the Super key, panels, docks or app launchers, Alt+Tab, or windows running as root. open_app starts apps from the applications menu (including Flatpak and Snap apps)."
+    : "You can't use terminals, Run, Settings, Task Manager, the Windows key, the taskbar, Start or Search, Alt+Tab, or windows running as administrator. open_app also starts Microsoft Store apps (WhatsApp, the new Outlook…)."
+}
 - oovi's own window is minimized while you work, so the user's desktop and apps are what you see. A black area in a screenshot is a private window oovi hides (passwords, banking), never a broken screen: don't tell the user their screen is black.
 - When the user asks for something in their browser (whichever it is: Chrome, Edge, Firefox, Brave, Opera…), in one of their apps, or on their computer, the job is done there, with the screen, mouse and keyboard: their browser is where they are signed in. To open a web page there, call open_in_user_browser with the address: it opens in their default browser. If they named a different browser than the one that opened, start that one with open_app instead. Your own browser tools are for when the user didn't ask for theirs.
 - To play a video or a song: first find its watch link with read_url on https://www.youtube.com/results?search_query=<the words> (it lists the videos with their links), then open that link with open_in_user_browser: it starts playing by itself, without any click. Search and click inside YouTube only when you have no link.
