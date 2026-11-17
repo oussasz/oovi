@@ -241,7 +241,7 @@ export function afterRun(failures: number, status: RoutineRunStatus): { failures
 // ---------- reading a run's result back from its chat ----------
 
 /** theOovi errorCode values meaning "out of credits for now" (the notification says so). Runs are never retried. */
-export const CREDIT_CODES: ReadonlySet<string> = new Set(["no_credits", "daily_limit"]);
+export const CREDIT_CODES: ReadonlySet<string> = new Set(["no_credits", "daily_limit", "spend_limit"]);
 
 export type RunResult = {
   status: Extract<RoutineRunStatus, "ok" | "error" | "skipped" | "waiting">;

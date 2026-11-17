@@ -612,6 +612,11 @@ function BotMessage(props: {
         </div>
 
         {e.note && <div className="msg-note">{e.note}</div>}
+        {e.unconfirmed && e.status === "done" && (
+          <div className="msg-unconfirmed" role="note" title={e.unconfirmed}>
+            <Icon name="info" size={14} /> {t("chat.unconfirmed")}
+          </div>
+        )}
         {e.planReview === "waiting" && onPlanDecision && e.plan ? (
           <PlanReview key={e.plan.map((p) => p.text).join("\n")} steps={e.plan.map((p) => p.text)} busy={!!planBusy} onDecide={onPlanDecision} />
         ) : e.plan && e.plan.length > 0 && (

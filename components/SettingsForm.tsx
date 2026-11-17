@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { PublicSettings, SettingsPatch } from "@/lib/settings";
-import { resizeImage } from "@/lib/client";
+import { api, resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
 import ComputerFilesSettings from "./ComputerFilesSettings";
@@ -162,6 +162,7 @@ export default function SettingsForm() {
         approvals: s.approvals,
         maxSteps: s.maxSteps,
         maxTurns: s.maxTurns,
+        spend: { dayCredits: s.spend?.dayCredits ?? null, monthCredits: s.spend?.monthCredits ?? null, dayUsd: s.spend?.dayUsd ?? null, monthUsd: s.spend?.monthUsd ?? null },
         language: s.language,
         crashReports: s.crashReports,
         usageStats: s.usageStats,
@@ -401,6 +402,7 @@ export default function SettingsForm() {
             <span className="hint">{t("settings.safety.handoffsHint")}</span>
           </label>
         </div>
+        <SpendLimits value={s.spend} onChange={(spend) => setS({ ...s, spend })} />
       </div>
       <ComputerFilesSettings />
       <DesktopControlSettings />
@@ -542,3 +544,48 @@ export default function SettingsForm() {
     </main>
   );
 }
+
+/** Spending limits: the bots stop when one is reached (lib/spend.ts). Empty = no limit. */
+function SpendLimits({ value, onChange }: { value: SpendLimitsValue | undefined; onChange: (v: SpendLimitsValue) => void }) {
+  const { t } = useI18n();
+  const [spent, setSpent] = useState<{ day: { usd: number; credits: number }; month: { usd: number; credits: number } } | null>(null);
+  useEffect(() => {
+    api<{ day: { usd: number; credits: number }; month: { usd: number; credits: number } }>("/api/spend")
+      .then(setSpent)
+      .catch(() => {});
+  }, []);
+  const v = value ?? {};
+  const num = (k: keyof SpendLimitsValue, label: string, step: number) => (
+    <label className="field">
+      {label}
+      <input
+        type="number"
+        min={0}
+        step={step}
+        inputMode="decimal"
+        value={v[k] ?? ""}
+        placeholder="—"
+        onChange={(e) => {
+          const n = e.target.value === "" ? undefined : Number(e.target.value);
+          onChange({ ...v, [k]: n !== undefined && Number.isFinite(n) && n > 0 ? n : undefined });
+        }}
+      />
+    </label>
+  );
+  const r = (n: number, d: number) => (Math.round(n * 10 ** d) / 10 ** d).toString();
+  return (
+    <section className="spend-limits">
+      <h3>{t("spend.title")}</h3>
+      <p className="hint">{t("spend.hint")}</p>
+      <div className="grid">
+        {num("dayCredits", t("spend.dayCredits"), 1)}
+        {num("monthCredits", t("spend.monthCredits"), 10)}
+        {num("dayUsd", t("spend.dayUsd"), 0.5)}
+        {num("monthUsd", t("spend.monthUsd"), 1)}
+      </div>
+      {spent && <p className="hint">{t("spend.today", { credits: r(spent.day.credits, 1), usd: r(spent.day.usd, 2), mcredits: r(spent.month.credits, 1), musd: r(spent.month.usd, 2) })}</p>}
+    </section>
+  );
+}
+
+type SpendLimitsValue = { dayUsd?: number; monthUsd?: number; dayCredits?: number; monthCredits?: number };

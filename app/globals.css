@@ -160,6 +160,8 @@ textarea { resize: vertical; }
 .model-badge { font-size: 11px; font-weight: 800; padding: 1px 7px; border-radius: 99px; background: var(--soft); color: var(--muted); }
 .msg-meta .cost { font-weight: 700; }
 .msg-note { font-size: 12.5px; color: var(--muted); margin: 2px 0 6px; }
+/* A reply that says it sent or booked something with no action behind it (lib/receipts-core.ts). */
+.msg-unconfirmed { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--warn-text, var(--text)); background: var(--warn-bg); border: 1px solid var(--warn-border); border-radius: 999px; padding: 3px 10px; margin: 2px 0 6px; }
 .file-cards { display: grid; gap: 6px; margin: 6px 0; max-width: 560px; }
 .file-card { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
 .file-badge { flex: none; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 10px; font-size: 11px; font-weight: 900; letter-spacing: .02em; color: #fff; background: #6b6b66; }
@@ -1132,3 +1134,6 @@ a.tag { text-decoration: none; }
 /* A routine started by a web address: the address, ready to copy. */
 .routine-hook { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
 .routine-hook-url { flex: 1 1 260px; min-width: 0; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: var(--soft); overflow-wrap: anywhere; direction: ltr; text-align: left; }
+/* Settings > Safety > Spending limits */
+.spend-limits { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+.spend-limits h3 { margin: 0 0 4px; font-size: 15px; }

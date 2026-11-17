@@ -7,6 +7,7 @@
 // can't use tools, or times out, the next one answers instead, and the failing
 // one "cools down" for a while so later calls skip straight past it.
 
+import { recordSpend } from "./spend";
 import { wireJson } from "./wire-json";
 import { appVersion, cloudUrl, sessionToken } from "./account";
 import { attachmentParts, INLINE_MAX, INLINE_TOTAL, type MediaPart } from "./attachments";
@@ -169,8 +170,13 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
       try {
         const out = await callOnce(s, ref, system, messages, tools, maxOut, signal, reasoning ? effort : "auto", noMedia, opts.thinking !== false);
         cooldown.delete(keyOf(ref));
-        if (ref.provider === "oovi") return { ...out, model: out.hostedName || HOSTED_NAME, ref, fallback: false, note };
+        // Every call counts toward the spending limits (lib/spend.ts): bot steps, checks, summaries.
+        if (ref.provider === "oovi") {
+          recordSpend(0, out.credits);
+          return { ...out, model: out.hostedName || HOSTED_NAME, ref, fallback: false, note };
+        }
         const cost = await costOf(ref.provider, ref.model, out.usage.input, out.usage.output).catch(() => undefined);
+        recordSpend(cost, 0);
         return { ...out, model: modelLabel(ref), ref, cost, fallback: keyOf(ref) !== keyOf(chain[0]!), note };
       } catch (e) {
         if (signal?.aborted) throw e;

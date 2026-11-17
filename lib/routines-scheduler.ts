@@ -13,6 +13,7 @@ import { translateFor } from "./i18n-server";
 import { getRoutine, listRoutines, mutateRoutine, routineChat } from "./routines";
 import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, type ChatState, type RunResult } from "./routines-schedule";
 import { checkUrl } from "./browser";
+import { spentSince } from "./orchestrator";
 import { isRunning, startRun, subscribe } from "./runner";
 import { collectHookEvents, hookCursor, hookNote, setHookCursor } from "./routine-hooks";
 import { hashText, isNoNews, pageText, QUIET_NOTE, significant, watchNote } from "./watch-core";
@@ -289,6 +290,9 @@ function finish(id: string, res: RunResult, entryId?: string) {
         paused = true;
       }
     }
+    // What this run cost, for the 3-times-usual cap of later runs (lib/spend-core.ts).
+    const chat = entryId ? getChat(x.chatId) : null;
+    if (res.status === "ok" && chat && entryId) x.runCosts = [...(x.runCosts ?? []), spentSince(chat, entryId)].slice(-5);
     x.lastRun = {
       at: Date.now(),
       status: res.status,

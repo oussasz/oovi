@@ -44,6 +44,10 @@ import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
 import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
 import { endsOnPromise, promiseMissing } from "./promise-core";
 import { takeSteers } from "./steer";
+import { unconfirmedClaim } from "./receipts-core";
+import { spendLimitReached } from "./spend";
+import { overCap, runCap } from "./spend-core";
+import { getRoutine } from "./routines";
 import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -902,6 +906,30 @@ function savedAfter(history: Msg[]): number {
   return 0;
 }
 
+/**
+ * A routine run that already cost more than 3 times its usual (lib/spend-core.ts runCap) stops itself: a
+ * routine that went wrong (a loop, a page that changed shape) can't drain the credits unnoticed.
+ */
+function routineRunCap(chat: Chat): boolean {
+  const u = lastUser(chat);
+  if (!u?.routine) return false;
+  const cap = runCap(getRoutine(u.routine)?.runCosts ?? []);
+  if (!cap) return false;
+  return overCap(spentSince(chat, u.id), cap);
+}
+
+/** What the bots' replies after this user message cost so far. */
+export function spentSince(chat: Chat, userId: string): { usd: number; credits: number } {
+  const at = chat.entries.findIndex((e) => e.id === userId);
+  const out = { usd: 0, credits: 0 };
+  for (const e of chat.entries.slice(at + 1)) {
+    if (e.kind === "user") break;
+    out.usd += e.cost ?? 0;
+    out.credits += e.credits ?? 0;
+  }
+  return out;
+}
+
 /** Tools that exist only with "Control this computer". */
 const DESK_TOOLS = new Set(["open_in_user_browser", "send_screenshot", "open_app", "manage_window"]);
 /**
@@ -1176,6 +1204,10 @@ async function* runBot(
       if (!last.toolCalls.length) {
         entry.text = last.text;
         entry.status = "done";
+        // Says it sent, posted, booked or paid, with nothing in this turn that could have: marked for the user.
+        const claim = unconfirmedClaim(entry.text, entry.steps);
+        if (claim) entry.unconfirmed = claim;
+        else delete entry.unconfirmed;
         countUsage({ botReplies: 1 });
         return "done";
       }
@@ -1502,6 +1534,16 @@ async function* runBot(
       chat.entries.push(u);
       countUsage({ messages: 1 });
       yield { type: "entry", entry: u };
+    }
+    // Spending limits (Settings > AI models): reached, the bots stop before the next call, saying why.
+    const reached = spendLimitReached();
+    const runCost = routineRunCap(chat);
+    if (reached || runCost) {
+      const tr = translatorFor(lastUserText(chat));
+      entry.status = "error";
+      entry.error = reached ? tr(`spend.reached.${reached.which}`, { limit: reached.limit }) : tr("spend.runCap");
+      entry.errorCode = reached ? "spend_limit" : "run_cap";
+      return "error";
     }
     yield { type: "status", entryId: entry.id, text: translatorFor(lastUserText(chat))("st.thinking") };
     try {

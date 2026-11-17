@@ -57,7 +57,11 @@ export type Settings = {
   sandbox?: { e2bKey?: string };
   /** Models a provider retired, and what replaced them: {"gemini:gemini-2.5-flash": "gemini-flash-latest"}. */
   retired?: Record<string, string>;
+  /** Spending limits (lib/spend.ts): bots stop when today's or this month's spend reaches them. Unset = no limit. */
+  spend?: SpendLimits;
 };
+
+export type SpendLimits = { dayUsd?: number; monthUsd?: number; dayCredits?: number; monthCredits?: number };
 
 export type PublicProvider = { baseUrl?: string; model?: string; models?: string[]; hasKey: boolean; keyHint?: string };
 export type PublicSearch = { provider: SearchProvider; searxngUrl: string; hasBraveKey: boolean; hasTavilyKey: boolean };
@@ -84,6 +88,8 @@ export type SettingsPatch = {
   learning?: boolean;
   usageStats?: boolean;
   sandbox?: { e2bKey?: string; clearKey?: boolean };
+  /** A number sets that limit; 0 or null removes it. */
+  spend?: { [K in keyof SpendLimits]?: number | null };
 };
 
 const DEFAULTS: Settings = {
@@ -343,6 +349,17 @@ export function updateSettings(patch: SettingsPatch): void {
   if (typeof patch.crashReports === "boolean") raw.crashReports = patch.crashReports;
   if (typeof patch.learning === "boolean") raw.learning = patch.learning;
   if (typeof patch.usageStats === "boolean") raw.usageStats = patch.usageStats;
+  if (patch.spend && typeof patch.spend === "object") {
+    const next: SpendLimits = { ...(raw.spend ?? {}) };
+    for (const k of ["dayUsd", "monthUsd", "dayCredits", "monthCredits"] as const) {
+      if (!(k in patch.spend)) continue;
+      const v = patch.spend[k];
+      if (v === null || v === 0) delete next[k];
+      else if (typeof v === "number" && Number.isFinite(v) && v > 0) next[k] = Math.min(1_000_000, Math.round(v * 100) / 100);
+    }
+    if (Object.keys(next).length) raw.spend = next;
+    else delete raw.spend;
+  }
   if (patch.sandbox?.clearKey) delete raw.sandbox;
   else if (typeof patch.sandbox?.e2bKey === "string" && patch.sandbox.e2bKey.trim()) raw.sandbox = { e2bKey: encrypt(patch.sandbox.e2bKey.trim()) };
   if (Array.isArray(patch.fallbacks)) {

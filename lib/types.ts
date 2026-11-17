@@ -136,6 +136,8 @@ export type BotEntry = {
   at: number;
   /** This bot's own model turns and tool results for this reply. */
   steps: Msg[];
+  /** The reply says it sent, posted, booked or paid something, but nothing in this turn could have (lib/receipts-core.ts). */
+  unconfirmed?: string;
   /** Final reply text. */
   text: string;
   status: "running" | "waiting" | "done" | "error" | "stopped";
@@ -337,6 +339,8 @@ export type Routine = {
    * skipped without any AI call; changed, the run gets what changed.
    */
   watch?: { url: string; hash?: string; text?: string; checkedAt?: number };
+  /** What its last runs cost (newest last, 5 at most): a run past 3 times the usual stops itself. */
+  runCosts?: { usd: number; credits: number }[];
   /** The web address that starts a "webhook" routine: https://<oovi site>/api/v1/hooks/<id>/<secret>. */
   hook?: { id: string; secret: string };
   /** Consecutive failed runs; 3 pauses the routine. */
