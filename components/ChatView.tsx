@@ -22,6 +22,7 @@ import PlanReview from "./PlanReview";
 import QuestionCards, { AnsweredQuestions } from "./QuestionCards";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
+import { Canvas } from "./Canvas";
 import { EFFORT_LEVELS } from "@/lib/slash";
 import SettingsLink from "./SettingsLink";
 
@@ -846,6 +847,8 @@ export default function ChatView({ id }: { id: string }) {
   const pasted = useRef(0);
   const [picked, setPicked] = useState<Shot | null>(null);
   const [showLive, setShowLive] = useState(true);
+  // The Canvas (plans, tables, charts) takes the side of the chat instead of the live view while it is open.
+  const [showCanvas, setShowCanvas] = useState(false);
   const [zoomOpen, setZoomOpen] = useState(false);
   const [mentionQ, setMentionQ] = useState<string | null>(null);
   const [slashQ, setSlashQ] = useState<string | null>(null);
@@ -923,6 +926,7 @@ export default function ChatView({ id }: { id: string }) {
         setSettings(s);
         try {
           setShowLive(localStorage.getItem("oovi.live") !== "0");
+          setShowCanvas(localStorage.getItem(`oovi.canvas.${id}`) === "1");
         } catch {
           /* storage unavailable */
         }
@@ -1105,6 +1109,20 @@ export default function ChatView({ id }: { id: string }) {
     if (browsers.some((b) => b.request)) setShowLive(true);
   }, [askKey]); // only when a request appears or changes
 
+  // A bot starts writing a plan, a table or a chart: the Canvas opens by itself, once per chat, unless the
+  // user closed it here before.
+  const wrote = !!chat && running && chat.entries.some((e) => e.kind === "bot" && e.status === "running" && e.steps.some((st) => st.role === "assistant" && st.toolCalls.some((c) => (c.name === "work_table" || c.name === "work_notes") && c.input.action !== "read")));
+  useEffect(() => {
+    if (!wrote) return;
+    try {
+      if (localStorage.getItem(`oovi.canvas.${id}`) !== null) return;
+      localStorage.setItem(`oovi.canvas.${id}`, "1");
+    } catch {
+      /* storage unavailable: it opens */
+    }
+    setShowCanvas(true);
+  }, [wrote, id]);
+
   if (missing) {
     return (
       <div className="page center">
@@ -1250,7 +1268,23 @@ export default function ChatView({ id }: { id: string }) {
     }
   }
 
+  function toggleCanvas() {
+    const next = !showCanvas;
+    setShowCanvas(next);
+    try {
+      localStorage.setItem(`oovi.canvas.${id}`, next ? "1" : "0");
+    } catch {
+      /* storage unavailable */
+    }
+  }
+
   function toggleLive() {
+    // With the Canvas open, the button brings the live view back.
+    if (showCanvas) {
+      toggleCanvas();
+      setShowLive(true);
+      return;
+    }
     const next = !showLive;
     setShowLive(next);
     try {
@@ -1348,7 +1382,7 @@ export default function ChatView({ id }: { id: string }) {
   }
 
   return (
-    <div className={`chatview${showLive ? " with-live" : ""}`}>
+    <div className={`chatview${showCanvas ? " with-canvas" : showLive ? " with-live" : ""}`}>
       <section
         className={`chat-col${dragging ? " att-dragging" : ""}`}
         onDragOver={(ev) => {
@@ -1398,7 +1432,10 @@ export default function ChatView({ id }: { id: string }) {
             <button className="icon-btn" onClick={clear} disabled={running || !chat.entries.length} title={t("chat.clear")} aria-label={t("chat.clear")}>
               <Icon name="broom" />
             </button>
-            <button className={`icon-btn${showLive ? " on" : ""}`} onClick={toggleLive} title={t("chat.live")} aria-label={t("chat.toggleLive")} aria-pressed={showLive}>
+            <button className={`icon-btn${showCanvas ? " on" : ""}`} onClick={toggleCanvas} title={t("cv.open")} aria-label={t("cv.open")} aria-pressed={showCanvas}>
+              <Icon name="note" />
+            </button>
+            <button className={`icon-btn${showLive && !showCanvas ? " on" : ""}`} onClick={toggleLive} title={t("chat.live")} aria-label={t("chat.toggleLive")} aria-pressed={showLive && !showCanvas}>
               <Icon name="panel" />
             </button>
           </div>
@@ -1654,7 +1691,8 @@ export default function ChatView({ id }: { id: string }) {
         </div>
       </section>
 
-      {showLive && (
+      {showCanvas && <Canvas chatId={id} running={running} onClose={toggleCanvas} />}
+      {showLive && !showCanvas && (
         <aside className={`live${browsers.length ? " has-browser" : ""}${browsers.some((b) => b.request || b.controlled) ? " urgent" : ""}`} aria-label={t("chat.live")}>
           <div className="live-head">
             <span>{t("chat.live")}</span>
