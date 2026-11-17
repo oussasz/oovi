@@ -4,6 +4,7 @@
 // minutes; if the service can't be reached, the built-in catalog is used as is.
 
 import { cloud } from "./account";
+import { syncExperts } from "./experts";
 import { CONNECTORS, PLUGINS, SKILLS, mergeById, type CatalogConnector, type CatalogPlugin, type CatalogSkill } from "./catalog";
 
 /** hidden: ids unpublished in the admin console (built-in copies are hidden too). */
@@ -72,6 +73,8 @@ export async function remoteCatalog(): Promise<RemoteCatalog> {
   try {
     const data = parseCatalog(await cloud<unknown>("/api/v1/catalog"));
     g.__ooviRemoteCatalog = { at: Date.now(), data };
+    // Bots added from private experts follow the catalog (people who added them before, too).
+    syncExperts(mergeById(PLUGINS, data.plugins, data.hidden));
     return data;
   } catch {
     // Keep the last good copy; try again after the normal wait.

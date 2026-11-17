@@ -143,10 +143,33 @@ export function updateBot(id: string, input: BotInput): Bot | null {
   const i = bots.findIndex((b) => b.id === id);
   const cur = bots[i];
   if (!cur) return null;
-  const next: Bot = { ...cur, ...input, id, createdAt: cur.createdAt };
+  // A private expert keeps its own role, description and instructions whatever the editor sends.
+  const { about: _a, ...given } = input;
+  const next: Bot = cur.expert
+    ? { ...cur, ...given, role: cur.role, instructions: cur.instructions, id, createdAt: cur.createdAt }
+    : { ...cur, ...input, id, createdAt: cur.createdAt };
   bots[i] = next;
   writeJson(botsFile(), { bots });
   return next;
+}
+
+/**
+ * A private expert's character (lib/experts.ts): sets its role, description and instructions and marks the bot as that
+ * expert's, or with null unlocks it. Everything else about the bot (name, face, model, abilities) is the user's.
+ */
+export function setBotCharacter(id: string, c: { role: string; about?: string; instructions: string; expert: string } | null): void {
+  const bots = listBots();
+  const i = bots.findIndex((b) => b.id === id);
+  const cur = bots[i];
+  if (!cur) return;
+  if (c) {
+    const { about: _old, ...rest } = cur;
+    bots[i] = { ...rest, role: c.role.slice(0, ROLE_MAX), ...(c.about ? { about: c.about.slice(0, ABOUT_MAX) } : {}), instructions: c.instructions, expert: c.expert };
+  } else {
+    const { expert: _gone, ...rest } = cur;
+    bots[i] = rest;
+  }
+  writeJson(botsFile(), { bots });
 }
 
 /** Point bots that use a retired model at its replacement. */

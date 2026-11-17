@@ -1210,10 +1210,14 @@ export default function Marketplace() {
                           </b>
                           {b.about && <p className="mk-detail-about" dir="auto">“{b.about}”</p>}
                           {ability(b).length > 0 && <p className="note">{ability(b).join(" · ")}</p>}
-                          <details>
-                            <summary>{t("mk.d.instructions")}</summary>
-                            <p className="mk-detail-body" dir="auto">{b.instructions}</p>
-                          </details>
+                          {p.protected || !b.instructions ? (
+                            <p className="note">{t("mk.d.private")}</p>
+                          ) : (
+                            <details>
+                              <summary>{t("mk.d.instructions")}</summary>
+                              <p className="mk-detail-body" dir="auto">{b.instructions}</p>
+                            </details>
+                          )}
                         </div>
                       </div>
                     ))}

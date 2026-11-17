@@ -82,6 +82,8 @@ export type PluginData = {
   skills: string[];
   connectors?: string[];
   usesFolder?: boolean;
+  /** A private expert: the app never shows its instructions, and bots people already added follow every change. */
+  protected?: boolean;
   /** Pages about it (shown in its details), e.g. an expert's profile. */
   links?: { label: string; url: string }[];
   bots: PluginBot[];
@@ -318,7 +320,7 @@ function validateSkill(d: Obj): string[] {
   return c.errors;
 }
 
-const PLUGIN_KEYS = ["name", "description", "group", "skills", "connectors", "usesFolder", "links", "bots"] as const;
+const PLUGIN_KEYS = ["name", "description", "group", "skills", "connectors", "usesFolder", "protected", "links", "bots"] as const;
 const BOT_KEYS = ["name", "role", "about", "instructions", "lead", "tools", "face"] as const;
 const LINK_KEYS = ["label", "url"] as const;
 const TOOL_KEYS = ["web", "browser", "accounts"] as const;
@@ -332,6 +334,7 @@ function validatePlugin(d: Obj): string[] {
   c.strArray("skills", 50, 64, true, ID_RE, "must be a catalog ID.");
   c.strArray("connectors", 50, 64, false, ID_RE, "must be a catalog ID.");
   c.bool("usesFolder");
+  c.bool("protected");
 
   if (d.links !== undefined) {
     if (!Array.isArray(d.links)) c.errors.push("links must be a list of { label, url }.");

@@ -8,6 +8,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CONNECTORS, PLUGINS, SKILLS } from "../lib/catalog.ts";
+import { builtinExpertPrompt } from "../lib/expert-prompts.ts";
 
 export type SnapshotItem = { id: string; kind: "connector" | "skill" | "plugin"; sort: number; data: Record<string, unknown> };
 
@@ -21,7 +22,8 @@ export function buildSnapshot(): SnapshotItem[] {
   const kinds: [SnapshotItem["kind"], unknown[]][] = [
     ["connector", CONNECTORS],
     ["skill", SKILLS],
-    ["plugin", PLUGINS],
+    // A private expert's instructions live outside lib/catalog.ts (lib/expert-prompts.ts): the console gets them here.
+    ["plugin", PLUGINS.map((p) => (p.protected ? { ...p, bots: p.bots.map((b, i) => ({ ...b, instructions: b.instructions || builtinExpertPrompt(p.id, i) })) } : p))],
   ];
   return kinds.flatMap(([kind, list]) =>
     (list as Record<string, unknown>[]).map((it, i) => ({ id: String(it.id), kind, sort: 1000 + i * 10, data: strip(it) })),

@@ -94,6 +94,11 @@ export type Bot = {
   provider?: ProviderId;
   model?: string;
   tools: BotTools;
+  /**
+   * Set when the bot is a Marketplace expert whose character is private (the id of its Marketplace item). Its role,
+   * description and instructions then come from oovi, stay in step with it, and can't be read or edited in the app.
+   */
+  expert?: string;
   /** Kept out of the bots list (sidebar, Home). It still works in its groups and can be @mentioned. */
   hidden?: boolean;
   createdAt: number;

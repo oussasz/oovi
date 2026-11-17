@@ -124,7 +124,7 @@ export function abilityLines(self: Named, bots: Named[], where: Where, L: Abilit
 
 // ---------- the Chief's view of the team ----------
 
-type Described = Named & { role?: string; about?: string; instructions?: string; hidden?: boolean };
+type Described = Named & { role?: string; about?: string; instructions?: string; hidden?: boolean; expert?: string };
 
 /** How much of each bot's description the Chief sees (links and facts are usually near the start). */
 export const DIRECTORY_DESC = 400;
@@ -148,7 +148,7 @@ export function hideSecrets(text: string): string {
 export function botDirectory(bots: Described[], selfId: string, groupsWith: (botId: string) => string[]): string[] {
   const shown = bots.slice(0, DIRECTORY_MAX);
   const lines = shown.map((b) => {
-    const desc = hideSecrets((b.instructions ?? "").replace(/\s+/g, " ").trim());
+    const desc = b.expert ? "" : hideSecrets((b.instructions ?? "").replace(/\s+/g, " ").trim()); // a private expert's instructions are not shown to other bots
     const cut = desc.length > DIRECTORY_DESC ? `${desc.slice(0, DIRECTORY_DESC)}…` : desc;
     const groups = groupsWith(b.id);
     return `- ${b.name}${b.id === selfId ? " (you)" : ""}${b.role ? `, ${b.role}` : ""}${b.hidden ? " (hidden from the bots list)" : ""}.${b.about ? ` Role: ${hideSecrets(b.about.replace(/\s+/g, " ")).slice(0, 200)}.` : ""} Abilities: ${abilityWords(abilitiesOf(b))}. Groups: ${groups.length ? groups.map((g) => `"${g}"`).join(", ") : "none"}.${cut ? ` Description: ${cut}` : ""}`;

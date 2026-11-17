@@ -234,21 +234,27 @@ export default function BotEditor({ id }: { id: string }) {
             </label>
             <label className="field">
               {t("bot.role")}
-              <input value={d.role} maxLength={ROLE_MAX} placeholder={t("bot.rolePh")} onChange={(e) => set({ role: e.target.value })} />
+              <input value={d.role} maxLength={ROLE_MAX} placeholder={t("bot.rolePh")} disabled={!!d.expert} onChange={(e) => set({ role: e.target.value })} />
               <span className="hint">{t("bot.roleHint")}</span>
             </label>
           </div>
           <label className="field">
             {t("bot.roleAbout")}
-            <textarea rows={2} dir="auto" value={d.about ?? ""} maxLength={ABOUT_MAX} placeholder={t("bot.aboutPh")} onChange={(e) => set({ about: e.target.value })} />
+            <textarea rows={2} dir="auto" value={d.about ?? ""} maxLength={ABOUT_MAX} placeholder={t("bot.aboutPh")} disabled={!!d.expert} onChange={(e) => set({ about: e.target.value })} />
             <span className="hint">
               {t("bot.aboutHint")} ({(d.about ?? "").length}/{ABOUT_MAX})
             </span>
           </label>
-          <label className="field">
-            {t("bot.instructions")}
-            <textarea rows={5} value={d.instructions} placeholder={t("bot.instructionsPh")} onChange={(e) => set({ instructions: e.target.value })} />
-          </label>
+          {d.expert ? (
+            <p className="note" role="note">
+              {t("bot.expertPrivate")}
+            </p>
+          ) : (
+            <label className="field">
+              {t("bot.instructions")}
+              <textarea rows={5} value={d.instructions} placeholder={t("bot.instructionsPh")} onChange={(e) => set({ instructions: e.target.value })} />
+            </label>
+          )}
         </section>
 
         <section className="card">
