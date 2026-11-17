@@ -55,7 +55,7 @@ import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerF
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots, shotAfterId } from "./desktop-core";
-import { DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
+import { desktopState, DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
 import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
 import { ASK_SPEC, answersText, cleanAnswers, cleanQuestions } from "./ask-user";
 
@@ -519,7 +519,11 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
         `For research, prefer the research tool: it searches several queries at once and reads the best sources for you; cite them as [n] with their URLs. Use web_search for a quick lookup and read_url to read a specific page (fast, no browser).${bot.tools.browser ? " When read_url can't read a page, or the detail you need (a phone number, a price, a table) isn't in what it returned, open the page with open_url and read it there, clicking \"show number\" or \"see more\" if needed." : ""}`,
         `Opening and reading pages is your job, never the user's: don't tell the user to open, visit or check a page you (or a teammate) can open. A search snippet is a lead: open the page to confirm a detail whenever the page can be read. When it can't, a detail the snippet itself shows may be kept with the search result as its source, marked "to confirm" and never presented as confirmed. Only what can't be known from any page (for example whether a phone number still answers) is left to the user.${bot.tools.browser ? "" : " If a page only works in a browser, pass it to a teammate who has one or ask for the browser with request_abilities, and go on with the rest meanwhile."}`,
         "Check facts across at least two sources when it matters, prefer recent and primary sources, and give dates for numbers and prices.",
-        "Where to do a job on a website, in this order. (1) The user asks for it in their own browser (whichever it is), in one of their apps, or on their computer: work there with desktop control when you have it (open_in_user_browser opens a page in their default browser); that is where they are signed in. (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.",
+        `Where to do a job on a website, in this order. (1) The user asks for it in their own browser (whichever it is), in one of their apps, or on their computer: ${
+          tools.some((t) => t.name === "open_in_user_browser")
+            ? "work there with desktop control (open_in_user_browser opens a page in their default browser); that is where they are signed in."
+            : "that needs desktop control, which you don't have in this conversation (open_in_user_browser, send_screenshot and the screen tools are not among your tools: never call them). Say so in one line with where to turn it on ([Settings > Safety](oovi://settings/safety), \"Control this computer\"), and in the same message go on with route (2) so the job still gets done."
+        } (2) Otherwise your own browser: with their signed-in accounts when you have that ability; if the job needs their account and you can't use it yet, offer the one-click card (request_abilities). (3) Your private browser is for public pages. A sign-in page in your private browser is never a reason to stop or to ask the user to sign in there when (1) or (2) is possible: switch to that route.`,
       );
     }
     if (bot.tools.browser) {
@@ -855,6 +859,27 @@ function savedAfter(history: Msg[]): number {
     if (m.toolCalls.some((c) => SAVING[c.name]?.has(String(c.input.action ?? "")) && next.results.some((r) => r.id === c.id && !r.isError))) return i;
   }
   return 0;
+}
+
+/** Tools that exist only with "Control this computer". */
+const DESK_TOOLS = new Set(["open_in_user_browser", "send_screenshot", "open_app", "manage_window"]);
+/**
+ * A bot reached for the user's own browser or screen without desktop control (a user asked "retry in my
+ * browser" and got a bare "not enabled"): say why, where the user turns it on, and how to finish the job now.
+ */
+export function deskToolMissing(name: string, s: Settings, bot: Bot): string {
+  const d = desktopState(s);
+  const why = !d.platform || !d.app
+    ? `isn't available on this computer${d.appReason ? ` (${d.appReason})` : ""}`
+    : !d.enabled
+      ? 'is switched off: the user turns it on in [Settings > Safety](oovi://settings/safety), "Control this computer"'
+      : !d.model
+        ? "doesn't work with this bot's model: it works with theOovi, or with Claude Haiku 5.5, Sonnet 5.5 or Opus 5.5 on the user's own Anthropic key (Settings > AI models, or Edit bot > Brain)"
+        : "isn't available in this conversation";
+  const next = bot.tools.accounts
+    ? "do the job in your own browser with the user's signed-in accounts (open_url), which you have"
+    : "offer the one-click card to use their signed-in accounts in your own browser (request_abilities with accounts), or do what your tools allow";
+  return `${name} needs desktop control (the user's own browser, screen, mouse and keyboard), which ${why}. Don't call ${[...DESK_TOOLS].join(", ")} again in this conversation. Tell the user this in one line, in their language, and in the same turn ${next}. Never end with only "I can't".`;
 }
 
 /** A bot can run on its own provider/model; everything else comes from Settings. */
@@ -1285,7 +1310,7 @@ async function* runBot(
           // Asked for an on-demand tool's guide (or called it before reading the guide): lib/tool-defer.ts.
           results.push(useToolResult(c, tools));
         } else if (!tools.some((t) => t.name === c.name)) {
-          results.push({ id: c.id, name: c.name, content: `The ${c.name} tool isn't enabled for ${bot.name}.`, isError: true });
+          results.push({ id: c.id, name: c.name, content: DESK_TOOLS.has(c.name) ? deskToolMissing(c.name, s, bot) : `The ${c.name} tool isn't enabled for ${bot.name}.`, isError: true });
         } else if (decisions[c.id] === false) {
           results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
         } else {

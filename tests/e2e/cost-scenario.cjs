@@ -57,9 +57,15 @@ function answer(body) {
   let latest = 0;
   for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "user" && /COST/.test(textOf(msgs[i]))) { latest = i; break; }
   const n = msgs.slice(latest).reduce((k, m) => k + (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").length : 0), 0);
-  if (!/COST/.test(ask)) return reply([{ type: "text", text: "ok" }], "end_turn");
-  requests.push({ body, phase: /COST3/.test(ask) ? 3 : /COST2/.test(ask) ? 2 : 1 });
+  // The app's own summary of a long conversation (no tools) is not a step of the job.
+  if (!/COST/.test(ask) || !(body.tools || []).length) return reply([{ type: "text", text: "ok" }], "end_turn");
+  requests.push({ body, phase: /COST4/.test(ask) ? 4 : /COST3/.test(ask) ? 3 : /COST2/.test(ask) ? 2 : 1 });
   const use = (name, input) => reply([{ type: "text", text: "" }, { type: "tool_use", id: `toolu_${name}_${n}_${Date.now()}`, name, input }].filter((b) => b.type !== "text" || b.text), "tool_use");
+  // A bot without "Control this computer" that reaches for the user's own browser anyway (a real report).
+  if (/COST4/.test(ask)) {
+    if (n === 0) return use("open_in_user_browser", { url: "https://www.facebook.com/groups" });
+    return reply([{ type: "text", text: "COST4-DONE" }], "end_turn");
+  }
   // A tool that is sent on demand: ask for its guide, then use it (lib/tool-defer.ts).
   if (/COST3/.test(ask)) {
     if (n === 0) return use("use_tool", { name: "create_presentation" });
@@ -206,6 +212,9 @@ const check = (name, ok, detail = "") => {
   const c3 = await run("COST3: now make slides of it");
   const third = requests.filter((r) => r.phase === 3);
   requests.length -= third.length;
+  await run("COST4: retry with my own browser");
+  const fourth = requests.filter((r) => r.phase === 4);
+  requests.length -= fourth.length;
   if (process.env.OOVI_COST_DETAIL) {
     const sys = (r) => (typeof r.body.system === "string" ? r.body.system : r.body.system.map((x) => x.text).join(""));
     fs.writeFileSync(path.join(os.tmpdir(), "cost-sys1.txt"), sys(requests.find((r) => r.phase === 1)));
@@ -218,6 +227,7 @@ const check = (name, ok, detail = "") => {
   const firstOfTurn = (r, i) => i === 0 || requests[i - 1].phase !== r.phase;
   const efforts = [...new Set(requests.filter((r, i) => !firstOfTurn(r, i)).map(effortOf))];
   const firsts = [...new Set(requests.filter((r, i) => firstOfTurn(r, i)).map(effortOf))];
+  if (process.env.OOVI_COST_DETAIL) requests.forEach((r, i) => log(`  #${i} phase ${r.phase} effort ${r.body.effort} tools ${(r.body.tools || []).length} last user: ${textOf((r.body.messages || []).filter((m) => m.role === "user" && textOf(m).trim()).at(-1) || {}).slice(0, 90)}`));
   log(`COST: ${requests.length} requests | cache read ${b.read.toLocaleString("en-US")} | cache write ${b.write.toLocaleString("en-US")} | uncached ${b.fresh.toLocaleString("en-US")} tokens | weighted ${Math.round(b.cost).toLocaleString("en-US")} | instructions/tools changed ${b.prefixChanges}x | page text per request max ${Math.max(...pages).toLocaleString("en-US")} chars | effort: first step ${firsts.join(", ")}, then ${efforts.join(", ")}`);
   check("the work is done (all 18 cafés saved, final answer given)", /^COST-DONE: 4/.test(last), last.slice(0, 80));
   if (!BASELINE) {
@@ -239,6 +249,12 @@ const check = (name, ok, detail = "") => {
     );
     check("E) the first call returns the tool's guide, the second makes the file", third.length === 3 && resultsOf(third[1]).some((t) => t.startsWith("[guide:create_presentation]")) && !!file && /^COST3-DONE/.test(c3.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? ""), file ? file.file.name : "no .pptx made");
     check("F) the conversation shows that call the same way on every request (through use_tool), so the cache holds", uses(third[2]).filter((u) => u.name === "use_tool").length === 2 && !uses(third[2]).some((u) => u.name === "create_presentation"));
+  }
+  {
+    const sys = (r) => (typeof r.body.system === "string" ? r.body.system : r.body.system.map((x) => x.text).join(""));
+    const res = (fourth[1]?.body.messages || []).flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((x) => x.type === "tool_result").map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content))).at(-1) || "";
+    check("H) without computer control, the instructions don't offer the user's own browser as a tool", /open_in_user_browser, send_screenshot and the screen tools are not among your tools/.test(sys(fourth[0])) && !/open_in_user_browser opens a page in their default browser/.test(sys(fourth[0])));
+    check("H) a bot that calls it anyway is told why, where the user turns it on, and how to finish the job", /needs desktop control/.test(res) && /request_abilities with accounts|signed-in accounts \(open_url\)/.test(res) && !/isn't enabled for/.test(res), res.slice(0, 200));
   }
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();
