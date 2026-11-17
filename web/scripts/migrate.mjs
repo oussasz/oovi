@@ -263,8 +263,12 @@ await pool.query(`
     user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     secret_hash TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_at     TIMESTAMPTZ NULL
+    last_at     TIMESTAMPTZ NULL,
+    window_start TIMESTAMPTZ NULL,
+    window_count INT NOT NULL DEFAULT 0
   );
+  ALTER TABLE routine_hooks ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NULL;
+  ALTER TABLE routine_hooks ADD COLUMN IF NOT EXISTS window_count INT NOT NULL DEFAULT 0;
   CREATE INDEX IF NOT EXISTS routine_hooks_user_idx ON routine_hooks (user_id);
   CREATE TABLE IF NOT EXISTS routine_hook_events (
     id           BIGSERIAL PRIMARY KEY,

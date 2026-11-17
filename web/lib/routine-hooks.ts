@@ -12,8 +12,12 @@ export const HOOKS_DDL = `
     user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     secret_hash TEXT NOT NULL,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_at     TIMESTAMPTZ NULL
+    last_at     TIMESTAMPTZ NULL,
+    window_start TIMESTAMPTZ NULL,
+    window_count INT NOT NULL DEFAULT 0
   );
+  ALTER TABLE routine_hooks ADD COLUMN IF NOT EXISTS window_start TIMESTAMPTZ NULL;
+  ALTER TABLE routine_hooks ADD COLUMN IF NOT EXISTS window_count INT NOT NULL DEFAULT 0;
   CREATE INDEX IF NOT EXISTS routine_hooks_user_idx ON routine_hooks (user_id);
   CREATE TABLE IF NOT EXISTS routine_hook_events (
     id           BIGSERIAL PRIMARY KEY,
@@ -67,8 +71,15 @@ export async function receiveHook(id: string, secret: string, body: string, cont
   const row = r.rows[0] as { user_id: string; secret_hash: string } | undefined;
   const given = Buffer.from(hash(secret));
   if (!row || !crypto.timingSafeEqual(given, Buffer.from(row.secret_hash))) return "missing";
-  const recent = await pool.query("SELECT count(*)::int AS n FROM routine_hook_events WHERE hook_id = $1 AND created_at > now() - interval '1 hour'", [id]);
-  if ((recent.rows[0]?.n ?? 0) >= PER_HOUR) return "busy";
+  // Calls counted per hour, whether or not the app already collected them.
+  const w = await pool.query(
+    `UPDATE routine_hooks SET
+       window_count = CASE WHEN window_start IS NULL OR window_start < now() - interval '1 hour' THEN 1 ELSE window_count + 1 END,
+       window_start = CASE WHEN window_start IS NULL OR window_start < now() - interval '1 hour' THEN now() ELSE window_start END
+     WHERE id = $1 RETURNING window_count`,
+    [id],
+  );
+  if ((w.rows[0]?.window_count ?? 0) > PER_HOUR) return "busy";
   await pool.query("INSERT INTO routine_hook_events (hook_id, user_id, body, content_type) VALUES ($1, $2, $3, $4)", [id, row.user_id, body.slice(0, MAX_BODY), contentType?.slice(0, 120) ?? null]);
   await pool.query("UPDATE routine_hooks SET last_at = now() WHERE id = $1", [id]);
   // Old calls the app never collected are not kept forever.
