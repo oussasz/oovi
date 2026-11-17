@@ -202,6 +202,8 @@ export type Pending = {
   planApproved?: boolean;
   /** Rounds the done-check continued by itself since the user's message (MAX_AUTO_ROUNDS). */
   autoRounds?: number;
+  /** The user message whose reply was already sent back once for ending on a promise (lib/promise-core.ts). */
+  promised?: string;
   /** A slash command used in the message being worked on. */
   slash?: SlashUse;
   /**

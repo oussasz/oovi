@@ -14,7 +14,7 @@
 
 import fs from "node:fs";
 import { currentUser } from "./account";
-import { complete, HostedError, type ToolSpec } from "./llm";
+import { complete, HostedError, type Completion, type ToolSpec } from "./llm";
 import { PROBLEM_SYSTEM, parseProblemReview, runProblems, wentWrong } from "./run-report";
 import { reportsAllowed, sendProblems } from "./tool-notes";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, leanTools, recallHistory } from "./context";
@@ -37,9 +37,13 @@ import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
 import { checkUrl, saveFolderLabel } from "./browser";
 import { healInterrupted } from "./delegations-core";
-import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply } from "./done-check-core";
+import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply, type Verdict } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
+import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
+import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
+import { endsOnPromise, promiseMissing } from "./promise-core";
+import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
@@ -470,7 +474,7 @@ function groupsOf(botId: string): string[] {
   return groupsCache.groups.filter((g) => g.memberIds.includes(botId)).map((g) => g.name);
 }
 
-function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[]; suggestions?: string[] }): string {
+function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[]; suggestions?: string[]; perMessage: string[] }): string {
   const lead = leaderOf(chat, members);
   const lines = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${new Date().toISOString().slice(0, 10)}.`];
   if (bot.about) lines.push(`How the user describes your role (keep its spirit and tone in how you work and talk): ${bot.about}`);
@@ -491,8 +495,11 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     mem || "(empty so far)",
     "Save durable things worth remembering next time: the user's preferences, role, projects, people, and lessons learned. Keep entries short; never store secrets or one-off details, and never store guesses about the user (such as which language they write in). Don't announce memory updates unless asked.",
   );
+  // What depends on the user's latest message (lessons that match it, skills that fit it, a /command) goes
+  // with that message (extra.perMessage → the turn note), never in these instructions: they must stay the
+  // same from one message to the next, or the prompt cache writes the whole conversation again each time.
   const lessons = lessonsPrompt(lastUserText(chat));
-  if (lessons) lines.push("", lessons);
+  if (lessons) extra.perMessage.push(lessons);
 
   const mates = members.filter((m) => m.id !== bot.id);
   if (chat.kind === "group" && mates.length) {
@@ -610,16 +617,16 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     "When the user asks how oovi works, or how to connect, enable, set up or find something in the app, call oovi_help instead of guessing, and point to the place with an oovi:// link.",
   );
   const slash = slashFor(chat, bot);
-  if (slash) lines.push("", ...slashLines(slash, tools));
+  if (slash) extra.perMessage.push(...slashLines(slash, tools));
 
   // Skills: list them, auto-load the ones that match this request.
   const all = listSkills();
   if (all.length) lines.push("", "Saved skills (load one with use_skill when it fits; the user can force one with /skill-name):", ...all.slice(0, 25).map((s) => `- ${s.name}: ${s.description}`));
   const rel = relevantSkills(lastUserText(chat)).filter((s) => !(slash?.kind === "skill" && s.slug === slash.id));
   if (rel.length) {
-    lines.push("", "These skills match the current request. Follow them:");
+    extra.perMessage.push("These skills match this request. Follow them:");
     for (const s of rel) {
-      lines.push(`### Skill: ${s.name}`, s.body.slice(0, 4000));
+      extra.perMessage.push(`### Skill: ${s.name}`, s.body.slice(0, 4000));
       markUsed(s.slug);
     }
   }
@@ -818,7 +825,8 @@ function cutOld(r: ToolResult): string {
   // A tool's guide is read once and used for the rest of the conversation.
   if (isGuide(r)) return r.content;
   const max = KEEP_LONGER.has(r.name) ? 6000 : 800;
-  return r.content.length > max ? `${r.content.slice(0, max)}\n[older result shortened: ${r.content.length - max} more characters not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]` : r.content;
+  // The start and the end are kept: the end often holds the total, the count or the error.
+  return cutMiddle(r.content, max, (n) => `[older result shortened: ${n} characters in the middle not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]`);
 }
 
 /**
@@ -1114,11 +1122,12 @@ async function* runBot(
   let turnNote = "";
   const buildSystem = () => {
     const suggestions: string[] = [];
-    const out = buildSystemWith(suggestions);
-    turnNote = [...(tools.some((t) => t.name === "work_table") ? workNow(workHome(chat)) : []), ...suggestions].join("\n");
+    const perMessage: string[] = [];
+    const out = buildSystemWith(suggestions, perMessage);
+    turnNote = [...perMessage, ...(tools.some((t) => t.name === "work_table") ? workNow(workHome(chat)) : []), ...suggestions].join("\n");
     return out;
   };
-  const buildSystemWith = (suggestions: string[]) => systemPrompt(bot, chat, members, tools, { suggestions, learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
+  const buildSystemWith = (suggestions: string[], perMessage: string[]) => systemPrompt(bot, chat, members, tools, { suggestions, perMessage, learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
   let system = buildSystem();
   let steps = 0;
   let jobStarted = false;
@@ -1239,7 +1248,10 @@ async function* runBot(
                   !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) &&
                   !(planCovers && PLAN_COVERED.has(c.name) && !(c.name === "upload_file" && !uploadAllowed(c, s))) &&
                   needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
-      const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined);
+      // A call the loop guard will refuse isn't asked about: there is nothing to approve.
+      const guardDone = callsSoFar(entry.steps.slice(0, -1));
+      const refusedByGuard = (c: ToolCall) => !isDesktopName(c.name) && c.name !== "propose_plan" && c.name !== "ask_user" && (loopRefusal(guardDone, c) !== null || last.toolCalls.findIndex((o) => callKey(o) === callKey(c)) < last.toolCalls.indexOf(c));
+      const ask = last.toolCalls.filter((c) => asks(c) && decisions[c.id] === undefined && !refusedByGuard(c));
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
@@ -1280,8 +1292,22 @@ async function* runBot(
       // Desktop actions of one turn run in order and stop at the first failure (the computer toolset's batch rule).
       let deskHalted = false;
       const shotAfter = shotAfterId(last.toolCalls);
+      // Loop guard (lib/loop-guard-core.ts): the same call again and again, or a call that already failed the
+      // same way twice, isn't run; and one call written twice in the same step runs once (no double sends).
+      const doneCalls = callsSoFar(entry.steps.slice(0, -1));
+      const batchKeys = new Map<string, string>();
       for (const c of last.toolCalls) {
         if (signal.aborted) break;
+        if (!isDesktopName(c.name) && c.name !== "propose_plan" && c.name !== "ask_user") {
+          const key = callKey(c);
+          const twin = batchKeys.get(key);
+          const refused = twin ? `Not run: it is the same call as the one just before it in this step (made once, not twice).` : loopRefusal(doneCalls, c);
+          batchKeys.set(key, c.id);
+          if (refused) {
+            results.push({ id: c.id, name: c.name, content: refused, isError: true });
+            continue;
+          }
+        }
         if (c.name === "propose_plan") {
           results.push({ id: c.id, name: c.name, content: planDecisionText(entry, decisions[c.id] === true) });
           continue;
@@ -1404,6 +1430,8 @@ async function* runBot(
         const c = r ? jobCount(workHome(chat), liveJob) : null;
         if (r && c) r.content += `\nJob status: ${c.done} of ${c.target} rows count in "${liveJob.table}"${c.done >= c.target ? ". The goal is reached: check a sample, export the file and give the final answer." : `; ${c.target - c.done} still missing.`}`;
       }
+      // A failure that doesn't say what to do next gets a short hint (lib/arg-repair-core.ts).
+      for (const r of results) if (r.isError && r.content) r.content = withNextStep(r.content);
       entry.steps.push({ role: "tool", results });
       if (jobStarted) {
         system = buildSystem();
@@ -1438,7 +1466,7 @@ async function* runBot(
       const effort: Effort = chosen ?? (routine ? "medium" : "auto");
       let budget = budgetOf(s);
       const view = prune(viewFor(bot, chat, bots, pdfMode(s), entry, turnNote));
-      let out;
+      let out: Completion;
       // The bot's instructions and tools must leave room for the conversation: connector tools are
       // compacted, or only the matching ones sent, when they'd take more than their share.
       const request = lastUserText(chat) ?? "";
@@ -1449,9 +1477,9 @@ async function* runBot(
       let call = leanFor(Math.floor(budget * 0.45) - estimateTokens(system));
       // Rarely used tools go as one line each inside use_tool (lib/tool-defer.ts): the model's calls come
       // back as the real tools' calls, so everything after this point sees the real names.
-      const ask = async () => {
+      const ask = async (v: Msg[] = view) => {
         const d = deferTools(call.tools);
-        const sent = wrapHistory(fitBudget(call.system, view, d.sent, budget), d);
+        const sent = wrapHistory(fitBudget(call.system, v, d.sent, budget), d);
         const o = await complete(s, call.system, sent, d.sent, signal, { effort, ...(routine ? { thinking: false } : {}) });
         return { ...o, toolCalls: unwrapCalls(o.toolCalls, d, sent) };
       };
@@ -1470,19 +1498,45 @@ async function* runBot(
           throw new Error(tooBigText(system, tools, view, translatorFor(request)));
         }
       }
-      if (typeof out.credits === "number") entry.credits = Math.round(((entry.credits ?? 0) + out.credits) * 100) / 100;
-      entry.usage.input += out.usage.input;
-      entry.usage.output += out.usage.output;
-      entry.model = out.model;
-      entry.fallback = out.fallback;
-      if (typeof out.cost === "number") entry.cost = (entry.cost ?? 0) + out.cost;
-      // Own-key usage only: theOovi calls are recorded exactly by the oovi server.
-      if (out.ref.provider !== "oovi") countUsage({ tokensIn: out.usage.input, tokensOut: out.usage.output, costUsd: out.cost ?? 0 });
-      if (out.note) entry.note = out.note;
+      const account = (o: typeof out) => {
+        if (typeof o.credits === "number") entry.credits = Math.round(((entry.credits ?? 0) + o.credits) * 100) / 100;
+        entry.usage.input += o.usage.input;
+        entry.usage.output += o.usage.output;
+        entry.model = o.model;
+        entry.fallback = o.fallback;
+        if (typeof o.cost === "number") entry.cost = (entry.cost ?? 0) + o.cost;
+        // Own-key usage only: theOovi calls are recorded exactly by the oovi server.
+        if (o.ref.provider !== "oovi") countUsage({ tokensIn: o.usage.input, tokensOut: o.usage.output, costUsd: o.cost ?? 0 });
+        if (o.note) entry.note = o.note;
+      };
+      account(out);
+      // An empty answer (no words, no action) is asked for once more before it counts.
+      if (!out.text.trim() && !out.toolCalls.length && !out.cutOff) {
+        const again = await ask();
+        account(again);
+        out = again;
+      }
+      // Inputs sent in the wrong shape (a list as JSON text, a number as text) are repaired to the tool's schema.
+      out = { ...out, toolCalls: out.toolCalls.map((c) => {
+        const spec = tools.find((t) => t.name === c.name);
+        return spec ? { ...c, input: repairArgs(c.input, spec.parameters) } : c;
+      }) };
       entry.steps.push({ role: "assistant", text: out.text, toolCalls: out.toolCalls, ...(out.reasoning ? { reasoning: out.reasoning.slice(0, 20_000) } : {}) });
       // The answer hit the output limit: its last tool call may hold half a document or half a file.
       // Nothing is run from it (a cut file would be saved as if complete); the bot is told how to go on.
       if (out.cutOff && out.toolCalls.length) entry.steps.push({ role: "tool", results: out.toolCalls.map((c) => ({ id: c.id, name: c.name, content: CUT_OFF, isError: true })) });
+      // A text answer cut at the length limit is continued (lib/continue-core.ts), so the user gets it whole.
+      const written = entry.steps.at(-1);
+      for (let k = 0; out.cutOff && !out.toolCalls.length && out.text.trim() && written?.role === "assistant" && k < MAX_CONTINUE; k++) {
+        if (signal.aborted) break;
+        const v = prune(viewFor(bot, chat, bots, pdfMode(s), entry, turnNote));
+        if (v.at(-1)?.role === "user") v[v.length - 1] = { role: "user", content: CONTINUE_CUT };
+        else v.push({ role: "user", content: CONTINUE_CUT });
+        const more = await ask(v);
+        account(more);
+        written.text = joinCut(written.text, more.text);
+        out = { ...more, text: written.text, toolCalls: [] };
+      }
       saveProgress(chat);
       yield { type: "entry", entry };
     } catch (e) {
@@ -1990,6 +2044,14 @@ async function checkDone(chat: Chat, entry: BotEntry, bot: Bot, settings: Settin
   const lead = leaderOf(chat, members);
   if (lead && lead.id !== bot.id) return false; // a teammate's turn: the leader answers the user
   const job = p.job;
+  // Free check first (lib/promise-core.ts): a reply that ends by announcing work it didn't do is sent back
+  // once, without asking the model whether it's finished. Works for turns with no tool call too.
+  const promised = endsOnPromise(entry.text);
+  const asker = lastUser(chat);
+  if (promised && asker && p.promised !== asker.id && (p.autoRounds ?? 0) < MAX_AUTO_ROUNDS && !job?.target) {
+    p.promised = asker.id;
+    return continueUnfinished(chat, p, bot, entry, { status: "unfinished", missing: promiseMissing(promised), goal: "" }, [asker.text, asker.userWords ?? ""].filter(Boolean).join("\n"));
+  }
   // A list job with a row count is checked by its count (settle); the check is for everything else.
   if (job?.target) return false;
   // A turn without any action (a greeting, an answer from knowledge) is not checked: nothing to continue.
@@ -2025,6 +2087,12 @@ async function checkDone(chat: Chat, entry: BotEntry, bot: Bot, settings: Settin
     if (job && v) job.missing = undefined;
     return false;
   }
+  return continueUnfinished(chat, p, bot, entry, v, request);
+}
+
+/** Not finished: the bot goes on (as a big job, limits lifted), or wraps up when the rounds stopped moving. */
+function continueUnfinished(chat: Chat, p: NonNullable<Chat["pending"]>, bot: Bot, entry: BotEntry, v: Verdict, request: string): boolean {
+  const job = p.job;
   // The same thing still missing round after round: the work stopped moving.
   const stuck = !!job && (sameMissing(job.missing, v.missing) || job.stale >= JOB_STALE);
   p.autoRounds = (p.autoRounds ?? 0) + 1;

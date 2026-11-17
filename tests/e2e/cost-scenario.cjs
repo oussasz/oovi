@@ -233,6 +233,11 @@ const check = (name, ok, detail = "") => {
   if (!BASELINE) {
     check("A) web page text in a request stays bounded (≤ 40,000 characters)", Math.max(...pages) <= 40_000, `${Math.max(...pages)} chars`);
     check("G) the whole job costs no more than 170,000 weighted tokens (it was 211,000 before tools on demand and early page shortening)", b.cost <= 170_000, `${Math.round(b.cost).toLocaleString("en-US")}`);
+    {
+      const sysOf = (r) => JSON.stringify([r.body.system, r.body.tools]);
+      const p1 = requests.find((r) => r.phase === 1), p2 = requests.find((r) => r.phase === 2);
+      check("I) the next message keeps the same instructions and tools, so the cache keeps the whole conversation", !!p1 && !!p2 && sysOf(p1) === sysOf(p2));
+    }
     check("B) instructions and tools don't change between the steps of a turn", b.prefixChanges <= 1, `${b.prefixChanges} changes`);
     check("C) the first step of a message keeps the model's level; routine steps ask for medium without extended thinking", firsts.length === 1 && firsts[0] === "none" && efforts.length === 1 && efforts[0] === "medium/no-thinking", `${firsts.join(", ")} then ${efforts.join(", ")}`);
   }
