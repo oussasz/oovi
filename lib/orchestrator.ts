@@ -40,6 +40,7 @@ import { healInterrupted } from "./delegations-core";
 import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
+import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, proposalOf, runRoutineTool } from "./routines-tools";
@@ -809,6 +810,8 @@ const AGAIN = "[oovi]: It's your turn again; nobody has written since your messa
 /** What a group said is an answer, not raw tool output: it stays (almost) whole. */
 const KEEP_LONGER = new Set(["message_group", "read_group"]);
 function cutOld(r: ToolResult): string {
+  // A tool's guide is read once and used for the rest of the conversation.
+  if (isGuide(r)) return r.content;
   const max = KEEP_LONGER.has(r.name) ? 6000 : 800;
   return r.content.length > max ? `${r.content.slice(0, max)}\n[older result shortened: ${r.content.length - max} more characters not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]` : r.content;
 }
@@ -825,11 +828,33 @@ function prune(history: Msg[]): Msg[] {
   const toolIdx = history.map((m, i) => (m.role === "tool" ? i : -1)).filter((i) => i >= 0);
   const cut = Math.max(0, Math.floor((toolIdx.length - PRUNE_KEEP) / PRUNE_STEP) * PRUNE_STEP);
   const keep = new Set(toolIdx.slice(cut));
+  const saved = savedAfter(history);
   return pruneDesktopShots(history).map((m, i) =>
-    m.role === "tool" && !keep.has(i)
-      ? { role: "tool", results: m.results.map((r) => ({ ...r, content: cutOld(r) })) }
+    m.role === "tool" && (!keep.has(i) || i < saved)
+      ? { role: "tool", results: m.results.map((r) => (keep.has(i) && !USED_ONCE.has(r.name) ? r : { ...r, content: cutOld(r) })) }
       : m,
   );
+}
+
+/**
+ * A web page read with read_url is long, and it is needed until its facts are written down. Once the bot
+ * has saved to a work file after reading it, the page is cut down right away instead of a few steps later:
+ * at that moment almost nothing follows it in the conversation, so shortening it costs little, and its
+ * full text is no longer carried (and paid for) in the following requests. A page nothing was saved from
+ * stays whole as before. The bot can read the page again.
+ */
+const USED_ONCE = new Set(["read_url"]);
+const SAVING: Record<string, Set<string>> = { work_table: new Set(["add", "update"]), work_notes: new Set(["append", "write"]) };
+/** Index of the latest step where the bot saved to a work file and it worked (0 when it never did). */
+function savedAfter(history: Msg[]): number {
+  for (let i = history.length - 1; i > 0; i--) {
+    const m = history[i]!;
+    if (m.role !== "assistant") continue;
+    const next = history[i + 1];
+    if (next?.role !== "tool") continue;
+    if (m.toolCalls.some((c) => SAVING[c.name]?.has(String(c.input.action ?? "")) && next.results.some((r) => r.id === c.id && !r.isError))) return i;
+  }
+  return 0;
 }
 
 /** A bot can run on its own provider/model; everything else comes from Settings. */
@@ -1256,7 +1281,10 @@ async function* runBot(
           results.push(r);
           continue;
         }
-        if (!tools.some((t) => t.name === c.name)) {
+        if (c.name === USE_TOOL) {
+          // Asked for an on-demand tool's guide (or called it before reading the guide): lib/tool-defer.ts.
+          results.push(useToolResult(c, tools));
+        } else if (!tools.some((t) => t.name === c.name)) {
           results.push({ id: c.id, name: c.name, content: `The ${c.name} tool isn't enabled for ${bot.name}.`, isError: true });
         } else if (decisions[c.id] === false) {
           results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
@@ -1393,15 +1421,23 @@ async function* runBot(
         return { tools: l.tools, system: l.dropped.length ? `${system}\n\n${droppedToolsNote(l.dropped)}` : system };
       };
       let call = leanFor(Math.floor(budget * 0.45) - estimateTokens(system));
+      // Rarely used tools go as one line each inside use_tool (lib/tool-defer.ts): the model's calls come
+      // back as the real tools' calls, so everything after this point sees the real names.
+      const ask = async () => {
+        const d = deferTools(call.tools);
+        const sent = wrapHistory(fitBudget(call.system, view, d.sent, budget), d);
+        const o = await complete(s, call.system, sent, d.sent, signal, { effort, ...(routine ? { thinking: false } : {}) });
+        return { ...o, toolCalls: unwrapCalls(o.toolCalls, d, sent) };
+      };
       try {
-        out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort, ...(routine ? { thinking: false } : {}) });
+        out = await ask();
       } catch (e) {
         // theOovi said the request is still too big: shrink harder and try once more.
         if (!(e instanceof HostedError && e.code === "context_too_large")) throw e;
         budget = Math.floor(budget * 0.6);
         call = leanFor(Math.floor(budget * 0.3) - estimateTokens(system));
         try {
-          out = await complete(s, call.system, fitBudget(call.system, view, call.tools, budget), call.tools, signal, { effort, ...(routine ? { thinking: false } : {}) });
+          out = await ask();
         } catch (e2) {
           if (!(e2 instanceof HostedError && e2.code === "context_too_large")) throw e2;
           // Say what is too big, instead of a promise to summarize that can't help.

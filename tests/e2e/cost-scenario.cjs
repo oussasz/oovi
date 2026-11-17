@@ -58,8 +58,14 @@ function answer(body) {
   for (let i = msgs.length - 1; i >= 0; i--) if (msgs[i].role === "user" && /COST/.test(textOf(msgs[i]))) { latest = i; break; }
   const n = msgs.slice(latest).reduce((k, m) => k + (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").length : 0), 0);
   if (!/COST/.test(ask)) return reply([{ type: "text", text: "ok" }], "end_turn");
-  requests.push({ body, phase: /COST2/.test(ask) ? 2 : 1 });
+  requests.push({ body, phase: /COST3/.test(ask) ? 3 : /COST2/.test(ask) ? 2 : 1 });
   const use = (name, input) => reply([{ type: "text", text: "" }, { type: "tool_use", id: `toolu_${name}_${n}_${Date.now()}`, name, input }].filter((b) => b.type !== "text" || b.text), "tool_use");
+  // A tool that is sent on demand: ask for its guide, then use it (lib/tool-defer.ts).
+  if (/COST3/.test(ask)) {
+    if (n === 0) return use("use_tool", { name: "create_presentation" });
+    if (n === 1) return use("use_tool", { name: "create_presentation", input: { filename: "Cafés d'Alger.pptx", title: "Cafés d'Alger", slides: [{ title: "18 cafés", bullets: ["Alger centre", "Téléphones vérifiés"] }] } });
+    return reply([{ type: "text", text: "COST3-DONE: the slides are ready." }], "end_turn");
+  }
   const pages = /COST2/.test(ask) ? [15, 16, 17, 18] : Array.from({ length: 14 }, (_, k) => k + 1);
   // read a page, then save its row, page after page
   const step = Math.floor(n / 2);
@@ -196,12 +202,16 @@ const check = (name, ok, detail = "") => {
   let c = await run("COST: find cafés in Algiers with their phone numbers, page by page");
   c = await run("COST2: and 4 more please");
   const last = c.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? "";
-  const b = bill(requests);
+  const b = bill(requests.filter((r) => r.phase < 3));
+  const c3 = await run("COST3: now make slides of it");
+  const third = requests.filter((r) => r.phase === 3);
+  requests.length -= third.length;
   if (process.env.OOVI_COST_DETAIL) {
     const sys = (r) => (typeof r.body.system === "string" ? r.body.system : r.body.system.map((x) => x.text).join(""));
     fs.writeFileSync(path.join(os.tmpdir(), "cost-sys1.txt"), sys(requests.find((r) => r.phase === 1)));
     fs.writeFileSync(path.join(os.tmpdir(), "cost-sys2.txt"), sys(requests.find((r) => r.phase === 2)));
     log(`phases: ${requests.filter((r) => r.phase === 1).length} + ${requests.filter((r) => r.phase === 2).length}`);
+    fs.writeFileSync(path.join(os.tmpdir(), "cost-tools.json"), JSON.stringify(requests[0].body.tools));
   }
   const pages = requests.map((r) => pageChars(r.body));
   const effortOf = (r) => `${r.body.effort ?? "none"}${r.body.thinking === false ? "/no-thinking" : ""}`;
@@ -212,8 +222,23 @@ const check = (name, ok, detail = "") => {
   check("the work is done (all 18 cafés saved, final answer given)", /^COST-DONE: 4/.test(last), last.slice(0, 80));
   if (!BASELINE) {
     check("A) web page text in a request stays bounded (≤ 40,000 characters)", Math.max(...pages) <= 40_000, `${Math.max(...pages)} chars`);
+    check("G) the whole job costs no more than 170,000 weighted tokens (it was 211,000 before tools on demand and early page shortening)", b.cost <= 170_000, `${Math.round(b.cost).toLocaleString("en-US")}`);
     check("B) instructions and tools don't change between the steps of a turn", b.prefixChanges <= 1, `${b.prefixChanges} changes`);
     check("C) the first step of a message keeps the model's level; routine steps ask for medium without extended thinking", firsts.length === 1 && firsts[0] === "none" && efforts.length === 1 && efforts[0] === "medium/no-thinking", `${firsts.join(", ")} then ${efforts.join(", ")}`);
+  }
+  {
+    const names = (r) => (r.body.tools || []).map((t) => t.name);
+    const uses = (r) => (r.body.messages || []).flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((x) => x.type === "tool_use");
+    const resultsOf = (r) => (r.body.messages || []).flatMap((m) => (Array.isArray(m.content) ? m.content : [])).filter((x) => x.type === "tool_result").map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content)));
+    const file = c3.entries.flatMap((e) => (e.steps || []).flatMap((st) => (st.role === "tool" ? st.results : []))).find((r) => r.file && /\.pptx$/.test(r.file.name));
+    const all = [...requests, ...third];
+    check(
+      "D) tools on demand: rarely used tools are one line inside use_tool, in every request",
+      all.every((r) => names(r).includes("use_tool") && !names(r).includes("create_presentation") && !names(r).includes("create_image")) && names(all[0]).includes("work_table") && names(all[0]).includes("read_url"),
+      `${names(all[0]).length} tools sent`,
+    );
+    check("E) the first call returns the tool's guide, the second makes the file", third.length === 3 && resultsOf(third[1]).some((t) => t.startsWith("[guide:create_presentation]")) && !!file && /^COST3-DONE/.test(c3.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? ""), file ? file.file.name : "no .pptx made");
+    check("F) the conversation shows that call the same way on every request (through use_tool), so the cache holds", uses(third[2]).filter((u) => u.name === "use_tool").length === 2 && !uses(third[2]).some((u) => u.name === "create_presentation"));
   }
   log(`${results.filter((r) => r.ok).length}/${results.length} checks passed`);
   server.kill();
