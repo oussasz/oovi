@@ -40,7 +40,8 @@ test("the console refuses a field it does not know (typos), but knows every fiel
 });
 
 test("the console's connector logos are current (fix: node scripts/sync-web-catalog.mts)", () => {
-  assert.equal(fs.readFileSync(LOGOS_FILE, "utf8"), renderLogos(buildLogos()));
+  // Windows checks text files out with CRLF line ends: the content is what must match.
+  assert.equal(fs.readFileSync(LOGOS_FILE, "utf8").replace(/\r\n/g, "\n"), renderLogos(buildLogos()));
   assert.deepEqual(staleLogoFiles(), []);
 });
 
