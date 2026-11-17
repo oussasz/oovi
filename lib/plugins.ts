@@ -4,6 +4,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { PLUGINS, SKILLS, type CatalogPlugin, type CatalogSkill } from "./catalog";
+import { builtinExpertPrompt } from "./expert-prompts";
+import { syncExperts } from "./experts";
 import { cleanFace } from "./faces";
 import { NAME_RE } from "./mentions";
 import { dataDir } from "./settings";
@@ -71,7 +73,7 @@ export function installPlugin(id: string, list: CatalogPlugin[] = PLUGINS, skill
     if (main) pinMainBot(main.id);
   }
   const taken = new Set(listBots().map((b) => b.name.toLowerCase()));
-  const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, ...(b.about ? { about: b.about } : {}), instructions: b.instructions, face: cleanFace(b.face), tools: { ...b.tools, mcp: [] } }));
+  const made = p.bots.map((b) => createBot({ name: freeName(b.name, taken), role: b.role, ...(b.about ? { about: b.about } : {}), instructions: b.instructions || builtinExpertPrompt(p.id, p.bots.indexOf(b)), face: cleanFace(b.face), tools: { ...b.tools, mcp: [] } }));
   // One expert: just the bot, the user talks to it in its own chat (a group of one adds nothing).
   let chatId: string;
   if (made.length === 1) chatId = getChat(dmId(made[0]!.id))?.id ?? dmId(made[0]!.id);
@@ -90,6 +92,7 @@ export function installPlugin(id: string, list: CatalogPlugin[] = PLUGINS, skill
     have.add(slugify(sk.name));
   }
   writeInstalled([...installedPlugins().filter((x) => x.id !== id), { id, botIds: made.map((b) => b.id), groupId: chatId, at: Date.now() }]);
+  if (p.protected) syncExperts(list); // marks its bots as private right away
   return { groupId: chatId, bots: made.map((b) => b.name) };
 }
 

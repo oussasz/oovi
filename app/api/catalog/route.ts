@@ -18,7 +18,9 @@ export async function GET(req: Request) {
     }
   }
   // Items published from the oovi admin console, added to the built-in catalog.
-  const catalog = await remoteCatalogQuick();
+  const remote = await remoteCatalogQuick();
+  // A private expert's instructions stay on this side: the screens get everything else.
+  const catalog = { ...remote, plugins: remote.plugins.map((p) => (p.protected ? { ...p, bots: p.bots.map((b) => ({ ...b, instructions: "" })) } : p)) };
   return Response.json({ plugins: installedPlugins(), skills: installedSkillIds(await allSkills()), node: hasNode(), catalog });
 }
 

@@ -4,6 +4,8 @@ import { requireAdmin } from "@/lib/admin";
 import { CATALOG_KINDS, isCatalogKind, type CatalogKind } from "@/lib/catalog";
 import { listCatalog } from "@/lib/catalog-db";
 import { BUILTIN_ITEMS, builtinById, sameAsBuiltin } from "@/lib/builtin-catalog";
+import { groupCatalog } from "@/lib/catalog-groups";
+import { CatalogPicture } from "@/components/admin/CatalogPicture";
 import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo } from "@/components/admin/format";
@@ -12,7 +14,7 @@ import { deleteCatalogItem, editBuiltin, hideBuiltin, importAllBuiltin, restoreB
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Marketplace" };
 
-const KIND_LABELS: Record<CatalogKind, string> = { connector: "Connectors", skill: "Skills", plugin: "Plugins" };
+const KIND_LABELS: Record<CatalogKind, string> = { connector: "Connectors", skill: "Skills", plugin: "Experts & teams" };
 const nameOf = (data: unknown, id: string) => (typeof (data as { name?: unknown })?.name === "string" ? (data as { name: string }).name : id);
 
 export default async function AdminMarketplace({
@@ -32,6 +34,11 @@ export default async function AdminMarketplace({
   const inDb = new Set(all.map((i) => i.id));
   const missing = BUILTIN_ITEMS.filter((b) => !inDb.has(b.id));
   const onlyInApp = kind ? missing.filter((b) => b.kind === kind) : missing;
+  // One list, on the same shelves as in the app: experts, teams, connectors by category, skills by category.
+  const groups = groupCatalog([
+    ...items.map((item) => ({ id: item.id, kind: item.kind, sort: item.sort, data: item.data as unknown as Record<string, unknown>, item })),
+    ...onlyInApp.map((b) => ({ id: b.id, kind: b.kind, sort: b.sort, data: b.data as Record<string, unknown>, builtin: b })),
+  ]);
 
   return (
     <>
@@ -97,22 +104,31 @@ export default async function AdminMarketplace({
             </Link>
           </Empty>
         ) : (
-          <div className="adm-table-wrap">
-            <table className="adm-table">
-              <thead>
-                <tr>
-                  <th>Order</th>
-                  <th>Name</th>
-                  <th>ID</th>
-                  <th>Kind</th>
-                  <th>Status</th>
-                  <th>Source</th>
-                  <th>Updated</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
+          <>
+            {groups.map((g) => (
+              <section key={g.key} className="adm-group" aria-labelledby={`g-${g.key}`}>
+                <h3 id={`g-${g.key}`}>
+                  {g.title} <span className="adm-count">{g.rows.length}</span>
+                </h3>
+                <div className="adm-table-wrap">
+                  <table className="adm-table adm-table-items">
+                    <thead>
+                      <tr>
+                        <th>Order</th>
+                        <th>Item</th>
+                        <th>ID</th>
+                        <th>Status</th>
+                        <th>Source</th>
+                        <th>Updated</th>
+                        <th>Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {g.rows.map((row) => {
+                        const d = row.data.description;
+                        const desc = typeof d === "string" ? (d.length > 90 ? `${d.slice(0, 90)}…` : d) : "";
+                        if ("item" in row) {
+                          const item = row.item;
                   const name = nameOf(item.data, item.id);
                   const builtin = builtinById(item.id);
                   const same = builtin ? sameAsBuiltin(item) : false;
@@ -131,10 +147,15 @@ export default async function AdminMarketplace({
                         </form>
                       </td>
                       <td>
-                        <Link href={`/admin/marketplace/edit?id=${encodeURIComponent(item.id)}`}>{name}</Link>
+                        <Link href={`/admin/marketplace/edit?id=${encodeURIComponent(item.id)}`} className="adm-item">
+                          <CatalogPicture id={item.id} kind={item.kind} data={row.data} />
+                          <span>
+                            <b>{name}</b>
+                            {desc && <small>{desc}</small>}
+                          </span>
+                        </Link>
                       </td>
                       <td className="adm-mono">{item.id}</td>
-                      <td>{item.kind}</td>
                       <td>
                         <form action={setPublished} className="adm-inline-form">
                           <input type="hidden" name="id" value={item.id} />
@@ -189,17 +210,24 @@ export default async function AdminMarketplace({
                       </td>
                     </tr>
                   );
-                })}
-                {onlyInApp.map((b) => {
+                        }
+                        const b = row.builtin;
                   const name = nameOf(b.data, b.id);
                   return (
                     <tr key={`app-${b.id}`}>
                       <td className="adm-mono" title="The app's own order">
                         {b.sort}
                       </td>
-                      <td>{name}</td>
+                      <td>
+                        <span className="adm-item">
+                          <CatalogPicture id={b.id} kind={b.kind} data={row.data} />
+                          <span>
+                            <b>{name}</b>
+                            {desc && <small>{desc}</small>}
+                          </span>
+                        </span>
+                      </td>
                       <td className="adm-mono">{b.id}</td>
-                      <td>{b.kind}</td>
                       <td>
                         <span className="adm-badge on">Shown in the app</span>
                       </td>
@@ -227,10 +255,13 @@ export default async function AdminMarketplace({
                       </td>
                     </tr>
                   );
-                })}
-              </tbody>
-            </table>
-          </div>
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            ))}
+          </>
         )}
       </Section>
     </>

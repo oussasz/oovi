@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import { buildSnapshot, renderSnapshot, SNAPSHOT_FILE } from "../../scripts/sync-web-catalog.mts";
+import { buildLogos, buildSnapshot, LOGOS_FILE, renderLogos, renderSnapshot, SNAPSHOT_FILE, staleLogoFiles } from "../../scripts/sync-web-catalog.mts";
+import { groupCatalog } from "../../web/lib/catalog-groups.ts";
 import { validateCatalogData } from "../../web/lib/catalog.ts";
 
 // The Marketplace items live in the app (lib/catalog.ts). The admin console keeps a generated copy of them
@@ -36,4 +37,22 @@ test("an expert keeps its profile links and its one-line voice, and a connector 
 test("the console refuses a field it does not know (typos), but knows every field the app uses", () => {
   assert.ok(validateCatalogData("skill", { name: "x", description: "y", category: "work", body: "z", surprise: 1 }).some((e) => e.includes("surprise")));
   assert.deepEqual(validateCatalogData("skill", { name: "x", description: "y", category: "work", body: "z" }), []);
+});
+
+test("the console's connector logos are current (fix: node scripts/sync-web-catalog.mts)", () => {
+  assert.equal(fs.readFileSync(LOGOS_FILE, "utf8"), renderLogos(buildLogos()));
+  assert.deepEqual(staleLogoFiles(), []);
+});
+
+test("the console's list is grouped: experts, teams, connectors by category, skills by category; nothing is lost", () => {
+  const rows = buildSnapshot().map((b) => ({ id: b.id, kind: b.kind, sort: b.sort, data: b.data }));
+  const groups = groupCatalog(rows);
+  assert.equal(groups.reduce((n, g) => n + g.rows.length, 0), rows.length);
+  assert.deepEqual(groups.slice(0, 2).map((g) => g.title), ["Experts", "Teams"]);
+  assert.ok(groups.find((g) => g.title === "Experts")!.rows.some((r) => r.id === "abdelaziz-benkirat"));
+  assert.ok(groups.find((g) => g.title === "Teams")!.rows.every((r) => (r.data.bots as unknown[]).length > 1));
+  assert.ok(groups.some((g) => g.kind === "connector" && g.title === "Connect any app") && groups.some((g) => g.kind === "skill"));
+  for (const g of groups) assert.deepEqual(g.rows.map((r) => r.sort), [...g.rows.map((r) => r.sort)].sort((a, b) => a - b), `${g.title} not in the app's order`);
+  // an unknown category is still shown
+  assert.equal(groupCatalog([{ id: "x", kind: "connector", sort: 1, data: { name: "X", category: "new-thing" } }])[0]!.title, "Other connectors");
 });

@@ -1,4 +1,5 @@
 import { closeSession } from "@/lib/browser";
+import { forScreens } from "@/lib/experts-core";
 import { guard } from "@/lib/guard";
 import { stopRun } from "@/lib/runner";
 import { deleteBot, dmId, getBot, updateBot, validateBot } from "@/lib/store";
@@ -12,7 +13,7 @@ export async function GET(req: Request, { params }: Ctx) {
   const denied = guard(req);
   if (denied) return denied;
   const bot = getBot((await params).id);
-  return bot ? Response.json(bot) : Response.json({ error: "Bot not found." }, { status: 404 });
+  return bot ? Response.json(forScreens(bot)) : Response.json({ error: "Bot not found." }, { status: 404 });
 }
 
 export async function PUT(req: Request, { params }: Ctx) {
@@ -22,7 +23,7 @@ export async function PUT(req: Request, { params }: Ctx) {
   const input = validateBot(await req.json().catch(() => null), id);
   if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
   const bot = updateBot(id, input);
-  return bot ? Response.json(bot) : Response.json({ error: "Bot not found." }, { status: 404 });
+  return bot ? Response.json(forScreens(bot)) : Response.json({ error: "Bot not found." }, { status: 404 });
 }
 
 export async function DELETE(req: Request, { params }: Ctx) {

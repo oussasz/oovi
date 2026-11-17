@@ -92,6 +92,10 @@ export function CatalogFields({ kind, data, onChange }: { kind: CatalogKind; dat
       <div className="adm-fields adm-fields-wide">
         <Text id="f-name" label="Name" value={str(data.name)} onChange={(v) => set(["name"], v)} />
         <Text id="f-group" label="Group name" help="What the team's group is called in the app." value={str(data.group)} onChange={(v) => set(["group"], v)} />
+        <label className="adm-check">
+          <input type="checkbox" checked={data.protected === true} onChange={(e) => onChange(setOrDrop(data, ["protected"], e.target.checked ? true : undefined))} /> Private expert
+        </label>
+        <p className="adm-sub">The app never shows these instructions and people can’t edit them. Everyone who already added this expert gets your changes automatically, within minutes of opening oovi (app versions from this feature on).</p>
       </div>
       <Text id="f-desc" label="Short description" value={str(data.description)} onChange={(v) => set(["description"], v)} rows={2} />
 
