@@ -803,6 +803,8 @@ const de: Dict = {
   "mk.yours": "Deine",
   "mk.discover": "Entdecken",
   "mk.search": "Suchen",
+  "common.clear": "Löschen",
+  "mk.searchAll": "Experten, Teams, Konnektoren und Skills suchen",
   "mk.by": "von {by}",
   "mk.verified": "Von der Firma hinter dem Dienst",
   "mk.featured": "Empfohlen",

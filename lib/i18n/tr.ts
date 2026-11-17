@@ -803,6 +803,8 @@ const tr: Dict = {
   "mk.yours": "Seninkiler",
   "mk.discover": "Keşfet",
   "mk.search": "Ara",
+  "common.clear": "Temizle",
+  "mk.searchAll": "Uzman, ekip, bağlayıcı ve beceri ara",
   "mk.by": "{by} tarafından",
   "mk.verified": "Hizmetin sahibi şirket tarafından yapıldı",
   "mk.featured": "Öne çıkan",

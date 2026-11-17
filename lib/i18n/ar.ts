@@ -812,6 +812,8 @@ const ar: Dict = {
   "mk.yours": "الخاصة بك",
   "mk.discover": "اكتشف",
   "mk.search": "بحث",
+  "common.clear": "مسح",
+  "mk.searchAll": "ابحث عن خبراء، فرق، موصلات ومهارات",
   "mk.by": "من {by}",
   "mk.verified": "من صنع الشركة صاحبة الخدمة",
   "mk.featured": "مميّز",

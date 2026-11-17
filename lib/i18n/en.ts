@@ -819,6 +819,8 @@ const en = {
   "mk.yours": "Yours",
   "mk.discover": "Discover",
   "mk.search": "Search",
+  "common.clear": "Clear",
+  "mk.searchAll": "Search experts, teams, connectors and skills",
   "mk.by": "by {by}",
   "mk.verified": "Made by the company behind the service",
   "mk.featured": "Featured",

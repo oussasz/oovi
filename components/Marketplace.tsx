@@ -187,15 +187,15 @@ export default function Marketplace() {
   }, [load]);
 
   useEffect(() => {
-    if (tab === "skills" && view === "discover" && !remote)
+    if ((tab === "skills" || q.trim()) && view === "discover" && !remote)
       api<{ skills: RemoteSkill[] }>("/api/catalog?remote=anthropic")
         .then((r) => setRemote(r.skills))
         .catch(() => setRemote([]));
-  }, [tab, view, remote]);
+  }, [tab, view, remote, q]);
 
-  // Search the official MCP registry as you type (Connectors > Discover).
+  // Search the official MCP registry as you type (Discover: a search looks in every tab).
   useEffect(() => {
-    if (tab !== "connectors" || view !== "discover" || q.trim().length < 2) {
+    if (view !== "discover" || q.trim().length < 2) {
       setRegistry(null);
       return;
     }
@@ -513,10 +513,12 @@ export default function Marketplace() {
           ))}
         </div>
       )}
-      <div className="mk-section-head">
-        <h3>{ql ? t("mk.matches") : t("mk.topConnectors")}</h3>
-        <span className="mk-count">{shownConnectors.length}</span>
-      </div>
+      {(!ql || shownConnectors.length > 0) && (
+        <div className="mk-section-head">
+          <h3>{ql ? t("mk.tab.connectors") : t("mk.topConnectors")}</h3>
+          <span className="mk-count">{shownConnectors.length}</span>
+        </div>
+      )}
       <div className="mk-grid">
         {shownConnectors.map((c) =>
           card(
@@ -533,7 +535,7 @@ export default function Marketplace() {
           ),
         )}
       </div>
-      {ql.length >= 2 && (
+      {ql.length >= 2 && registry?.length !== 0 && (
         <>
           <div className="mk-section-head">
             <h3>{t("mk.registry")}</h3>
@@ -667,20 +669,24 @@ export default function Marketplace() {
       return t("lib.installedSkill", { name: k.name });
     });
   const libraryCats = ["", "work", "writing", "research", "coding", "life"];
+  const foundSkills = allSkills.filter((s) => match(s.name, s.description));
+  const foundRemote = (remote ?? []).filter((s) => match(s.name, s.description));
   const skillLibrary = (
     <>
       <div className="mk-section-head">
         <h3>{t("mk.library")}</h3>
         {lib && <span className="mk-count">{lib.total}</span>}
       </div>
-      <p className="note">{t("mk.libraryIntro")}</p>
-      <div className="chip-row mk-lib-cats" role="group" aria-label={t("mk.library")}>
-        {libraryCats.map((c) => (
-          <button key={c || "all"} type="button" className={`chip${libCat === c ? " on" : ""}`} aria-pressed={libCat === c} onClick={() => setLibCat(c)}>
-            {t(c ? (`skill.cat.${c}` as "skill.cat.work") : "mk.cat.all")}
-          </button>
-        ))}
-      </div>
+      {!ql && <p className="note">{t("mk.libraryIntro")}</p>}
+      {!ql && (
+        <div className="chip-row mk-lib-cats" role="group" aria-label={t("mk.library")}>
+          {libraryCats.map((c) => (
+            <button key={c || "all"} type="button" className={`chip${libCat === c ? " on" : ""}`} aria-pressed={libCat === c} onClick={() => setLibCat(c)}>
+              {t(c ? (`skill.cat.${c}` as "skill.cat.work") : "mk.cat.all")}
+            </button>
+          ))}
+        </div>
+      )}
       {libErr ? (
         <p className="note">{t("mk.cantLoadRemote")}</p>
       ) : !lib ? (
@@ -754,22 +760,26 @@ export default function Marketplace() {
           <Logo src={OOVI_LOGO} size={84} />
         </div>
       )}
-      <div className="mk-section-head">
-        <h3>{t("mk.ooviSkills")}</h3>
-        <span className="mk-count">{allSkills.length}</span>
-      </div>
+      {(!ql || foundSkills.length > 0) && (
+        <div className="mk-section-head">
+          <h3>{t("mk.ooviSkills")}</h3>
+          <span className="mk-count">{foundSkills.length}</span>
+        </div>
+      )}
       <div className="mk-grid">
-        {allSkills.filter((s) => match(s.name, s.description)).map((s) =>
+        {foundSkills.map((s) =>
           card(s.id, <Logo src={OOVI_LOGO} />, s.name, s.description, "oovi", skillHave(s.name) ? done(t("mk.added")) : plus(() => void addCatalogSkill(s.id, s.name), t("mk.addX", { name: s.name })), undefined, () =>
             setDetail({ kind: "skill", id: s.id, name: s.name, description: s.description, body: s.body, by: "oovi", logo: OOVI_LOGO, have: skillHave(s.name), add: () => void addCatalogSkill(s.id, s.name) }),
           ),
         )}
       </div>
-      <div className="mk-section-head">
-        <h3>{t("mk.anthropicSkills")}</h3>
-        {remote && <span className="mk-count">{remote.length}</span>}
-      </div>
-      {!remote ? (
+      {(!ql || foundRemote.length > 0) && (
+        <div className="mk-section-head">
+          <h3>{t("mk.anthropicSkills")}</h3>
+          {remote && <span className="mk-count">{foundRemote.length}</span>}
+        </div>
+      )}
+      {ql && !foundRemote.length ? null : !remote ? (
         <p className="note">{t("common.loading")}</p>
       ) : remote.length === 0 ? (
         <p className="note">{t("mk.cantLoadRemote")}</p>
@@ -795,7 +805,7 @@ export default function Marketplace() {
             )}
         </div>
       )}
-      {skillLibrary}
+      {(!ql || !!lib?.items.length) && skillLibrary}
     </>
   );
 
@@ -870,6 +880,10 @@ export default function Marketplace() {
   };
 
   const featuredPlugin = allPlugins[0] ?? PLUGINS[0]!;
+  // A bot's role is searched too ("coach", "designer"), in the catalog's words and in the user's language.
+  const foundPlugins = allPlugins.filter((p) => match(`${p.name} ${setupText(t, p.id, "name", p.name)}`, `${p.description} ${setupText(t, p.id, "desc", p.description)}`, p.bots.map((b) => `${b.name} ${b.role}`).join(" ")));
+  const foundExperts = foundPlugins.filter((p) => p.bots.length === 1);
+  const foundTeams = foundPlugins.filter((p) => p.bots.length > 1);
   const discoverPlugins = (
     <>
       {!ql && (
@@ -891,16 +905,20 @@ export default function Marketplace() {
           <FaceStack faces={featuredPlugin.bots.map((b) => b.face)} size={96} />
         </div>
       )}
-      <div className="mk-section-head">
-        <h3>{t("mk.experts")}</h3>
-        <span className="mk-count">{allPlugins.filter((p) => p.bots.length === 1).length}</span>
-      </div>
-      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length === 1 && match(`${p.name} ${setupText(t, p.id, "name", p.name)}`, `${p.description} ${setupText(t, p.id, "desc", p.description)}`)).map(pluginCard)}</div>
-      <div className="mk-section-head">
-        <h3>{t("mk.teams")}</h3>
-        <span className="mk-count">{allPlugins.filter((p) => p.bots.length > 1).length}</span>
-      </div>
-      <div className="mk-grid">{allPlugins.filter((p) => p.bots.length > 1 && match(`${p.name} ${setupText(t, p.id, "name", p.name)}`, `${p.description} ${setupText(t, p.id, "desc", p.description)}`)).map(pluginCard)}</div>
+      {(!ql || foundExperts.length > 0) && (
+        <div className="mk-section-head">
+          <h3>{t("mk.experts")}</h3>
+          <span className="mk-count">{foundExperts.length}</span>
+        </div>
+      )}
+      <div className="mk-grid">{foundExperts.map(pluginCard)}</div>
+      {(!ql || foundTeams.length > 0) && (
+        <div className="mk-section-head">
+          <h3>{t("mk.teams")}</h3>
+          <span className="mk-count">{foundTeams.length}</span>
+        </div>
+      )}
+      <div className="mk-grid">{foundTeams.map(pluginCard)}</div>
     </>
   );
 
@@ -950,6 +968,18 @@ export default function Marketplace() {
     skills: { discover: discoverSkills, yours: yourSkills },
     plugins: { discover: discoverPlugins, yours: yourPlugins },
   };
+  // A search looks in the whole Marketplace: experts and teams, connectors, skills, each under its own heading.
+  const nothing = !foundPlugins.length && !shownConnectors.length && !foundSkills.length && !foundRemote.length && lib !== null && !lib.items.length && (ql.length < 2 || registry?.length === 0);
+  // While a search shows every category, no single tab is "the" open one; picking a tab ends the search.
+  const searchingAll = !!ql && view === "discover";
+  const searchAll = (
+    <div className="mk-all">
+      {nothing && <p className="note">{t("lib.nothingFound")}</p>}
+      {discoverPlugins}
+      {discoverConnectors}
+      {discoverSkills}
+    </div>
+  );
   const counts: Record<Tab, number> = { connectors: servers.length, skills: skills.length, plugins: inst.plugins.length };
 
   return (
@@ -960,7 +990,7 @@ export default function Marketplace() {
       <div className="mk-top">
         <div className="mk-tabs" role="tablist">
           {(["connectors", "skills", "plugins"] as Tab[]).map((x) => (
-            <button key={x} role="tab" aria-selected={tab === x} className={tab === x ? "on" : ""} onClick={() => pick(x)}>
+            <button key={x} role="tab" aria-selected={tab === x && !searchingAll} className={tab === x && !searchingAll ? "on" : ""} onClick={() => (searchingAll && setQ(""), pick(x))}>
               {t(`mk.tab.${x}`)}
             </button>
           ))}
@@ -979,7 +1009,12 @@ export default function Marketplace() {
       <div className="mk-bar">
           <label className="mk-search">
             <Icon name="zoomIn" size={16} />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("mk.search")} aria-label={t("mk.search")} />
+            <input value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} placeholder={t("mk.searchAll")} aria-label={t("mk.searchAll")} />
+            {q && (
+              <button type="button" className="icon-btn sm" onClick={() => setQ("")} aria-label={t("common.clear")} title={t("common.clear")}>
+                <Icon name="close" size={14} />
+              </button>
+            )}
           </label>
           {addMenu.length > 0 && (
             <div className="mk-menu" ref={menuRef}>
@@ -1025,7 +1060,7 @@ export default function Marketplace() {
         </div>
       )}
 
-      {views[tab][view]}
+      {searchingAll ? searchAll : views[tab][view]}
 
       {/* ---- the details of one item (click any card) ---- */}
       {detail && (
