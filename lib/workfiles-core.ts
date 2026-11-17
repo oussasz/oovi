@@ -6,7 +6,13 @@
 
 export type WorkTable = { columns: string[]; rows: string[][]; updatedAt: number };
 /** exports: the file name each work file was last delivered as ("table:Prospects:xlsx" -> "Prospects Alger"), so a new export updates that file. */
-export type WorkStore = { tables: Record<string, WorkTable>; notes: Record<string, { text: string; updatedAt: number }>; exports?: Record<string, string> };
+export type WorkStore = {
+  tables: Record<string, WorkTable>;
+  notes: Record<string, { text: string; updatedAt: number }>;
+  exports?: Record<string, string>;
+  /** Charts drawn from a table's columns, shown in the Canvas (lib/canvas-core.ts). */
+  charts?: Record<string, { table: string; type: "column" | "bar" | "line" | "pie" | "doughnut" | "area"; x: string; y: string[]; title: string; updatedAt: number }>;
+};
 
 export const MAX_ROWS = 20_000;
 export const MAX_COLUMNS = 40;

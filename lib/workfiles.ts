@@ -11,6 +11,7 @@ import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { rowsForTable, type ListRow } from "./page-list-core";
 import { dropUnseen, droppedNote, type Seen } from "./workfiles-core";
+import { makeChart, MAX_CHARTS, snapshotsFor, type Snapshot } from "./canvas-core";
 import { addRows, cleanFileName, emptyStore, exportView, filledCounts, readRows, removeRows, setColumns, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
 
 const ID_RE = /^[\w-]{1,64}$/;
@@ -24,16 +25,39 @@ export function loadWork(chatId: string): WorkStore {
       tables: j.tables && typeof j.tables === "object" ? j.tables : {},
       notes: j.notes && typeof j.notes === "object" ? j.notes : {},
       ...(j.exports && typeof j.exports === "object" ? { exports: j.exports } : {}),
+      ...(j.charts && typeof j.charts === "object" ? { charts: j.charts } : {}),
     };
   } catch {
     return emptyStore();
   }
 }
 
-function saveWork(chatId: string, store: WorkStore) {
+const historyFile = (chatId: string) => path.join(dataDir(), "work", `${chatId}.history.json`);
+
+/** Earlier versions of this chat's pages, oldest first (lib/canvas-core.ts). */
+export function loadHistory(chatId: string): Snapshot[] {
+  if (!ID_RE.test(chatId)) return [];
+  try {
+    const j = JSON.parse(fs.readFileSync(historyFile(chatId), "utf8")) as unknown;
+    return Array.isArray(j) ? (j as Snapshot[]).filter((s) => s && typeof s.id === "string" && (s.kind === "table" || s.kind === "note") && s.data) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveWork(chatId: string, store: WorkStore) {
   if (!ID_RE.test(chatId)) return;
   const f = file(chatId);
   fs.mkdirSync(path.dirname(f), { recursive: true });
+  // What a page was before this change is kept for the Canvas's history (never fails the save).
+  try {
+    const before = loadWork(chatId);
+    const had = loadHistory(chatId);
+    const next = snapshotsFor(had, before, store);
+    if (next.length !== had.length || next.at(-1)?.id !== had.at(-1)?.id) fs.writeFileSync(historyFile(chatId), JSON.stringify(next));
+  } catch {
+    /* history is a bonus */
+  }
   // Write then rename: a crash mid-write never leaves half a file of the team's work.
   const tmp = `${f}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(store));
@@ -42,18 +66,20 @@ function saveWork(chatId: string, store: WorkStore) {
 
 /** The chat was deleted: its work files go with it. */
 export function deleteWork(chatId: string) {
-  if (ID_RE.test(chatId)) fs.rmSync(file(chatId), { force: true });
+  if (!ID_RE.test(chatId)) return;
+  fs.rmSync(file(chatId), { force: true });
+  fs.rmSync(historyFile(chatId), { force: true });
 }
 
 export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_table",
     description:
-      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty); a long table comes in parts: act on each part (update, check) before reading the next, because older reads are shortened to save space. update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. columns: reorder, rename, empty (clear) or drop columns of the whole table at once, without retyping rows (order lists the columns in their new order; a column left out is removed, a new name is added empty). Add rows as you find them, in batches, rather than all at the end. Never rebuild or retype a table from memory: change it with update/columns and deliver it with work_export.",
+      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty); a long table comes in parts: act on each part (update, check) before reading the next, because older reads are shortened to save space. update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. columns: reorder, rename, empty (clear) or drop columns of the whole table at once, without retyping rows (order lists the columns in their new order; a column left out is removed, a new name is added empty). chart: draw a chart from the table's number columns (it follows the table's numbers). Add rows as you find them, in batches, rather than all at the end. Never rebuild or retype a table from memory: change it with update/columns and deliver it with work_export. The user sees these tables, notes and charts live in the Canvas beside the chat and can edit them by hand: read again before changing rows they may have edited.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["add", "read", "update", "remove", "columns"] },
+        action: { type: "string", enum: ["add", "read", "update", "remove", "columns", "chart"] },
         table: { type: "string", description: "Table name, e.g. 'Prospects Alger'. Use the existing one when the team already has it." },
         columns: { type: "array", items: { type: "string" }, description: "add, new table only: the header row. Put the name first; include a Source column for where each row was found." },
         rows: { type: "array", items: {}, description: "add: rows as arrays in column order, or objects keyed by column name. Leave a cell empty when you don't have the value; never invent one." },
@@ -66,6 +92,10 @@ export const WORK_SPECS: ToolSpec[] = [
         order: { type: "array", items: { type: "string" }, description: "columns: the new column order, e.g. ['Statut','Note','Name','Phone',…]" },
         rename: { type: "object", description: "columns: {old name: new name}" },
         clear: { type: "array", items: { type: "string" }, description: "columns: columns to empty in every row" },
+        chart_type: { type: "string", enum: ["column", "bar", "line", "area", "pie", "doughnut"], description: "chart: default column" },
+        x: { type: "string", description: "chart: the column of labels (default: the first column)" },
+        y: { type: "array", items: { type: "string" }, description: "chart: the column(s) of numbers to plot" },
+        title: { type: "string", description: "chart: its title" },
       },
       required: ["action", "table"],
     },
@@ -245,7 +275,16 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
         saveWork(chatId, store);
         return ok(`${n} rows removed. Now: ${tableLine(existing, t)}. (Row numbers changed: read again before more changes.)`);
       }
-      return bad("action must be add, read, update, remove or columns.");
+      if (i.action === "chart") {
+        const charts = (store.charts ??= {});
+        const made = makeChart(store, { table: existing, type: i.chart_type, x: i.x, y: fromText(i.y), title: i.title });
+        if (typeof made === "string") return bad(made);
+        if (!charts[made.name] && Object.keys(charts).length >= MAX_CHARTS) return bad("This chat already has the most charts it can hold. Reuse a chart's title to replace it.");
+        charts[made.name] = made.chart;
+        saveWork(chatId, store);
+        return ok(`Chart "${made.name}" (${made.chart.type}: ${made.chart.y.join(", ")} by ${made.chart.x}) is in the user's Canvas. It follows the table: when the numbers change, so does the chart.`);
+      }
+      return bad("action must be add, read, update, remove, columns or chart.");
     }
 
     if (call.name === "work_notes") {

@@ -1,6 +1,10 @@
 // Small stroke icons, same hand-drawn weight as the faces.
 const PATHS = {
   plus: "M12 5v14M5 12h14",
+  note: "M6 3h9l4 4v14H6zM15 3v4h4M9 12h7M9 16h7M9 8h3",
+  table: "M4 5h16v14H4zM4 10h16M4 15h16M10 5v14",
+  chart: "M4 20h16M7 20v-7M12 20V6M17 20v-10",
+  download: "M12 4v11M7 11l5 5 5-5M5 20h14",
   bolt: "M13 3L4 14h7l-1 7 9-11h-7z",
   cpu: "M7 7h10v10H7zM9 3v4M15 3v4M9 17v4M15 17v4M3 9h4M3 15h4M17 9h4M17 15h4",
   spark: "M12 3l2.2 5.3L20 9l-4.5 3.8L17 19l-5-3-5 3 1.5-6.2L4 9l5.8-.7z",

@@ -539,6 +539,9 @@ export function pptxChart(c: ChartData, theme: { text: string; muted?: string; g
   if (c.numberFormat) {
     opts.dataLabelFormatCode = c.numberFormat;
     opts.valAxisLabelFormatCode = c.numberFormat;
+  } else if (c.series.some((x) => x.values.some((v) => typeof v === "number" && Math.abs(v) >= 10_000))) {
+    // Large figures read better with separators: 4,500,000.
+    opts.valAxisLabelFormatCode = "#,##0";
   }
   if (!pie) {
     Object.assign(opts, {

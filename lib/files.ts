@@ -8,13 +8,14 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
-import { AlignmentType, BorderStyle, Document, ExternalHyperlink, HeadingLevel, LevelFormat, Packer, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, WidthType } from "docx";
+import { AlignmentType, BorderStyle, Document, ExternalHyperlink, Footer, HeadingLevel, LevelFormat, PageNumber, Packer, Paragraph, ShadingType, Table, TableCell, TableRow, TextRun, UnderlineType, VerticalAlign, WidthType } from "docx";
 import ExcelJS from "exceljs";
 import JSZip from "jszip";
 import { marked, type Token, type Tokens } from "marked";
 import PptxGenJS from "pptxgenjs";
 import { downloadsDir, launchLocal, saveFolderLabel } from "./browser";
 import { cardHtml, normalizeCard, onColor, PALETTES } from "./card";
+import { columnLetter, columnLooks, coerceRows, fileTheme, FILE_THEME_NAMES, isUrl, mostlyRtl, type FileTheme } from "./file-style";
 import { chartAnchor, chartDataRows, CHART_KINDS, injectXlsxCharts, inlineXlsxChart, isRtlText, normalizeChart, pptxChart, resolveRangeChart, type ChartData, type SheetData, type XlsxChart, type ZipIO } from "./charts";
 import type { ToolSpec } from "./llm";
 import { fitContain, orientationFor, type Orientation } from "./media";
@@ -38,6 +39,8 @@ const CHART_INLINE = {
   },
 };
 
+const FILE_THEME = { type: "string", enum: FILE_THEME_NAMES, description: "Colour of headings and table headers (default blue; use another when the user asks or their brand calls for it)" };
+
 const IMAGE_REF = {
   type: "object",
   description: "A picture: {search:'coffee shop interior'} finds a free photo (credited on the slide), or {path:'Facebook post.png'} uses a picture in the project folder or Downloads/oovi",
@@ -60,6 +63,7 @@ export const DOC_SPECS: ToolSpec[] = [
         title: { type: "string", description: "Document title (shown at the top and in the file's properties)" },
         content: { type: "string", description: "The content in Markdown (with append: the next sections only)" },
         append: { type: "boolean", description: "true: add this content at the end of the document you already made with this filename in this chat (the title stays)." },
+        theme: FILE_THEME,
       },
       required: ["filename", "content"],
     },
@@ -72,6 +76,7 @@ export const DOC_SPECS: ToolSpec[] = [
       type: "object",
       properties: {
         filename: { type: "string", description: "e.g. 'Budget 2026.xlsx'" },
+        theme: FILE_THEME,
         sheets: {
           type: "array",
           items: {
@@ -201,14 +206,14 @@ function cleanName(name: string, fallbackExt: string): string {
 const DOC_EXTS = [".docx", ".pdf", ".html", ".htm", ".md", ".txt"];
 
 /** A document's Markdown, kept beside oovi's data so a document made in parts can be rebuilt complete. */
-type DocSource = { title?: string; md: string };
+type DocSource = { title?: string; md: string; theme?: string };
 const docSourceFile = (abs: string) => path.join(dataDir(), "doc-sources", `${crypto.createHash("sha1").update(path.resolve(abs)).digest("hex")}.json`);
 function readDocSource(abs: string): DocSource | null {
   try {
     const j = JSON.parse(fs.readFileSync(docSourceFile(abs), "utf8")) as DocSource & { size?: number };
     // The file was changed or replaced since (by the user or another tool): its text can't be extended safely.
     if (typeof j.size === "number" && fs.statSync(abs).size !== j.size) return null;
-    return typeof j.md === "string" ? { title: j.title, md: j.md } : null;
+    return typeof j.md === "string" ? { title: j.title, md: j.md, theme: typeof j.theme === "string" ? j.theme : undefined } : null;
   } catch {
     return null;
   }
@@ -330,12 +335,13 @@ export function saveOutput(call: ToolCall, filename: string, ws: Workspace | und
 // ---------- Markdown -> Word ----------
 
 type Run = TextRun | ExternalHyperlink;
-type Style = { bold?: boolean; italics?: boolean };
+type Style = { bold?: boolean; italics?: boolean; color?: string; rtl?: boolean };
 
 const decode = (s: string) => s.replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 
 function inlineRuns(tokens: Token[] | undefined, style: Style = {}): Run[] {
   const out: Run[] = [];
+  const base = { bold: style.bold, italics: style.italics, color: style.color, rightToLeft: style.rtl };
   for (const t of tokens ?? []) {
     switch (t.type) {
       case "strong":
@@ -345,11 +351,11 @@ function inlineRuns(tokens: Token[] | undefined, style: Style = {}): Run[] {
         out.push(...inlineRuns((t as Tokens.Em).tokens, { ...style, italics: true }));
         break;
       case "codespan":
-        out.push(new TextRun({ text: decode((t as Tokens.Codespan).text), font: "Consolas", bold: style.bold, italics: style.italics }));
+        out.push(new TextRun({ ...base, text: decode((t as Tokens.Codespan).text), font: "Consolas" }));
         break;
       case "link": {
         const l = t as Tokens.Link;
-        out.push(new ExternalHyperlink({ link: l.href, children: [new TextRun({ text: decode(l.text), style: "Hyperlink", bold: style.bold, italics: style.italics })] }));
+        out.push(new ExternalHyperlink({ link: l.href, children: [new TextRun({ ...base, text: decode(l.text), style: "Hyperlink" })] }));
         break;
       }
       case "br":
@@ -358,7 +364,7 @@ function inlineRuns(tokens: Token[] | undefined, style: Style = {}): Run[] {
       default: {
         const anyT = t as Tokens.Text;
         if ("tokens" in anyT && anyT.tokens?.length) out.push(...inlineRuns(anyT.tokens, style));
-        else out.push(new TextRun({ text: decode(anyT.text ?? anyT.raw ?? ""), bold: style.bold, italics: style.italics }));
+        else out.push(new TextRun({ ...base, text: decode(anyT.text ?? anyT.raw ?? "") }));
       }
     }
   }
@@ -366,76 +372,128 @@ function inlineRuns(tokens: Token[] | undefined, style: Style = {}): Run[] {
 }
 
 const HEADINGS = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4, HeadingLevel.HEADING_5, HeadingLevel.HEADING_6];
+const rawText = (t: Token) => ("text" in t && typeof t.text === "string" ? t.text : t.raw);
+const thin = (color: string) => ({ style: BorderStyle.SINGLE, size: 4, color });
+const NUMERIC_CELL = /^[\s(+\-−]*[$€£]?\s?\d[\d\s.,'’]*\s?(%|[A-Za-z$€£]{0,4}|د\.?ج|دج)?\)?\s*$/;
 
-function blocks(tokens: Token[], listLevel = 0): (Paragraph | Table)[] {
+type DocLook = { th: FileTheme; quote?: boolean };
+
+function blocks(tokens: Token[], look: DocLook, listLevel = 0): (Paragraph | Table)[] {
   const out: (Paragraph | Table)[] = [];
+  const { th } = look;
+  const quoteOf = (rtl: boolean) => (look.quote ? { indent: { start: 360 }, border: { [rtl ? "right" : "left"]: { style: BorderStyle.SINGLE, size: 18, color: th.line, space: 10 } } } : {});
+  const quoteStyle: Style = look.quote ? { italics: true, color: "5A6170" } : {};
   for (const t of tokens) {
+    const rtl = mostlyRtl(rawText(t));
+    const dir = rtl ? { bidirectional: true } : {};
     switch (t.type) {
       case "heading": {
         const h = t as Tokens.Heading;
-        out.push(new Paragraph({ heading: HEADINGS[Math.min(5, h.depth - 1)], children: inlineRuns(h.tokens) }));
+        out.push(new Paragraph({ ...dir, heading: HEADINGS[Math.min(5, h.depth - 1)], children: inlineRuns(h.tokens, { rtl }) }));
         break;
       }
       case "paragraph":
-        out.push(new Paragraph({ children: inlineRuns((t as Tokens.Paragraph).tokens), spacing: { after: 120 } }));
+        out.push(new Paragraph({ ...dir, ...quoteOf(rtl), children: inlineRuns((t as Tokens.Paragraph).tokens, { ...quoteStyle, rtl }) }));
         break;
       case "list": {
         const l = t as Tokens.List;
         for (const item of l.items) {
-          const [first, ...rest] = item.tokens;
-          const runs = first && "tokens" in first && first.tokens ? inlineRuns(first.tokens) : first ? inlineRuns([first]) : [];
+          const [first, ...rest] = item.tokens.filter((x) => (x.type as string) !== "checkbox");
+          const itemRtl = mostlyRtl(item.text);
+          const runs = first && "tokens" in first && first.tokens ? inlineRuns(first.tokens, { rtl: itemRtl }) : first ? inlineRuns([first], { rtl: itemRtl }) : [];
           out.push(
             new Paragraph({
-              children: item.task ? [new TextRun(item.checked ? "☑ " : "☐ "), ...runs] : runs,
-              ...(l.ordered ? { numbering: { reference: "numbers", level: Math.min(listLevel, 8) } } : { bullet: { level: Math.min(listLevel, 8) } }),
+              ...(itemRtl ? { bidirectional: true } : {}),
+              spacing: { after: 60 },
+              children: item.task ? [new TextRun({ text: item.checked ? "☑  " : "☐  ", color: item.checked ? th.accent : "8A909C", rightToLeft: itemRtl }), ...runs] : runs,
+              // A tick-box replaces the bullet.
+              ...(item.task ? { indent: { start: 360 * (Math.min(listLevel, 8) + 1) } } : l.ordered ? { numbering: { reference: "numbers", level: Math.min(listLevel, 8) } } : { bullet: { level: Math.min(listLevel, 8) } }),
             }),
           );
-          for (const r of rest) out.push(...blocks([r], r.type === "list" ? listLevel + 1 : listLevel));
+          for (const r of rest) out.push(...blocks([r], look, r.type === "list" ? listLevel + 1 : listLevel));
         }
+        if (!listLevel) out.push(new Paragraph({ text: "", spacing: { after: 0, line: 160 } }));
         break;
       }
       case "table": {
         const tb = t as Tokens.Table;
-        const cell = (tokens: Token[], header: boolean) =>
-          new TableCell({
-            children: [new Paragraph({ children: inlineRuns(tokens, header ? { bold: true } : {}) })],
-            ...(header ? { shading: { type: ShadingType.CLEAR, color: "auto", fill: "EDEBE6" } } : {}),
+        const tableRtl = mostlyRtl(tb.header.map((h) => h.text).join(" ") + " " + (tb.rows[0] ?? []).map((c) => c.text).join(" "));
+        // A column of figures reads better lined up on the right.
+        const numeric = tb.header.map((_h, ci) => tb.rows.length > 0 && tb.rows.every((r) => !r[ci]?.text.trim() || NUMERIC_CELL.test(r[ci]!.text)) && tb.rows.some((r) => /\d/.test(r[ci]?.text ?? "")));
+        const cell = (tokens: Token[], text: string, ci: number, header: boolean, stripe: boolean) => {
+          const rtlCell = mostlyRtl(text);
+          return new TableCell({
+            verticalAlign: VerticalAlign.CENTER,
+            margins: { top: 70, bottom: 70, left: 110, right: 110 },
+            children: [
+              new Paragraph({
+                ...(rtlCell ? { bidirectional: true } : {}),
+                spacing: { after: 0 },
+                ...(numeric[ci] ? { alignment: !tableRtl ? AlignmentType.RIGHT : rtlCell ? AlignmentType.END : AlignmentType.LEFT } : tableRtl && !rtlCell ? { alignment: AlignmentType.RIGHT } : {}),
+                children: inlineRuns(tokens, header ? { bold: true, color: "FFFFFF", rtl: rtlCell } : { rtl: rtlCell }),
+              }),
+            ],
+            ...(header ? { shading: { type: ShadingType.CLEAR, color: "auto", fill: th.accent } } : stripe ? { shading: { type: ShadingType.CLEAR, color: "auto", fill: th.tint } } : {}),
           });
+        };
         out.push(
           new Table({
             width: { size: 100, type: WidthType.PERCENTAGE },
-            rows: [new TableRow({ tableHeader: true, children: tb.header.map((h) => cell(h.tokens, true)) }), ...tb.rows.map((r) => new TableRow({ children: r.map((c) => cell(c.tokens, false)) }))],
+            visuallyRightToLeft: tableRtl,
+            borders: { top: thin(th.line), bottom: thin(th.line), left: thin(th.line), right: thin(th.line), insideHorizontal: thin(th.line), insideVertical: thin(th.line) },
+            rows: [
+              new TableRow({ tableHeader: true, cantSplit: true, children: tb.header.map((h, ci) => cell(h.tokens, h.text, ci, true, false)) }),
+              ...tb.rows.map((r, ri) => new TableRow({ cantSplit: true, children: r.map((c, ci) => cell(c.tokens, c.text, ci, false, ri % 2 === 1)) })),
+            ],
           }),
         );
         out.push(new Paragraph({ text: "" }));
         break;
       }
-      case "code":
-        for (const line of (t as Tokens.Code).text.split("\n")) {
-          out.push(new Paragraph({ children: [new TextRun({ text: line || " ", font: "Consolas", size: 19 })], shading: { type: ShadingType.CLEAR, color: "auto", fill: "F4F3EF" } }));
-        }
+      case "code": {
+        const lines = (t as Tokens.Code).text.split("\n");
+        lines.forEach((line, k) =>
+          out.push(new Paragraph({ children: [new TextRun({ text: line || " ", font: "Consolas", size: 19 })], spacing: { after: k === lines.length - 1 ? 160 : 0, line: 260 }, shading: { type: ShadingType.CLEAR, color: "auto", fill: "F4F5F7" } })),
+        );
         break;
+      }
       case "blockquote":
-        for (const b of blocks((t as Tokens.Blockquote).tokens, listLevel)) out.push(b instanceof Paragraph ? b : b);
+        out.push(...blocks((t as Tokens.Blockquote).tokens, { ...look, quote: true }, listLevel));
         break;
       case "hr":
-        out.push(new Paragraph({ text: "", border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "BBBBBB", space: 1 } } }));
+        out.push(new Paragraph({ text: "", border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: th.line, space: 1 } } }));
         break;
       case "space":
         break;
       default:
-        if ("text" in t && typeof t.text === "string" && t.text.trim()) out.push(new Paragraph({ text: decode(t.text) }));
+        if ("text" in t && typeof t.text === "string" && t.text.trim()) out.push(new Paragraph({ ...dir, children: [new TextRun({ text: decode(t.text), rightToLeft: rtl })] }));
     }
   }
   return out;
 }
 
-async function toDocx(markdown: string, title?: string): Promise<Buffer> {
-  const body = blocks(marked.lexer(markdown));
+async function toDocx(markdown: string, title?: string, themeName?: unknown): Promise<Buffer> {
+  const th = fileTheme(themeName);
+  const body = blocks(marked.lexer(markdown), { th });
+  const rtl = mostlyRtl(`${title ?? ""} ${markdown.slice(0, 2000)}`);
+  const titleRtl = !!title && mostlyRtl(title);
+  const head = (size: number, color: string, before: number, after: number) => ({ run: { size, bold: true, color, font: DOC_FONT }, paragraph: { spacing: { before, after }, keepNext: true } });
   const doc = new Document({
     creator: "oovi",
     title: title || undefined,
-    styles: { default: { document: { run: { font: "Calibri", size: 22 } } } },
+    styles: {
+      default: {
+        document: { run: { font: DOC_FONT, size: 22, color: "23262D" }, paragraph: { spacing: { after: 140, line: 300 } } },
+        title: { run: { size: 56, bold: true, color: "16181D", font: DOC_FONT }, paragraph: { spacing: { after: 140 } } },
+        heading1: head(34, th.ink, 360, 140),
+        heading2: head(27, th.ink, 300, 110),
+        heading3: head(23, "23262D", 240, 90),
+        heading4: head(22, "23262D", 200, 80),
+        heading5: head(22, "5A6170", 200, 80),
+        heading6: head(22, "5A6170", 200, 80),
+        hyperlink: { run: { color: th.accent, underline: { type: UnderlineType.SINGLE, color: th.accent } } },
+      },
+    },
     numbering: {
       config: [
         {
@@ -444,23 +502,64 @@ async function toDocx(markdown: string, title?: string): Promise<Buffer> {
         },
       ],
     },
-    sections: [{ children: [...(title ? [new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(title)] })] : []), ...body] }],
+    sections: [
+      {
+        properties: { page: { margin: { top: 1300, bottom: 1300, left: 1300, right: 1300 } } },
+        footers: {
+          default: new Footer({
+            children: [new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: 0 }, children: [new TextRun({ children: [PageNumber.CURRENT, " / ", PageNumber.TOTAL_PAGES], size: 17, color: "8A909C" })] })],
+          }),
+        },
+        children: [
+          ...(title
+            ? [
+                new Paragraph({ heading: HeadingLevel.TITLE, ...(titleRtl ? { bidirectional: true } : {}), children: [new TextRun({ text: title, rightToLeft: titleRtl })] }),
+                // The coloured rule under the title.
+                new Paragraph({ text: "", ...(rtl ? { bidirectional: true } : {}), spacing: { after: 280, line: 120 }, border: { top: { style: BorderStyle.SINGLE, size: 24, color: th.accent, space: 1 } }, indent: { end: 7000 } }),
+              ]
+            : []),
+          ...body,
+        ],
+      },
+    ],
   });
   return Packer.toBuffer(doc);
 }
 
+const DOC_FONT = "Calibri";
+
 // ---------- Markdown -> HTML / PDF ----------
 
-const PRINT_CSS = `body{font:11pt/1.55 "Segoe UI",-apple-system,Helvetica,Arial,sans-serif;color:#1b1b1b;max-width:760px;margin:0 auto;padding:24px}
-h1,h2,h3{line-height:1.25;margin:1.2em 0 .5em}h1{font-size:22pt}h2{font-size:16pt}h3{font-size:13pt}
-table{border-collapse:collapse;width:100%;margin:12px 0}th,td{border:1px solid #d9d6cf;padding:6px 8px;text-align:left;vertical-align:top}th{background:#efede8}
-code{font-family:Consolas,monospace;background:#f4f3ef;padding:1px 4px;border-radius:4px}pre{background:#f4f3ef;padding:10px 12px;border-radius:8px;overflow:auto}pre code{background:none;padding:0}
-blockquote{margin:12px 0;padding:4px 14px;border-left:3px solid #ccc;color:#555}a{color:#1a5fd1}img{max-width:100%}`;
+const printCss = (th: FileTheme) => `body{font:11pt/1.6 "Segoe UI",-apple-system,"Helvetica Neue",Helvetica,Arial,"Noto Sans","Noto Sans Arabic",sans-serif;color:#23262d;max-width:780px;margin:0 auto;padding:28px}
+h1,h2,h3,h4{line-height:1.25;margin:1.4em 0 .5em;break-after:avoid}h1{font-size:19pt;color:#${th.ink}}h2{font-size:15pt;color:#${th.ink}}h3{font-size:12.5pt}h4{font-size:11pt}
+h1.doc-title{font-size:27pt;color:#16181d;margin:0 0 .5em;padding-bottom:.35em;background:linear-gradient(#${th.accent},#${th.accent}) bottom left/72px 4px no-repeat}[dir=rtl] h1.doc-title{background-position:bottom right}
+p{margin:0 0 .75em}ul,ol{margin:0 0 .9em;padding-inline-start:1.5em}li{margin:.2em 0}li::marker{color:#${th.accent}}
+table{border-collapse:collapse;width:100%;margin:14px 0 18px;font-size:10pt}th,td{border:1px solid #${th.line};padding:7px 10px;text-align:start;vertical-align:top}
+th{background:#${th.accent};color:#fff;font-weight:600;border-color:#${th.accent}}tbody tr:nth-child(even) td{background:#${th.tint}}thead{display:table-header-group}tr{break-inside:avoid}
+code{font-family:Consolas,"SF Mono",monospace;font-size:.92em;background:#f4f5f7;padding:1px 5px;border-radius:4px}pre{background:#f4f5f7;padding:12px 14px;border-radius:8px;white-space:pre-wrap;overflow-wrap:anywhere;direction:ltr;text-align:left}pre code{background:none;padding:0}
+blockquote{margin:14px 0;padding:6px 16px;border-inline-start:4px solid #${th.line};color:#5a6170;font-style:italic}blockquote p:last-child{margin:0}
+hr{border:0;border-top:1px solid #${th.line};margin:22px 0}a{color:#${th.accent}}img{max-width:100%}
+@media print{body{padding:0;max-width:none}}
+td[align=right],th[align=right]{text-align:end}td[align=center],th[align=center]{text-align:center}
+li.task{list-style:none;margin-inline-start:-1.4em}.cb{display:inline-block;width:.95em;height:.95em;line-height:.95em;margin-inline-end:.55em;border:1.5px solid #b6bcc8;border-radius:3px;text-align:center;font-size:.8em;font-weight:700;color:#fff;vertical-align:.05em}.cb.on{background:#${th.accent};border-color:#${th.accent}}`;
 
-function toHtml(markdown: string, title?: string): string {
+function toHtml(markdown: string, title?: string, themeName?: unknown): string {
   const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c] ?? c);
-  const body = marked.parse(markdown, { async: false }) as string;
-  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title || "Document")}</title><style>${PRINT_CSS}</style></head><body>${title ? `<h1>${esc(title)}</h1>` : ""}${body}</body></html>`;
+  const tokens = marked.lexer(markdown);
+  // Columns of figures line up at the end, as in the Word version.
+  marked.walkTokens(tokens, (t) => {
+    if (t.type !== "table") return;
+    const tb = t as Tokens.Table;
+    tb.header.forEach((h, ci) => {
+      if (tb.align[ci] || !tb.rows.length || !tb.rows.every((r) => !r[ci]?.text.trim() || NUMERIC_CELL.test(r[ci]!.text)) || !tb.rows.some((r) => /\d/.test(r[ci]?.text ?? ""))) return;
+      tb.align[ci] = "right";
+      h.align = "right";
+      for (const r of tb.rows) if (r[ci]) r[ci]!.align = "right";
+    });
+  });
+  const body = (marked.parser(tokens) as string).replace(/<li>(\s*(?:<p>)?)<input (checked="" )?disabled="" type="checkbox">/g, (_m, pre: string, on?: string) => `<li class="task">${pre}<span class="cb${on ? " on" : ""}">${on ? "✓" : ""}</span>`);
+  const rtl = mostlyRtl(`${title ?? ""} ${markdown.slice(0, 2000)}`);
+  return `<!doctype html><html${rtl ? ' dir="rtl"' : ""}><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${esc(title || "Document")}</title><style>${printCss(fileTheme(themeName))}</style></head><body>${title ? `<h1 class="doc-title">${esc(title)}</h1>` : ""}${body}</body></html>`;
 }
 
 async function toPdf(html: string, browser: BrowserConfig): Promise<Buffer> {
@@ -470,7 +569,14 @@ async function toPdf(html: string, browser: BrowserConfig): Promise<Buffer> {
     // No network: the document is self-contained.
     await page.route("**/*", (route) => (route.request().url().startsWith("data:") ? route.continue() : route.abort()));
     await page.setContent(html, { waitUntil: "load" });
-    return await page.pdf({ format: "A4", printBackground: true, margin: { top: "18mm", bottom: "18mm", left: "16mm", right: "16mm" } });
+    return await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: { top: "16mm", bottom: "18mm", left: "14mm", right: "14mm" },
+      displayHeaderFooter: true,
+      headerTemplate: "<span></span>",
+      footerTemplate: '<div style="width:100%;text-align:center;font:8pt Helvetica,Arial,sans-serif;color:#8a909c"><span class="pageNumber"></span> / <span class="totalPages"></span></div>',
+    });
   } finally {
     await b.close().catch(() => {});
   }
@@ -487,18 +593,55 @@ function asCells(row: unknown): Cell[] {
 
 const MAX_CHARTS = 20;
 
-function fillSheet(ws: ExcelJS.Worksheet, cols: string[], rows: Cell[][], formats: string[]) {
-  ws.addRow(cols).eachCell((c) => {
-    c.font = { bold: true };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFEFEDE8" } };
+/** A designed sheet: coloured header, striped rows (they follow sorting), number formats, links, sized columns. */
+function fillSheet(ws: ExcelJS.Worksheet, cols: string[], rows: Cell[][], formats: string[], th: FileTheme): Cell[][] {
+  const looks = columnLooks(cols, rows, formats);
+  const data = coerceRows(rows, looks);
+  const rtl = mostlyRtl(cols.join(" ") + " " + rows.slice(0, 20).flat().join(" "));
+  const side = rtl ? "right" : "left";
+  // Column styles first: every cell added after takes its column's format and alignment.
+  ws.columns = looks.map((l) => ({
+    width: l.width,
+    style: {
+      ...(l.format ? { numFmt: l.format } : {}),
+      alignment: l.kind === "text" ? { vertical: "top" as const, horizontal: side as "left" | "right", indent: 1, wrapText: l.wrap, ...(rtl ? { readingOrder: "rtl" as const } : {}) } : { vertical: "top" as const, horizontal: "right" as const },
+    },
+  }));
+  const head = ws.addRow(cols);
+  head.height = 24;
+  head.eachCell((c, col) => {
+    c.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${th.accent}` } };
+    c.alignment = { vertical: "middle", horizontal: looks[col - 1]?.kind === "text" ? side : "right", ...(looks[col - 1]?.kind === "text" ? { indent: 1 } : {}), wrapText: true, ...(rtl ? { readingOrder: "rtl" as const } : {}) };
+    c.numFmt = "General";
   });
-  for (const r of rows) {
+  let links = 0;
+  for (const r of data) {
     const row = ws.addRow(r.map((v) => (typeof v === "string" && v.startsWith("=") ? { formula: v.slice(1) } : v)));
-    row.eachCell((c, col) => {
-      if (formats[col - 1]) c.numFmt = formats[col - 1]!;
+    for (let c = 0; c < r.length; c++) {
+      const v = r[c];
+      if (links < MAX_LINKS && isUrl(v)) {
+        const cell = row.getCell(c + 1);
+        cell.value = { text: v, hyperlink: v };
+        cell.font = { color: { argb: `FF${th.ink}` }, underline: true };
+        links++;
+      }
+    }
+  }
+  if (cols.length && data.length) {
+    // Stripes as a rule, not as cell colours: they stay even after the user sorts or deletes rows.
+    ws.addConditionalFormatting({
+      ref: `A2:${columnLetter(Math.max(cols.length, looks.length))}${data.length + 1}`,
+      rules: [{ type: "expression", priority: 1, formulae: ["MOD(ROW(),2)=1"], style: { fill: { type: "pattern", pattern: "solid", bgColor: { argb: `FF${th.tint}` } } } }],
     });
   }
+  ws.views = [{ state: "frozen", ySplit: 1, rightToLeft: rtl }];
+  ws.properties.tabColor = { argb: `FF${th.accent}` };
+  ws.pageSetup = { ...ws.pageSetup, orientation: looks.length > 5 ? "landscape" : "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0, printTitlesRow: "1:1" };
+  return data;
 }
+
+const MAX_LINKS = 20_000;
 
 function sizeColumns(ws: ExcelJS.Worksheet, cols: string[]) {
   ws.columns.forEach((col, ci) => {
@@ -515,7 +658,8 @@ function sizeColumns(ws: ExcelJS.Worksheet, cols: string[]) {
 const isInlineChart = (r: Record<string, unknown>) => Array.isArray(r.categories) || Array.isArray(r.labels) || (Array.isArray(r.series) && r.series.some((x) => !!x && typeof x === "object" && Array.isArray((x as { values?: unknown }).values)));
 
 /** Workbook bytes, with native charts written into the file after exceljs (which can't make charts). */
-async function toXlsx(sheets: SheetIn[]): Promise<{ data: Buffer; charts: number }> {
+async function toXlsx(sheets: SheetIn[], themeName?: unknown): Promise<{ data: Buffer; charts: number }> {
+  const th = fileTheme(themeName);
   const wb = new ExcelJS.Workbook();
   wb.creator = "oovi";
   const used = new Set<string>();
@@ -532,10 +676,9 @@ async function toXlsx(sheets: SheetIn[]): Promise<{ data: Buffer; charts: number
     const cols = asCells(s.columns).map((c) => String(c ?? ""));
     const formats = Array.isArray(s.number_formats) ? s.number_formats.map((f) => (typeof f === "string" ? f.slice(0, 60) : "")) : [];
     const rows = (Array.isArray(s.rows) ? s.rows.slice(0, 100_000) : []).map(asCells);
-    fillSheet(ws, cols, rows, formats);
+    const data = fillSheet(ws, cols, rows, formats, th);
     if (cols.length) ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: cols.length } };
-    sizeColumns(ws, cols);
-    written.push({ name, columns: cols, rows });
+    written.push({ name, columns: cols, rows: data });
   }
 
   // Charts: over the sheet's own cells, or over inline numbers written to a "Chart data" sheet.
@@ -634,10 +777,10 @@ async function slidePicture(ref: unknown, ws: Workspace | undefined, orientation
 // ---------- presentations ----------
 
 const THEMES = {
-  light: { bg: "FFFFFF", title: "1B1B1B", text: "333333", accent: "4F6BED", muted: "6B6B6B", grid: "E3E3E3" },
-  dark: { bg: "1E1E1C", title: "F2F2EE", text: "D8D6CF", accent: "9EB4FF", muted: "A09E97", grid: "3A3A37" },
-  blue: { bg: "0F2A5C", title: "FFFFFF", text: "DCE6FF", accent: "FDCB52", muted: "A9B8DD", grid: "2A4677" },
-  warm: { bg: "FBF7EF", title: "3A2A1A", text: "4A3B2C", accent: "E07A3F", muted: "8A7A68", grid: "E8DFD0" },
+  light: { bg: "FFFFFF", title: "16181D", text: "2E323A", accent: "3A5BE0", muted: "6B7280", grid: "E1E5EE", tint: "F3F6FE" },
+  dark: { bg: "1B1C1F", title: "F4F4F1", text: "D9D8D2", accent: "9EB4FF", muted: "A09E97", grid: "3A3B40", tint: "25272C" },
+  blue: { bg: "0F2A5C", title: "FFFFFF", text: "DCE6FF", accent: "FDCB52", muted: "A9B8DD", grid: "2A4677", tint: "173670" },
+  warm: { bg: "FBF7EF", title: "3A2A1A", text: "4A3B2C", accent: "D96B2F", muted: "8A7A68", grid: "E8DFD0", tint: "F5EDDF" },
 } as const;
 
 type SlideIn = { title?: unknown; layout?: unknown; bullets?: unknown; text?: unknown; table?: { columns?: unknown; rows?: unknown }; chart?: unknown; image?: unknown; notes?: unknown };
@@ -708,9 +851,9 @@ async function toPptx(title: string, subtitle: string, themeName: string, slides
   cs.addShape("rect", { x: coverRtl ? SW - 0.3 : 0, y: 0, w: 0.3, h: SH, fill: { color: th.accent }, line: { color: th.accent, width: 0 } });
   const textW = (cp ? SW - picW : SW) - 1.6;
   const tx = coverRtl ? (cp ? picW + 0.6 : 0.8) : 0.9;
-  cs.addText(title, { x: tx, y: 1.5, w: textW, h: 2.4, fontSize: title.length > 70 ? 32 : title.length > 40 ? 38 : 44, bold: true, color: th.title, fontFace: FONT, valign: "bottom", align: align(coverRtl), rtlMode: coverRtl, fit: "shrink" });
+  cs.addText(title, { x: tx, y: 1.5, w: textW, h: 2.4, fontSize: title.length > 70 ? 34 : title.length > 40 ? 42 : 54, bold: true, color: th.title, fontFace: FONT, valign: "bottom", align: align(coverRtl), rtlMode: coverRtl, fit: "shrink" });
   cs.addShape("rect", { x: coverRtl ? tx + textW - 1.3 : tx, y: 4.1, w: 1.3, h: 0.09, fill: { color: th.accent }, line: { color: th.accent, width: 0 } });
-  if (subtitle) cs.addText(subtitle, { x: tx, y: 4.35, w: textW, h: 1.4, fontSize: 20, color: th.text, fontFace: FONT, valign: "top", align: align(coverRtl), rtlMode: coverRtl });
+  if (subtitle) cs.addText(subtitle, { x: tx, y: 4.35, w: textW, h: 1.4, fontSize: 22, color: th.text, fontFace: FONT, valign: "top", align: align(coverRtl), rtlMode: coverRtl });
 
   let chartCount = 0;
   let picCount = cp ? 1 : 0;
@@ -734,7 +877,8 @@ async function toPptx(title: string, subtitle: string, themeName: string, slides
 
     sl.background = { color: th.bg };
     sl.slideNumber = { x: rtl ? MARGIN : SW - MARGIN - 0.6, y: SH - 0.45, w: 0.6, h: 0.3, fontFace: FONT, fontSize: 10, color: th.muted, align: rtl ? "left" : "right" };
-    sl.addText(stitle, { x: MARGIN, y: 0.35, w: SW - 2 * MARGIN, h: 0.9, fontSize: stitle.length > 60 ? 24 : 30, bold: true, color: th.title, fontFace: FONT, align: al, rtlMode: rtl, valign: "middle" });
+    sl.addText(title.length > 70 ? `${title.slice(0, 69)}…` : title, { x: rtl ? SW - MARGIN - 8 : MARGIN, y: SH - 0.45, w: 8, h: 0.3, fontFace: FONT, fontSize: 10, color: th.muted, align: al, rtlMode: isRtlText(title) });
+    sl.addText(stitle, { x: MARGIN, y: 0.35, w: SW - 2 * MARGIN, h: 0.9, fontSize: stitle.length > 60 ? 26 : 32, bold: true, color: th.title, fontFace: FONT, align: al, rtlMode: rtl, valign: "middle" });
     sl.addShape("rect", { x: rtl ? SW - MARGIN - 0.9 : MARGIN, y: 1.22, w: 0.9, h: 0.06, fill: { color: th.accent }, line: { color: th.accent, width: 0 } });
 
     const chart = charts[i];
@@ -760,24 +904,32 @@ async function toPptx(title: string, subtitle: string, themeName: string, slides
       const avail = textBox.h - (tb ? Math.min(2.6, 0.4 * (Math.min((tb.rows as unknown[]).length, 15) + 1)) + 0.2 : 0);
       if (bullets.length) {
         const share = text ? avail * 0.7 : avail;
-        const pt = fitFont(bullets, textBox.w - 0.4, share, visBox ? 18 : 20, 12);
-        const h = Math.min(share, bullets.reduce((n, b) => n + Math.max(1, Math.ceil(b.length / ((textBox.w - 0.4) * 144 / pt))), 0) * pt * 1.2 / 72 + bullets.length * 8 / 72 + 0.2);
+        const pt = fitFont(bullets, textBox.w - 0.4, share, visBox ? 20 : 24, 12, 10);
+        const h = Math.min(share, bullets.reduce((n, b) => n + Math.max(1, Math.ceil(b.length / ((textBox.w - 0.4) * 144 / pt))), 0) * pt * 1.2 / 72 + bullets.length * 12 / 72 + 0.2);
         sl.addText(
           bullets.map((b) => ({ text: b, options: { bullet: true, breakLine: true, ...(rtl ? { rtlMode: true, align: "right" as const } : {}) } })),
-          { x: textBox.x, y, w: textBox.w, h, fontSize: pt, color: th.text, fontFace: FONT, valign: "top", paraSpaceAfter: 6, align: al, rtlMode: rtl },
+          { x: textBox.x, y, w: textBox.w, h, fontSize: pt, color: th.text, fontFace: FONT, valign: "top", paraSpaceAfter: 10, align: al, rtlMode: rtl },
         );
         y += h + 0.1;
       }
       if (text) {
         const h = Math.max(0.6, avail - (y - textBox.y));
-        const pt = fitFont([text], textBox.w, h, visBox ? 16 : 18, 11);
+        const pt = fitFont([text], textBox.w, h, visBox ? 18 : 22, 11);
         sl.addText(text, { x: textBox.x, y, w: textBox.w, h, fontSize: pt, color: th.text, fontFace: FONT, valign: "top", align: al, rtlMode: rtl });
         y += Math.min(h, fitFontHeight(text, textBox.w, pt)) + 0.15;
       }
       if (tb) {
-        const head = (tb.columns as unknown[]).map((c) => ({ text: String(c), options: { bold: true, fill: { color: th.accent }, color: onColor(`#${th.accent}`).slice(1) } }));
-        const rows = (tb.rows as unknown[]).slice(0, 15).map((r) => asCells(r).map((c) => ({ text: c === null ? "" : String(c) })));
-        sl.addTable([head, ...rows], { x: textBox.x, y: Math.min(y, bottom - 1), w: textBox.w, fontSize: visBox ? 12 : 14, color: th.text, fontFace: FONT, border: { type: "solid", pt: 0.5, color: th.grid }, autoPage: false, align: al });
+        const shown = (tb.rows as unknown[]).slice(0, 15).map((r) => asCells(r).map((c) => (c === null ? "" : String(c))));
+        // A column of figures lines up at the end; rows are striped; the type is as large as the slide allows.
+        const numeric = (tb.columns as unknown[]).map((_c, ci) => shown.length > 0 && shown.every((r) => !r[ci]?.trim() || NUMERIC_CELL.test(r[ci]!)) && shown.some((r) => /\d/.test(r[ci] ?? "")));
+        const end = rtl ? "left" : "right";
+        const ty = Math.min(y, bottom - 1);
+        const pt = Math.max(11, Math.min(visBox ? 14 : 18, Math.floor(((bottom - ty) / (shown.length + 1.3)) * 72 * 0.42)));
+        const cellOf = (text: string, ci: number, extra: Record<string, unknown>) => ({ text, options: { align: (numeric[ci] ? end : al) as "left" | "right", ...extra } });
+        const on = onColor(`#${th.accent}`).slice(1);
+        const head = (tb.columns as unknown[]).map((c, ci) => cellOf(String(c), ci, { bold: true, fill: { color: th.accent }, color: on }));
+        const rows = shown.map((r, ri) => r.map((c, ci) => cellOf(c, ci, ri % 2 === 1 ? { fill: { color: th.tint } } : {})));
+        sl.addTable([head, ...rows], { x: textBox.x, y: ty, w: textBox.w, fontSize: pt, color: th.text, fontFace: FONT, border: { type: "solid", pt: 0.5, color: th.grid }, margin: [pt * 0.45, pt * 0.7, pt * 0.45, pt * 0.7], valign: "middle", autoPage: false });
       }
     }
 
@@ -964,11 +1116,12 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
       const { abs, shown } = target;
       const ext = path.extname(abs).toLowerCase();
       fs.mkdirSync(path.dirname(abs), { recursive: true });
-      if (ext === ".docx") fs.writeFileSync(abs, await toDocx(content, title));
-      else if (ext === ".pdf") fs.writeFileSync(abs, await toPdf(toHtml(content, title), browser));
-      else if (ext === ".html" || ext === ".htm") fs.writeFileSync(abs, toHtml(content, title));
+      const theme = prev ? prev.theme : typeof i.theme === "string" ? i.theme : undefined;
+      if (ext === ".docx") fs.writeFileSync(abs, await toDocx(content, title, theme));
+      else if (ext === ".pdf") fs.writeFileSync(abs, await toPdf(toHtml(content, title, theme), browser));
+      else if (ext === ".html" || ext === ".htm") fs.writeFileSync(abs, toHtml(content, title, theme));
       else fs.writeFileSync(abs, title && ext === ".md" ? `# ${title}\n\n${content}` : content);
-      writeDocSource(abs, { title, md: content });
+      writeDocSource(abs, { title, md: content, ...(theme ? { theme } : {}) });
       const res0 = done(call, abs, shown, ext === ".docx" ? "a Word document" : ext === ".pdf" ? "a PDF" : "a document");
       const res = { ...res0, content: res0.content + placeNote(target) };
       const sections = (content.match(/^#{1,3} /gm) ?? []).length;
@@ -990,7 +1143,7 @@ export async function runDocTool(call: ToolCall, ws: Workspace | undefined, brow
         const res = { ...res0, content: res0.content + placeNote(place) };
         return sheets.some((s) => Array.isArray(s.charts) && s.charts.length) ? { ...res, content: `${res.content}\nCSV files can't hold charts: make an .xlsx for charts.` } : res;
       }
-      const book = await toXlsx(sheets);
+      const book = await toXlsx(sheets, i.theme);
       fs.mkdirSync(path.dirname(abs), { recursive: true });
       fs.writeFileSync(abs, book.data);
       const res = done(call, abs, shown, book.charts ? `an Excel workbook with ${book.charts} native chart${book.charts > 1 ? "s" : ""}` : "an Excel workbook");
