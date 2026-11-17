@@ -634,7 +634,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   lines.push("", "When you work out a reliable way to do a multi-step task the user is likely to ask for again, save it with save_skill.");
   if (tools.some((t) => t.name === "propose_routine")) {
     lines.push(
-      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when.",
+      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when. A one-time reminder or task later (\"remind me at 5\", \"in 20 minutes\", \"demain à 9h\", \"فكرني على الخمسة\") is propose_routine with frequency once. Watching something (a price, a listing, a page for news): add watch_url and only_when_new, so nothing is spent or sent while nothing changes.",
     );
   }
   const answersUser = lead ? lead.id === bot.id : true;

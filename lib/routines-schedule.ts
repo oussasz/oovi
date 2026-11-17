@@ -30,6 +30,19 @@ const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const TZ_RE = /^[A-Za-z][A-Za-z0-9_+\-]*(\/[A-Za-z0-9_+\-]+){0,3}$/;
 
 export const isTime = (v: unknown): v is string => typeof v === "string" && TIME_RE.test(v);
+/** "Every N minutes" steps (15 is the floor between two runs). */
+export const MINUTE_STEPS = [15, 20, 30];
+
+/** A local date and time ("2026-11-20", "17:00") in a time zone, as ms since epoch; null when invalid. */
+export function localDateTime(date: string, time: string, tz: string): number | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !isTime(time)) return null;
+  try {
+    const d = new Cron(`${date}T${time}:00`, { timezone: tz }).nextRun(new Date(Date.parse(`${date}T00:00:00Z`) - 2 * 24 * 3600_000));
+    return d ? d.getTime() : null;
+  } catch {
+    return null;
+  }
+}
 
 /** A real IANA time zone this runtime knows ("Europe/Paris", "UTC"). */
 export function isTimeZone(v: unknown): v is string {
@@ -53,7 +66,7 @@ export function localTimeZone(): string {
 }
 
 /** A clean schedule, or an error message for the user. */
-export function validateSchedule(input: unknown): RoutineSchedule | string {
+export function validateSchedule(input: unknown, stored = false): RoutineSchedule | string {
   const o = (input && typeof input === "object" ? input : {}) as Record<string, unknown>;
   if (o.kind === "daily") {
     if (!isTime(o.time)) return "Pick a time (HH:MM).";
@@ -65,13 +78,32 @@ export function validateSchedule(input: unknown): RoutineSchedule | string {
     if (!days.length) return "Pick at least one day of the week.";
     return { kind: "weekly", time: o.time, days };
   }
+  if (o.kind === "minutes") {
+    const every = Number(o.every);
+    if (!MINUTE_STEPS.includes(every)) return "Repeat every 15, 20 or 30 minutes.";
+    const from = o.from === undefined || o.from === "" ? undefined : o.from;
+    const to = o.to === undefined || o.to === "" ? undefined : o.to;
+    if ((from !== undefined && !isTime(from)) || (to !== undefined && !isTime(to))) return "Pick the hours as HH:MM.";
+    if ((from === undefined) !== (to === undefined)) return "Give both a start and an end time, or neither.";
+    if (from !== undefined && to !== undefined && hm(from)[0] >= hm(to)[0]) return "The end time must be later in the day than the start time.";
+    return { kind: "minutes", every, ...(from !== undefined && to !== undefined ? { from, to } : {}) };
+  }
+  if (o.kind === "webhook") return { kind: "webhook" };
+  if (o.kind === "once") {
+    const at = Number(o.at);
+    if (!Number.isFinite(at)) return "Pick a date and a time.";
+    // A saved "once" routine keeps its time after it ran.
+    if (!stored && at < Date.now() - 60_000) return "That time has already passed.";
+    if (!stored && at > Date.now() + 400 * 24 * 3600_000) return "Pick a time within the next year.";
+    return { kind: "once", at: Math.round(at / 1000) * 1000 };
+  }
   if (o.kind === "hourly") {
     const every = Number(o.every);
     if (!Number.isInteger(every) || every < 1 || every > 24) return "Repeat every 1 to 24 hours.";
     if (!isTime(o.from)) return "Pick a start time (HH:MM).";
     return { kind: "hourly", every, from: o.from };
   }
-  return "Choose how often the routine runs: every day, some days of the week, or every few hours.";
+  return "Choose how often the routine runs: once, every few minutes, every few hours, every day or some days of the week.";
 }
 
 const hm = (t: string): [number, number] => {
@@ -96,6 +128,16 @@ export function cronPatterns(s: RoutineSchedule): string[] {
     const [h, m] = hm(s.time);
     return [`0 ${m} ${h} * * ${s.days.join(",")}`];
   }
+  if (s.kind === "minutes") {
+    if (s.from && s.to) {
+      const [h1] = hm(s.from);
+      const [h2, m2] = hm(s.to);
+      const last = m2 === 0 ? h2 - 1 : h2;
+      return [`0 */${s.every} ${h1 === last ? h1 : `${h1}-${last}`} * * *`];
+    }
+    return [`0 */${s.every} * * * *`];
+  }
+  if (s.kind === "once" || s.kind === "webhook") return [];
   const [h, m] = hm(s.from);
   return hourlySlots(s.every, h).map((hour) => `0 ${m} ${hour} * * *`);
 }
@@ -104,6 +146,8 @@ const crons = (s: RoutineSchedule, tz: string) => cronPatterns(s).map((p) => new
 
 /** The first scheduled time strictly after `afterMs`, or null. */
 export function nextRun(s: RoutineSchedule, tz: string, afterMs: number): number | null {
+  if (s.kind === "once") return s.at > afterMs ? s.at : null;
+  if (s.kind === "webhook") return null;
   let best: number | null = null;
   for (const c of crons(s, tz)) {
     const d = c.nextRun(new Date(afterMs));
@@ -114,6 +158,8 @@ export function nextRun(s: RoutineSchedule, tz: string, afterMs: number): number
 
 /** The latest scheduled time in [fromMs, nowMs], or null if there's none. */
 export function latestDue(s: RoutineSchedule, tz: string, fromMs: number, nowMs: number): number | null {
+  if (s.kind === "once") return s.at >= fromMs && s.at <= nowMs ? s.at : null;
+  if (s.kind === "webhook") return null;
   let best: number | null = null;
   // previousRuns looks strictly before its reference, and run times are whole seconds.
   const ref = new Date(Math.floor(nowMs / 1000) * 1000 + 1000);
@@ -128,7 +174,7 @@ export function latestDue(s: RoutineSchedule, tz: string, fromMs: number, nowMs:
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /** Plain English, for approval cards, the main bot and Telegram ("every day at 08:00"). The UI has its own, translated. */
-export function describeSchedule(s: RoutineSchedule): string {
+export function describeSchedule(s: RoutineSchedule, tz = "UTC"): string {
   if (s.kind === "daily") return `every day at ${s.time}`;
   if (s.kind === "weekly") {
     if (s.days.length === 7) return `every day at ${s.time}`;
@@ -136,6 +182,15 @@ export function describeSchedule(s: RoutineSchedule): string {
     if (key === "1,2,3,4,5") return `on weekdays at ${s.time}`;
     if (key === "0,6") return `on weekends at ${s.time}`;
     return `${s.days.map((d) => DAY_NAMES[d]).join(", ")} at ${s.time}`;
+  }
+  if (s.kind === "webhook") return "when its web address is called";
+  if (s.kind === "minutes") return `every ${s.every} minutes${s.from && s.to ? ` between ${s.from} and ${s.to}` : ""}`;
+  if (s.kind === "once") {
+    try {
+      return `once, on ${new Intl.DateTimeFormat("en-GB", { timeZone: tz, weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(s.at))}`;
+    } catch {
+      return `once, on ${new Date(s.at).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+    }
   }
   return s.every === 1 ? `every hour from ${s.from}` : s.every === 24 ? `every day at ${s.from}` : `every ${s.every} hours from ${s.from}`;
 }
@@ -165,7 +220,8 @@ export function decideTick(s: RoutineSchedule, tz: string, st: TickInput, now: n
   const occurrence = latestDue(s, tz, st.nextRunAt, now) ?? st.nextRunAt;
   const next = nextRun(s, tz, now);
   if (now - occurrence > CATCH_UP_MS) return { kind: "skip", occurrence, status: "missed", note: "missed", next };
-  if (st.lastStartedAt !== undefined && now - st.lastStartedAt < MIN_GAP_MS && st.lastStartedAt <= now) return { kind: "skip", occurrence, status: "skipped", note: "recent", next };
+  // A "once" time was set on purpose (a reminder moved to later): the 15-minute floor doesn't apply.
+  if (s.kind !== "once" && st.lastStartedAt !== undefined && now - st.lastStartedAt < MIN_GAP_MS && st.lastStartedAt <= now) return { kind: "skip", occurrence, status: "skipped", note: "recent", next };
   if (chat !== "free") {
     const since = st.busySince ?? now;
     if (now - since >= BUSY_RETRY_MS) return { kind: "skip", occurrence, status: "skipped", note: chat, next };

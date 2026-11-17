@@ -15,7 +15,24 @@ import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
 
 type Kind = RoutineSchedule["kind"];
-type Draft = { name: string; botId: string; prompt: string; kind: Kind; time: string; days: number[]; every: number; notifyTelegram: boolean };
+type Draft = {
+  name: string;
+  botId: string;
+  prompt: string;
+  kind: Kind;
+  time: string;
+  days: number[];
+  every: number;
+  notifyTelegram: boolean;
+  /** once: YYYY-MM-DD (this computer's time). */
+  date: string;
+  /** minutes: 15, 20 or 30; with an optional window from `time` to `until`. */
+  minutes: number;
+  windowed: boolean;
+  until: string;
+  quiet: boolean;
+  watchUrl: string;
+};
 type Data = { routines: RoutineView[]; telegram: boolean; max: number };
 type Editing = { id?: string; draft: Draft };
 
@@ -35,7 +52,21 @@ const localZone = () => {
   }
 };
 
-const scheduleOf = (d: Draft): RoutineSchedule => (d.kind === "weekly" ? { kind: "weekly", time: d.time, days: d.days } : d.kind === "hourly" ? { kind: "hourly", every: d.every, from: d.time } : { kind: "daily", time: d.time });
+const todayLocal = (plus = 0) => {
+  const d = new Date(Date.now() + plus * 86_400_000);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const scheduleOf = (d: Draft): RoutineSchedule =>
+  d.kind === "webhook"
+    ? { kind: "webhook" }
+    : d.kind === "once"
+    ? { kind: "once", at: new Date(`${d.date}T${d.time}:00`).getTime() }
+    : d.kind === "minutes"
+      ? { kind: "minutes", every: d.minutes, ...(d.windowed ? { from: d.time, to: d.until } : {}) }
+      : d.kind === "weekly" ? { kind: "weekly", time: d.time, days: d.days } : d.kind === "hourly" ? { kind: "hourly", every: d.every, from: d.time } : { kind: "daily", time: d.time };
+
+const hhmm = (d: Date) => `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 function draftOf(r: RoutineView): Draft {
   const s = r.schedule;
@@ -44,10 +75,16 @@ function draftOf(r: RoutineView): Draft {
     botId: r.botId,
     prompt: r.prompt,
     kind: s.kind,
-    time: s.kind === "hourly" ? s.from : s.time,
+    time: s.kind === "hourly" ? s.from : s.kind === "minutes" ? (s.from ?? "08:00") : s.kind === "once" ? hhmm(new Date(s.at)) : s.kind === "webhook" ? "08:00" : s.time,
     days: s.kind === "weekly" ? s.days : [1, 2, 3, 4, 5],
     every: s.kind === "hourly" ? s.every : 3,
     notifyTelegram: r.notifyTelegram,
+    date: s.kind === "once" ? ymd(new Date(s.at)) : todayLocal(),
+    minutes: s.kind === "minutes" ? s.every : 30,
+    windowed: s.kind === "minutes" && !!s.from,
+    until: s.kind === "minutes" ? (s.to ?? "20:00") : "20:00",
+    quiet: !!r.quiet,
+    watchUrl: r.watch?.url ?? "",
   };
 }
 
@@ -167,9 +204,12 @@ export default function Routines() {
         const ordered = WEEK.filter((d) => s.days.includes(d));
         return t("routines.sched.weekly", { days: ordered.map((d) => dayName(d, "short")).join(", "), time: fmtTime(s.time) });
       }
+      if (s.kind === "webhook") return t("routines.sched.webhook");
+      if (s.kind === "minutes") return s.from && s.to ? t("routines.sched.minutesBetween", { count: s.every, from: fmtTime(s.from), to: fmtTime(s.to) }) : t("routines.sched.minutes", { count: s.every });
+      if (s.kind === "once") return Number.isFinite(s.at) ? t("routines.sched.once", { when: fmtWhen(s.at) }) : t("routines.sched.onceUnset");
       return t("routines.sched.hourly", { count: s.every, time: fmtTime(s.from) });
     },
-    [t, fmtTime, dayName],
+    [t, fmtTime, dayName, fmtWhen],
   );
 
   // ---------- actions ----------
@@ -184,7 +224,7 @@ export default function Routines() {
     opener.current = e.currentTarget;
     setFormError(null);
     setEditing({
-      draft: { name: "", botId: botList[0]?.id ?? "", prompt: "", kind: "daily", time: "08:00", days: [1, 2, 3, 4, 5], every: 3, notifyTelegram: false, ...preset },
+      draft: { name: "", botId: botList[0]?.id ?? "", prompt: "", kind: "daily", time: "08:00", days: [1, 2, 3, 4, 5], every: 3, notifyTelegram: false, date: todayLocal(), minutes: 30, windowed: false, until: "20:00", quiet: false, watchUrl: "", ...preset },
     });
   }
 
@@ -209,13 +249,20 @@ export default function Routines() {
     if (!d.name.trim()) return setFormError(t("routines.err.name"));
     if (!d.prompt.trim()) return setFormError(t("routines.err.prompt"));
     if (!d.botId) return setFormError(t("routines.err.bot"));
-    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(d.time)) return setFormError(t("routines.err.time"));
+    if (d.kind !== "webhook" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(d.time)) return setFormError(t("routines.err.time"));
     if (d.kind === "weekly" && !d.days.length) return setFormError(t("routines.err.days"));
     if (d.kind === "hourly" && !(Number.isInteger(d.every) && d.every >= 1 && d.every <= 24)) return setFormError(t("routines.err.every"));
+    if (d.kind === "once") {
+      const at = new Date(`${d.date}T${d.time}:00`).getTime();
+      if (!Number.isFinite(at)) return setFormError(t("routines.err.date"));
+      if (at < Date.now() - 60_000) return setFormError(t("routines.err.past"));
+    }
+    if (d.kind === "minutes" && d.windowed && !(d.until > d.time)) return setFormError(t("routines.err.window"));
+    if (d.watchUrl.trim() && !/^https?:\/\/\S+$/i.test(d.watchUrl.trim())) return setFormError(t("routines.err.watch"));
     setSaving(true);
     setFormError(null);
     // Times mean the user's own clock: the routine follows this computer's time zone.
-    const body = JSON.stringify({ name: d.name.trim(), botId: d.botId, prompt: d.prompt.trim(), schedule: scheduleOf(d), timezone: localZone(), notifyTelegram: d.notifyTelegram, ...(editing.id ? {} : { enabled: true }) });
+    const body = JSON.stringify({ name: d.name.trim(), botId: d.botId, prompt: d.prompt.trim(), schedule: scheduleOf(d), timezone: localZone(), notifyTelegram: d.notifyTelegram, quiet: d.quiet, watch: d.watchUrl.trim() ? { url: d.watchUrl.trim() } : null, ...(editing.id ? {} : { enabled: true }) });
     try {
       if (editing.id) await api(`/api/routines/${encodeURIComponent(editing.id)}`, { method: "PATCH", body });
       else await api("/api/routines", { method: "POST", body });
@@ -308,7 +355,7 @@ export default function Routines() {
   const lastRunText = (r: RoutineView): string => {
     const l = r.lastRun;
     if (!l) return t("routines.last.never");
-    const note = l.status === "skipped" ? (l.note === "busy" ? t("routines.note.busy") : l.note === "waiting" ? t("routines.note.waiting") : l.note === "stopped" ? t("routines.note.stopped") : "") : l.status === "missed" ? t("routines.note.missed") : l.status === "error" ? (l.note ?? "") : "";
+    const note = l.status === "skipped" ? (l.note === "busy" ? t("routines.note.busy") : l.note === "waiting" ? t("routines.note.waiting") : l.note === "stopped" ? t("routines.note.stopped") : l.note === "no change" ? t("routines.note.noChange") : "") : l.status === "ok" && l.note === "nothing new" ? t("routines.note.nothingNew") : l.status === "missed" ? t("routines.note.missed") : l.status === "error" ? (l.note ?? "") : "";
     const head = t(`routines.last.${l.status}`, { when: fmtWhen(l.at) });
     return note ? `${head} · ${note}` : head;
   };
@@ -385,7 +432,7 @@ export default function Routines() {
           <fieldset className="routine-when">
             <legend>{t("routines.form.when")}</legend>
             <div className="chip-row">
-              {(["daily", "weekly", "hourly"] as const).map((k) => (
+              {(["once", "minutes", "hourly", "daily", "weekly", "webhook"] as const).map((k) => (
                 <label key={k} className={`chip big routine-kind${editing.draft.kind === k ? " on" : ""}`}>
                   <input type="radio" name="routine-kind" value={k} checked={editing.draft.kind === k} onChange={() => setDraft({ kind: k })} />
                   {t(`routines.kind.${k}`)}
@@ -410,6 +457,24 @@ export default function Routines() {
             )}
 
             <div className="routine-time-row">
+              {editing.draft.kind === "once" && (
+                <label className="field" htmlFor="routine-date">
+                  {t("routines.form.date")}
+                  <input id="routine-date" type="date" value={editing.draft.date} min={todayLocal()} required onChange={(e) => setDraft({ date: e.target.value })} />
+                </label>
+              )}
+              {editing.draft.kind === "minutes" && (
+                <label className="field" htmlFor="routine-minutes">
+                  {t("routines.form.every")}
+                  <select id="routine-minutes" value={editing.draft.minutes} onChange={(e) => setDraft({ minutes: Number(e.target.value) })}>
+                    {[15, 20, 30].map((m) => (
+                      <option key={m} value={m}>
+                        {t("routines.form.minutesN", { count: m })}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              )}
               {editing.draft.kind === "hourly" && (
                 <label className="field" htmlFor="routine-every">
                   {t("routines.form.every")}
@@ -419,15 +484,48 @@ export default function Routines() {
                   </span>
                 </label>
               )}
-              <label className="field" htmlFor="routine-time">
-                {editing.draft.kind === "hourly" ? t("routines.form.from") : t("routines.form.time")}
-                <input id="routine-time" type="time" step={60} value={editing.draft.time} required onChange={(e) => setDraft({ time: e.target.value.slice(0, 5) })} />
-              </label>
+              {editing.draft.kind !== "webhook" && (editing.draft.kind !== "minutes" || editing.draft.windowed) && (
+                <label className="field" htmlFor="routine-time">
+                  {editing.draft.kind === "hourly" || editing.draft.kind === "minutes" ? t("routines.form.from") : t("routines.form.time")}
+                  <input id="routine-time" type="time" step={60} value={editing.draft.time} required onChange={(e) => setDraft({ time: e.target.value.slice(0, 5) })} />
+                </label>
+              )}
+              {editing.draft.kind === "minutes" && editing.draft.windowed && (
+                <label className="field" htmlFor="routine-until">
+                  {t("routines.form.until")}
+                  <input id="routine-until" type="time" step={60} value={editing.draft.until} required onChange={(e) => setDraft({ until: e.target.value.slice(0, 5) })} />
+                </label>
+              )}
             </div>
+            {editing.draft.kind === "minutes" && (
+              <label className="check-row">
+                <input type="checkbox" checked={editing.draft.windowed} onChange={(e) => setDraft({ windowed: e.target.checked })} />
+                <span>{t("routines.form.window")}</span>
+              </label>
+            )}
             <p className="hint">
-              {t("routines.form.preview", { schedule: describe(scheduleOf(editing.draft)) })} {t("routines.form.zone", { zone })}
+              {editing.draft.kind === "webhook" ? t("routines.form.webhookHint") : <>{t("routines.form.preview", { schedule: describe(scheduleOf(editing.draft)) })} {t("routines.form.zone", { zone })}</>}
             </p>
           </fieldset>
+
+          <label className="toggle">
+            <input type="checkbox" checked={editing.draft.quiet} onChange={(e) => setDraft({ quiet: e.target.checked })} aria-describedby="routine-quiet-hint" />
+            <span className="toggle-ui" />
+            <span>
+              <b>{t("routines.form.quiet")}</b>
+              <span id="routine-quiet-hint" className="hint">
+                {t("routines.form.quietHint")}
+              </span>
+            </span>
+          </label>
+
+          <label className="field" htmlFor="routine-watch">
+            {t("routines.form.watch")}
+            <input id="routine-watch" type="url" inputMode="url" value={editing.draft.watchUrl} maxLength={2000} placeholder="https://" onChange={(e) => setDraft({ watchUrl: e.target.value })} aria-describedby="routine-watch-hint" />
+            <span id="routine-watch-hint" className="hint">
+              {t("routines.form.watchHint")}
+            </span>
+          </label>
 
           <label className={`toggle${!data.telegram && !editing.draft.notifyTelegram ? " disabled" : ""}`}>
             <input type="checkbox" checked={editing.draft.notifyTelegram} disabled={!data.telegram && !editing.draft.notifyTelegram} onChange={(e) => setDraft({ notifyTelegram: e.target.checked })} aria-describedby="routine-tg-hint" />
@@ -473,6 +571,9 @@ export default function Routines() {
                 { key: "email", preset: { kind: "daily", time: "08:00" } },
                 { key: "week", preset: { kind: "weekly", time: "09:00", days: [1] } },
                 { key: "news", preset: { kind: "hourly", time: "08:00", every: 4 } },
+                { key: "brief", preset: { kind: "daily", time: "07:30" } },
+                { key: "price", preset: { kind: "hourly", time: "09:00", every: 2, quiet: true } },
+                { key: "remind", preset: { kind: "once", time: "17:00" } },
               ] as const
             ).map((ex) => (
               <button key={ex.key} type="button" className="idea" onClick={(e) => openNew(e, { ...ex.preset, days: "days" in ex.preset ? [...ex.preset.days] : [1, 2, 3, 4, 5], name: t(`routines.ex.${ex.key}.name`), prompt: t(`routines.ex.${ex.key}.prompt`) })}>
@@ -512,7 +613,7 @@ export default function Routines() {
                 <dl className="routine-meta">
                   <div>
                     <dt>{t("routines.next")}</dt>
-                    <dd>{r.enabled && r.nextRunAt ? fmtWhen(r.nextRunAt) : r.pausedReason === "failures" ? t("routines.pausedFailures") : r.pausedReason === "bot" ? t("routines.pausedBot") : t("routines.paused")}</dd>
+                    <dd>{r.enabled && r.schedule.kind === "webhook" ? t("routines.whenCalled") : r.enabled && r.nextRunAt ? fmtWhen(r.nextRunAt) : r.pausedReason === "failures" ? t("routines.pausedFailures") : r.pausedReason === "bot" ? t("routines.pausedBot") : r.pausedReason === "done" ? t("routines.doneOnce") : t("routines.paused")}</dd>
                   </div>
                   <div>
                     <dt>{t("routines.lastRun")}</dt>
@@ -527,6 +628,15 @@ export default function Routines() {
                     </dd>
                   </div>
                 </dl>
+                {r.hookUrl && (
+                  <div className="routine-hook">
+                    <span className="hint">{t("routines.hookUrl")}</span>
+                    <code className="routine-hook-url">{r.hookUrl}</code>
+                    <button type="button" className="btn sm" onClick={() => void navigator.clipboard?.writeText(r.hookUrl!).then(() => announce(t("routines.hookCopied")))}>
+                      {t("routines.copy")}
+                    </button>
+                  </div>
+                )}
                 {r.prompt && <p className="routine-prompt">{r.prompt}</p>}
 
                 <div className="row wrap routine-actions">

@@ -1128,3 +1128,7 @@ a.tag { text-decoration: none; }
   .chatview.with-canvas > section { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .cv-live::before { animation: none; } }
+
+/* A routine started by a web address: the address, ready to copy. */
+.routine-hook { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
+.routine-hook-url { flex: 1 1 260px; min-width: 0; font-size: 12px; padding: 6px 8px; border-radius: 8px; background: var(--soft); overflow-wrap: anywhere; direction: ltr; text-align: left; }

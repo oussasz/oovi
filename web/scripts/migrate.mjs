@@ -257,6 +257,25 @@ await pool.query(`
     PRIMARY KEY (announcement_id, user_id, kind)
   );
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS news_opt_out BOOLEAN NOT NULL DEFAULT false;
+  -- Routines started by a web address (keep in sync with lib/routine-hooks.ts HOOKS_DDL).
+  CREATE TABLE IF NOT EXISTS routine_hooks (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    secret_hash TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_at     TIMESTAMPTZ NULL
+  );
+  CREATE INDEX IF NOT EXISTS routine_hooks_user_idx ON routine_hooks (user_id);
+  CREATE TABLE IF NOT EXISTS routine_hook_events (
+    id           BIGSERIAL PRIMARY KEY,
+    hook_id      TEXT NOT NULL REFERENCES routine_hooks(id) ON DELETE CASCADE,
+    user_id      TEXT NOT NULL,
+    body         TEXT NOT NULL,
+    content_type TEXT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS routine_hook_events_user_idx ON routine_hook_events (user_id, id);
+
   -- Telegram relay (keep in sync with lib/telegram-relay.ts RELAY_DDL).
   CREATE TABLE IF NOT EXISTS telegram_relays (
     user_id      TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,

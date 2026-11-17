@@ -1,4 +1,5 @@
 import { guard } from "@/lib/guard";
+import { syncHook } from "@/lib/routine-hooks";
 import { deleteRoutine, getRoutine, updateRoutine, validateRoutine, viewOf } from "@/lib/routines";
 import { ID_RE } from "@/lib/store";
 import { readBody } from "../body";
@@ -25,7 +26,9 @@ async function update(req: Request, ctx: Ctx) {
   if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
   const r = updateRoutine(cur.id, input);
   if (!r) return Response.json({ error: "Routine not found." }, { status: 404 });
-  return Response.json(viewOf(r));
+  const hookErr = await syncHook(r.id);
+  if (hookErr) return Response.json({ error: hookErr }, { status: 502 });
+  return Response.json(viewOf(getRoutine(r.id) ?? r));
 }
 
 export const PATCH = update;

@@ -286,7 +286,13 @@ export type RoutineTime = string;
 export type RoutineSchedule =
   | { kind: "daily"; time: RoutineTime }
   | { kind: "weekly"; time: RoutineTime; days: number[] }
-  | { kind: "hourly"; every: number; from: RoutineTime };
+  | { kind: "hourly"; every: number; from: RoutineTime }
+  /** Every 15, 20 or 30 minutes, optionally only between two times of day (from included, to excluded). */
+  | { kind: "minutes"; every: number; from?: RoutineTime; to?: RoutineTime }
+  /** One time only (ms since epoch): "remind me at 5", "in 20 minutes". The routine turns itself off after. */
+  | { kind: "once"; at: number }
+  /** No time: it runs when its web address is called (Routine.hook, lib/routine-hooks.ts). */
+  | { kind: "webhook" };
 
 /**
  * ok: the bot answered. error: the run failed. skipped: the chat was busy, a run happened less than
@@ -324,6 +330,15 @@ export type Routine = {
   lastRun?: RoutineRun;
   /** When the last run started (scheduled or Run now), for the 15-minute floor. */
   lastStartedAt?: number;
+  /** Report only when there is something new: a run with nothing new posts nothing and notifies nobody. */
+  quiet?: boolean;
+  /**
+   * A page (or feed) checked with plain code before each run: unchanged since the last check, the run is
+   * skipped without any AI call; changed, the run gets what changed.
+   */
+  watch?: { url: string; hash?: string; text?: string; checkedAt?: number };
+  /** The web address that starts a "webhook" routine: https://<oovi site>/api/v1/hooks/<id>/<secret>. */
+  hook?: { id: string; secret: string };
   /** Consecutive failed runs; 3 pauses the routine. */
   failures: number;
   /** Next scheduled time (ms), or null when paused. */
@@ -333,7 +348,7 @@ export type Routine = {
 };
 
 /** A routine as the Routines page sees it. */
-export type RoutineView = Routine & { running: boolean };
+export type RoutineView = Omit<Routine, "hook"> & { running: boolean; /** A "webhook" routine's address (the secret is part of it). */ hookUrl?: string };
 
 export type ChatEvent =
   | { type: "entry"; entry: Entry }

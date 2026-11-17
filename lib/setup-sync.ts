@@ -55,7 +55,7 @@ export function collectSetup(): SetupItems {
   for (const b of listBots()) items[`bot:${b.id}`] = b;
   for (const c of listChats()) if (c.kind === "group" && !c.routine) items[`group:${c.id}`] = groupItem(c);
   for (const k of listSkills()) items[`skill:${k.slug}`] = { name: k.name, description: k.description, body: k.body, ...(k.source ? { source: k.source } : {}) };
-  for (const r of listRoutines()) items[`routine:${r.id}`] = { name: r.name, botId: r.botId, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone, notifyTelegram: r.notifyTelegram, createdAt: r.createdAt };
+  for (const r of listRoutines()) items[`routine:${r.id}`] = { name: r.name, botId: r.botId, prompt: r.prompt, schedule: r.schedule, timezone: r.timezone, notifyTelegram: r.notifyTelegram, createdAt: r.createdAt, ...(r.quiet ? { quiet: true } : {}), ...(r.watch ? { watch: { url: r.watch.url } } : {}) };
   for (const l of listLessons()) items[`lesson:${l.id}`] = { text: l.text, ...(l.botId ? { botId: l.botId } : {}), source: l.source, createdAt: l.createdAt };
   for (const m of listServers())
     items[`mcp:${m.id}`] = { name: m.name, transport: m.transport, ...(m.command ? { command: m.command } : {}), ...(m.args?.length ? { args: m.args } : {}), ...(m.url ? { url: m.url } : {}), ...(m.auth ? { auth: m.auth } : {}), envKeys: Object.keys(m.env ?? {}), headerKeys: Object.keys(m.headers ?? {}), enabled: m.enabled, trusted: m.trusted, createdAt: m.createdAt };

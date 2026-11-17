@@ -1,5 +1,6 @@
 import { guard } from "@/lib/guard";
-import { createRoutine, listRoutines, validateRoutine, viewOf } from "@/lib/routines";
+import { syncHook } from "@/lib/routine-hooks";
+import { createRoutine, deleteRoutine, getRoutine, listRoutines, validateRoutine, viewOf } from "@/lib/routines";
 import { MAX_ROUTINES } from "@/lib/routines-schedule";
 import { telegramConnected } from "@/lib/telegram";
 import { readBody } from "./body";
@@ -24,5 +25,11 @@ export async function POST(req: Request) {
   if (typeof input === "string") return Response.json({ error: input }, { status: 400 });
   const r = createRoutine(input);
   if (typeof r === "string") return Response.json({ error: r }, { status: 409 });
-  return Response.json(viewOf(r), { status: 201 });
+  // A routine started by a web address gets its address now (registered on the oovi website).
+  const hookErr = await syncHook(r.id);
+  if (hookErr) {
+    deleteRoutine(r.id);
+    return Response.json({ error: hookErr }, { status: 502 });
+  }
+  return Response.json(viewOf(getRoutine(r.id) ?? r), { status: 201 });
 }

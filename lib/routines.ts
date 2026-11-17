@@ -4,6 +4,7 @@
 // so its history stays small and runs are comparable. Those chats aren't listed in the
 // sidebar; the Routines page links to them. The scheduler lives in routines-scheduler.ts.
 
+import { cloudUrl } from "./account";
 import fs from "node:fs";
 import path from "node:path";
 import { isRunning, stopRun, subscribe } from "./runner";
@@ -43,7 +44,7 @@ function sane(r: unknown): r is Routine {
     typeof o.prompt === "string" &&
     typeof o.chatId === "string" &&
     ID_RE.test(o.chatId) &&
-    typeof validateSchedule(o.schedule) !== "string" &&
+    typeof validateSchedule(o.schedule, true) !== "string" &&
     isTimeZone(o.timezone)
   );
 }
@@ -79,11 +80,14 @@ export function mutateRoutine(id: string, fn: (r: Routine) => void | false): Rou
   return r;
 }
 
-export const viewOf = (r: Routine): RoutineView => ({ ...r, running: isRunning(r.chatId) });
+export const viewOf = (r: Routine): RoutineView => {
+  const { hook, ...rest } = r;
+  return { ...rest, running: isRunning(r.chatId), ...(hook ? { hookUrl: `${cloudUrl()}/api/v1/hooks/${hook.id}/${hook.secret}` } : {}) };
+};
 
 // ---------- validation ----------
 
-export type RoutineInput = { name: string; botId: string; prompt: string; schedule: RoutineSchedule; timezone: string; enabled: boolean; notifyTelegram: boolean };
+export type RoutineInput = { name: string; botId: string; prompt: string; schedule: RoutineSchedule; timezone: string; enabled: boolean; notifyTelegram: boolean; quiet: boolean; watch?: { url: string } };
 
 // Control characters out (newlines and tabs stay in the instruction).
 const cleanName = (v: unknown) =>
@@ -137,7 +141,20 @@ export function validateRoutine(input: unknown, current?: Routine): RoutineInput
   if (has("notifyTelegram") && typeof o.notifyTelegram !== "boolean") return "notifyTelegram must be true or false.";
   const enabled = has("enabled") ? (o.enabled as boolean) : (current?.enabled ?? true);
   const notifyTelegram = has("notifyTelegram") ? (o.notifyTelegram as boolean) : (current?.notifyTelegram ?? false);
-  return { name, botId, prompt, schedule, timezone, enabled, notifyTelegram };
+  if (has("quiet") && typeof o.quiet !== "boolean") return "quiet must be true or false.";
+  const quiet = has("quiet") ? (o.quiet as boolean) : (current?.quiet ?? false);
+  // A page checked before each run (plain code, no AI): a public web address only.
+  let watch: { url: string } | undefined = current?.watch ? { url: current.watch.url } : undefined;
+  if (has("watch")) {
+    const raw = o.watch && typeof o.watch === "object" ? (o.watch as { url?: unknown }).url : o.watch;
+    const url = typeof raw === "string" ? raw.trim() : "";
+    if (!url) watch = undefined;
+    else {
+      if (url.length > 2000 || !/^https?:\/\/[^\s]+$/i.test(url)) return "The page to watch must be a web address (https://…).";
+      watch = { url };
+    }
+  }
+  return { name, botId, prompt, schedule, timezone, enabled, notifyTelegram, quiet, ...(watch ? { watch } : {}) };
 }
 
 // ---------- the routine's own chat ----------
@@ -202,7 +219,11 @@ export function updateRoutine(id: string, input: RoutineInput): Routine | null {
   const r = mutateRoutine(id, (x) => {
     const timingChanged = JSON.stringify(x.schedule) !== JSON.stringify(input.schedule) || x.timezone !== input.timezone;
     const turnedOn = input.enabled && !x.enabled;
+    // The watched page keeps what was seen last time while its address stays the same.
+    const watch = input.watch ? (x.watch?.url === input.watch.url ? x.watch : { url: input.watch.url }) : undefined;
     Object.assign(x, input);
+    if (watch) x.watch = watch;
+    else delete x.watch;
     if (!x.enabled) {
       x.nextRunAt = null;
     } else if (turnedOn || timingChanged || x.nextRunAt === null) {
@@ -238,6 +259,8 @@ export function importRoutines(raw: unknown[]): number {
         timezone: r.timezone,
         enabled,
         notifyTelegram: r.notifyTelegram === true,
+        ...((r as { quiet?: unknown }).quiet === true ? { quiet: true } : {}),
+        ...(typeof (r as { watch?: { url?: unknown } }).watch?.url === "string" && /^https?:\/\//i.test((r as { watch: { url: string } }).watch.url) ? { watch: { url: (r as { watch: { url: string } }).watch.url.slice(0, 2000) } } : {}),
         createdAt: typeof r.createdAt === "number" ? r.createdAt : now,
         updatedAt: now,
         chatId: r.chatId,
@@ -265,6 +288,8 @@ export function deleteRoutine(id: string): boolean {
   const r = all.find((x) => x.id === id);
   if (!r) return false;
   save(all.filter((x) => x.id !== id));
+  // Its web address stops working too (removed on the oovi website).
+  if (r.hook) void import("./routine-hooks").then((m) => m.dropHook(r.hook!.id)).catch(() => {});
   const chat = getChat(r.chatId);
   if (!chat || chat.routine !== r.id) return true; // never delete a chat that isn't the routine's own
   if (isRunning(chat.id)) {

@@ -12,7 +12,10 @@ import type { TKey, Vars } from "./i18n";
 import { translateFor } from "./i18n-server";
 import { getRoutine, listRoutines, mutateRoutine, routineChat } from "./routines";
 import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, type ChatState, type RunResult } from "./routines-schedule";
+import { checkUrl } from "./browser";
 import { isRunning, startRun, subscribe } from "./runner";
+import { collectHookEvents, hookCursor, hookNote, setHookCursor } from "./routine-hooks";
+import { hashText, isNoNews, pageText, QUIET_NOTE, significant, watchNote } from "./watch-core";
 import { loadSettings } from "./settings";
 import { getBot, getChat } from "./store";
 import { sendFileToTelegram, sendToMainChat } from "./telegram";
@@ -24,7 +27,7 @@ const TELEGRAM_MAX = 12_000;
 const DESKTOP_MAX = 240;
 
 type Active = { chatId: string; startedAt: number; entryId?: string };
-type State = { timer?: ReturnType<typeof setInterval>; ticking: boolean; busySince: Map<string, number>; active: Map<string, Active> };
+type State = { timer?: ReturnType<typeof setInterval>; ticking: boolean; busySince: Map<string, number>; active: Map<string, Active>; watching: Set<string> };
 
 const g = globalThis as typeof globalThis & {
   __ooviRoutines?: State;
@@ -35,9 +38,10 @@ const g = globalThis as typeof globalThis & {
 };
 
 function state(): State {
-  const s = (g.__ooviRoutines ??= { ticking: false, busySince: new Map(), active: new Map() });
+  const s = (g.__ooviRoutines ??= { ticking: false, busySince: new Map(), active: new Map(), watching: new Set() });
   s.busySince ??= new Map();
   s.active ??= new Map();
+  s.watching ??= new Set();
   return s;
 }
 
@@ -67,6 +71,7 @@ async function tick(): Promise<void> {
         console.error(`[routines] ${r.id}:`, (e as Error).message);
       }
     }
+    await pollHooks().catch((e) => console.error("[routines] web addresses:", (e as Error).message));
   } finally {
     s.ticking = false;
   }
@@ -92,6 +97,8 @@ function checkOne(r: Routine, now: number) {
     s.busySince.delete(r.id);
     return;
   }
+  // Started by its web address only (pollHooks), never by the clock.
+  if (r.schedule.kind === "webhook") return;
   if (r.nextRunAt === null) {
     mutateRoutine(r.id, (x) => {
       x.nextRunAt = nextRun(x.schedule, x.timezone, now);
@@ -111,12 +118,41 @@ function checkOne(r: Routine, now: number) {
       // Skipped because it just ran (e.g. Run now a minute before): keep that run's result.
       if (d.note !== "recent") x.lastRun = { at: d.occurrence, status: d.status, note: d.note };
     });
+  } else if (r.watch) {
+    // A watched page is read first (plain code, no AI): unchanged, the run is skipped for free.
+    if (s.watching.has(r.id)) return;
+    s.watching.add(r.id);
+    void checkWatch(r)
+      .then((w) => {
+        if (w.kind === "same") {
+          s.busySince.delete(r.id);
+          mutateRoutine(r.id, (x) => {
+            x.nextRunAt = d.next;
+            if (x.watch) x.watch.checkedAt = Date.now();
+            x.lastRun = { at: Date.now(), status: "skipped", note: "no change" };
+            if (x.schedule.kind === "once") disableOnce(x);
+          });
+          return;
+        }
+        afterFire(r, d, fire(r, false, w.note));
+      })
+      .finally(() => s.watching.delete(r.id));
   } else {
-    const started = fire(r, false);
+    afterFire(r, d, fire(r, false));
+  }
+}
+
+/** After a scheduled start: the next time, or a retry on the next tick when the chat became busy. */
+function afterFire(r: Routine, d: { occurrence: number; next: number | null }, started: FireResult) {
+  const s = state();
+  const now = Date.now();
+  {
     if (started === "started") {
       s.busySince.delete(r.id);
       mutateRoutine(r.id, (x) => {
         x.nextRunAt = d.next;
+        // "Once" routines turn themselves off after their run.
+        if (x.schedule.kind === "once") disableOnce(x);
       });
     } else if (started !== "bot") {
       // Became busy in between: try again next tick (this counts toward the 10-minute window).
@@ -125,13 +161,65 @@ function checkOne(r: Routine, now: number) {
   }
 }
 
+/**
+ * Calls to the web addresses of the routines that run on this computer: each one starts its routine with
+ * what was sent. A routine still busy keeps its calls for the next tick (nothing is lost or skipped).
+ */
+async function pollHooks() {
+  const hooked = listRoutines().filter((r) => r.enabled && r.schedule.kind === "webhook" && r.hook);
+  if (!hooked.length) return;
+  const byHook = new Map(hooked.map((r) => [r.hook!.id, r]));
+  let after = hookCursor();
+  const events = await collectHookEvents([...byHook.keys()], after);
+  for (const e of events) {
+    const r = byHook.get(e.hookId);
+    if (r) {
+      const started = fire(r, false, hookNote(e));
+      // Busy or waiting for an OK: try this call again on the next tick.
+      if (started === "busy" || started === "waiting") break;
+    }
+    after = Math.max(after, e.id);
+  }
+  if (after !== hookCursor()) setHookCursor(after);
+}
+
 export type FireResult = "started" | "busy" | "waiting" | "bot" | "missing";
 
 /**
  * Start a run of the routine in its chat. manual: the user pressed Run now (allowed even
  * within 15 minutes of the last run, but never while a run is going or waiting for an OK).
  */
-function fire(r: Routine, manual: boolean): FireResult {
+function disableOnce(x: Routine) {
+  x.enabled = false;
+  x.nextRunAt = null;
+  x.pausedReason = "done";
+}
+
+type Watched = { kind: "same" } | { kind: "changed"; note: string } | { kind: "error"; note: string };
+
+/** Read the watched page with plain code and compare it with the last check. Saves what was seen. */
+async function checkWatch(r: Routine): Promise<Watched> {
+  const url = r.watch?.url ?? "";
+  const blocked = checkUrl(url, loadSettings().browser.allowPrivateNetwork);
+  if (blocked) return { kind: "error", note: `[oovi: the page to watch can't be read (${blocked}). Do the task anyway and say so.]` };
+  let text: string;
+  try {
+    const res = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(20_000), headers: { "user-agent": "Mozilla/5.0 (oovi routine check)", accept: "text/html,application/xhtml+xml,application/xml,application/json,text/plain;q=0.9,*/*;q=0.5" } });
+    if (!res.ok) return { kind: "error", note: `[oovi: the watched page answered ${res.status}: open it with your tools to check it.]` };
+    text = significant(pageText(await res.text(), res.headers.get("content-type") ?? ""));
+  } catch (e) {
+    return { kind: "error", note: `[oovi: the watched page couldn't be read (${(e as Error).message.slice(0, 120)}): open it with your tools to check it.]` };
+  }
+  const hash = hashText(text);
+  const before = r.watch?.hash ? r.watch.text : undefined;
+  if (r.watch?.hash === hash) return { kind: "same" };
+  mutateRoutine(r.id, (x) => {
+    if (x.watch?.url === url) x.watch = { url, hash, text: text.slice(0, 20_000), checkedAt: Date.now() };
+  });
+  return { kind: "changed", note: watchNote(url, before, text) };
+}
+
+function fire(r: Routine, manual: boolean, note?: string): FireResult {
   const s = state();
   if (s.active.has(r.id)) return "busy";
   if (!getBot(r.botId)) {
@@ -148,7 +236,9 @@ function fire(r: Routine, manual: boolean): FireResult {
   const cs = chatState(r, chat);
   if (cs !== "free") return manual ? cs : "busy";
   // Never auto-approve, never plan mode: just the instruction, marked as coming from the routine.
-  if (!startRun(chat.id, { text: r.prompt, routine: r.id })) return "busy";
+  // A quiet routine posts only when there's something new (lib/watch-core.ts NO_NEWS).
+  const text = [r.prompt, note, r.quiet ? QUIET_NOTE : ""].filter(Boolean).join("\n\n");
+  if (!startRun(chat.id, { text, routine: r.id })) return "busy";
   const run: Active = { chatId: chat.id, startedAt: Date.now() };
   s.active.set(r.id, run);
   mutateRoutine(r.id, (x) => {
@@ -208,6 +298,13 @@ function finish(id: string, res: RunResult, entryId?: string) {
     };
   });
   if (!r) return; // deleted meanwhile
+  // Nothing new: recorded, nobody is told.
+  if (res.status === "ok" && isNoNews(res.text)) {
+    mutateRoutine(id, (x) => {
+      if (x.lastRun) x.lastRun.note = "nothing new";
+    });
+    return;
+  }
   if (res.status === "ok") {
     notifyResult(r, res.text);
     void telegramFiles(r);
