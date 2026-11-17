@@ -26,6 +26,8 @@ export type Session = {
   lastUsed: number;
   /** Numbered elements from the latest page snapshot (see tools.ts). */
   elements: Map<number, ElementInfo>;
+  /** The page and element labels of the previous snapshot: elements that appear after an action are marked "new". */
+  seen?: { url: string; labels: Set<string> };
   downloads: string[];
   pending: Promise<unknown>[];
 };

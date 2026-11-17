@@ -141,7 +141,7 @@ const PLAN_MODE_TOOLS = new Set([
 ]);
 
 /** Actions in the bots' browser that an approved plan covers. */
-const PLAN_COVERED = new Set(["click", "type", "download_file", "upload_file"]);
+const PLAN_COVERED = new Set(["click", "type", "browser_steps", "download_file", "upload_file"]);
 const uploadAllowed = (c: ToolCall, s: Settings) => ((src) => !("error" in src) && src.allowed)(uploadSource(c.input.path, s));
 
 /** For a bot that can act on the user's computer or accounts: one plan, approved once, instead of a card per step. */
@@ -541,7 +541,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     }
     if (bot.tools.browser) {
       lines.push(
-        "Element numbers for click/type come from the latest element list.",
+        "Element numbers for click/type come from the latest element list. Several actions on the same page (filling a form, ticking boxes, then its button) go in ONE browser_steps call, not one click/type at a time. After an action, elements marked NEW are what it made appear.",
         "To get a file, use download_file with a direct link, or click its download button. Files are saved to the user's Downloads/oovi folder. Never try to open or run downloaded files.",
         "To put a file into a page (attach it to an email, import it into a dashboard, upload a document or picture), use upload_file with the file's full path: it works with file fields and with buttons that open the file chooser. Never tell the user to choose the file themselves.",
       );
@@ -1070,6 +1070,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "find_papers": return tr("st.papers", { q: v(i.query) });
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
+    case "browser_steps": return tr("st.typing");
     case "go_back": return tr("st.goingBack");
     case "download_file": return tr("st.downloading");
     case "upload_file": return tr("st.uploading", { what: baseName(i.path) });

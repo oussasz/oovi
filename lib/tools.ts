@@ -49,6 +49,31 @@ export const TOOL_SPECS: ToolSpec[] = [
     description: "Type text into a numbered input element (replaces its contents). Set submit=true to press Enter afterwards. On a dropdown (select), give the text of the choice you want: it is chosen. Tick a checkbox with click.",
     parameters: { type: "object", properties: { element: { type: "integer" }, text: { type: "string" }, submit: { type: "boolean" } }, required: ["element", "text"] },
   },
+  {
+    name: "browser_steps",
+    description:
+      "Do several actions in a row on the open page in ONE call: fill a whole form (type in each field, choose in dropdowns, tick boxes) and press its button. Steps run in order and stop at the first one that fails; you get the page once, at the end. Use the element numbers of the latest list. Use it whenever you would otherwise call click/type several times in a row on the same page.",
+    parameters: {
+      type: "object",
+      properties: {
+        steps: {
+          type: "array",
+          maxItems: 12,
+          items: {
+            type: "object",
+            properties: {
+              action: { type: "string", enum: ["click", "type"] },
+              element: { type: "integer" },
+              text: { type: "string", description: "type only: the text (on a dropdown: the choice's text)" },
+              submit: { type: "boolean", description: "type only: press Enter after" },
+            },
+            required: ["action", "element"],
+          },
+        },
+      },
+      required: ["steps"],
+    },
+  },
   { name: "go_back", description: "Go back to the previous page.", parameters: { type: "object", properties: {} } },
   {
     name: "scrape_list",
@@ -236,7 +261,7 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
 
 /**
  * What runTool needs from the run: its stop signal, where the user is writing from, and how rows
@@ -320,8 +345,15 @@ async function snapshotResult(call: ToolCall, sess: Session, offset: number, wit
   ];
   if (end < s.text.length) lines.push(`--- more text available: call read_page with offset=${end} ---`);
   if (withElements) {
-    lines.push(`--- INTERACTIVE ELEMENTS (${s.els.length}${s.els.length > MAX_ELEMENTS_SHOWN ? `, first ${MAX_ELEMENTS_SHOWN} shown` : ""}) ---`);
-    for (const e of s.els.slice(0, MAX_ELEMENTS_SHOWN)) lines.push(`[${e.n}] ${e.kind} "${e.label}"${e.state ? ` (${e.state.slice(0, 400)})` : ""}${e.href ? ` -> ${e.href.slice(0, 120)}` : ""}`);
+    // On the same page, what an action made appear (a menu, a form, an error under a field) is marked "new":
+    // the bot sees at once what its click changed without reading the whole list again.
+    const key = (e: { kind: string; label: string }) => `${e.kind}|${e.label}`;
+    const prev = sess.seen && sess.seen.url === page.url().split("#")[0] ? sess.seen.labels : null;
+    const fresh = prev ? s.els.filter((e) => !prev.has(key(e))) : [];
+    lines.push(`--- INTERACTIVE ELEMENTS (${s.els.length}${s.els.length > MAX_ELEMENTS_SHOWN ? `, first ${MAX_ELEMENTS_SHOWN} shown` : ""}${fresh.length && fresh.length < s.els.length ? `; ${fresh.length} new since your last action, marked NEW` : ""}) ---`);
+    const isNew = new Set(fresh.length < s.els.length ? fresh.map((e) => e.n) : []);
+    for (const e of s.els.slice(0, MAX_ELEMENTS_SHOWN)) lines.push(`[${e.n}]${isNew.has(e.n) ? " NEW" : ""} ${e.kind} "${e.label}"${e.state ? ` (${e.state.slice(0, 400)})` : ""}${e.href ? ` -> ${e.href.slice(0, 120)}` : ""}`);
+    sess.seen = { url: page.url().split("#")[0]!, labels: new Set(s.els.map(key)) };
   }
   const files = await takeDownloads(sess, 30_000);
   if (files.length) lines.push("--- DOWNLOADED FILES (saved to the user's computer, not opened) ---", ...files);
@@ -520,6 +552,58 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       }
       return pageResult(call, sess, 0, true, sessionId, ctx);
     }
+    case "browser_steps": {
+      const raw = Array.isArray(input.steps) ? input.steps.slice(0, 12) : [];
+      type Step = { action: "click" | "type"; element: number; text: string; submit: boolean };
+      const steps: Step[] = [];
+      for (const [i, x] of raw.entries()) {
+        const o = (x && typeof x === "object" ? x : {}) as Record<string, unknown>;
+        const action = o.action === "type" ? "type" : o.action === "click" ? "click" : null;
+        const element = Number(o.element);
+        if (!action || !Number.isInteger(element)) return fail(call, `Step ${i + 1}: give action (click or type) and an element number.`);
+        steps.push({ action, element, text: String(o.text ?? ""), submit: o.submit === true });
+      }
+      if (!steps.length) return fail(call, "Give at least one step.");
+      // Each step's element is pinned before anything runs: element numbers change when the page redraws.
+      for (const [i, st] of steps.entries()) {
+        const loc = page.locator(`[data-oc-id="${st.element}"]`);
+        if ((await loc.count()) === 0) return fail(call, `Step ${i + 1}: element ${st.element} not found. The page may have changed; get a fresh element list (read_page) first. Nothing was done.`);
+        await loc.first().evaluate((el, k) => el.setAttribute("data-oc-step", k), `${call.id}-${i}`);
+      }
+      const done: string[] = [];
+      for (const [i, st] of steps.entries()) {
+        const loc = page.locator(`[data-oc-step="${call.id}-${i}"]`).first();
+        const what = `${st.action} ${st.element}${st.action === "type" ? ` "${st.text.slice(0, 40)}"` : ""}`;
+        const stop = async (why: string) => {
+          const res = await pageResult(call, sess, 0, true, sessionId, ctx);
+          return { ...res, isError: true, content: `${done.length ? `Done: ${done.join("; ")}.\n` : ""}Step ${i + 1} (${what}) failed: ${why} The steps after it were not done.\n${res.content}` };
+        };
+        if ((await loc.count()) === 0) return stop("its element is gone (the page changed after the step before).");
+        try {
+          if (st.action === "click") {
+            if (await loc.isDisabled().catch(() => false)) return stop("it is switched off (the page waits for something first).");
+            await loc.click({ timeout: 10_000 });
+          } else if ((await loc.evaluate((el) => el.tagName).catch(() => "")) === "SELECT") {
+            const want = st.text.replace(/\s+/g, " ").trim().toLowerCase();
+            const opts = (await loc.evaluate((el) => Array.from((el as HTMLSelectElement).options).map((o) => ({ value: o.value, text: o.text.replace(/\s+/g, " ").trim(), off: o.disabled })))) as { value: string; text: string; off: boolean }[];
+            const usable = opts.filter((o) => !o.off && o.text);
+            const hit = usable.find((o) => o.text.toLowerCase() === want) ?? ((m) => (m.length === 1 ? m[0] : undefined))(usable.filter((o) => want && o.text.toLowerCase().includes(want)));
+            if (!hit) return stop(`that dropdown has no choice "${st.text}". Its choices: ${usable.map((o) => o.text).slice(0, 30).join(" | ")}.`);
+            await loc.selectOption({ value: hit.value }, { timeout: 10_000 });
+          } else {
+            await loc.fill(st.text, { timeout: 10_000 });
+            if (st.submit) await loc.press("Enter");
+          }
+        } catch (e) {
+          return stop(/timeout/i.test(e instanceof Error ? e.message : String(e)) ? "it didn't respond within 10 seconds (something covers it, or the page is busy)." : (e instanceof Error ? e.message : String(e)).split("\n")[0]!.slice(0, 200));
+        }
+        done.push(what);
+        await settle(sess.page);
+      }
+      const blank = await waitForContent(sess.page);
+      const res = withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
+      return { ...res, content: `Done, in order: ${done.join("; ")}.\n${res.content}` };
+    }
     case "scroll": {
       if (page.url() === "about:blank") return fail(call, "Open a page first (open_url).");
       const to = ["down", "up", "bottom", "top"].includes(String(input.to)) ? String(input.to) : "down";
@@ -694,7 +778,7 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
     if (!src.allowed) return true;
   }
   if (!settings.approvals.clicksAndTyping && !usesAccounts) return false;
-  if (call.name === "type" || call.name === "download_file" || call.name === "upload_file") return true;
+  if (call.name === "type" || call.name === "browser_steps" || call.name === "download_file" || call.name === "upload_file") return true;
   if (call.name === "click") {
     if (usesAccounts) return true;
     const el = peekSession(sessionId)?.elements.get(Number(call.input.element));
@@ -725,6 +809,17 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
   const target = el ? `${el.kind} "${el.label}"` : `element ${String(call.input.element)}`;
   if (call.name === "click") return tr("ok.click", { target, where });
   if (call.name === "type") return `${tr("ok.type", { text: String(call.input.text ?? ""), target, where })}${call.input.submit ? tr("ok.typeEnter") : ""}`;
+  if (call.name === "browser_steps") {
+    // Each step said as the single-action card would say it, one per line.
+    const steps = Array.isArray(call.input.steps) ? (call.input.steps as Record<string, unknown>[]).slice(0, 12) : [];
+    return steps
+      .map((st) => {
+        const e = sess?.elements.get(Number(st?.element));
+        const tg = e ? `${e.kind} "${e.label}"` : `element ${String(st?.element)}`;
+        return st?.action === "type" ? `${tr("ok.type", { text: String(st.text ?? ""), target: tg, where })}${st.submit ? tr("ok.typeEnter") : ""}` : tr("ok.click", { target: tg, where });
+      })
+      .join("\n");
+  }
   if (call.name === "upload_file") return tr("ok.upload", { file: String(call.input.path ?? ""), where });
   if (call.name === "download_file") return tr("ok.download", { url: String(call.input.url ?? "") });
   if (call.name === "save_skill") return tr("ok.saveSkill", { name: String(call.input.name ?? ""), description: String(call.input.description ?? "") });
