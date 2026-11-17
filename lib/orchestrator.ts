@@ -43,6 +43,7 @@ import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialis
 import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
 import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
 import { endsOnPromise, promiseMissing } from "./promise-core";
+import { takeSteers } from "./steer";
 import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
@@ -681,10 +682,10 @@ const budgetOf = (s: Settings) => budgetFor(usesHosted(s), hostedMaxInput());
  * later model call sends far fewer tokens. Nothing is lost: the full history stays
  * saved and visible, and bots can search it with recall_history.
  */
-async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal) {
+async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal, share = 1) {
   const start = chat.summary ? chat.entries.findIndex((e) => e.id === chat.summary?.upTo) + 1 : 0;
   const live = chat.entries.slice(start);
-  if (estimateTokens(live) < compactAtFor(budgetOf(settings)) || live.length <= KEEP_RECENT) return;
+  if (estimateTokens(live) < compactAtFor(budgetOf(settings)) * share || live.length <= KEEP_RECENT) return;
   // Never fold the entry a bot is still writing.
   let keep = KEEP_RECENT;
   while (keep < live.length && live[live.length - keep - 1]?.kind === "bot" && (live[live.length - keep - 1] as BotEntry).status === "running") keep++;
@@ -715,9 +716,38 @@ async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal
       { effort: "low" },
     );
     if (out.text) chat.summary = { upTo: last.id, text: out.text.slice(0, SUMMARY_MAX) };
-  } catch {
-    /* if summarizing fails, the budget guard still keeps each request small */
+  } catch (e) {
+      /* if summarizing fails, the budget guard still keeps each request small */
   }
+}
+
+/**
+ * Right after a run ends, a long chat is summarized while nobody waits (and while the provider's prompt cache
+ * of this chat is still warm), instead of at the start of the user's next message. Applied only when the chat
+ * didn't change meanwhile and no new run started; otherwise the next message summarizes as before.
+ */
+const AFTER_RUN_SHARE = 0.75;
+export async function compactAfterRun(chatId: string, running: () => boolean): Promise<boolean> {
+  if (running()) return false;
+  const chat = getChat(chatId);
+  if (!chat || chat.pending?.approval || chat.pending?.planReview || chat.pending?.questions) return false;
+  const settings = loadSettings();
+  const before = chat.summary?.upTo;
+  const lastId = chat.entries.at(-1)?.id;
+  const ctrl = new AbortController();
+  const watch = setInterval(() => running() && ctrl.abort(), 500);
+  try {
+    // Already close to the limit: the user's next message would cross it and make them wait.
+    await compactIfLong(chat, settings, ctrl.signal, AFTER_RUN_SHARE);
+  } finally {
+    clearInterval(watch);
+  }
+  if (ctrl.signal.aborted || running() || chat.summary?.upTo === before) return false;
+  const now = getChat(chatId);
+  if (!now || now.entries.at(-1)?.id !== lastId || now.summary?.upTo !== before) return false;
+  now.summary = chat.summary;
+  saveChat(now);
+  return true;
 }
 
 /** Bots that already answered the current user message (before `entry`). */
@@ -775,7 +805,9 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
         lang = (note ? `\n\n[oovi, at this message:\n${note}]` : "") + (writeIn ? `\n\n[oovi: the user writes in ${writeIn}. Write every message to them in ${writeIn.split(" (")[0]}, even when earlier messages, sources or tables are in another language.]` : "");
         e.shown = { ...(e.shown ?? {}), [bot.id]: lang };
       }
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${lang}` : `${text}${own}${lang}`, ...(attachments ? { attachments } : {}) });
+      // Written while the bots were working: it may change or add to the task under way.
+      const during = e.steer ? `\n\n[oovi: the user wrote this while you were working. Take it into account from now on: it can change, correct or add to the task. Don't start over unless they ask.]` : "";
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${during}${lang}` : `${text}${own}${during}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
@@ -1456,6 +1488,21 @@ async function* runBot(
       return "error";
     }
     steps++;
+    // Messages the user sent while this work went on (lib/steer.ts): read now, before the next step. Added at
+    // the end of the conversation, so everything before them stays in the prompt cache.
+    for (const st of takeSteers(chat.id)) {
+      const u: UserEntry = {
+        id: st.entryId && /^[\w-]{1,40}$/.test(st.entryId) && !chat.entries.some((e) => e.id === st.entryId) ? st.entryId : newId(),
+        kind: "user",
+        text: String(st.text ?? "").slice(0, 20_000),
+        at: Date.now(),
+        steer: true,
+        ...(st.attachments?.length ? { attachments: st.attachments } : {}),
+      };
+      chat.entries.push(u);
+      countUsage({ messages: 1 });
+      yield { type: "entry", entry: u };
+    }
     yield { type: "status", entryId: entry.id, text: translatorFor(lastUserText(chat))("st.thinking") };
     try {
       // The effort the user chose, or high for deep work. Otherwise the turn's first step (where the bot reads

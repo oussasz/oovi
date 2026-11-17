@@ -2,8 +2,9 @@
 // chats or reload the page while bots keep working. Clients subscribe to a
 // run's events; a stop request aborts it.
 
+import { addSteer, nextSteer } from "./steer";
 import { setDesktopStop } from "./desktop-control";
-import { orchestrate, type RunInput } from "./orchestrator";
+import { compactAfterRun, orchestrate, type RunInput } from "./orchestrator";
 import type { ChatEvent } from "./types";
 
 type Listener = (e: ChatEvent) => void;
@@ -25,6 +26,15 @@ export function onRunEnd(fn: EndHook): () => void {
 }
 
 /** Starts a run. Returns false if this chat is already running. */
+/**
+ * A message sent while the chat's bots are working: it waits for their next step (lib/steer.ts). False when
+ * nothing is running (start a run instead) or too many messages already wait.
+ */
+export function steerRun(chatId: string, input: RunInput): boolean {
+  if (!runs.has(chatId) || typeof input.text !== "string") return false;
+  return addSteer(chatId, input);
+}
+
 export function startRun(chatId: string, input: RunInput): boolean {
   if (runs.has(chatId)) return false;
   const run: Run = { ctrl: new AbortController(), listeners: new Set() };
@@ -46,6 +56,15 @@ export function startRun(chatId: string, input: RunInput): boolean {
     } finally {
       runs.delete(chatId);
       emit({ type: "done" });
+      // A message sent while the bots worked and not read before the run ended (it finished, or the user
+      // pressed Stop) starts the next run: "stop, then correct" works.
+      setTimeout(() => {
+        if (runs.has(chatId)) return;
+        const next = nextSteer(chatId);
+        if (next) startRun(chatId, next);
+        // Nothing next: a long chat is summarized now, while nobody waits for it.
+        else if (!run.ctrl.signal.aborted) setTimeout(() => void compactAfterRun(chatId, () => runs.has(chatId)).catch(() => {}), 1500);
+      }, 0);
       // After the listeners, and outside this run's stack: a hook may start another run.
       for (const h of endHooks) {
         setTimeout(() => {

@@ -835,6 +835,8 @@ export default function ChatView({ id }: { id: string }) {
   };
   const [status, setStatus] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
+  // Messages sent while the bots work: shown here until the working bot reads them (lib/steer.ts).
+  const [queued, setQueued] = useState<{ id: string; text: string }[]>([]);
   /** The group whose request is being answered from this chat (its card's buttons wait). */
   const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -881,6 +883,7 @@ export default function ChatView({ id }: { id: string }) {
         else entries.push(ev.entry);
         return { ...c, entries };
       });
+      setQueued((q) => (q.some((x) => x.id === ev.entry.id) ? q.filter((x) => x.id !== ev.entry.id) : q));
     } else if (ev.type === "status") setStatus((s) => ({ ...s, [ev.entryId]: ev.text }));
     else if (ev.type === "approval") setChat((c) => c && { ...c, pending: { ...(c.pending ?? { queue: [], turnsLeft: 0 }), approval: ev.approval } });
     else if (ev.type === "error") setError(ev.error);
@@ -1177,7 +1180,11 @@ export default function ChatView({ id }: { id: string }) {
 
   function send(text: string) {
     const t = text.trim();
-    if ((!t && !readyFiles.length) || running) return;
+    if (!t && !readyFiles.length) return;
+    if (running) {
+      void sendWhileWorking(t);
+      return;
+    }
     if (uploading) {
       setFileErr(tr("attach.wait"));
       return;
@@ -1203,6 +1210,43 @@ export default function ChatView({ id }: { id: string }) {
     setUploads([]);
     setFileErr(null);
     void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, plan: planMode, ...(attachments.length ? { attachments } : {}) }) });
+  }
+
+  /** A message written while the bots work: it waits for their next step, shown under the conversation meanwhile. */
+  async function sendWhileWorking(t: string) {
+    if (uploading) {
+      setFileErr(tr("attach.wait"));
+      return;
+    }
+    const entryId = `m${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+    const attachments = readyFiles.map((u) => u.att!.id);
+    setInput("");
+    setMentionQ(null);
+    setSlashQ(null);
+    setError(null);
+    for (const u of uploads) if (u.preview) URL.revokeObjectURL(u.preview);
+    setUploads([]);
+    setQueued((q) => [...q, { id: entryId, text: t || tr("chat.queuedFiles") }]);
+    stick.current = true;
+    try {
+      const r = await fetch(`/api/chats/${id}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, entryId, ...(attachments.length ? { attachments } : {}) }) });
+      if (r.status === 202) return;
+      // The run ended meanwhile: this started a new one; follow it like any message.
+      if (r.ok && r.body) {
+        setQueued((q) => q.filter((x) => x.id !== entryId));
+        void r.body.cancel().catch(() => {});
+        void stream();
+        return;
+      }
+      const j = (await r.json().catch(() => null)) as { error?: string } | null;
+      setQueued((q) => q.filter((x) => x.id !== entryId));
+      setInput(t);
+      setError(j?.error ?? tr("chat.queuedFailed"));
+    } catch (e) {
+      setQueued((q) => q.filter((x) => x.id !== entryId));
+      setInput(t);
+      setError((e as Error).message);
+    }
   }
 
   /** Plan mode: run the proposed plan with the user's edited steps, or cancel it. */
@@ -1628,6 +1672,16 @@ export default function ChatView({ id }: { id: string }) {
               )}
             </div>
           )}
+          {queued.length > 0 && (
+            <ul className="queued-msgs" aria-live="polite">
+              {queued.map((q) => (
+                <li key={q.id}>
+                  <span className="queued-text">{q.text}</span>
+                  <span className="queued-note">{t(running ? "chat.queuedNote" : "chat.queuedNext")}</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <form
             className="composer"
             onSubmit={(e) => {
@@ -1664,7 +1718,11 @@ export default function ChatView({ id }: { id: string }) {
               placeholder={isGroup ? t("chat.placeholderGroupSlash", { name: chat.name }) : t("chat.placeholderSoloSlash", { name: solo?.name ?? t("chat.theBot") })}
               aria-label={t("chat.message")}
             />
-            {running ? (
+            {running && (input.trim() || readyFiles.length) ? (
+              <button type="submit" className="send" disabled={uploading} title={t("chat.sendWhileWorking")} aria-label={t("chat.send")}>
+                <Icon name="send" />
+              </button>
+            ) : running ? (
               <button type="button" className="send stop" onClick={stop} title={t("chat.stopTitle")} aria-label={t("chat.stop")}>
                 <Icon name="stop" />
               </button>

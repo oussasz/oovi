@@ -2,7 +2,7 @@ import { getAttachment, MAX_ATTACHMENTS } from "@/lib/attachments";
 import { guard } from "@/lib/guard";
 import type { RunInput } from "@/lib/orchestrator";
 import type { Attachment, Effort } from "@/lib/types";
-import { eventStream, startRun, stopRun } from "@/lib/runner";
+import { eventStream, startRun, steerRun, stopRun } from "@/lib/runner";
 import { getChat } from "@/lib/store";
 
 export const runtime = "nodejs";
@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown; entryId?: unknown } | null;
   let input: RunInput;
   // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
   const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (typeof body?.text === "string" && (body.text.trim() || attachments.length)) {
     if (body.text.length > 20_000) return Response.json({ error: "Message is too long." }, { status: 400 });
     const effort = ["auto", "low", "medium", "high", "max"].includes(String(body.effort)) ? (body.effort as Effort) : undefined;
-    input = { text: body.text.trim(), effort, deep: body.deep === true, plan: body.plan === true, ...(attachments.length ? { attachments } : {}) };
+    input = { text: body.text.trim(), effort, deep: body.deep === true, plan: body.plan === true, ...(attachments.length ? { attachments } : {}), ...(typeof body.entryId === "string" ? { entryId: body.entryId.slice(0, 40) } : {}) };
   } else if (body?.planDecision && typeof body.planDecision === "object") {
     const d = body.planDecision as { approve?: unknown; items?: unknown };
     const items = Array.isArray(d.items) ? d.items.filter((x): x is string => typeof x === "string").slice(0, 20) : [];
@@ -51,7 +51,11 @@ export async function POST(req: Request, { params }: Ctx) {
     return Response.json({ error: "Send {text}, {decisions}, {planDecision} or {answers}." }, { status: 400 });
   }
 
-  if (!startRun(id, input)) return Response.json({ error: "The bots are still working on the last message." }, { status: 409 });
+  if (!startRun(id, input)) {
+    // Bots at work: a new message waits for their next step instead of being refused (lib/steer.ts).
+    if (typeof input.text === "string" && steerRun(id, input)) return Response.json({ queued: true }, { status: 202 });
+    return Response.json({ error: "The bots are still working on the last message." }, { status: 409 });
+  }
   return eventStream(id, req);
 }
 

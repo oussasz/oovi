@@ -19,7 +19,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { onReport, waitingGroupTasks } from "./delegations";
 import { plainText } from "./delegations-core";
-import { isRunning, onRunEnd, startRun, stopRun, subscribe, whenIdle } from "./runner";
+import { isRunning, onRunEnd, startRun, steerRun, stopRun, subscribe, whenIdle } from "./runner";
 import { takeTelegramFollowUp } from "./telegram-followups";
 import { listRoutines } from "./routines";
 import { dataDir, decryptSecret, encryptSecret, loadSettings } from "./settings";
@@ -427,7 +427,11 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   const typing = setInterval(() => void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {}), 4500);
   void tg(tok, "sendChatAction", { chat_id: chatId, action: "typing" }).catch(() => {});
   try {
-    if (!startRun(id, { ...input, channel: "telegram", telegramChatId: chatId })) return say(tok, chatId, tr("tg.busy", { name: target.group ? `"${name}"` : name }));
+    if (!startRun(id, { ...input, channel: "telegram", telegramChatId: chatId })) {
+      // Already working: the message is read at the bot's next step (lib/steer.ts); the answer comes as usual.
+      if (typeof input.text === "string" && steerRun(id, { ...input, channel: "telegram", telegramChatId: chatId })) return say(tok, chatId, tr("tg.steered", { name: target.group ? `"${name}"` : name }));
+      return say(tok, chatId, tr("tg.busy", { name: target.group ? `"${name}"` : name }));
+    }
     await waitDone(id);
   } finally {
     clearInterval(typing);
