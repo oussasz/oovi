@@ -9,6 +9,7 @@ import path from "node:path";
 import { checkUrl, downloadsDir, launchLocal } from "./browser";
 import { creditLine, commonsUrl, stripDownloadsPrefix, openverseUrl, parseCommons, parseOpenverse, photoQuery, sniffImage, validImage, type ImageInfo, type Orientation, type PhotoCandidate } from "./media";
 import { loadSettings, type BrowserConfig } from "./settings";
+import { cloud, sessionToken } from "./account";
 import type { Workspace } from "./types";
 import { resolveInWorkspace } from "./workspace";
 
@@ -214,7 +215,7 @@ export async function findPhoto(query: string, orientation: Orientation = "any",
 
 // ---------- optional AI photos (the user's own key) ----------
 
-export function aiPhotoProvider(): "openai" | "gemini" | null {
+export function aiPhotoProvider(): "openai" | "gemini" | "oovi" | null {
   try {
     const s = loadSettings();
     if (s.providers.openai?.apiKey) return "openai";
@@ -222,7 +223,8 @@ export function aiPhotoProvider(): "openai" | "gemini" | null {
   } catch {
     /* no settings yet */
   }
-  return null;
+  // Signed in to oovi: theOovi's free AI pictures (web/lib/imagegen.ts), paid in credits at cost.
+  return sessionToken() ? "oovi" : null;
 }
 
 /** Generate a photo with OpenAI (gpt-image-1) or Gemini, whichever key the user added. */
@@ -260,8 +262,12 @@ export async function aiPhoto(prompt: string, shape: Orientation, signal?: Abort
     if (!res.ok || !b64) throw new Error(`Gemini image: ${j.error?.message ?? res.status}`);
     data = Buffer.from(b64, "base64");
     by = "AI image (Gemini)";
+  } else if (sessionToken()) {
+    const r = await cloud<{ image: string }>("/api/v1/ai/image", { method: "POST", auth: true, body: { prompt: `${clean}. No text in the image.`, shape: shape === "wide" ? "landscape" : shape === "tall" ? "portrait" : "square" } });
+    data = Buffer.from(r.image, "base64");
+    by = "AI image (oovi)";
   } else {
-    throw new Error("AI photos need an OpenAI or Google Gemini API key in Settings.");
+    throw new Error("AI photos need an oovi account (sign in) or an OpenAI or Google Gemini API key in Settings.");
   }
   const info = sniffImage(data);
   if (!validImage(info)) throw new Error("The AI provider didn't return a picture.");

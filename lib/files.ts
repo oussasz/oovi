@@ -150,12 +150,12 @@ export const DOC_SPECS: ToolSpec[] = [
   {
     name: "create_image",
     description:
-      "Design a finished picture (PNG) from text, colors and an optional photo: a social media post, poster/flyer, quote card or simple infographic (stats, steps or a small chart). Use it whenever the user wants an image, visual, graphic, flyer or a picture for a post (Facebook, Instagram, WhatsApp status, story...). Arabic and Hebrew are laid out right-to-left automatically. Keep the text short: a headline plus a few words. The photo can be a free photo (`photo.search`, English keywords work best), a picture in the project folder or Downloads/oovi (`photo.path`), or an AI-generated photo (`photo.ai_prompt`, only when the user added an OpenAI or Gemini key; it costs them a little).",
+      "Design a finished picture (PNG) from text, colors and an optional photo: a social media post, poster/flyer, quote card or simple infographic (stats, steps or a small chart). Use it whenever the user wants an image, visual, graphic, flyer or a picture for a post (Facebook, Instagram, WhatsApp status, story...). Arabic and Hebrew are laid out right-to-left automatically. Keep the text short: a headline plus a few words. The photo can be a free photo (`photo.search`, English keywords work best), a picture in the project folder or Downloads/oovi (`photo.path`), or an AI-generated photo (`photo.ai_prompt`: describe the scene in English, no text in it; made with oovi's AI pictures for a fraction of a credit, or the user's own OpenAI/Gemini key). For a picture alone with no text, use style picture (no headline needed).",
     parameters: {
       type: "object",
       properties: {
         filename: { type: "string", description: "e.g. 'Facebook post.png' (.png or .jpg)" },
-        style: { type: "string", enum: ["post", "poster", "quote", "infographic"], description: "post (default): headline + short text; poster: big centered headline, photo on top; quote: a quotation, author in subheadline; infographic: big stat figures, a timeline of steps, or a chart, with icons" },
+        style: { type: "string", enum: ["post", "poster", "quote", "infographic", "picture"], description: "picture: just the photo, full size, no text (an AI picture from photo.ai_prompt, or a free photo); post (default): headline + short text; poster: big centered headline, photo on top; quote: a quotation, author in subheadline; infographic: big stat figures, a timeline of steps, or a chart, with icons" },
         size: { type: "string", enum: ["square", "portrait", "landscape", "story"], description: "square 1080x1080 (Facebook/Instagram post, default), portrait 1080x1350 (Instagram), landscape 1920x1080 (slides, YouTube, X), story 1080x1920 (stories, reels, WhatsApp status)" },
         headline: { type: "string", description: "The main text (short)" },
         subheadline: { type: "string", description: "Second line; for quotes, the author" },
@@ -172,13 +172,13 @@ export const DOC_SPECS: ToolSpec[] = [
           properties: {
             search: { type: "string", description: "Free photo to look for, e.g. 'latte art coffee cup'" },
             path: { type: "string", description: "A picture in the project folder or Downloads/oovi" },
-            ai_prompt: { type: "string", description: "Describe a photo to generate with the user's own OpenAI/Gemini key (no text in it)" },
+            ai_prompt: { type: "string", description: "Describe a picture to generate (best in English; no text in it)" },
           },
         },
         photo_layout: { type: "string", enum: ["background", "top", "side"], description: "Where the photo goes (default depends on style and size)" },
         align: { type: "string", enum: ["start", "center"] },
       },
-      required: ["filename", "headline"],
+      required: ["filename"],
     },
   },
   {
@@ -961,6 +961,7 @@ async function createImage(call: ToolCall, ws: Workspace | undefined, browser: B
   const { abs, shown } = outputPath(String(i.filename ?? ""), ws, ".png");
   const ext = path.extname(abs).toLowerCase();
   if (![".png", ".jpg", ".jpeg"].includes(ext)) return { id: call.id, name: call.name, content: `create_image makes .png or .jpg files, not ${ext}.`, isError: true };
+  if (i.style === "picture") return await pictureOnly(call, abs, shown, ext, ws, browser);
   const pre = normalizeCard(i, false);
   if (typeof pre === "string") return { id: call.id, name: call.name, content: pre, isError: true };
   let chart: ChartData | undefined;
@@ -980,11 +981,11 @@ async function createImage(call: ToolCall, ws: Workspace | undefined, browser: B
     picture = loadLocalPicture(photo.path, ws);
   } else {
     if (typeof photo.ai_prompt === "string" && photo.ai_prompt.trim()) {
-      if (!aiPhotoProvider()) notes.push("No AI photo: that needs an OpenAI or Google Gemini API key in Settings.");
+      if (!aiPhotoProvider()) notes.push("No AI photo: that needs an oovi account (signed in) or an OpenAI or Google Gemini API key in Settings.");
       else {
         try {
           picture = await aiPhoto(photo.ai_prompt, shape);
-          notes.push(`The photo was generated with the user's own ${picture.source?.includes("Gemini") ? "Gemini" : "OpenAI"} key.`);
+          notes.push(picture.source?.includes("oovi") ? "The photo was generated with oovi's AI pictures (a fraction of a credit)." : `The photo was generated with the user's own ${picture.source?.includes("Gemini") ? "Gemini" : "OpenAI"} key.`);
         } catch (e) {
           notes.push(`No AI photo (${(e as Error).message.slice(0, 200)}).`);
         }
@@ -1009,6 +1010,39 @@ async function createImage(call: ToolCall, ws: Workspace | undefined, browser: B
   fs.writeFileSync(abs, png);
   const res = done(call, abs, shown, `an image (${spec.width}×${spec.height} ${ext === ".png" ? "PNG" : "JPEG"}${spec.dir === "rtl" ? ", right-to-left" : ""})`);
   return notes.length ? { ...res, content: `${res.content}\n${notes.join("\n")}` } : res;
+}
+
+/** style "picture": the photo alone, full size (an AI picture, the user's file, or a free photo). */
+async function pictureOnly(call: ToolCall, abs: string, shown: string, ext: string, ws: Workspace | undefined, browser: BrowserConfig): Promise<ToolResult> {
+  const i = call.input;
+  const sizes: Record<string, [number, number]> = { square: [1080, 1080], portrait: [1080, 1350], landscape: [1920, 1080], story: [1080, 1920] };
+  const [width, height] = sizes[String(i.size ?? "square")] ?? sizes.square!;
+  const photo = (i.photo && typeof i.photo === "object" ? i.photo : typeof i.photo === "string" ? { ai_prompt: i.photo } : {}) as Record<string, unknown>;
+  const shape = orientationFor(width, height);
+  const bad = (m: string) => ({ id: call.id, name: call.name, content: m, isError: true });
+  let picture: Picture | undefined;
+  let note = "";
+  try {
+    if (typeof photo.path === "string" && photo.path.trim()) picture = loadLocalPicture(photo.path, ws);
+    else if (typeof photo.ai_prompt === "string" && photo.ai_prompt.trim()) {
+      if (!aiPhotoProvider()) return bad("AI pictures need an oovi account (signed in) or an OpenAI or Google Gemini API key in Settings.");
+      picture = await aiPhoto(photo.ai_prompt, shape);
+      note = picture.source?.includes("oovi") ? "Made with oovi's AI pictures (a fraction of a credit)." : "Made with the user's own key.";
+    } else if (typeof photo.search === "string" && photo.search.trim()) {
+      const found = await findPhoto(photo.search, shape, { allowWebp: true });
+      if (!found.picture) return bad(`No free photo found for "${photo.search.slice(0, 60)}" (${found.error ?? "not found"}). Try other words, or photo.ai_prompt.`);
+      picture = found.picture;
+      note = `${found.picture.credit} — ${found.picture.source}. Keep the credit when posting.`;
+    } else return bad('style "picture" needs photo.ai_prompt (describe the picture), photo.search or photo.path.');
+  } catch (e) {
+    return bad(`The picture couldn't be made: ${(e as Error).message.slice(0, 300)}`);
+  }
+  const html = `<!doctype html><html><body style="margin:0;width:${width}px;height:${height}px;overflow:hidden;background:#000"><img src="${pictureDataUri(picture)}" style="width:100%;height:100%;object-fit:cover;display:block"></body></html>`;
+  const out = await renderHtml(html, width, height, browser, ext === ".png" ? "png" : "jpeg");
+  fs.mkdirSync(path.dirname(abs), { recursive: true });
+  fs.writeFileSync(abs, out);
+  const res = done(call, abs, shown, `a picture (${width}×${height})`);
+  return { ...res, content: `${res.content}\n${note}` };
 }
 
 // ---------- reading Office files ----------

@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { requireAdmin } from "@/lib/admin";
 import { EFFORTS, getAiConfig, getPilotConfig, getPlans, providerKeyInfo } from "@/lib/ai-config";
 import { sttKeyInfo } from "@/lib/speech";
+import { imageKeyInfo } from "@/lib/imagegen";
 import { AI_PERIOD_LABELS, AI_PERIODS, getAiStats, parseAiPeriod, type AiPeriod } from "@/lib/ai-stats";
 import { BarChart, LineChart } from "@/components/admin/Charts";
 import { ActionForm } from "@/components/admin/ActionForm";
@@ -11,7 +12,7 @@ import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
 import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDateTime, fmtInt, fmtNumber, fmtPct, fmtUsd } from "@/components/admin/format";
-import { removeProviderKey, removeSttKey, replaceProviderKey, replaceSttKey, saveAiSettings, savePilotSettings, savePlansAction, setPaused } from "./actions";
+import { removeProviderKey, removeImageKey, removeSttKey, replaceImageKey, replaceProviderKey, replaceSttKey, saveAiSettings, savePilotSettings, savePlansAction, setPaused } from "./actions";
 import { PlansEditor } from "./PlansEditor";
 
 export const dynamic = "force-dynamic";
@@ -40,7 +41,7 @@ const usdPerCredit = (creditsPerUsd: number) => {
 export default async function AdminAi({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parseAiPeriod((await searchParams).period);
-  const [cfg, plans, pilot, key, s, stt] = await Promise.all([getAiConfig(), getPlans(), getPilotConfig(), providerKeyInfo(), getAiStats(period), sttKeyInfo()]);
+  const [cfg, plans, pilot, key, s, stt, img] = await Promise.all([getAiConfig(), getPlans(), getPilotConfig(), providerKeyInfo(), getAiStats(period), sttKeyInfo(), imageKeyInfo()]);
   const c = s.current;
   const p = s.previous;
   const budgetShare = cfg.dailyBudgetUsd > 0 ? s.todayCostUsd / cfg.dailyBudgetUsd : null;
@@ -412,6 +413,28 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
           {stt.source === "console" && (
             <div style={{ marginTop: 14 }}>
               <ActionForm action={removeSttKey} className="adm-form" submitLabel="Remove saved key" pendingLabel="Removing…" submitClassName="btn btn-ghost btn-sm" confirm="Remove the voice notes key? Voice notes stop working unless an environment variable is set." />
+            </div>
+          )}
+        </Section>
+
+        <Section title="AI pictures" sub="Pictures drawn from a description (FLUX.1 schnell on Cloudflare Workers AI). A free Cloudflare account covers about 200 pictures a day for all users together; above that, pictures stop until midnight UTC (or switch the account to Workers Paid, about $0.0005 a picture). Users pay in credits at cost. Without a key, bots keep making designed pictures (cards, posters) as before.">
+          <dl className="adm-dl" style={{ marginBottom: 16 }}>
+            <dt>Source</dt>
+            <dd>{img.source === "console" ? "Saved in this console" : img.source === "env" ? "CF_ACCOUNT_ID / CF_API_TOKEN environment variables" : "None: AI pictures are off."}</dd>
+            <dt>Key</dt>
+            <dd className="adm-mono">{img.hint ?? "–"}</dd>
+          </dl>
+          <ActionForm action={replaceImageKey} submitLabel={img.source === "none" ? "Save" : "Replace"} resetOnSuccess>
+            <Field id="img-account" label="Cloudflare Account ID" help="32 letters and numbers: Cloudflare dashboard > Workers AI (or the right side of the dashboard's home page).">
+              <input id="img-account" name="accountId" className="input adm-mono" spellCheck={false} maxLength={64} required />
+            </Field>
+            <Field id="img-token" label="API token" help="Cloudflare > My Profile > API Tokens > Create Token > template “Workers AI”. Stored encrypted, never shown again.">
+              <input id="img-token" name="token" className="input adm-mono" type="password" autoComplete="new-password" spellCheck={false} maxLength={300} required />
+            </Field>
+          </ActionForm>
+          {img.source === "console" && (
+            <div style={{ marginTop: 14 }}>
+              <ActionForm action={removeImageKey} className="adm-form" submitLabel="Remove saved key" pendingLabel="Removing…" submitClassName="btn btn-ghost btn-sm" confirm="Remove the AI pictures key? AI pictures stop working unless the environment variables are set." />
             </div>
           )}
         </Section>

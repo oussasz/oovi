@@ -1,5 +1,6 @@
 "use server";
 
+import { ACCOUNT_RE, saveImageKey } from "@/lib/imagegen";
 import { revalidatePath } from "next/cache";
 import { requireAdmin } from "@/lib/admin";
 import { pool } from "@/lib/db";
@@ -306,4 +307,35 @@ export async function removeSttKey(): Promise<ActionState> {
   }
   revalidatePath("/admin/ai");
   return { ok: "Voice notes key removed." };
+}
+
+// ---------- AI pictures (Cloudflare Workers AI) ----------
+
+export async function replaceImageKey(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const accountId = fdStr(fd, "accountId", 64).trim().toLowerCase();
+  const token = fdStr(fd, "token", 300).trim();
+  if (!ACCOUNT_RE.test(accountId)) return { errors: ["The Account ID is 32 letters and numbers (Cloudflare dashboard > Workers AI, or the right side of the dashboard's home page)."] };
+  if (token.length < 30) return { errors: ["Paste the API token (Cloudflare > My Profile > API Tokens > Create Token > template “Workers AI”)."] };
+  try {
+    await saveImageKey({ accountId, token }, admin.email);
+    await audit(admin.email, "ai.image.replace", "ai", { account4: accountId.slice(-4), last4: token.slice(-4) });
+  } catch (err) {
+    console.error("image key save failed", err instanceof Error ? err.message : "unknown error");
+    return { errors: ["Could not save the key. Check that AI_KEY_SECRET (or BETTER_AUTH_SECRET) is set on the server."] };
+  }
+  revalidatePath("/admin/ai");
+  return { ok: "Saved. AI pictures work within about 15 seconds." };
+}
+
+export async function removeImageKey(): Promise<ActionState> {
+  const admin = await requireAdmin();
+  try {
+    await saveImageKey(null, admin.email);
+    await audit(admin.email, "ai.image.remove", "ai", null);
+  } catch {
+    return { errors: ["Could not remove the key. Please try again."] };
+  }
+  revalidatePath("/admin/ai");
+  return { ok: "AI pictures key removed." };
 }
