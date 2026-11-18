@@ -115,6 +115,58 @@ it, "Turn on" says "Sync isn't available on oovi's server yet" and nothing else 
 - **Before release.** Website (part W) deployed first; privacy page and terms rewritten (part W/owner, the
   in-app text already says the server can open chats to run tasks); the owner decides when.
 
+## Cloud R: the cloud runner and its servers (branch `cloud-runner`, 2026-11-18, not released, nothing deployed)
+Contract: `docs/CLOUD-BUILD.md` (runner additions in its "Changes" note). Plain steps for servers: `infra/MOVING.md`.
+- **What it is.** `runner/index.mjs`: claims a job from the website (`POST /api/v1/cloud/runner/claim`), runs it in
+  the app's OWN built server (`.next/standalone`, started by `runner/job-server.cjs` with `OOVI_CLOUD_RUNNER=1`) on a
+  fresh folder per job, drives it over the process's IPC channel (`lib/cloud-runner.ts`: prepare / connectors / run /
+  chat / finish), pushes the chat after each step (at most every 2 s, merged by entry id on 409), heartbeats the
+  lease every 30 s, ends the job, wipes the folder. No public port. Settings: env (see the top of runner/index.mjs).
+- **Security.** The job's server never gets RUNNER_SECRET: it gets a token for its own account only, accepted by the
+  runner's local proxy (`runner/proxy.mjs`), which allows theOovi calls (billed to that account), that account's setup
+  and the public catalog, nothing else. Its HTTP API is locked with a launch secret nobody has. In the cloud the
+  settings are theOovi only, no keys, no local network (`lib/settings.ts` cloudOnly); connectors run only with a
+  public https address (`lib/mcp.ts`), only those the chat's bots use are fetched from the vault. Logs are JSON
+  events with a whitelist of fields (`runner/core.mjs` logLine): no chat text, no names, account ids hashed.
+  The container: read-only, no capabilities, user `node`, /tmp in memory; setup.sh blocks the cloud's metadata
+  addresses for containers and lets only SSH in.
+- **Computer steps.** An allow-list (`lib/cloud-runner-core.ts`): web search, research, read_url, places, papers,
+  work tables/notes, routines, memory, skills, Telegram, questions/plans, connectors (mcp_). Anything else (files,
+  desktop, the bots' browser, documents, the user's own cloud computer, other chats, tools added later) → the step
+  isn't run, the bot answers in the user's language (Arabic, Darija, French, English; written by oovi, no model
+  call) "This needs your computer: open oovi on it and I'll do it", the job ends `needs_computer`.
+- **Hooks in the app** (all off unless `OOVI_CLOUD_RUNNER=1`): instrumentation.ts (no desktop background work),
+  orchestrator (the computer-step stop; no self-learning call after a cloud run), runner.ts (no summary call after
+  a cloud run: the server ends with the job), settings, mcp, setup-sync (`pullSetup`). No text added to bot
+  instructions or tool descriptions.
+- **Retries.** A released or retried job removes its own message and the answers after it before running again
+  (`resetForRetry`), so a message is never in the chat twice. SIGTERM: jobs get 20 s, then stop, push, release.
+- **Image.** `runner/Dockerfile` (amd64 + arm64; 606 MB), `.github/workflows/runner-image.yml` → `ghcr.io/oussasz/oovi-runner`
+  (by hand, and on push to main touching runner/, lib/, app/…). `infra/docker-compose.yml`, `infra/setup.sh`
+  (one command on any Ubuntu 22.04/24.04), `infra/azure/create.sh | allow-ssh.sh | delete.sh`.
+- **Size (recommended for the trial): Azure Standard_B1ms** (1 vCPU, 2 GiB), 2 jobs at a time. Measured: one job's
+  server peaks at ~214 MB, runner + 2 jobs ~410 MB. Azure price list read 2026-11-18 (prices.azure.com, France
+  Central, Linux, pay as you go): B1ms $0.0236/h ≈ $17.23/month, Standard SSD E4 $2.64/month, static IPv4
+  $0.005/h ≈ $3.65/month → **≈ $23.50/month**. The student credit (~$43) lasts under 2 months if left on: delete
+  after each trial. Lasting, busier: B2als_v2 (2 vCPU, 4 GiB) ≈ $31/month for the VM.
+- **Verified here:** `npx tsc --noEmit`; unit tests 347/347 (new: cloud-runner, runner-core, runner-infra); `npm run build`;
+  `node tests/e2e/runner-scenario.cjs` 22/22, with the runner as Node AND as the Docker image (read-only, no caps):
+  phone message answered and pushed, needs-computer in French with no extra model call, two accounts at once
+  isolated (each theOovi call sees only its own bots and memory; the job server's environment has no secret;
+  folders wiped), SIGTERM releases the lease and the job reruns once, logs without chat text; cost scenario
+  unchanged (weighted 169,901, 11/11); the image's health check; shellcheck on the scripts.
+- **NOT verified:** the real website API (part W isn't built yet: tested against a stand-in), a real theOovi, real
+  connectors from a vault, `infra/setup.sh` on a real Ubuntu server (only syntax/lint and a test that it installs
+  exactly infra/docker-compose.yml; a run in a system container was not possible here), `infra/azure/*.sh` (no
+  Azure here), the GitHub workflow (not run yet), arm64 image.
+- **Known limits.** Local (stdio) connectors don't run in the cloud and their tools simply aren't offered (no
+  needs_computer for them). Desktop control isn't offered in the cloud (asking for it gets the bot's own answer, not
+  needs_computer). Telegram sending needs the user's bot token, which stays on the computer. Work tables survive only
+  if part A carries the chat's `work` field. Groups led by the main bot (message_group) need the computer.
+- **Owner steps (when he says so):** run the "Runner image" workflow (Actions tab), decide whether the image is public
+  (it holds the same code as the desktop app) or private (token on the server); set RUNNER_SECRET on the website; then
+  `infra/azure/create.sh` with the main session.
+
 ## 0.12.3 (released 2026-11-18, owner said "build the version and publish it, minor update")
 - One answer per question (owner: 5 messages for "anything new in my email or calendar?", long waits, "correction: I told you before…"). Causes: the done-check's extra rounds each posted a new message and the bot thought the user had read its draft; optional offers ("shall I draft a reply?", "shall I check again?") counted as unfinished; the bot answered from snippets before checking. Now: an extra round continues IN the same reply (`pending.continueIn`, `BotEntry.held`; the draft stays in the steps for the model, the user sees only the final text; the bot is told the user never saw the draft, `UNSEEN_DRAFT`); offers of extras are "done" (`DONE_CHECK_SYSTEM`); ordinary requests get one extra round at most (big jobs keep 4); rule "look everything up first, then answer once" in FOR_THE_USER. bigjob scenario K (42/42). Cost job 169,901 (safety CAPTCHA bullet shortened to fit). NOT checked with a real model on a real inbox.
 

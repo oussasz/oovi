@@ -4,6 +4,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { accountDir, baseDir, currentSession } from "./account";
 import { PROVIDER_IDS, PROVIDERS, type ProviderId } from "./providers-meta";
+import { cloudRunner } from "./cloud-flag";
 
 /** model: this provider's default model. models: the models the user switched on (bots pick from these). */
 export type ProviderConfig = { apiKey?: string; baseUrl?: string; model?: string; models?: string[] };
@@ -148,6 +149,18 @@ function decrypt(stored: string): string {
 
 /** Settings as stored on disk (API keys still encrypted). */
 function readRaw(): Settings {
+  return cloudRunner() ? cloudOnly(readFile()) : readFile();
+}
+
+/**
+ * The cloud runner (runner/, OOVI_CLOUD_RUNNER=1): theOovi only (the user's own keys never leave their
+ * computer), no local network for the bots (the server's own addresses), no cloud computer on a user's key.
+ */
+function cloudOnly(s: Settings): Settings {
+  return { ...s, active: "oovi", providers: {}, fallbacks: [], sandbox: undefined, search: { provider: "auto", searxngUrl: DEFAULTS.search.searxngUrl }, browser: { ...s.browser, allowPrivateNetwork: false } };
+}
+
+function readFile(): Settings {
   try {
     const j = JSON.parse(fs.readFileSync(settingsFile(), "utf8")) as Partial<Settings>;
     return {

@@ -1,0 +1,8 @@
+{
+  "name": "oovi-runner",
+  "private": true,
+  "type": "module",
+  "description": "oovi's cloud runner: phone tasks while the user's computer is off (no dependencies beyond the app's built server).",
+  "scripts": { "start": "node index.mjs" },
+  "engines": { "node": ">=22" }
+}

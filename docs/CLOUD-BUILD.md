@@ -154,3 +154,36 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   `message {text, effort?, deep?, plan?, entryId?, replyTo?}`, `decision {decisions, allowChat?} | {planDecision}
   | {answers}` and `stop`, never "always allow" for folders or edits; the vault item carries `bots: string[]`
   (which bots use the connector).
+- 2026-11-18, part R (runner), additions only, nothing removed. Everything below is under `/api/v1/cloud/runner`,
+  header `x-oovi-runner: <RUNNER_SECRET>` (403 without it), JSON, `cache-control: no-store`. The runner holds no
+  database credentials and never logs chat content. Built and tested against a stand-in in
+  `tests/e2e/runner-scenario.cjs` (the stand-in there is the exact shape the runner expects).
+  - `POST /claim {runnerId, exclude?: userId[]}` → `{job: {id, userId, chatId, kind, payload, createdAt, timezone?, userName?} | null}`.
+    `payload` unsealed. `exclude`: accounts that already have a job on this runner (fairness; one job per account at
+    a time by default). `timezone` (IANA, optional): the job's server runs in it ("today", routine times); else UTC.
+    `userName` (optional): what the bots call the user. Claim rule as above (older than 5 s and no online desktop,
+    or a cloud-only chat); lease 120 s; marks `cloud_device` `runner:<runnerId>`.
+  - `POST /jobs/<id>/heartbeat` → 200, or 404/409/410 when this runner no longer holds the lease (it then stops the run
+    and pushes nothing more). Sent every 30 s.
+  - `POST /jobs/<id>/done {status: 'done'|'needs_computer'|'failed', error?}`: `error` is a short code
+    (`timeout`, `server_start`, `setup`, `chat_not_found`, `server_crash`, `error`), never text from the chat.
+  - `POST /jobs/<id>/release` → the job goes back to `queued` (lease cleared): the runner is stopping (SIGTERM) or
+    can't take it now. 404/409 when the lease is not this runner's.
+  - `GET /setup/<userId>` and `PUT /setup/<userId> {baseVersion, items}` → exactly like `GET/PUT /api/v1/setup`
+    (`{version, items}`, `{version}` or 409). A job's memory, routines and lessons go back to the account this way.
+  - `PUT /vault/<userId>/<connectorId> {baseVersion, data}` → `{version}` or 409: a connector's sign-in refreshed
+    during a job (services that rotate refresh tokens would otherwise lock the computer out).
+  - `POST /ai/<userId>`: same request and answers as `/api/v1/ai/messages` (errors `{error, code}` with their status,
+    `retry-after` on 429), billed to that account.
+  - Vault `data` (written by part A, read by the runner): `{name, transport: 'http', url, headers?: {name: value},
+    auth?: 'oauth', oauth?: {clientInfo, tokens, …} (lib/mcp-oauth.ts OAuthData), enabled, trusted}`. The runner
+    fetches only the connectors the chat's bots use. A connector that runs as a program on the computer (stdio) or
+    at a private address is never run in the cloud.
+  - Chat JSON may carry `work` (the chat's work tables and notes, `WorkStore` of lib/workfiles-core.ts): the runner
+    reads it and sends it back with the chat. Part A: save it to `work/<chatId>.json` and send it with the chat, so
+    tables made in the cloud are not lost (optional; without it they are lost after the job).
+  - A message job's user entry gets the id `payload.entryId`, or `j<job id without dashes, 24 chars>` when the phone
+    gives none. A job run again (released, lease lost, or a `needs_computer` job picked up by the desktop) first
+    removes that entry and the bots' answers after it, then runs the message again: it is never in the chat twice.
+    Part A: do the same when the desktop runs a `needs_computer` job (the cloud's "This needs your computer" reply
+    is one of those answers).

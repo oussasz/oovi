@@ -54,6 +54,8 @@ import { overCap, runCap } from "./spend-core";
 import { getRoutine } from "./routines";
 import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
+import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
+import { firstNeedingComputer, needsComputerText, NOT_RUN_IN_CLOUD } from "./cloud-runner-core";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, isReminder, proposalOf, runRoutineTool } from "./routines-tools";
@@ -1268,6 +1270,18 @@ async function* runBot(
         countUsage({ botReplies: 1 });
         return "done";
       }
+      // Cloud runner (runner/, computer off): a step that needs the computer isn't run; oovi says so in the
+      // user's language (no model call) and the job goes back to the computer (lib/cloud-flag.ts).
+      const offCloud = cloudRunner() ? firstNeedingComputer(last.toolCalls) : null;
+      if (offCloud) {
+        entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: NOT_RUN_IN_CLOUD, isError: true })) });
+        entry.text = needsComputerText(replyLocaleOf(lastUserText(chat)));
+        entry.status = "done";
+        chat.pending = undefined;
+        noteNeedsComputer(chat.id, offCloud.name === USE_TOOL ? String(offCloud.input.name ?? USE_TOOL) : offCloud.name);
+        yield { type: "entry", entry };
+        return "waiting";
+      }
       // Auto mode (Settings > Safety): the bot's own plan is approved at once, exactly as if the user had
       // pressed Run, and shown in the chat. A plan asked for with Plan mode still waits for the user.
       const auto = s.approvals.auto === true;
@@ -2220,7 +2234,8 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
   // (Not after a routine's unattended run: the same task every day would only repeat the same lessons.)
   // Problem reports (what failed, what a bot couldn't do) go out whether learning is on or not, and for
   // routines too; they follow their own switch in Settings ("Send crash reports and problems").
-  if (!signal.aborted && !chat.pending) {
+  // (Not in the cloud runner: its server ends with the job, the computer reviews the chat when it syncs.)
+  if (!signal.aborted && !chat.pending && !cloudRunner()) {
     learnLater(chat.id, bots, settings, [...chat.entries].reverse().find((e) => e.kind === "bot")?.id, settings.learning !== false && !input.routine);
   }
 }
