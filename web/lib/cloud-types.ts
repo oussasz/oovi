@@ -54,6 +54,25 @@ export type VaultPutRequest = { baseVersion: number; data: Record<string, unknow
 export type VaultPutResponse = { version: number };
 export type VaultConflict = CloudError & { version: number; data: Record<string, unknown> | null };
 
+/**
+ * A vault entry's data is the app's to shape, with two fields the website itself reads or writes:
+ * `url` (the connector's address, used to start a sign-in from the phone) and `oauth` (written by the sign-in
+ * callback: {clientInfo, tokens, redirectUrl, signedInAt}, the desktop's OAuthData shape; the client was registered
+ * for the website's redirect address, so refreshing uses clientInfo as it is). A connector's own key is allowed;
+ * an AI model key is refused (400).
+ */
+export type VaultData = Record<string, unknown> & { url?: string; oauth?: Record<string, unknown> };
+
+// ---- connectors signed in from the phone ----
+/** POST /connectors/<connectorId>/oauth/start {url?} → {authUrl}: open it in the same browser (the session must match). */
+export type OAuthStartRequest = { url?: string };
+export type OAuthStartResponse = { authUrl: string };
+/**
+ * GET /connectors/oauth/callback (the service sends the browser here) → 303 to /m/connectors?connected=<id>,
+ * or /m/connectors?error=expired|denied|failed|signed_out|sync_off[&id=<id>].
+ */
+export type OAuthReturnError = "expired" | "denied" | "failed" | "signed_out" | "sync_off";
+
 // ---- jobs ----
 export type JobCreateRequest = { chatId: string; kind: JobKind; payload: Record<string, unknown> };
 export type JobCreateResponse = { jobId: string };

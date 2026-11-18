@@ -129,3 +129,37 @@ test("writes with the site's cookie only from the site itself", () => {
   assert.equal(sameOrigin("GET", "https://evil.example", own), true, "reads can't be seen by another site anyway");
   assert.equal(sameOrigin("POST", null, own), true, "the desktop app and the runner send no Origin");
 });
+
+test("connector keys pass, AI model keys never sync", async () => {
+  const { looksLikeAiKey, checkVaultPut } = await import("../../web/lib/cloud-core.ts");
+  assert.equal(looksLikeAiKey({ apiKey: "sk-ant-api03-" + "a".repeat(40) }), true);
+  assert.equal(looksLikeAiKey({ nested: [{ k: "sk-proj-" + "b".repeat(40) }] }), true);
+  assert.equal(looksLikeAiKey({ k: "sk-" + "C".repeat(48) }), true, "an old OpenAI key");
+  assert.equal(looksLikeAiKey({ k: "sk-or-v1-" + "d".repeat(64) }), true);
+  assert.equal(looksLikeAiKey({ k: "gsk_" + "e".repeat(50) }), true);
+  assert.equal(looksLikeAiKey({ notion: "ntn_" + "f".repeat(40), stripe: "sk_live_" + "g".repeat(30), oauth: { tokens: { access_token: "eyJhbGciOi.x.y" } } }), false);
+  assert.equal(looksLikeAiKey({ note: "my key is short sk-ant-x" }), false);
+  assert.equal(typeof checkVaultPut({ baseVersion: 0, data: { key: "sk-ant-api03-" + "a".repeat(40) } }), "string");
+  assert.equal(typeof checkVaultPut({ baseVersion: 0, data: { key: "ntn_" + "f".repeat(40) } }), "object");
+});
+
+test("sign-ins only call public https addresses", async () => {
+  const { checkConnectorUrl, isPrivateAddress } = await import("../../web/lib/cloud-core.ts");
+  for (const ip of ["127.0.0.1", "10.1.2.3", "172.20.0.1", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "::", "fd00::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "not-an-ip"]) {
+    assert.equal(isPrivateAddress(ip), true, ip);
+  }
+  for (const ip of ["8.8.8.8", "172.32.0.1", "100.128.0.1", "2606:4700::1111", "::ffff:1.1.1.1"]) assert.equal(isPrivateAddress(ip), false, ip);
+  assert.ok(checkConnectorUrl("https://mcp.notion.com/mcp") instanceof URL);
+  for (const bad of ["http://mcp.notion.com/mcp", "https://localhost/mcp", "https://10.0.0.1/mcp", "https://[::1]/mcp", "https://user:pw@mcp.example.com", "https://printer.local/x", "ftp://x.com", "nope", 5]) {
+    assert.equal(typeof checkConnectorUrl(bad), "string", String(bad));
+  }
+  assert.ok(checkConnectorUrl("http://127.0.0.1:4000/mcp", ["127.0.0.1:4000"]) instanceof URL, "only the test hosts named in the test setting");
+  assert.equal(typeof checkConnectorUrl("http://127.0.0.1:4001/mcp", ["127.0.0.1:4000"]), "string");
+});
+
+test("after a sign-in, the phone's Connectors page", async () => {
+  const { connectorsReturn } = await import("../../web/lib/cloud-core.ts");
+  assert.equal(connectorsReturn("mcp:notion", { ok: true }), "/m/connectors?connected=mcp%3Anotion");
+  assert.equal(connectorsReturn("mcp:notion", { error: "expired" }), "/m/connectors?error=expired&id=mcp%3Anotion");
+  assert.equal(connectorsReturn(null, { error: "signed_out" }), "/m/connectors?error=signed_out");
+});

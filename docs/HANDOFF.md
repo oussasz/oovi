@@ -25,6 +25,15 @@ goes live.
   `web/lib/ai-messages.ts:238` (`aiMessages`, unchanged except who pays); the old route is now 10 lines and still
   passes. The runner's calls skip the app-signal update and the welcome-credit network check; `/runner/ai` needs sync
   on and an existing credit account (`POST /jobs` creates it from the person's own address).
+- Connectors from the phone (owner's decision, contract 1f0f147): sign-in started on the phone finishes on the
+  website (`web/lib/cloud-oauth.ts`, the MCP SDK's `auth()` like the desktop's `lib/mcp-oauth.ts`; routes
+  `connectors/[connectorId]/oauth/start` and `connectors/oauth/callback`). State: only its hash stored, once, 10
+  minutes, same account and session; verifier sealed in table `cloud_oauth_flow`. The website calls only public
+  https addresses (every request and redirect checked after DNS, `guardedFetch`). Vault refuses AI model keys,
+  accepts a connector's own key. `@modelcontextprotocol/sdk` 1.32.2 and `zod` 4.6.7 added to web (same versions as
+  the app). Tested with a stand-in OAuth service on this machine, NOT with a real service (Notion, Linear…). Open:
+  an iPhone home-screen app may open the sign-in in Safari, which has another session: then the callback says
+  "signed out" (part M must open it inside the app; not checked on an iPhone).
 - Admin: Users list has a "Syncs" column ("Yes · 12 chats · 3.4 MB"), a user's page a "Cloud sync" section (chats,
   size of limit, last sync, devices), Overview a "Cloud sync" count. Never content.
 - NEEDS A LAWYER'S READ: privacy page section "3. Optional cloud sync" (`web/app/privacy/page.tsx:85`; later sections
@@ -32,8 +41,8 @@ goes live.
   (`web/app/terms/page.tsx:117`). LEGAL_LAST_UPDATED set to 2026-11-18; TERMS_VERSION NOT changed (changing it asks
   people to accept again: owner's call). The text describes the feature as built by the contract (phone, runner,
   connector sign-ins used by the server, admin never reads chats as a rule, not a guarantee): publish it only with it.
-- Verified: `npx tsc --noEmit` (web and root) clean; unit tests 338 (337 pass, 1 skipped: the existing live YouTube
-  test), `tests/unit/cloud.test.mts` 10/10; `npm run build` in web OK; `web/scripts/test-cloud.cjs` 98/98 against a
+- Verified: `npx tsc --noEmit` (web and root) clean; unit tests 342 (341 pass, 1 skipped: the existing live YouTube
+  test), `tests/unit/cloud.test.mts` 13/13; `npm run build` in web OK; `web/scripts/test-cloud.cjs` 120/120 (connector sign-ins included) against a
   throwaway PostgreSQL 16 on this machine and the BUILT site (`next start`) with a stand-in AI provider: sync off/on,
   versions and 409, isolation between accounts, 100 MB and 4 MB limits, tombstones, vault, jobs and leases, 16
   claimers at once (each job once), runner gating, needs_computer back to the desktop, runner AI billing, long-poll,

@@ -25,11 +25,11 @@ export const notFound = (what = "This chat") => fail(404, "not_found", `${what} 
  * Rate limits per account (per server instance, like /api/v1/setup). "read" covers lists, gets and long-polls;
  * "claim" the desktop's every-3-seconds claim.
  */
-const LIMITS = { read: [900, 10 * 60_000], write: [400, 10 * 60_000], job: [120, 10 * 60_000], claim: [500, 10 * 60_000], status: [60, 10 * 60_000] } as const;
+const LIMITS = { read: [900, 10 * 60_000], write: [400, 10 * 60_000], job: [120, 10 * 60_000], claim: [500, 10 * 60_000], status: [60, 10 * 60_000], oauth: [30, 10 * 60_000] } as const;
 export type Bucket = keyof typeof LIMITS;
 
 /** The signed-in account (id from the session only), or the answer to send instead. Marks the device seen. */
-export async function signedIn(req: Request, bucket: Bucket): Promise<{ userId: string } | NextResponse> {
+export async function signedIn(req: Request, bucket: Bucket): Promise<{ userId: string; sessionId: string } | NextResponse> {
   const hosts = [new URL(req.url).host, new URL(siteUrl()).host];
   if (!sameOrigin(req.method, req.headers.get("origin"), hosts)) return fail(403, "forbidden", "Not allowed from another website.");
   const session = await getRequestSession(req);
@@ -40,7 +40,7 @@ export async function signedIn(req: Request, bucket: Bucket): Promise<{ userId: 
   if (await isBlocked(userId)) return fail(403, "blocked", "This account has been blocked. Contact contact@conuron.com.");
   const device = parseDeviceHeader(req.headers.get(DEVICE_HEADER));
   if (device) await touchDevice(userId, device.kind, device.deviceId).catch(() => {});
-  return { userId };
+  return { userId, sessionId: session.session.id };
 }
 
 /**

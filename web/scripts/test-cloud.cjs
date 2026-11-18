@@ -24,6 +24,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const RUNNER = "r".repeat(48);
 const MARK = "PLAINTEXT-MARKER-7f3a"; // must never appear in the database or the server's logs
 const db = new Pool({ connectionString: DB });
+let OAUTH = "";
 
 let fails = 0;
 let passes = 0;
@@ -66,10 +67,52 @@ const mock = http.createServer((rq, rs) => {
   });
 });
 
+// A stand-in MCP service with OAuth (discovery, dynamic registration, PKCE), like Notion's or Linear's.
+const codes = new Map(); // code -> {challenge, clientId, redirect}
+const oauthMock = http.createServer((rq, rs) => {
+  const o = `http://${rq.headers.host}`;
+  const u = new URL(rq.url, o);
+  let body = "";
+  rq.on("data", (c) => (body += c));
+  rq.on("end", () => {
+    const send = (status, obj) => {
+      rs.writeHead(status, { "content-type": "application/json" });
+      rs.end(JSON.stringify(obj));
+    };
+    if (u.pathname.startsWith("/.well-known/oauth-protected-resource")) return send(200, { resource: `${o}/mcp`, authorization_servers: [o] });
+    if (u.pathname.startsWith("/.well-known/oauth-authorization-server") || u.pathname.startsWith("/.well-known/openid-configuration"))
+      return send(200, { issuer: o, authorization_endpoint: `${o}/authorize`, token_endpoint: `${o}/token`, registration_endpoint: `${o}/register`, response_types_supported: ["code"], grant_types_supported: ["authorization_code", "refresh_token"], code_challenge_methods_supported: ["S256"], token_endpoint_auth_methods_supported: ["none"] });
+    if (u.pathname === "/register") {
+      const meta = JSON.parse(body);
+      return send(201, { ...meta, client_id: `cid-${crypto.randomBytes(4).toString("hex")}` });
+    }
+    if (u.pathname === "/token") {
+      const f = new URLSearchParams(body);
+      const c = codes.get(f.get("code"));
+      const ok = c && f.get("grant_type") === "authorization_code" && crypto.createHash("sha256").update(f.get("code_verifier") ?? "").digest("base64url") === c.challenge && f.get("redirect_uri") === c.redirect;
+      if (!ok) return send(400, { error: "invalid_grant" });
+      codes.delete(f.get("code"));
+      return send(200, { access_token: `${MARK}-access`, refresh_token: "refresh-1", token_type: "Bearer", expires_in: 3600 });
+    }
+    if (u.pathname === "/mcp") {
+      rs.writeHead(401, { "www-authenticate": `Bearer resource_metadata="${o}/.well-known/oauth-protected-resource/mcp"` });
+      return rs.end();
+    }
+    send(404, {});
+  });
+});
+/** What the person's browser does on the service's page: approve, and get sent back with a code. */
+function approve(authUrl) {
+  const a = new URL(authUrl);
+  const code = `code-${crypto.randomBytes(6).toString("hex")}`;
+  codes.set(code, { challenge: a.searchParams.get("code_challenge"), redirect: a.searchParams.get("redirect_uri") });
+  return { code, state: a.searchParams.get("state"), redirect: a.searchParams.get("redirect_uri") };
+}
+
 async function main() {
   // ---- database ----
   const mig = spawnSync(process.execPath, ["scripts/migrate.mjs"], { cwd: WEB, env: { ...process.env, DATABASE_URL: DB, DATABASE_URL_UNPOOLED: DB }, encoding: "utf8" });
-  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_sync, cloud_vault/.test(mig.stdout), mig.stderr.slice(0, 300));
+  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_oauth_flow, cloud_sync, cloud_vault/.test(mig.stdout), mig.stderr.slice(0, 300));
   await db.query(`DELETE FROM "user" WHERE id LIKE 'cloudtest_%'`);
   const A = await addUser("cloudtest_a", "a@cloud.test");
   const B = await addUser("cloudtest_b", "b@cloud.test");
@@ -78,6 +121,8 @@ async function main() {
 
   // ---- the site ----
   await new Promise((r) => mock.listen(0, "127.0.0.1", r));
+  await new Promise((r) => oauthMock.listen(0, "127.0.0.1", r));
+  OAUTH = `http://127.0.0.1:${oauthMock.address().port}`;
   const env = {
     ...process.env,
     DATABASE_URL: DB,
@@ -88,6 +133,7 @@ async function main() {
     ANTHROPIC_API_KEY: "test-key-not-real",
     OOVI_AI_UPSTREAM: `http://127.0.0.1:${mock.address().port}`,
     OOVI_CLOUD_POLL_MS: "3000",
+    OOVI_CLOUD_OAUTH_TEST_HOSTS: new URL(OAUTH).host,
     NODE_ENV: "production",
   };
   const server = spawn(process.execPath, [require.resolve("next/dist/bin/next", { paths: [WEB] }), "start", "-p", String(PORT), "-H", "127.0.0.1"], { cwd: WEB, env });
@@ -105,9 +151,10 @@ async function main() {
   } finally {
     server.kill();
     mock.close();
+    oauthMock.close();
   }
   check("the server's logs never contain chat or sign-in text", !logs.includes(MARK), logs.includes(MARK) ? "marker found in logs" : "");
-  const leaks = await db.query("SELECT count(*) AS n FROM cloud_chat WHERE data::text LIKE $1", [`%${MARK}%`]);
+  const leaks = await db.query("SELECT (SELECT count(*) FROM cloud_chat WHERE data::text LIKE $1) + (SELECT count(*) FROM cloud_vault WHERE data::text LIKE $1) AS n", [`%${MARK}%`]);
   check("the database never holds chat text in clear", Number(leaks.rows[0].n) === 0);
   await db.query(`DELETE FROM "user" WHERE id LIKE 'cloudtest_%'`);
   await db.end();
@@ -346,13 +393,57 @@ async function run(A, B, C) {
   const priv = await (await fetch(`${BASE}/privacy`)).text();
   check("privacy page has the cloud sync section", priv.includes("Optional cloud sync") && priv.includes("never shows the") && priv.includes("Turning it off"));
 
+  // ---- connectors signed in from the phone ----
+  const cb = (q, token = A) => fetch(`${BASE}/api/v1/cloud/connectors/oauth/callback?${new URLSearchParams(q)}`, { redirect: "manual", headers: token ? { authorization: `Bearer ${token}` } : {} }).then((x) => x.headers.get("location") ?? `status ${x.status}`);
+  const start = (id, body = {}, token = A) => req("POST", `/api/v1/cloud/connectors/${id}/oauth/start`, { token, body });
+  r = await req("PUT", "/api/v1/cloud/vault/mcp:keyed", { token: A, body: { baseVersion: 0, data: { url: "https://api.example.com", apiKey: "sk-ant-api03-" + "a".repeat(40) } } });
+  check("vault: an AI model key is refused", r.status === 400);
+  r = await req("PUT", "/api/v1/cloud/vault/mcp:keyed", { token: A, body: { baseVersion: 0, data: { url: "https://api.example.com", apiKey: "ntn_" + "f".repeat(40) } } });
+  check("vault: a connector's own key is accepted", r.status === 200);
+  check("sign-in: no address → 400", (await start("mcp:none")).status === 400);
+  check("sign-in: plain http refused", (await start("mcp:x", { url: "http://mcp.example.com/mcp" })).status === 400);
+  check("sign-in: this machine / private network refused", (await start("mcp:x", { url: "https://10.0.0.5/mcp" })).status === 400 && (await start("mcp:x", { url: "https://localhost/mcp" })).status === 400);
+  check("sign-in: signed out → 401", (await start("mcp:demo", {}, null)).status === 401);
+  check("sign-in: from another website → 403", (await req("POST", "/api/v1/cloud/connectors/mcp:demo/oauth/start", { token: A, headers: { origin: "https://evil.example" }, body: {} })).status === 403);
+  await req("PUT", "/api/v1/cloud/vault/mcp:demo", { token: A, body: { baseVersion: 0, data: { url: `${OAUTH}/mcp`, enabled: true, bots: ["b1"] } } });
+  r = await start("mcp:demo");
+  const au = r.body?.authUrl ? new URL(r.body.authUrl) : null;
+  check("sign-in starts: the service's page, with PKCE, a state and the website's callback", r.status === 200 && !!au && au.searchParams.get("code_challenge_method") === "S256" && /^[0-9a-f]{64}$/.test(au.searchParams.get("state") ?? "") && au.searchParams.get("redirect_uri") === `${BASE}/api/v1/cloud/connectors/oauth/callback`, JSON.stringify(r.body).slice(0, 200));
+  const flowRow = await db.query("SELECT state_hash, data::text AS t FROM cloud_oauth_flow WHERE user_id = 'cloudtest_a'");
+  check("the flow keeps only a hash of the state, and its verifier sealed", flowRow.rowCount === 1 && flowRow.rows[0].state_hash !== au?.searchParams.get("state") && /"iv"/.test(flowRow.rows[0].t) && !flowRow.rows[0].t.includes("verifier"));
+  let ap = approve(r.body.authUrl);
+  check("another account can't finish it", (await cb({ code: ap.code, state: ap.state }, B)).includes("error=expired"));
+  check("...and the state is then used up", (await cb({ code: ap.code, state: ap.state })).includes("error=expired"));
+  ap = approve((await start("mcp:demo")).body.authUrl);
+  const A2 = crypto.randomBytes(24).toString("hex");
+  await db.query(`INSERT INTO session (id, token, "userId", "expiresAt", "createdAt", "updatedAt") VALUES ('s_cloudtest_a2', $1, 'cloudtest_a', now() + interval '1 day', now(), now())`, [A2]);
+  check("the same account in another session can't finish it", (await cb({ code: ap.code, state: ap.state }, A2)).includes("error=expired"));
+  ap = approve((await start("mcp:demo")).body.authUrl);
+  check("signed out on the way back: asked to sign in, the flow kept", (await cb({ code: ap.code, state: ap.state }, null)).includes("error=signed_out") && (await db.query("SELECT 1 FROM cloud_oauth_flow WHERE user_id = 'cloudtest_a'")).rowCount === 1);
+  r = { loc: await cb({ code: ap.code, state: ap.state }) };
+  check("finished: back to the phone's Connectors page", r.loc.endsWith("/m/connectors?connected=mcp%3Ademo"), r.loc);
+  r = await req("GET", "/api/v1/cloud/vault/mcp:demo", { token: A });
+  check("tokens stored in the connector's vault entry, its settings kept, no verifier", r.body?.data?.oauth?.tokens?.refresh_token === "refresh-1" && r.body.data.oauth.clientInfo?.client_id?.startsWith("cid-") && r.body.data.enabled === true && r.body.data.bots?.[0] === "b1" && !("verifier" in r.body.data.oauth) && r.body.version === 2);
+  check("the runner can read the sign-in", (await req("GET", "/api/v1/cloud/runner/vault/cloudtest_a/mcp:demo", { runner: RUNNER })).body?.data?.oauth?.tokens?.refresh_token === "refresh-1");
+  check("a used state can't be replayed", (await cb({ code: ap.code, state: ap.state })).includes("error=expired"));
+  ap = approve((await start("mcp:demo")).body.authUrl);
+  await db.query("UPDATE cloud_oauth_flow SET created_at = now() - interval '11 minutes' WHERE user_id = 'cloudtest_a'");
+  check("after 10 minutes: expired (with the connector's id)", (await cb({ code: ap.code, state: ap.state })).includes("error=expired&id=mcp%3Ademo"));
+  ap = approve((await start("mcp:demo")).body.authUrl);
+  check("the person said no on the service's page → denied", (await cb({ error: "access_denied", state: ap.state })).includes("error=denied"));
+  ap = approve((await start("mcp:demo")).body.authUrl);
+  check("a wrong code → failed (the service refuses it)", (await cb({ code: "code-wrong", state: ap.state })).includes("error=failed"));
+  check("a made-up state → expired", (await cb({ code: "x", state: "f".repeat(64) })).includes("error=expired"));
+  r = await req("DELETE", "/api/v1/cloud/vault/mcp:demo", { token: A });
+  check("disconnect from the phone removes the sign-in", r.status === 200 && (await req("GET", "/api/v1/cloud/vault/mcp:demo", { token: A })).status === 404);
+
   // ---- turning off, deleting the account ----
   r = await req("PUT", "/api/v1/cloud/status", { token: A, body: { enabled: false } });
   const left = await db.query(
-    "SELECT (SELECT count(*) FROM cloud_chat WHERE user_id = $1) + (SELECT count(*) FROM cloud_vault WHERE user_id = $1) + (SELECT count(*) FROM cloud_job WHERE user_id = $1) AS n",
+    "SELECT (SELECT count(*) FROM cloud_chat WHERE user_id = $1) + (SELECT count(*) FROM cloud_vault WHERE user_id = $1) + (SELECT count(*) FROM cloud_job WHERE user_id = $1) + (SELECT count(*) FROM cloud_oauth_flow WHERE user_id = $1) AS n",
     ["cloudtest_a"],
   );
-  check("turning off deletes chats, sign-ins and jobs at once", r.status === 200 && r.body.enabled === false && r.body.chats === 0 && Number(left.rows[0].n) === 0);
+  check("turning off deletes chats, sign-ins, jobs and open sign-ins at once", r.status === 200 && r.body.enabled === false && r.body.chats === 0 && Number(left.rows[0].n) === 0);
   check("after turning off, the runner can't read them", (await req("GET", "/api/v1/cloud/runner/vault/cloudtest_a/mcp:gmail", { runner: RUNNER })).status === 403);
   await db.query(`DELETE FROM "user" WHERE id = 'cloudtest_b'`);
   const gone = await db.query("SELECT (SELECT count(*) FROM cloud_chat WHERE user_id = 'cloudtest_b') + (SELECT count(*) FROM cloud_sync WHERE user_id = 'cloudtest_b') AS n");

@@ -102,7 +102,9 @@ export default function PrivacyPage() {
         </li>
         <li>
           Your connectors’ settings and sign-ins (for example the access that lets your bots read your email or your
-          calendar), so your phone and our server can use them.
+          calendar), and keys you type for a connector, so your phone and our server can use them. When you sign in to
+          a connector from your phone, the service sends you back to our website, which stores that sign-in the same
+          way.
         </li>
         <li>
           Messages and answers you send from your phone (a new message, an approval, Stop), until your computer or our

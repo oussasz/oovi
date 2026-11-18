@@ -78,6 +78,15 @@ export const CLOUD_DDL = `
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, device_id)
   );
+  CREATE TABLE IF NOT EXISTS cloud_oauth_flow (
+    state_hash   TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    session_hash TEXT NOT NULL,
+    connector_id TEXT NOT NULL,
+    data         JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
 `;
 
 const g = globalThis as typeof globalThis & { __ooviCloudTables?: Promise<void> };
@@ -168,6 +177,7 @@ export async function setEnabled(userId: string, enabled: boolean): Promise<void
     await c.query("DELETE FROM cloud_chat WHERE user_id = $1", [userId]);
     await c.query("DELETE FROM cloud_vault WHERE user_id = $1", [userId]);
     await c.query("DELETE FROM cloud_job WHERE user_id = $1", [userId]);
+    await c.query("DELETE FROM cloud_oauth_flow WHERE user_id = $1", [userId]);
   });
 }
 
@@ -316,6 +326,27 @@ export async function putVault(userId: string, connectorId: string, baseVersion:
     );
     await c.query("UPDATE cloud_sync SET last_sync = now() WHERE user_id = $1", [userId]);
     return { ok: true, version: current + 1 };
+  });
+}
+
+/**
+ * A sign-in finished on the website (lib/cloud-oauth.ts): the tokens go into the connector's vault entry under
+ * `oauth`, the rest of its settings untouched, with a new version (other devices pull it).
+ */
+export async function saveVaultSignIn(userId: string, connectorId: string, url: string, oauth: Record<string, unknown>): Promise<{ version: number } | Off> {
+  return tx(async (c) => {
+    const s = (await c.query("SELECT enabled FROM cloud_sync WHERE user_id = $1 FOR UPDATE", [userId])).rows[0];
+    if (!s?.enabled) return OFF;
+    const row = (await c.query("SELECT version, data FROM cloud_vault WHERE user_id = $1 AND connector_id = $2 FOR UPDATE", [userId, connectorId])).rows[0];
+    const data = { ...(row ? unsealJson(row.data) : { url }), oauth };
+    const next = (row ? Number(row.version) : 0) + 1;
+    await c.query(
+      `INSERT INTO cloud_vault (user_id, connector_id, version, data, updated_at) VALUES ($1, $2, $3, $4, now())
+       ON CONFLICT (user_id, connector_id) DO UPDATE SET version = $3, data = $4, updated_at = now()`,
+      [userId, connectorId, next, sealJson(data).sealed],
+    );
+    await c.query("UPDATE cloud_sync SET last_sync = now() WHERE user_id = $1", [userId]);
+    return { version: next };
   });
 }
 

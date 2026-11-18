@@ -121,3 +121,12 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   - `/runner/ai/<userId>` only for accounts that sync and already have theOovi credits; `POST /jobs` sets up the
     credits from the person's own address (welcome credits are limited per network, the runner's address isn't theirs).
   - Signed-in writes coming from another website (an Origin header that isn't the site) are refused (403).
+- 2026-11-18, part W, connectors from the phone (built): `POST /api/v1/cloud/connectors/<id>/oauth/start {url?}` →
+  `{authUrl}` (the url comes from the vault entry's `data.url`, else the body; public https only). The service
+  returns to `GET /api/v1/cloud/connectors/oauth/callback`, which writes `data.oauth = {clientInfo, tokens,
+  redirectUrl, signedInAt}` into the vault entry (other fields kept, version +1) and answers 303 to
+  `/m/connectors?connected=<id>` or `/m/connectors?error=expired|denied|failed|signed_out|sync_off[&id=<id>]`.
+  The state works once, for 10 minutes, for the same account AND session (part M: open authUrl in the same browser
+  as the phone app, not a separate one, or the callback finds no session). The client is registered for the
+  website's redirect address: the desktop and the runner refresh with `oauth.clientInfo` as it is. `PUT /vault`
+  refuses values that look like AI model keys (sk-ant-, sk-proj-, sk-or-v1-, gsk_, xai-, old sk-…) with 400.

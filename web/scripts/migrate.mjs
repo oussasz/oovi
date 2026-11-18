@@ -376,6 +376,15 @@ await pool.query(`
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, device_id)
   );
+  CREATE TABLE IF NOT EXISTS cloud_oauth_flow (
+    state_hash   TEXT PRIMARY KEY,
+    user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    session_hash TEXT NOT NULL,
+    connector_id TEXT NOT NULL,
+    data         JSONB NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
+  CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
   -- Marketplace pictures for bots' faces (keep in sync with lib/avatars.ts AVATAR_DDL).
   CREATE TABLE IF NOT EXISTS catalog_avatars (
     id         TEXT PRIMARY KEY,

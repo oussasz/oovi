@@ -48,11 +48,12 @@ export function checkChatPut(chatId: string, body: unknown): { baseVersion: numb
   return { baseVersion: body.baseVersion, chat: body.chat };
 }
 
-/** PUT /vault/<connectorId> body. (The app never puts AI provider keys here: docs/CLOUD-BUILD.md.) */
+/** PUT /vault/<connectorId> body: a connector's settings, sign-in or own key. Never an AI model key (refused). */
 export function checkVaultPut(body: unknown): { baseVersion: number; data: Record<string, unknown> } | string {
   if (!isObject(body)) return "Invalid request.";
   if (!isVersion(body.baseVersion)) return "baseVersion must be a whole number.";
   if (!isObject(body.data)) return "data must be an object.";
+  if (looksLikeAiKey(body.data)) return "AI model keys stay on your computer: they can't be synced. A connector's own key is fine.";
   return { baseVersion: body.baseVersion, data: body.data };
 }
 
@@ -156,4 +157,81 @@ export function sameOrigin(method: string, origin: string | null, ownHosts: stri
   } catch {
     return false;
   }
+}
+
+// ---------- connectors from the phone (sign-in through the website, connector keys) ----------
+
+/** A sign-in started on the phone must come back within 10 minutes, once. */
+export const OAUTH_FLOW_SECONDS = 600;
+export const MAX_OPEN_FLOWS = 20;
+
+/**
+ * True when a value in a connector's settings looks like an AI MODEL key (Anthropic, OpenAI, OpenRouter, Groq,
+ * xAI): those never leave the computer (docs/CLOUD-BUILD.md). Keys that belong to a connector are fine. Google keys
+ * (AIza…) can't be told apart from a Maps or YouTube connector key, so they are not refused here; the app never
+ * sends its Gemini key.
+ */
+export function looksLikeAiKey(value: unknown, depth = 0): boolean {
+  if (depth > 8) return false;
+  if (typeof value === "string") {
+    const v = value.trim();
+    return /^(sk-ant-|sk-proj-|sk-or-v1-|sk-svcacct-|gsk_|xai-)[A-Za-z0-9_-]{16,}$/.test(v) || /^sk-[A-Za-z0-9]{40,}$/.test(v);
+  }
+  if (Array.isArray(value)) return value.some((x) => looksLikeAiKey(x, depth + 1));
+  if (value && typeof value === "object") return Object.values(value).some((x) => looksLikeAiKey(x, depth + 1));
+  return false;
+}
+
+/** Addresses the server must never call on a user's behalf: this machine, private networks, link-local, cloud metadata. */
+export function isPrivateAddress(ip: string): boolean {
+  const v = ip.trim().toLowerCase().replace(/^\[|\]$/g, "");
+  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(v);
+  if (mapped) return isPrivateAddress(mapped[1]!);
+  const m = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(v);
+  if (m) {
+    const [a, b] = [Number(m[1]), Number(m[2])];
+    return (
+      a === 0 || a === 10 || a === 127 || a >= 224 ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 192 && b === 0 && Number(m[3]) === 0) ||
+      (a === 198 && (b === 18 || b === 19))
+    );
+  }
+  if (!v.includes(":")) return true; // not an address at all: refuse
+  return v === "::" || v === "::1" || /^f[cd]/.test(v) || /^fe[89ab]/.test(v) || /^ff/.test(v);
+}
+
+/**
+ * A connector's address the website may call for a sign-in: https on a public name. `testHosts` (only from the
+ * test environment variable) allows plain http to those hosts.
+ */
+export function checkConnectorUrl(raw: unknown, testHosts: string[] = []): URL | string {
+  if (typeof raw !== "string" || raw.length > 2000) return "The connector's address is missing.";
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    return "The connector's address isn't valid.";
+  }
+  if (u.username || u.password) return "The connector's address can't hold a password.";
+  if (testHosts.includes(u.host) && (u.protocol === "http:" || u.protocol === "https:")) return u;
+  if (u.protocol !== "https:") return "The connector's address must start with https://.";
+  if (/^(localhost|.*\.localhost|.*\.local|.*\.internal)$/i.test(u.hostname) || /^[\d.]+$/.test(u.hostname) || u.hostname.includes(":") || u.hostname.startsWith("[")) {
+    return "The connector's address must be a public website.";
+  }
+  return u;
+}
+
+/** Where to send the phone back after a sign-in. */
+export function connectorsReturn(connectorId: string | null, outcome: { ok: true } | { error: "expired" | "denied" | "failed" | "signed_out" | "sync_off" }): string {
+  const q = new URLSearchParams();
+  if ("ok" in outcome) q.set("connected", connectorId ?? "");
+  else {
+    q.set("error", outcome.error);
+    if (connectorId) q.set("id", connectorId);
+  }
+  return `/m/connectors?${q.toString()}`;
 }
