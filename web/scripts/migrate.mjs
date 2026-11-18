@@ -325,6 +325,57 @@ await pool.query(`
     bytes      INTEGER NOT NULL,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
+  -- oovi cloud: optional chat sync, connector sign-ins, jobs, devices (keep in sync with lib/cloud.ts CLOUD_DDL).
+  CREATE TABLE IF NOT EXISTS cloud_sync (
+    user_id     TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,
+    enabled     BOOLEAN NOT NULL DEFAULT false,
+    bytes       INTEGER NOT NULL DEFAULT 0,
+    chats       INTEGER NOT NULL DEFAULT 0,
+    last_sync   TIMESTAMPTZ NULL,
+    enabled_at  TIMESTAMPTZ NULL,
+    disabled_at TIMESTAMPTZ NULL
+  );
+  CREATE TABLE IF NOT EXISTS cloud_chat (
+    user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    chat_id    TEXT NOT NULL,
+    version    INTEGER NOT NULL,
+    data       JSONB NULL,
+    bytes      INTEGER NOT NULL DEFAULT 0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    deleted    BOOLEAN NOT NULL DEFAULT false,
+    PRIMARY KEY (user_id, chat_id)
+  );
+  CREATE INDEX IF NOT EXISTS cloud_chat_updated_idx ON cloud_chat (user_id, updated_at);
+  CREATE TABLE IF NOT EXISTS cloud_vault (
+    user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    connector_id TEXT NOT NULL,
+    version      INTEGER NOT NULL,
+    data         JSONB NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, connector_id)
+  );
+  CREATE TABLE IF NOT EXISTS cloud_job (
+    id          UUID PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    chat_id     TEXT NOT NULL,
+    kind        TEXT NOT NULL CHECK (kind IN ('message', 'decision', 'stop')),
+    payload     JSONB NOT NULL,
+    status      TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'claimed', 'done', 'needs_computer', 'failed')),
+    claimed_by  TEXT NULL,
+    lease_until TIMESTAMPTZ NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    error       TEXT NULL
+  );
+  CREATE INDEX IF NOT EXISTS cloud_job_open_idx ON cloud_job (created_at) WHERE status IN ('queued', 'needs_computer', 'claimed');
+  CREATE INDEX IF NOT EXISTS cloud_job_chat_idx ON cloud_job (user_id, chat_id, updated_at);
+  CREATE TABLE IF NOT EXISTS cloud_device (
+    user_id   TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    device_id TEXT NOT NULL,
+    kind      TEXT NOT NULL CHECK (kind IN ('desktop', 'phone', 'runner')),
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, device_id)
+  );
   -- Marketplace pictures for bots' faces (keep in sync with lib/avatars.ts AVATAR_DDL).
   CREATE TABLE IF NOT EXISTS catalog_avatars (
     id         TEXT PRIMARY KEY,
