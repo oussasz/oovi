@@ -1220,3 +1220,13 @@ a.tag { text-decoration: none; }
 .lb-teach p { margin: 0; color: var(--muted); }
 .lb-teach label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
 .lb-teach input, .lb-teach textarea { font: inherit; font-weight: 400; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); resize: vertical; }
+.first-hour { position: relative; padding: 18px 20px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.first-hour h2 { margin: 0 0 4px; font-size: 17px; padding-inline-end: 32px; }
+.first-hour > p { margin: 0 0 12px; color: var(--muted); }
+.first-hour ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+.first-hour li { display: flex; gap: 10px; align-items: flex-start; }
+.first-hour li > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.fh-n { flex: none; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 700; background: var(--soft); }
+.first-hour li.done .fh-n { background: var(--ok); color: #fff; }
+.fh-hint { font-size: 13px; color: var(--muted); }
+.fh-close { position: absolute; top: 10px; inset-inline-end: 10px; }

@@ -12,6 +12,7 @@ import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import SettingsLink from "./SettingsLink";
+import FirstHour from "./FirstHour";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
 const IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
@@ -149,6 +150,8 @@ export default function Home() {
           </div>
         )}
       </section>
+
+      {chief && !needsKey && <FirstHour chief={chief} />}
 
       <section>
         <h2 className="section-title">{t("common.groups")}</h2>
