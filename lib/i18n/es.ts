@@ -1908,6 +1908,7 @@ const es: Dict = {
   "sync.problem.offline": "No se puede conectar con el servidor de oovi. Revisa tu internet; oovi lo vuelve a intentar solo.",
   "sync.problem.signedOut": "Has cerrado sesión. Vuelve a iniciar sesión para sincronizar.",
   "sync.problem.tooBig": "El espacio de tu cuenta está lleno. Los chats nuevos se quedan en este ordenador; los demás se siguen sincronizando.",
+  "sync.problem.chatTooBig": "Un chat es demasiado largo para sincronizarse (más de 4 MB). Se queda en este ordenador; los demás se siguen sincronizando.",
   "sync.problem.notReady": "La sincronización aún no está disponible en el servidor de oovi. oovi lo intentará más tarde.",
   "sync.problem.server": "El servidor de oovi tuvo un problema. oovi lo vuelve a intentar solo.",
   "ask.title": "¿Quieres tus chats también en el móvil?",

@@ -159,9 +159,11 @@ type Runtime = {
   /** Chats saved here since their last push (a full look at every chat only every few minutes). */
   dirty: Set<string>;
   fullAt: number;
+  /** Chats over the per-chat size (413 too_big), with their fingerprint: tried again only once they change. */
+  tooLong: Map<string, string>;
 };
 const g = globalThis as typeof globalThis & { __ooviCloudSync?: Runtime };
-const rt: Runtime = (g.__ooviCloudSync ??= { failures: 0, nextAt: 0, statusAt: 0, locks: new Map(), pushTimers: new Map(), deferred: new Set(), jobs: new Set(), dirty: new Set(), fullAt: 0 });
+const rt: Runtime = (g.__ooviCloudSync ??= { failures: 0, nextAt: 0, statusAt: 0, locks: new Map(), pushTimers: new Map(), deferred: new Set(), jobs: new Set(), dirty: new Set(), fullAt: 0, tooLong: new Map() });
 const FULL_SCAN_MS = 5 * 60_000;
 
 /** A different account signed in: forget what was learned about the last one. */
@@ -227,7 +229,7 @@ function secrets(): string[] {
 async function call<T>(method: string, route: string, body?: unknown): Promise<T> {
   const token = sessionToken();
   if (!token) throw new SyncError(401, null);
-  const headers: Record<string, string> = { accept: "application/json", authorization: `Bearer ${token}`, "x-oovi-version": appVersion(), "x-oovi-platform": process.platform, "x-oovi-device": deviceId() };
+  const headers: Record<string, string> = { accept: "application/json", authorization: `Bearer ${token}`, "x-oovi-version": appVersion(), "x-oovi-platform": process.platform, "x-oovi-device": `desktop:${deviceId()}` };
   let payload: string | undefined;
   if (body !== undefined) {
     headers["content-type"] = "application/json";
@@ -250,6 +252,11 @@ async function call<T>(method: string, route: string, body?: unknown): Promise<T
   return j as T;
 }
 const statusOf = (e: unknown) => (e instanceof SyncError ? e.status : 0);
+/** The website's stable error code ({error, code}), e.g. "sync_off", "over_limit", "too_big". */
+const codeOf = (e: unknown): string | null => {
+  const b = e instanceof SyncError ? (e.body as { code?: unknown } | null) : null;
+  return typeof b?.code === "string" ? b.code : null;
+};
 
 // ---------- which chats travel ----------
 
@@ -261,7 +268,8 @@ const travels = (c: Chat, bots = listBots()) => chatTravels(c, bots);
 
 // ---------- pushing one chat ----------
 
-type RemoteChat = { chatId?: string; version: number; chat: Chat };
+/** GET /chats/<id> and a 409 on PUT (web/lib/cloud-types.ts): `chat` is null for a tombstone. */
+type RemoteChat = { chatId?: string; version: number; deleted?: boolean; chat: Chat | null };
 
 /** Sends this computer's copy of a chat (merging first when the account has a newer one). Call inside withChat. */
 async function pushLocked(id: string): Promise<void> {
@@ -279,12 +287,14 @@ async function pushLocked(id: string): Promise<void> {
   }
   if (mark && !mark.stale && mark.h === chatHash(chat)) return;
   if (!mark && readState().tooBig) return;
+  if (rt.tooLong.get(id) === chatHash(chat)) return;
+  rt.tooLong.delete(id);
   const running = isRunning(id);
   let send: Chat = chat;
   let baseVersion = mark?.v ?? 0;
   if (mark?.stale) {
     const r = await call<RemoteChat>("GET", `/chats/${encodeURIComponent(id)}`).catch((e) => (statusOf(e) === 404 ? null : Promise.reject(e)));
-    if (r?.chat) {
+    if (r?.chat && !r.deleted) {
       send = mergeChat(chat, r.chat, mark.base, running);
       baseVersion = r.version;
     }
@@ -297,11 +307,26 @@ async function pushLocked(id: string): Promise<void> {
     } catch (e) {
       const st = statusOf(e);
       if (st === 413) {
-        writeState({ tooBig: true, problem: "tooBig" });
+        if (codeOf(e) === "too_big") {
+          // This one chat is over the per-chat size: it stays here (until it changes); the others go on.
+          rt.tooLong.set(id, chatHash(chat));
+          writeState({ problem: "chatTooBig" });
+        } else writeState({ tooBig: true, problem: "tooBig" });
         return;
       }
       const theirs = (e as SyncError).body as RemoteChat | null;
-      if (st !== 409 || attempt >= 3 || !theirs?.chat || typeof theirs.version !== "number") throw e;
+      if (st !== 409 || attempt >= 3 || !theirs || typeof theirs.version !== "number") throw e;
+      if (theirs.deleted || !theirs.chat) {
+        // Deleted on another device. Synced here before: deleted here too. Never synced: sent again as new.
+        if (mark && !isRunning(id)) {
+          deleteChat(id, { quiet: true });
+          dropMark(id);
+          return;
+        }
+        send = chatHere(id) ?? chat;
+        baseVersion = theirs.version;
+        continue;
+      }
       // Another device saved first: merge with its copy and send again.
       send = mergeChat(chatHere(id) ?? chat, theirs.chat, mark?.base ?? null, isRunning(id));
       baseVersion = theirs.version;
@@ -357,7 +382,7 @@ async function pullLocked(id: string, remoteVersion?: number): Promise<"ok" | "l
     return "later";
   }
   const r = await call<RemoteChat>("GET", `/chats/${encodeURIComponent(id)}`).catch((e) => (statusOf(e) === 404 ? null : Promise.reject(e)));
-  if (!r?.chat || !Array.isArray(r.chat.entries)) return "skip";
+  if (!r?.chat || r.deleted || !Array.isArray(r.chat.entries)) return "skip";
   const remote = forUpload({ ...r.chat, id }) as Chat;
   const bots = listBots();
   const local = chatHere(id);
@@ -400,9 +425,7 @@ async function syncOnce(): Promise<void> {
   let st = readState();
   if (remote && !remote.enabled) {
     if (st.seenOn) {
-      // Turned off on another device: the account's copy is gone; this computer stops too (and keeps its chats).
-      forgetMarks();
-      writeState({ enabled: false, seenOn: false, offElsewhere: true, since: undefined, vault: undefined, problem: undefined, tooBig: undefined });
+      turnedOffElsewhere();
       return;
     }
     await call("PUT", "/status", { enabled: true });
@@ -475,7 +498,17 @@ async function syncOnce(): Promise<void> {
 
   // 3. Connectors.
   await syncVault();
-  writeState({ lastSync: Date.now(), problem: readState().tooBig ? "tooBig" : undefined });
+  writeState({ lastSync: Date.now(), problem: readState().tooBig ? "tooBig" : rt.tooLong.size ? "chatTooBig" : undefined });
+}
+
+/** Turned off on another device: the account's copy is gone; this computer stops too (and keeps its chats). */
+function turnedOffElsewhere() {
+  for (const t of rt.pushTimers.values()) clearTimeout(t);
+  rt.pushTimers.clear();
+  rt.dirty.clear();
+  rt.fullAt = 0;
+  forgetMarks();
+  writeState({ enabled: false, seenOn: false, offElsewhere: true, since: undefined, vault: undefined, waiting: undefined, problem: undefined, tooBig: undefined, removed: undefined });
 }
 
 function forgetMarks() {
@@ -484,7 +517,7 @@ function forgetMarks() {
 
 // ---------- connectors (vault) ----------
 
-type VaultListItem = { connectorId: string; version: number; deleted?: boolean };
+type VaultListItem = { connectorId: string; version: number; updatedAt?: string };
 
 /** A connector as sent: model keys can never be in it (scrubbed again in call()). */
 const vaultHash = (item: VaultItem) => hashOf(item);
@@ -504,9 +537,11 @@ async function applyFromVault(id: string, got: VaultItem, isNew: boolean): Promi
 }
 
 async function syncVault(): Promise<void> {
-  const listed = await call<{ connectors?: VaultListItem[]; items?: VaultListItem[] }>("GET", "/vault");
+  const listed = await call<{ items?: VaultListItem[] }>("GET", "/vault");
+  // A connector missing from the list was removed elsewhere: so the list must be a real answer, never a guess.
+  if (!Array.isArray(listed?.items)) throw new SyncError(502, null);
   const remote = new Map<string, number>();
-  for (const x of listed.connectors ?? listed.items ?? []) if (x && typeof x.connectorId === "string" && !x.deleted) remote.set(x.connectorId, Number(x.version) || 0);
+  for (const x of listed.items) if (x && typeof x.connectorId === "string") remote.set(x.connectorId, Number(x.version) || 0);
   const marks = { ...(readState().vault ?? {}) };
   const local = localVault();
   const removedNames: string[] = [];
@@ -518,8 +553,8 @@ async function syncVault(): Promise<void> {
     const action = vaultAction(item ? vaultHash(item) : null, marks[id], rv);
     try {
       if (action === "pull") {
-        const r = await call<{ version: number; connector?: VaultItem; data?: VaultItem }>("GET", `/vault/${encodeURIComponent(id)}`);
-        const got = r.connector ?? r.data;
+        const r = await call<{ version: number; data?: VaultItem }>("GET", `/vault/${encodeURIComponent(id)}`);
+        const got = r.data;
         if (got && (await applyFromVault(id, got, !item))) {
           const now = localVault().get(id);
           if (now) marks[id] = { version: r.version, hash: vaultHash(now) };
@@ -529,13 +564,13 @@ async function syncVault(): Promise<void> {
         let base = marks[id]?.version ?? 0;
         for (let attempt = 0; ; attempt++) {
           try {
-            const r = await call<{ version: number }>("PUT", `/vault/${encodeURIComponent(id)}`, { baseVersion: base, connector: send });
+            const r = await call<{ version: number }>("PUT", `/vault/${encodeURIComponent(id)}`, { baseVersion: base, data: send });
             if (send !== item) await applyFromVault(id, send, false);
             marks[id] = { version: r.version, hash: vaultHash(localVault().get(id) ?? send) };
             break;
           } catch (e) {
-            const theirs = (e as SyncError).body as { version?: number; connector?: VaultItem; data?: VaultItem } | null;
-            const other = theirs?.connector ?? theirs?.data;
+            const theirs = (e as SyncError).body as { version?: number; data?: VaultItem | null } | null;
+            const other = theirs?.data;
             if (statusOf(e) !== 409 || attempt >= 2 || !other || typeof theirs?.version !== "number") throw e;
             send = vaultMerge(item, other);
             base = theirs.version;
@@ -564,7 +599,8 @@ async function syncVault(): Promise<void> {
 
 // ---------- the desktop worker (jobs from the phone) ----------
 
-type Job = { id: string; chatId: string; kind: string; payload?: unknown };
+/** A claimed job (web/lib/cloud-types.ts ClaimedJob). */
+type Job = { jobId: string; chatId: string; kind: string; payload?: unknown; was?: string };
 
 async function claimOnce(): Promise<void> {
   if (rt.claiming || rt.jobs.size >= MAX_JOBS || !active()) return;
@@ -573,7 +609,7 @@ async function claimOnce(): Promise<void> {
   rt.claiming = true;
   try {
     const r = await call<{ job: Job | null }>("POST", "/jobs/claim", { deviceId: deviceId(), kind: "desktop" });
-    if (r?.job?.id) void runJob(r.job);
+    if (r?.job?.jobId) void runJob(r.job);
   } catch (e) {
     fail(e);
   } finally {
@@ -582,10 +618,11 @@ async function claimOnce(): Promise<void> {
 }
 
 async function runJob(job: Job): Promise<void> {
-  rt.jobs.add(job.id);
-  const jid = encodeURIComponent(job.id);
-  const done = (status: "done" | "failed", error?: string) => call("POST", `/jobs/${jid}/done`, { status, ...(error ? { error } : {}) }).catch(() => {});
-  const beat = setInterval(() => void call("POST", `/jobs/${jid}/heartbeat`).catch(() => {}), 30_000);
+  rt.jobs.add(job.jobId);
+  const jid = encodeURIComponent(job.jobId);
+  const me = deviceId();
+  const done = (status: "done" | "failed", error?: string) => call("POST", `/jobs/${jid}/done`, { deviceId: me, status, ...(error ? { error } : {}) }).catch(() => {});
+  const beat = setInterval(() => void call("POST", `/jobs/${jid}/heartbeat`, { deviceId: me }).catch(() => {}), 30_000);
   try {
     const id = String(job.chatId ?? "");
     const ji = jobInput(job.kind, job.payload);
@@ -617,7 +654,7 @@ async function runJob(job: Job): Promise<void> {
     await done("failed", e instanceof SyncError ? `http_${e.status}` : "error");
   } finally {
     clearInterval(beat);
-    rt.jobs.delete(job.id);
+    rt.jobs.delete(job.jobId);
   }
 }
 
@@ -628,6 +665,15 @@ function ok() {
   rt.nextAt = 0;
 }
 function fail(e: unknown) {
+  if (codeOf(e) === "sync_off") {
+    // The account says sync is off: turned off on another device (this one turned it on and saw it on).
+    try {
+      if (currentUser() && readState().enabled) turnedOffElsewhere();
+    } catch {
+      /* disk full: try later */
+    }
+    return;
+  }
   const p = problemOf(statusOf(e));
   rt.failures++;
   rt.nextAt = Date.now() + retryAfter(rt.failures);

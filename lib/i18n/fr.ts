@@ -1908,6 +1908,7 @@ const fr: Dict = {
   "sync.problem.offline": "Impossible de joindre le serveur d'oovi. Vérifie ta connexion ; oovi réessaie tout seul.",
   "sync.problem.signedOut": "Tu es déconnecté. Reconnecte-toi pour synchroniser.",
   "sync.problem.tooBig": "L'espace de ton compte est plein. Les nouvelles discussions restent sur cet ordinateur ; les autres continuent de se synchroniser.",
+  "sync.problem.chatTooBig": "Une discussion est trop longue pour être synchronisée (plus de 4 Mo). Elle reste sur cet ordinateur ; les autres continuent de se synchroniser.",
   "sync.problem.notReady": "La synchronisation n'est pas encore disponible sur le serveur d'oovi. oovi réessaiera plus tard.",
   "sync.problem.server": "Le serveur d'oovi a eu un problème. oovi réessaie tout seul.",
   "ask.title": "Retrouver tes discussions aussi sur ton téléphone ?",

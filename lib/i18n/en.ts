@@ -1927,6 +1927,7 @@ const en = {
   "sync.problem.offline": "Can't reach oovi's server. Check your internet; oovi tries again by itself.",
   "sync.problem.signedOut": "You're signed out. Sign in again to sync.",
   "sync.problem.tooBig": "Your account's space is full. New chats stay on this computer; the others keep syncing.",
+  "sync.problem.chatTooBig": "A chat is too long to sync (over 4 MB). It stays on this computer; the others keep syncing.",
   "sync.problem.notReady": "Sync isn't available on oovi's server yet. oovi tries again later.",
   "sync.problem.server": "oovi's server had a problem. oovi tries again by itself.",
   "ask.title": "Keep your chats on your phone too?",

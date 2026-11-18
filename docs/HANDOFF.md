@@ -40,7 +40,7 @@ it, "Turn on" says "Sync isn't available on oovi's server yet" and nothing else 
   bots are already working, `stopRun` for Stop), heartbeats every 30 s, pushes the chat at the end, then `done`.
   Up to 3 jobs at once (different chats).
 - **Verified** (on this branch's final build): `npx tsc --noEmit` clean; unit tests 343 pass, 0 fail (1 skipped: the existing test that needs a real YouTube page);
-  `npm run build` OK; `node tests/e2e/cloud-sync-scenario.cjs` 34/34 against a stand-in website (off until yes;
+  `npm run build` OK; `node tests/e2e/cloud-sync-scenario.cjs` 38/38 against a stand-in website with the exact shapes of part W (`web/lib/cloud-types.ts`, branch `cloud-web`) (off until yes;
   old chats uploaded; local-only bot and its group never sent; keys/passwords/session never in any sync request;
   a key typed in a chat is "[hidden]" in the uploaded copy; connector with its key in the vault; a change from
   another device merged and shown; another device can't set the project folder or allowed actions here; two
@@ -48,8 +48,9 @@ it, "Turn on" says "Sync isn't available on oovi's server yet" and nothing else 
   local-only jobs refused; tombstones both ways; full account; turning off deletes the server copy, keeps local,
   and stops all calls; a connector added and signed in on the phone appears here ready for the bots chosen there, its on/off and bots follow, its sign-in is stored encrypted, and removed on the phone it is removed here with a line in Settings > Sync). Existing scenarios on the same build, all passing: group, spec, phase1, bigjob, parallel, telegram, cost (169,901 weighted tokens, limit 170,000; no bot instructions or tool descriptions changed), onboarding, sync (setup sync), upload, list. Screens looked at in a browser
   (question, Settings > Sync in English and Arabic, bot editor).
-- **Not verified.** The real website API (part W wasn't pushed when this was built: the stand-in follows the
-  contract, see the notes at the bottom of `docs/CLOUD-BUILD.md`); the phone app; Windows/Mac (run "Tests on
+- **Not verified.** Against the real website running (only against a stand-in using W's shapes; also covered:
+  `sync_off` = turned off elsewhere, a chat over 4 MB stays here, turning on again re-uploads); the job heartbeat
+  (every 30 s, the test jobs end sooner); the phone app; Windows/Mac (run "Tests on
   Windows, Mac and Linux" before a release); real chat sizes against the 100 MB limit (bot replies keep their
   tool steps, so heavy research chats are large); connectors whose sign-in refresh behaves differently on two
   computers at once.

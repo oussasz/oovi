@@ -1908,6 +1908,7 @@ const tr: Dict = {
   "sync.problem.offline": "oovi sunucusuna ulaşılamıyor. İnternetini kontrol et; oovi kendisi yeniden dener.",
   "sync.problem.signedOut": "Oturumun kapalı. Eşitlemek için yeniden giriş yap.",
   "sync.problem.tooBig": "Hesabının alanı dolu. Yeni sohbetler bu bilgisayarda kalır; diğerleri eşitlenmeye devam eder.",
+  "sync.problem.chatTooBig": "Bir sohbet eşitlenemeyecek kadar uzun (4 MB'tan fazla). Bu bilgisayarda kalır; diğerleri eşitlenmeye devam eder.",
   "sync.problem.notReady": "Eşitleme oovi sunucusunda henüz yok. oovi daha sonra yeniden dener.",
   "sync.problem.server": "oovi sunucusunda bir sorun oldu. oovi kendisi yeniden dener.",
   "ask.title": "Sohbetlerin telefonunda da olsun mu?",

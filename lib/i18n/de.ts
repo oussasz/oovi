@@ -1908,6 +1908,7 @@ const de: Dict = {
   "sync.problem.offline": "oovi-Server nicht erreichbar. Prüfe dein Internet; oovi versucht es von selbst erneut.",
   "sync.problem.signedOut": "Du bist abgemeldet. Melde dich wieder an, um zu synchronisieren.",
   "sync.problem.tooBig": "Der Platz deines Kontos ist voll. Neue Chats bleiben auf diesem Computer; die anderen werden weiter synchronisiert.",
+  "sync.problem.chatTooBig": "Ein Chat ist zu lang zum Synchronisieren (über 4 MB). Er bleibt auf diesem Computer; die anderen werden weiter synchronisiert.",
   "sync.problem.notReady": "Die Synchronisierung ist auf dem oovi-Server noch nicht verfügbar. oovi versucht es später erneut.",
   "sync.problem.server": "Der oovi-Server hatte ein Problem. oovi versucht es von selbst erneut.",
   "ask.title": "Deine Chats auch auf dem Handy?",

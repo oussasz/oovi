@@ -234,7 +234,7 @@ export function jobInput(kind: unknown, payload: unknown): JobInput | null {
 
 // ---------- errors, in plain words (keys of lib/i18n) ----------
 
-export type SyncProblem = "offline" | "signedOut" | "tooBig" | "notReady" | "server";
+export type SyncProblem = "offline" | "signedOut" | "tooBig" | "chatTooBig" | "notReady" | "server";
 
 /** status: the HTTP status of a failed call (0: no answer). */
 export function problemOf(status: number): SyncProblem {

@@ -99,25 +99,16 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
 - 2026-11-18 (owner): the phone app must feel like WhatsApp / Messenger: a chat list first, bubbles, the usual
   composer (text, voice, attach), long-press menu on a message (reply, copy), swipe to reply, ticks/typing-like
   status while the bot works, unread counts, archive/pin by swipe. Familiar, never strange; Apple-style polish.
-- 2026-11-18, part A (desktop, branch `cloud-app`): notes on how the desktop uses the API. Nothing in the API's
-  shape changed; part W please check these match:
-  1. Devices: there is no separate call. The desktop is registered and marked online by `POST /jobs/claim
-     {deviceId, kind:'desktop'}`, sent every 3 s while sync is on. Every call also carries `x-oovi-device: <deviceId>`.
-  2. Vault bodies: `PUT /vault/<id> {baseVersion, connector}` → `{version}` or 409 `{version, connector}`;
-     `GET /vault/<id>` → `{connectorId, version, connector}`; `GET /vault` → `{connectors:[{connectorId, version,
-     deleted?}]}`. The desktop also accepts `data` for `connector` and `items` for `connectors`. It calls
-     `DELETE /vault/<id>` when a connector is removed (404/405 are accepted). A connector = `{name, transport,
-     command?, args?, url?, auth?, env?, headers?, oauth?:{clientInfo?, tokens?, signedInAt?}, enabled, trusted,
-     createdAt}`. Model API keys are scrubbed from every request, even inside a connector.
-  3. A chat sent by the desktop never has `workspace` or `allow` (this computer's project folder and allowed
-     actions); those fields in a chat from the account are ignored, so no device can grant itself rights here.
-  4. Entries have no `updatedAt`, so the desktop merges three-way per entry (it keeps each entry's fingerprint at
-     the last sync); the chat's `updatedAt` decides when both sides changed the same entry ("newer wins").
-     Other clients should keep entry ids stable and PUT the whole chat; 409 must return `{version, chat}`.
-  5. Job payloads the desktop runs: `message {text, effort?, deep?, plan?, entryId?, replyTo?}`;
-     `decision {decisions:{<callId>:bool}, allowChat?}` or `{planDecision:{approve, items}}` or
-     `{answers: string[] | null}`; `stop {}`. "Always allow" for folders and edits is never taken from the phone.
-     `done` is sent with `status: 'done' | 'failed'`; `error`: `bad_job`, `not_on_this_computer`, `busy`,
-     `http_<n>` or `error`.
-  6. When `GET /status` says `enabled:false` after it was on, the desktop treats it as "turned off on another
-     device": it stops syncing and keeps its own chats.
+- 2026-11-18, part A (desktop, branch `cloud-app`): the desktop follows part W's shapes exactly
+  (`web/lib/cloud-types.ts` on `cloud-web`, commit 405b96e): header `x-oovi-device: desktop:<deviceId>`; vault
+  bodies `{baseVersion, data}` / `{connectorId, version, data}` / `{items:[…]}` (a connector known at the last
+  sync and absent from a successful list = removed elsewhere, so removed here); jobs `{job:{jobId, …}}`,
+  heartbeat and done with `{deviceId}`; chats `{chatId, version, deleted, chat|null}`, 409 with `deleted`, 413
+  `over_limit` (account full: new chats stay here) or `too_big` (that chat stays here until it changes); code
+  `sync_off` = turned off on another device (stops here, keeps the chats). Also: the desktop is marked online by
+  `POST /jobs/claim` every 3 s; a chat it sends never has `workspace` or `allow` (this computer's project folder
+  and allowed actions), and those fields from the account are ignored; entries merge three-way by id (entries have
+  no `updatedAt`; the chat's `updatedAt` decides when both sides changed one entry); from the phone it runs
+  `message {text, effort?, deep?, plan?, entryId?, replyTo?}`, `decision {decisions, allowChat?} | {planDecision}
+  | {answers}` and `stop`, never "always allow" for folders or edits; the vault item carries `bots: string[]`
+  (which bots use the connector).
