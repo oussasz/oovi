@@ -105,7 +105,8 @@ export function CreditsChip() {
   // The daily limit is a safety cap: only surface it when someone gets close.
   const nearCap = limit > 0 && pct >= 80;
   const warn = !offline && (status.state !== "ok" || nearCap);
-  const showPilot = !!status.pilot.public && status.pilot.eligible && !status.pilot.status && !!status.links.pilot;
+  // An older server (or a short answer) may leave pilot or links out: never crash the whole window over it.
+  const showPilot = !!status.pilot?.public && !!status.pilot?.eligible && !status.pilot?.status && !!status.links?.pilot;
 
   return (
     <div className="credits">
@@ -170,8 +171,8 @@ export function CreditsChip() {
               </div>
             )}
             <div className="credits-actions">
-              {status.links.subscribe && (
-                <a className="btn primary sm" href={status.links.subscribe} target="_blank" rel="noreferrer">
+              {status.links?.subscribe && (
+                <a className="btn primary sm" href={status.links?.subscribe} target="_blank" rel="noreferrer">
                   {t("credits.subscribe")}
                 </a>
               )}
@@ -187,12 +188,12 @@ export function CreditsChip() {
               </button>
             </div>
             {showPilot && (
-              <a className="credits-link" href={status.links.pilot} target="_blank" rel="noreferrer">
-                {t("credits.pilot", { n: fmt(status.pilot.credits, tag) })} →
+              <a className="credits-link" href={status.links?.pilot} target="_blank" rel="noreferrer">
+                {t("credits.pilot", { n: fmt((status.pilot?.credits ?? 0), tag) })} →
               </a>
             )}
-            {status.links.pricing && (
-              <a className="credits-link" href={status.links.pricing} target="_blank" rel="noreferrer">
+            {status.links?.pricing && (
+              <a className="credits-link" href={status.links?.pricing} target="_blank" rel="noreferrer">
                 {t("credits.pricing")} →
               </a>
             )}

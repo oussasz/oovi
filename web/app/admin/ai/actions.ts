@@ -18,6 +18,7 @@ import {
   type Plan,
 } from "@/lib/ai-config";
 import { audit } from "@/lib/credits";
+import { providerOfKey, saveSttKey } from "@/lib/speech";
 import { TIERS } from "@/lib/pricing-tiers";
 import { fdBool, fdNum, fdStr } from "@/lib/form";
 import type { ActionState } from "@/components/admin/ActionForm";
@@ -275,4 +276,34 @@ export async function savePilotSettings(fd: FormData): Promise<ActionState> {
   }
   refresh();
   return { ok: "Pilot settings saved." };
+}
+
+// ---------- voice notes (speech to text) ----------
+
+export async function replaceSttKey(fd: FormData): Promise<ActionState> {
+  const admin = await requireAdmin();
+  const key = fdStr(fd, "key", 300).trim();
+  if (!key) return { errors: ["Paste the key first."] };
+  if (!providerOfKey(key)) return { errors: ["That doesn't look like a Groq key (starts with “gsk_”) or an OpenAI key (starts with “sk-”)."] };
+  try {
+    await saveSttKey(key, admin.email);
+    await audit(admin.email, "ai.stt.replace", "ai", { last4: key.slice(-4), provider: providerOfKey(key) });
+  } catch (err) {
+    console.error("stt key save failed", err instanceof Error ? err.message : "unknown error");
+    return { errors: ["Could not save the key. Check that AI_KEY_SECRET (or BETTER_AUTH_SECRET) is set on the server."] };
+  }
+  revalidatePath("/admin/ai");
+  return { ok: "Key saved. Voice notes work within about 15 seconds." };
+}
+
+export async function removeSttKey(): Promise<ActionState> {
+  const admin = await requireAdmin();
+  try {
+    await saveSttKey(null, admin.email);
+    await audit(admin.email, "ai.stt.remove", "ai", null);
+  } catch {
+    return { errors: ["Could not remove the key. Please try again."] };
+  }
+  revalidatePath("/admin/ai");
+  return { ok: "Voice notes key removed." };
 }

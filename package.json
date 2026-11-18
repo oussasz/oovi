@@ -114,7 +114,10 @@
       "icon": "build/icon.png",
       "category": "public.app-category.productivity",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "oovi uses the microphone only while you hold or press the microphone button, to turn what you say into a message."
+      }
     },
     "linux": {
       "target": [

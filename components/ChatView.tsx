@@ -1,5 +1,6 @@
 "use client";
 
+import MicButton from "./MicButton";
 import { INTERRUPTED } from "@/lib/delegations-core";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -1722,6 +1723,13 @@ export default function ChatView({ id }: { id: string }) {
               }}
               placeholder={isGroup ? t("chat.placeholderGroupSlash", { name: chat.name }) : t("chat.placeholderSoloSlash", { name: solo?.name ?? t("chat.theBot") })}
               aria-label={t("chat.message")}
+            />
+            <MicButton
+              onText={(said) => {
+                setInput((cur) => (cur.trim() ? `${cur.trimEnd()} ${said}` : said));
+                requestAnimationFrame(() => taRef.current?.focus());
+              }}
+              onError={(m) => setError(m)}
             />
             {running && (input.trim() || readyFiles.length) ? (
               <button type="submit" className="send" disabled={uploading} title={t("chat.sendWhileWorking")} aria-label={t("chat.send")}>

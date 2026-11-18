@@ -13,6 +13,7 @@
 // approvals for that work are asked there, and files bots send go there. Only the main chat
 // and linked chats are answered; the routing rules live in telegram-links.ts.
 
+import { MAX_VOICE_BYTES, transcribeAudio, voiceText } from "./voice";
 import { translateFor, translatorFor } from "./i18n-server";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -568,8 +569,40 @@ async function answerGroup(tok: string, chatId: number, text: string): Promise<b
 }
 
 /** Today's behaviour: pairing, then the main chat talks to the main bot. */
+/** A voice message's words (lib/voice.ts), or null with the reason already told to the user. */
+async function voiceToText(tok: string, m: TgMessage): Promise<string | null> {
+  const v = m.voice ?? m.audio;
+  if (!v) return null;
+  try {
+    if ((v.file_size ?? 0) > MAX_VOICE_BYTES) {
+      await say(tok, m.chat.id, ownerTr()("tg.voiceTooLong"));
+      return null;
+    }
+    const f = await tg<{ file_path?: string }>(tok, "getFile", { file_id: v.file_id });
+    if (!f.file_path) throw new Error("no file");
+    const r = await fetch(`${API}/file/bot${tok}/${f.file_path}`, { signal: AbortSignal.timeout(60_000) });
+    if (!r.ok) throw new Error(`download ${r.status}`);
+    const out = await transcribeAudio(Buffer.from(await r.arrayBuffer()), v.mime_type || "audio/ogg");
+    if ("error" in out) {
+      await say(tok, m.chat.id, ownerTr()("tg.voiceFailed", { why: out.error }));
+      return null;
+    }
+    if (!out.text) {
+      await say(tok, m.chat.id, ownerTr()("tg.voiceEmpty"));
+      return null;
+    }
+    return voiceText(out.text);
+  } catch {
+    await say(tok, m.chat.id, ownerTr()("tg.voiceFailed", { why: "" }));
+    return null;
+  }
+}
+
 async function handleMain(tok: string, s: Stored, m: TgMessage) {
-  const text = (m.text ?? "").trim();
+  // A voice message counts as what it says (only once paired: pairing needs the typed /start link).
+  const spoken = s.chatId && !m.text && (m.voice || m.audio) ? await voiceToText(tok, m) : null;
+  if (s.chatId && (m.voice || m.audio) && !spoken) return;
+  const text = (spoken ?? m.text ?? "").trim();
 
   // Pairing: only the person who opened oovi's link (with its one-time code) gets in.
   if (!s.chatId) {

@@ -53,6 +53,7 @@ async function answerAsync(body) {
     if (hasResult) return reply([{ type: "text", text: "Voilà ton rapport." }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_doc_${Date.now()}`, name: "create_document", input: { filename: "rapport.md", content: "# Rapport\nTout va bien." } }], "tool_use");
   }
+  if (/VOICE-NOTE/.test(u)) return reply([{ type: "text", text: /^🎤 VOICE-NOTE/.test(u) ? "VOICE-HEARD" : "VOICE-WRONG" }], "end_turn");
   if (/LONG/.test(u)) {
     await sleep(8000);
     return reply([{ type: "text", text: "LONG-DONE" }], "end_turn");
@@ -93,6 +94,11 @@ http
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Oussama", image: null } });
       const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
       if (refused) return send(400, { error: refused });
+      if (url === "/api/v1/ai/transcribe" && req.method === "POST") {
+        const b = JSON.parse(raw);
+        seen.transcribed = { mime: b.mime, bytes: Buffer.from(b.audio, "base64").length };
+        return send(200, { text: "VOICE-NOTE شحال الساعة دركا؟", seconds: 3, credits: 0.1 });
+      }
       if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
       if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
@@ -120,6 +126,11 @@ http
         res.writeHead(code, { "content-type": "application/json" });
         res.end(JSON.stringify(obj));
       };
+      // A voice file download (getFile's file_path).
+      if (/^\/file\/bot[^/]+\/voice\//.test(req.url)) {
+        res.writeHead(200, { "content-type": "audio/ogg" });
+        return res.end(Buffer.alloc(4000, 7));
+      }
       const method = req.url.split("/").pop().split("?")[0];
       let body = {};
       try {
@@ -127,6 +138,7 @@ http
       } catch {
         body = {}; // multipart (sendDocument)
       }
+      if (method === "getFile") return send(200, { ok: true, result: { file_id: body.file_id, file_path: "voice/file_1.oga" } });
       if (method === "getMe") return send(200, { ok: true, result: { id: 1, is_bot: true, username: "test_oovi_bot", first_name: "oovi" } });
       if (method === "getUpdates") {
         confirmed = Math.max(confirmed, body.offset || 0);
@@ -254,6 +266,12 @@ const check = (name, ok, detail = "") => {
   userSays("EXPORT la liste des clients en Excel");
   await waitFor((m) => sent.indexOf(m) >= n6 && /Voilà la liste/.test(m.text), 30_000, "export reply");
   check("an exported list (a file from another tool) is sent to Telegram, once", sent.slice(n6).filter((m) => /\[document\] Clients\.xlsx/.test(m.text)).length === 1, sent.slice(n6).map((m) => m.text).join(" || ").slice(0, 160));
+
+  // A voice message: turned into text and answered like a typed one.
+  const n7 = sent.length;
+  updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, voice: { file_id: "v1", duration: 3, mime_type: "audio/ogg", file_size: 4000 } } });
+  await waitFor((m) => sent.indexOf(m) >= n7 && /VOICE-/.test(m.text), 30_000, "voice reply");
+  check("a Telegram voice message is turned into text and answered", sent.slice(n7).some((m) => /VOICE-HEARD/.test(m.text)) && seen.transcribed?.mime === "audio/ogg" && seen.transcribed.bytes === 4000, JSON.stringify(seen.transcribed));
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

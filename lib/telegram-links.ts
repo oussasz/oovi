@@ -20,6 +20,9 @@ export type TgMessage = {
   chat: { id: number; type: string; title?: string; first_name?: string; last_name?: string; username?: string };
   from?: TgUser;
   text?: string;
+  /** A voice message (or an audio file): turned into text (lib/voice.ts). */
+  voice?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
+  audio?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
   reply_to_message?: { from?: TgUser };
   new_chat_members?: TgUser[];
   migrate_to_chat_id?: number;

@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { requireAdmin } from "@/lib/admin";
 import { EFFORTS, getAiConfig, getPilotConfig, getPlans, providerKeyInfo } from "@/lib/ai-config";
+import { sttKeyInfo } from "@/lib/speech";
 import { AI_PERIOD_LABELS, AI_PERIODS, getAiStats, parseAiPeriod, type AiPeriod } from "@/lib/ai-stats";
 import { BarChart, LineChart } from "@/components/admin/Charts";
 import { ActionForm } from "@/components/admin/ActionForm";
@@ -10,7 +11,7 @@ import { ConfirmButton } from "@/components/admin/ConfirmButton";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
 import { CsvButton } from "@/components/admin/CsvButton";
 import { fmtDateTime, fmtInt, fmtNumber, fmtPct, fmtUsd } from "@/components/admin/format";
-import { removeProviderKey, replaceProviderKey, saveAiSettings, savePilotSettings, savePlansAction, setPaused } from "./actions";
+import { removeProviderKey, removeSttKey, replaceProviderKey, replaceSttKey, saveAiSettings, savePilotSettings, savePlansAction, setPaused } from "./actions";
 import { PlansEditor } from "./PlansEditor";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +40,7 @@ const usdPerCredit = (creditsPerUsd: number) => {
 export default async function AdminAi({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parseAiPeriod((await searchParams).period);
-  const [cfg, plans, pilot, key, s] = await Promise.all([getAiConfig(), getPlans(), getPilotConfig(), providerKeyInfo(), getAiStats(period)]);
+  const [cfg, plans, pilot, key, s, stt] = await Promise.all([getAiConfig(), getPlans(), getPilotConfig(), providerKeyInfo(), getAiStats(period), sttKeyInfo()]);
   const c = s.current;
   const p = s.previous;
   const budgetShare = cfg.dailyBudgetUsd > 0 ? s.todayCostUsd / cfg.dailyBudgetUsd : null;
@@ -390,6 +391,27 @@ export default async function AdminAi({ searchParams }: { searchParams: Promise<
                 submitClassName="btn btn-ghost btn-sm"
                 confirm={`Remove the key saved in the console?\n\n${process.env.ANTHROPIC_API_KEY ? "The ANTHROPIC_API_KEY environment variable will be used instead." : "No other key is set, so every hosted call will fail until you add one."}`}
               />
+            </div>
+          )}
+        </Section>
+
+        <Section title="Voice notes" sub="Speech to text for voice notes (Telegram and the app's microphone). A Groq key (Whisper large v3, about $0.002 a minute) or an OpenAI key. Users pay in credits at cost. Without a key, voice notes are turned off.">
+          <dl className="adm-dl" style={{ marginBottom: 16 }}>
+            <dt>Source</dt>
+            <dd>{stt.source === "console" ? "Saved in this console" : stt.source === "env" ? "GROQ_API_KEY / OPENAI_API_KEY environment variable" : "None: voice notes are off."}</dd>
+            <dt>Provider</dt>
+            <dd>{stt.provider === "groq" ? "Groq (Whisper large v3)" : stt.provider === "openai" ? "OpenAI (Whisper)" : "–"}</dd>
+            <dt>Key</dt>
+            <dd className="adm-mono">{stt.hint ?? "–"}</dd>
+          </dl>
+          <ActionForm action={replaceSttKey} submitLabel={stt.source === "none" ? "Save key" : "Replace key"} resetOnSuccess>
+            <Field id="stt-key" label="Key" help="Starts with “gsk_” (Groq) or “sk-” (OpenAI). Stored encrypted, never shown again.">
+              <input id="stt-key" name="key" className="input adm-mono" type="password" autoComplete="new-password" spellCheck={false} maxLength={300} placeholder="gsk_…" required />
+            </Field>
+          </ActionForm>
+          {stt.source === "console" && (
+            <div style={{ marginTop: 14 }}>
+              <ActionForm action={removeSttKey} className="adm-form" submitLabel="Remove saved key" pendingLabel="Removing…" submitClassName="btn btn-ghost btn-sm" confirm="Remove the voice notes key? Voice notes stop working unless an environment variable is set." />
             </div>
           )}
         </Section>
