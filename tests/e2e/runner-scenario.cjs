@@ -19,6 +19,7 @@ const SECRET = "test-runner-secret-0123456789abcdef-xyz";
 const TMP = path.join(os.tmpdir(), "oovi-runner-test");
 fs.rmSync(TMP, { recursive: true, force: true });
 fs.mkdirSync(TMP, { recursive: true });
+fs.chmodSync(TMP, 0o777); // the image runs as the user "node"
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let failures = 0;
 const check = (ok, what) => {
@@ -142,12 +143,14 @@ const website = http.createServer(async (req, res) => {
 });
 
 // ---------- the runner ----------
+// RUNNER_IMAGE=oovi-runner:local: the same scenario against the Docker image (as infra/docker-compose.yml runs it).
+const IMAGE = process.env.RUNNER_IMAGE;
 let out = "";
 function startRunner(extra = {}) {
-  const child = spawn(process.execPath, [path.join(ROOT, "runner/index.mjs")], {
-    env: { ...process.env, OOVI_WEB_URL: `http://127.0.0.1:${WEB_PORT}`, RUNNER_SECRET: SECRET, RUNNER_ID: "test-runner", RUNNER_TMP: TMP, RUNNER_CONCURRENCY: "2", RUNNER_HEARTBEAT_MS: "2000", RUNNER_PUSH_MS: "300", ...extra },
-    stdio: ["ignore", "pipe", "pipe"],
-  });
+  const env = { OOVI_WEB_URL: `http://127.0.0.1:${WEB_PORT}`, RUNNER_SECRET: SECRET, RUNNER_ID: "test-runner", RUNNER_CONCURRENCY: "2", RUNNER_HEARTBEAT_MS: "2000", RUNNER_PUSH_MS: "300", ...extra };
+  const child = IMAGE
+    ? spawn("docker", ["run", "--rm", "--init", "--network", "host", "--read-only", "--tmpfs", "/tmp:mode=1777", "--cap-drop", "ALL", "--security-opt", "no-new-privileges:true", "-v", `${TMP}:/tmp/oovi-runner`, ...Object.entries(env).flatMap(([k, v]) => ["-e", `${k}=${v}`]), IMAGE], { stdio: ["ignore", "pipe", "pipe"] })
+    : spawn(process.execPath, [path.join(ROOT, "runner/index.mjs")], { env: { ...process.env, ...env, RUNNER_TMP: TMP }, stdio: ["ignore", "pipe", "pipe"] });
   child.stdout.on("data", (d) => (out += d));
   child.stderr.on("data", (d) => (out += d));
   return child;

@@ -1,0 +1,25 @@
+# oovi's cloud runner on one server (infra/setup.sh installs this as /opt/oovi-runner/docker-compose.yml).
+# No public port: the runner only calls out to the website. Its settings are in runner.env next to this file
+# (written on the server by `sudo oovi-runner config`, never committed).
+services:
+  runner:
+    image: ${RUNNER_IMAGE:-ghcr.io/oussasz/oovi-runner:latest}
+    env_file: runner.env
+    init: true
+    restart: unless-stopped
+    # SIGTERM: running jobs get RUNNER_DRAIN_MS to finish, then their leases go back to the queue.
+    stop_grace_period: 60s
+    read_only: true
+    tmpfs:
+      - /tmp:size=2g,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    mem_limit: ${RUNNER_MEM_LIMIT:-1600m}
+    pids_limit: 512
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
