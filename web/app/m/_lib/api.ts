@@ -3,6 +3,7 @@
 // Calls from the phone app to the website (same origin, the website's session cookie; no key is ever sent or
 // kept here). The cloud API is the contract in docs/CLOUD-BUILD.md (/api/v1/cloud); bots and connectors come
 // from the account's setup (/api/v1/setup), credits from /api/v1/ai/status, voice notes from /api/v1/ai/transcribe.
+import type { PendingSignIn, VaultItem } from "./connectors";
 import type { Chat, ChatListItem, CloudStatus, Credits, JobInfo, JobPayload, Me } from "./types";
 
 export class ApiError extends Error {
@@ -121,4 +122,44 @@ export async function transcribe(blob: Blob): Promise<string> {
   for (let i = 0; i < buf.length; i += 0x8000) bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
   const r = await call<{ text: string }>("/api/v1/ai/transcribe", { method: "POST", json: { audio: btoa(bin), mime: blob.type || "audio/mp4" } });
   return String(r?.text ?? "").trim();
+}
+
+// ---------- connectors: the account's vault, sign-ins and the catalog ----------
+
+export const listVault = () =>
+  call<{ items: { connectorId: string; version: number; updatedAt: string }[]; pending: PendingSignIn[] }>("/api/v1/cloud/vault");
+
+/** One connector's full entry: held in memory only to change it, never stored on the phone. */
+export const getVault = (id: string) => call<{ connectorId: string; version: number; data: VaultItem }>(`/api/v1/cloud/vault/${encodeURIComponent(id)}`);
+
+export const putVault = (id: string, baseVersion: number, data: VaultItem) =>
+  call<{ version: number }>(`/api/v1/cloud/vault/${encodeURIComponent(id)}`, { method: "PUT", json: { baseVersion, data } });
+
+export const deleteVault = (id: string) => call<{ ok: true }>(`/api/v1/cloud/vault/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+export const startSignIn = (id: string, url?: string) =>
+  call<{ authUrl: string; flowId: string }>(`/api/v1/cloud/connectors/${encodeURIComponent(id)}/oauth/start`, { method: "POST", json: url ? { url } : {} });
+
+export const finishSignIn = (flowId: string) =>
+  call<{ connectorId: string; version: number; data: VaultItem }>("/api/v1/cloud/connectors/oauth/finish", { method: "POST", json: { flowId } });
+
+/** The website's published Marketplace items (public). */
+export const getCatalog = () => call<{ items: unknown[]; hidden: string[] }>("/api/v1/catalog");
+
+/**
+ * Changes a connector: reads its current entry, applies `change`, saves it. On a conflict (changed elsewhere in
+ * between) it reads again and applies the change once more.
+ */
+export async function changeVault(id: string, change: (d: VaultItem) => VaultItem): Promise<{ version: number; data: VaultItem }> {
+  for (let i = 0; i < 2; i++) {
+    const cur = await getVault(id);
+    const next = change(cur.data);
+    try {
+      const r = await putVault(id, cur.version, next);
+      return { version: r.version, data: next };
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409) || i === 1) throw err;
+    }
+  }
+  throw new ApiError(409, "conflict");
 }

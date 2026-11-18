@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
-import { ConnectorsScreen } from "../../_ui/ConnectorsScreen";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Connectors" };
-
+// Connectors moved to /m/connectors (where the website's sign-in callback returns).
 export default function Page() {
-  return <ConnectorsScreen />;
+  redirect("/m/connectors");
 }

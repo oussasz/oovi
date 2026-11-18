@@ -24,7 +24,7 @@ import { tap } from "../_lib/haptics";
 import type { BotEntry, Chat, Entry, JobInfo, UserEntry } from "../_lib/types";
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
-import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner, useToast } from "./kit";
+import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner } from "./kit";
 import { Markdown } from "./Markdown";
 import { useM } from "./MobileApp";
 
@@ -81,7 +81,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const [answered, setAnswered] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [menu, setMenu] = useState<Entry | null>(null);
-  const [toast, showToast] = useToast();
+  const showToast = m.toast;
   const endRef = useRef<HTMLDivElement>(null);
   const firstScroll = useRef(true);
   const versionRef = useRef(version);
@@ -491,7 +491,6 @@ export function ChatScreen({ chatId }: { chatId: string }) {
             <p>{localBot ? t("chat.local", { name: localBot.name }) : t("sync.off.body")}</p>
           </div>
         ))}
-      {toast}
       <ActionSheet
         open={!!menu}
         onClose={() => setMenu(null)}

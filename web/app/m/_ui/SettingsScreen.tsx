@@ -11,7 +11,7 @@ type BeforeInstall = Event & { prompt: () => Promise<void>; userChoice: Promise<
 
 export function SettingsScreen() {
   const m = useM();
-  const { t, lang, me, status, sync, credits, loadCredits, prefs, setPrefs, refresh, setup } = m;
+  const { t, lang, me, status, sync, credits, loadCredits, prefs, setPrefs, refresh, setup, connectors } = m;
   const [sheet, setSheet] = useState<"lang" | "look" | "signout" | null>(null);
   const [install, setInstall] = useState(false);
   const [standalone, setStandalone] = useState(true);
@@ -40,7 +40,8 @@ export function SettingsScreen() {
   const nf = new Intl.NumberFormat(lang === "ar" ? "ar-DZ" : lang === "fr" ? "fr-FR" : "en-US", { maximumFractionDigits: 1, numberingSystem: "latn" } as Intl.NumberFormatOptions);
   const langName = { auto: t("settings.auto"), en: "English", fr: "Français", ar: "العربية" }[prefs.lang];
   const lookName = { auto: t("settings.auto"), light: t("settings.light"), dark: t("settings.dark") }[prefs.theme];
-  const connectorsOn = (setup?.connectors ?? []).filter((c) => c.enabled).length;
+  const inVault = Object.values(connectors);
+  const connectorsOn = (inVault.length ? inVault : (setup?.connectors ?? [])).filter((c) => c.enabled).length;
 
   const signOut = async () => {
     setLeaving(true);
@@ -128,7 +129,7 @@ export function SettingsScreen() {
               <Row title={t("settings.lastSync")} value={status.lastSync ? agoShort(Date.parse(status.lastSync), now, lang) : t("settings.never")} />
             </>
           )}
-          <Row icon={<IconTile name="plug" color="#FF9500" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href="/m/settings/connectors" />
+          <Row icon={<IconTile name="plug" color="#FF9500" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href="/m/connectors" />
         </Section>
 
         <Section header={t("settings.prefs")}>

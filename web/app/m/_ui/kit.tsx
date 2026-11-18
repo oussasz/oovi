@@ -524,3 +524,37 @@ export function OfflineBar() {
     </div>
   );
 }
+
+/** The iOS switch (on/off). */
+export function Switch({ on, onChange, label, disabled }: { on: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      aria-label={label}
+      disabled={disabled}
+      className={`m-switch${on ? " is-on" : ""}`}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        tap("medium");
+        onChange(!on);
+      }}
+    >
+      <i />
+    </button>
+  );
+}
+
+/** A connector's picture: its logo when the catalog has one, else its first letter. */
+export function ConnectorLogo({ name, logo, size = 29 }: { name: string; logo?: string; size?: number }) {
+  if (logo && /^\/(logos|api\/v1\/avatars)\/[\w.-]+$/.test(logo))
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img className="m-clogo" src={logo} alt="" width={size} height={size} loading="lazy" />;
+  return (
+    <span className="m-letter" style={{ width: size, height: size }}>
+      {name.trim().slice(0, 1).toUpperCase()}
+    </span>
+  );
+}

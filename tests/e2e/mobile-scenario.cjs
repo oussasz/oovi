@@ -202,19 +202,68 @@ async function main() {
     check("J the computer and its state", await page.getByText("Home PC").isVisible() && (await page.getByText(/Offline · 2 h ago/).isVisible()));
     check("J sync on, with the space used", await page.getByText(/3\.2 MB of 100 MB/).isVisible());
     check("J the phone uses theOovi only, said plainly", await page.getByText("On the phone, your bots use theOovi only. Your own API keys stay on your computer.").isVisible());
-    await page.click('a[href="/m/settings/connectors"]');
-    check("J connectors: names", await until(async () => (await page.locator(".m-row").count()) === 4));
-    check("J connectors: on and off", (await page.locator(".m-state.is-on").count()) === 3 && (await page.locator(".m-state:not(.is-on)").count()) === 1);
-    const html = await page.content();
-    const stored = await page.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join("\n"));
-    const secrets = ["SECRET-TOKEN", "mcp.example.test", "GMAIL_KEY", "files-server", "SECRET-INSTRUCTIONS", "Authorization"];
-    check("J no address, command, key name or instructions on the page", secrets.every((s) => !html.includes(s)), secrets.filter((s) => html.includes(s)).join());
-    check("J …nor in the phone's storage", secrets.every((s) => !stored.includes(s)), secrets.filter((s) => stored.includes(s)).join());
+    await page.click('a[href="/m/connectors"]');
+    const crow = (name) => page.locator(".m-row--conn", { hasText: name });
+    check("J connectors: the account's four", await until(async () => (await page.locator(".m-row--conn").count()) === 4));
+    check("J connectors: signed in, off, on the computer", (await crow("Gmail").textContent()).includes("Signed in") && (await crow("Google Calendar").textContent()).includes("Off") && (await crow("Computer files").textContent()).includes("Runs on your computer"));
+    await crow("Notion").getByRole("switch").click();
+    check("J on/off from the list is saved", await until(() => S.vaultPuts.some((x) => x.id === "notion" && x.data.enabled === false)));
+    check("J …keeping the connector's key", S.vaultPuts.find((x) => x.id === "notion").data.headers.Authorization === "Bearer SECRET-HEADER-VALUE");
+    const secrets = ["SECRET-OAUTH-TOKEN", "SECRET-HEADER-VALUE", "SECRET-TOKEN", "mcp.example.test", "GMAIL_KEY", "files-server", "SECRET-INSTRUCTIONS"];
+    const leaks = async () => {
+      const html = await page.content();
+      const stored = await page.evaluate(() => Object.keys(localStorage).map((k) => localStorage.getItem(k)).join("\n"));
+      return secrets.filter((x) => html.includes(x) || stored.includes(x));
+    };
+    check("J no key, token, address or command on the page or in the phone's storage", (await leaks()).length === 0, (await leaks()).join());
+    await crow("Gmail").getByRole("link").click();
+    check("J a connector's page: its bots", await until(async () => (await page.getByRole("checkbox", { checked: true }).count()) === 2));
+    await page.getByRole("checkbox", { name: "Rex" }).click();
+    check("J choose a bot", await until(() => S.vaultPuts.some((x) => x.id === "gmail" && x.data.bots.includes("rex") && x.data.bots.includes("lina"))));
+    await page.getByRole("button", { name: "Sign out" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();
+    check("J sign out keeps the connector, drops the sign-in", await until(() => S.vaultPuts.some((x) => x.id === "gmail" && !x.data.oauth && x.data.url)) && !!S.vault.gmail);
+    check("J …then it says to sign in", await until(() => page.locator(".m-conn-head", { hasText: "Sign in needed" }).isVisible()));
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    check("J sign in: back in the app, connected", await until(() => page.url().endsWith("/m/connectors") && page.getByText("Gmail is connected ✓").isVisible(), 10_000), page.url());
+    check("J …and the sign-in is there", !!S.vault.gmail.data.oauth?.tokens);
+    // Comes back in another browser (iPhone home-screen app → Safari): held, confirmed there, finished by the app.
+    S.oauthMode = "other";
+    await page.goto(`${BASE}/m/connectors/calendar`);
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await until(() => page.getByText("came back in another browser").isVisible());
+    await page.goto(`${BASE}/m/connectors`);
+    check("J held, not confirmed yet: says what to tap", await until(() => page.getByText("Tap “Yes, it’s my account” on the page that opened, then come back.").isVisible(), 8000));
+    S.flows[S.flows.length - 1].confirmed = true;
+    await page.evaluate(() => window.dispatchEvent(new Event("focus")));
+    check("J confirmed: the app finishes it", await until(() => page.getByText("Google Calendar is connected ✓").isVisible(), 8000) && !!S.vault.calendar.data.oauth?.tokens);
+    S.oauthMode = "same";
+    await page.goto(`${BASE}/m/connectors?error=denied&id=calendar`);
+    check("J a refused sign-in in plain words", await until(() => page.getByText("The sign-in was cancelled.").isVisible()));
+    // Add from the catalog.
+    await page.goto(`${BASE}/m/connectors/add`);
+    check("J the catalog: built-in and published, hidden left out", await until(async () => (await page.getByRole("button", { name: /GitHub/ }).count()) === 1 && (await page.getByRole("button", { name: /Zapier/ }).count()) === 1) && (await page.getByRole("button", { name: /^Make/ }).count()) === 0);
+    await page.fill('input[type="search"]', "git");
+    await page.getByRole("button", { name: /GitHub/ }).click();
+    await page.getByRole("button", { name: "Add GitHub" }).click();
+    check("J a needed key is asked for", await until(() => page.getByRole("alert").filter({ hasText: "Fill in “GitHub token”." }).isVisible()));
+    await page.getByLabel("GitHub token").fill("sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123");
+    await page.getByRole("button", { name: "Add GitHub" }).click();
+    check("J an AI model key is refused", await until(() => page.getByRole("alert").filter({ hasText: "AI model key" }).isVisible()));
+    await page.getByLabel("GitHub token").fill("github_pat_standin");
+    await page.getByRole("button", { name: "Add GitHub" }).click();
+    check("J added: in the account, its key in the header, every bot", await until(() => S.vault.github?.data.headers?.Authorization === "Bearer github_pat_standin" && S.vault.github.data.bots.length === 5 && S.vault.github.data.catalogId === "github"));
+    check("J …and its page opens", await until(() => page.url().endsWith("/m/connectors/github")));
+    check("J the key never shown", !(await page.content()).includes("github_pat_standin"));
+    await page.getByRole("button", { name: "Remove connector" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Remove connector" }).click();
+    check("J remove: gone from the account", await until(() => !S.vault.github && page.url().endsWith("/m/connectors")));
+    check("J still no secret anywhere on the phone", (await leaks()).length === 0, (await leaks()).join());
 
     // ---------- K) 320 px ----------
     await page.setViewportSize({ width: 320, height: 640 });
     const wide = [];
-    for (const u of ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/c/dm-rex", "/m/bots", "/m/settings", "/m/settings/connectors", "/m/offline"]) {
+    for (const u of ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/c/dm-rex", "/m/bots", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/offline"]) {
       await page.goto(BASE + u);
       await sleep(700);
       const w = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -330,7 +379,9 @@ async function screenshots(browser, sb) {
       await shot("group", "/m/c/studio");
       await shot("bots", "/m/bots");
       await shot("settings", "/m/settings");
-      await shot("connectors", "/m/settings/connectors");
+      await shot("connectors", "/m/connectors");
+      await shot("connector", "/m/connectors/gmail");
+      await shot("connector-add", "/m/connectors/add");
       if (scheme === "light") {
         await shot("chat-composer-voice", "/m/c/dm-lina", async (p) => {
           await p.locator(".m-composer textarea").fill(lang === "ar" ? "واش كاين جديد على العملاء؟" : "Any news on the prospects?");

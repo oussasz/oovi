@@ -4,7 +4,10 @@
 // phone and their refresh, pins and unread marks, and the messages the phone sends (POST /api/v1/cloud/jobs).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ApiError, SIGNED_OUT_EVENT, getChat, getCredits, getMe, getSetup, getStatus, listChats, postJob } from "../_lib/api";
+import { ApiError, SIGNED_OUT_EVENT, finishSignIn, getChat, getCredits, getMe, getSetup, getStatus, getVault, listChats, listVault, postJob } from "../_lib/api";
+import { finishProblem, pendingToHandle, viewOfVault, type ConnectorView, type PendingSignIn } from "../_lib/connectors";
+import { useToast } from "./kit";
+import { signInRecent } from "./signin";
 import { lastShownEntry, newId, pendingOutgoing, phoneSetup, pickLang, slimChat, togglePin as togglePinList, type Lang, type Outgoing } from "../_lib/core";
 import { translate, type Key } from "../_lib/i18n";
 import * as L from "../_lib/local";
@@ -42,6 +45,12 @@ type Ctx = {
   lastJobError: () => string;
   credits: Credits | null;
   loadCredits: () => Promise<void>;
+  /** The account's connectors in the vault (no keys or tokens). */
+  connectors: Record<string, ConnectorView>;
+  refreshConnectors: () => Promise<void>;
+  putConnector: (id: string, view: ConnectorView | null, version?: number) => void;
+  /** A short message at the bottom of the screen. */
+  toast: (msg: string) => void;
   signedOut: () => void;
 };
 
@@ -85,6 +94,11 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const [seen, setSeen] = useState<Record<string, number>>({});
   const [outbox, setOutbox] = useState<Outgoing[]>([]);
   const [credits, setCredits] = useState<Credits | null>(null);
+  const [connectors, setConnectors] = useState<Record<string, ConnectorView>>({});
+  const vaultVersions = useRef<Record<string, number>>({});
+  const vaultAt = useRef(0);
+  const told = useRef(new Set<string>());
+  const [toastNode, toast] = useToast();
   const cache = useRef<L.ChatCache>({ since: null, chats: {} });
   const setupAt = useRef(0);
   const busy = useRef(false);
@@ -92,6 +106,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const meChecked = useRef(false);
 
   const lang = pickLang(navLangs, prefs.lang === "auto" ? null : prefs.lang);
+  const langRef = useRef(lang);
+  langRef.current = lang;
   const dir = lang === "ar" ? "rtl" : "ltr";
   const t = useCallback((key: Key, vars?: Record<string, string | number>) => translate(lang, key, vars), [lang]);
 
@@ -115,6 +131,9 @@ export function MobileApp({ children }: { children: ReactNode }) {
     seenBase.current = sn;
     setSeen(sn ?? {});
     setOutbox(L.loadOutbox());
+    const cn = L.loadConnectors();
+    setConnectors(cn.views);
+    vaultVersions.current = cn.versions;
     setReady(true);
     const on = () => setOnline(true);
     const off = () => setOnline(false);
@@ -150,6 +169,9 @@ export function MobileApp({ children }: { children: ReactNode }) {
     setOutbox([]);
     setPins([]);
     setSeen({});
+    setConnectors({});
+    vaultVersions.current = {};
+    vaultAt.current = 0;
     seenBase.current = null;
     meChecked.current = false;
     setupAt.current = 0;
@@ -233,6 +255,73 @@ export function MobileApp({ children }: { children: ReactNode }) {
     }
   }, [commit]);
 
+  // ---------- connectors ----------
+  const saveConn = useCallback((views: Record<string, ConnectorView>) => {
+    L.saveConnectors({ at: Date.now(), views, versions: vaultVersions.current });
+  }, []);
+
+  const putConnector = useCallback(
+    (id: string, view: ConnectorView | null, version?: number) => {
+      setConnectors((cur) => {
+        const next = { ...cur };
+        if (view) next[id] = view;
+        else delete next[id];
+        if (version !== undefined) vaultVersions.current[id] = version;
+        if (!view) delete vaultVersions.current[id];
+        saveConn(next);
+        return next;
+      });
+    },
+    [saveConn],
+  );
+
+  /** Sign-ins this phone started that came back in another browser: finished here, or explained. */
+  const handlePending = useCallback(
+    async (pending: PendingSignIn[]) => {
+      const { finish, confirm } = pendingToHandle(pending);
+      for (const p of finish) {
+        try {
+          const r = await finishSignIn(p.flowId);
+          putConnector(r.connectorId, viewOfVault(r.connectorId, r.data), r.version);
+          toast(translate(langRef.current, "conn.connected", { name: viewOfVault(r.connectorId, r.data).name }));
+        } catch (err) {
+          if (err instanceof ApiError && err.status !== 404) toast(translate(langRef.current, finishProblem(err.status)));
+        }
+      }
+      for (const p of confirm) {
+        if (told.current.has(p.flowId)) continue;
+        told.current.add(p.flowId);
+        toast(translate(langRef.current, "conn.err.confirm"));
+      }
+    },
+    [putConnector, toast],
+  );
+
+  const refreshConnectors = useCallback(async () => {
+    const r = await listVault();
+    vaultAt.current = Date.now();
+    const listed = new Map((r?.items ?? []).map((i) => [i.connectorId, i.version]));
+    const views: Record<string, ConnectorView> = {};
+    const cur = L.loadConnectors().views;
+    await pool([...listed.keys()], 4, async (id) => {
+      if (cur[id] && vaultVersions.current[id] === listed.get(id)) {
+        views[id] = cur[id]!;
+        return;
+      }
+      try {
+        const one = await getVault(id);
+        views[id] = viewOfVault(id, one.data);
+        vaultVersions.current[id] = one.version;
+      } catch {
+        if (cur[id]) views[id] = cur[id]!;
+      }
+    });
+    for (const id of Object.keys(vaultVersions.current)) if (!listed.has(id)) delete vaultVersions.current[id];
+    setConnectors(views);
+    saveConn(views);
+    if (r?.pending?.length) await handlePending(r.pending);
+  }, [saveConn, handlePending]);
+
   const refresh = useCallback(
     async (opts: { setup?: boolean } = {}) => {
       if (busy.current) return;
@@ -280,6 +369,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
           L.saveStatus(st);
           setSync(st.enabled ? "on" : "off");
           if (st.enabled) await refreshChats();
+          if (st.enabled && (opts.setup || Date.now() - vaultAt.current > 60_000)) await refreshConnectors().catch(() => {});
         } catch (err) {
           if (err instanceof ApiError && err.code === "sync_off") setSync("off");
           else if (err instanceof ApiError && (err.status === 404 || err.status === 501)) setSync("unavailable");
@@ -292,7 +382,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
         setRefreshing(false);
       }
     },
-    [refreshChats],
+    [refreshChats, refreshConnectors],
   );
 
   // Refresh when the app opens, comes back to the front, every 20 s while it is open, and when the connection is back.
@@ -311,6 +401,21 @@ export function MobileApp({ children }: { children: ReactNode }) {
       window.removeEventListener("online", tick);
     };
   }, [ready, onLogin, refresh]);
+
+  // Back from a connector's sign-in page (maybe in another browser): finish or explain it at once.
+  useEffect(() => {
+    if (!ready || onLogin) return;
+    const back = () => {
+      if (document.visibilityState === "visible" && signInRecent()) void refreshConnectors().catch(() => {});
+    };
+    back();
+    document.addEventListener("visibilitychange", back);
+    window.addEventListener("focus", back);
+    return () => {
+      document.removeEventListener("visibilitychange", back);
+      window.removeEventListener("focus", back);
+    };
+  }, [ready, onLogin, refreshConnectors]);
 
   // ---------- pins and unread ----------
   const togglePin = useCallback((chat: Chat) => {
@@ -419,14 +524,15 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut }),
-    [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut],
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
+    [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
   );
 
   return (
     <MobileCtx.Provider value={value}>
       <div className="mapp" dir={dir} lang={lang} data-ready={ready ? "1" : "0"}>
         {ready ? children : null}
+        {toastNode}
       </div>
     </MobileCtx.Provider>
   );

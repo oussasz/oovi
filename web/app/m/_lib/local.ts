@@ -3,6 +3,7 @@
 // What the phone keeps in this browser (so the app opens at once and works offline): chats without tool results,
 // the bots' names and faces, pins, what was read, messages on their way, and this phone's choices. Everything
 // is removed on sign-out (clearLocal). Every read and write survives private mode and a full storage.
+import type { ConnectorView } from "./connectors";
 import type { Outgoing } from "./core";
 import type { Chat, CloudStatus, Credits, Me, PhoneSetup } from "./types";
 
@@ -55,6 +56,9 @@ export const loadCredits = () => read<Credits | null>("credits", null);
 export const saveCredits = (c: Credits) => write("credits", c);
 export const loadMe = () => read<Me | null>("me", null);
 export const saveMe = (m: Me) => write("me", m);
+/** Connectors as the phone shows them (name, on/off, bots, signed in or not): never a key or a token. */
+export const loadConnectors = () => read<{ at: number; views: Record<string, ConnectorView>; versions: Record<string, number> }>("connectors", { at: 0, views: {}, versions: {} });
+export const saveConnectors = (c: { at: number; views: Record<string, ConnectorView>; versions: Record<string, number> }) => write("connectors", c);
 export const loadPins = () => read<string[]>("pins", []);
 export const savePins = (p: string[]) => write("pins", p);
 export const loadSeen = () => read<Record<string, number> | null>("seen", null);

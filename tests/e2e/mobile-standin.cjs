@@ -138,13 +138,20 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     state.chats = {};
     for (const [id, chat] of Object.entries(f.chats)) state.chats[id] = { version: 3, chat, deleted: false, updatedAt: new Date(chat.updatedAt).toISOString() };
     // The runner could not do Rex's step (a file on the computer): W keeps the job as needs_computer.
+    state.vault = vaultFromItems();
+    state.vaultPuts = [];
+    state.flows = [];
+    state.oauthMode = "same";
+    state.catalog = [
+      { id: "github", kind: "connector", sort: 1, published: true, data: { name: "GitHub", by: "GitHub", category: "dev", transport: "http", url: "https://api.githubcopilot.com/mcp/", description: "Issues, pull requests and code.", fields: [{ key: "token", label: "GitHub token", secret: true, placeholder: "github_pat_…", to: "header", name: "Authorization", template: "Bearer {value}" }] } },
+      { id: "linear", kind: "connector", sort: 2, published: true, data: { name: "Linear", by: "Linear", category: "productivity", transport: "http", url: "https://mcp.linear.app/mcp", oauth: true, description: "Issues and projects." } },
+    ];
     state.jobs = [{ jobId: "job-rex", chatId: "dm-rex", kind: "message", payload: {}, status: "needs_computer", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
     state.devices = [
       { deviceId: "desk-1", kind: "desktop", name: l === "ar" ? "حاسوب المنزل" : "Home PC", lastSeen: new Date(Date.now() - 2 * H).toISOString(), online: false },
       { deviceId: "runner-1", kind: "runner", lastSeen: new Date().toISOString(), online: true },
     ];
   };
-  load(lang);
 
   const bump = (id) => {
     const c = state.chats[id];
@@ -235,6 +242,42 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     }
   };
 
+  // ---- the account's vault (W: /api/v1/cloud/vault), filled from the setup's connectors with stand-in secrets ----
+  const vaultFromItems = () => {
+    const v = {};
+    for (const [k, m] of Object.entries(state.items)) {
+      if (!k.startsWith("mcp:")) continue;
+      const id = k.slice(4);
+      v[id] = {
+        version: 2,
+        data: {
+          name: m.name,
+          transport: m.transport,
+          ...(m.url ? { url: m.url } : {}),
+          ...(m.command ? { command: m.command, args: m.args } : {}),
+          ...(id === "gmail" ? { auth: "oauth", oauth: { tokens: { access_token: "SECRET-OAUTH-TOKEN" }, signedInAt: Date.now() } } : {}),
+          ...(id === "calendar" ? { auth: "oauth" } : {}),
+          ...(id === "notion" ? { headers: { Authorization: "Bearer SECRET-HEADER-VALUE" } } : {}),
+          enabled: m.enabled,
+          trusted: !!m.trusted,
+          bots: id === "gmail" ? ["oovi", "lina"] : ["oovi"],
+        },
+      };
+    }
+    return v;
+  };
+  const AI_KEY = /(sk-(ant-|proj-)?[A-Za-z0-9_-]{16,}|AIza[0-9A-Za-z_-]{30,})/;
+  const finishFlow = (f) => {
+    const v = state.vault[f.connectorId];
+    if (!v) return null;
+    v.data = { ...v.data, oauth: { tokens: { access_token: "SECRET-NEW-TOKEN" }, signedInAt: Date.now() } };
+    v.version += 1;
+    f.done = true;
+    return v;
+  };
+
+  load(lang);
+
   const proxy = (req, res) => {
     const p = http.request({ host: "127.0.0.1", port: nextPort, path: req.url, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${port}` } }, (r) => {
       res.writeHead(r.statusCode || 502, r.headers);
@@ -264,6 +307,26 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       return send(res, 200, { success: true }, { "set-cookie": "standin=; Path=/; Max-Age=0" });
     }
     if (p.startsWith("/api/v1/avatars/")) return send(res, 404, { error: "no picture" });
+    // The public catalog (the real one needs the website's database): two published connectors, one hidden.
+    if (p === "/api/v1/catalog") return send(res, 200, { items: state.catalog, hidden: ["make"] });
+    // A stand-in service's sign-in page. mode "same": comes back in this browser (website callback → /m/connectors);
+    // "other": comes back in another browser (iPhone home-screen app → Safari): the flow is held for the app to finish.
+    if (p === "/__oauth/authorize") {
+      const f = state.flows.find((x) => x.flowId === url.searchParams.get("flow"));
+      if (!f) return send(res, 400, { error: "unknown flow" });
+      if (state.oauthMode === "deny") {
+        res.writeHead(303, { location: `/m/connectors?error=denied&id=${encodeURIComponent(f.connectorId)}` });
+        return res.end();
+      }
+      if (state.oauthMode === "other") {
+        f.held = true;
+        res.writeHead(200, { "content-type": "text/html" });
+        return res.end("<!doctype html><title>Signed in elsewhere</title><p>Stand-in: this sign-in came back in another browser.</p>");
+      }
+      finishFlow(f);
+      res.writeHead(303, { location: `/m/connectors?connected=${encodeURIComponent(f.connectorId)}` });
+      return res.end();
+    }
 
     const isApi = p.startsWith("/api/v1/");
     if (isApi && !signed(req)) return send(res, 401, { error: "Not signed in or session expired." });
@@ -378,6 +441,51 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
         state.waiters.delete(w);
       });
       return;
+    }
+    if (p === "/api/v1/cloud/vault" && req.method === "GET") {
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
+      return send(res, 200, {
+        items: Object.entries(state.vault).map(([connectorId, v]) => ({ connectorId, version: v.version, updatedAt: new Date().toISOString() })),
+        pending: state.flows.filter((f) => !f.done && f.held).map((f) => ({ flowId: f.flowId, connectorId: f.connectorId, status: f.confirmed ? "waiting_finish" : "waiting_confirm", here: true })),
+      });
+    }
+    const vone = /^\/api\/v1\/cloud\/vault\/([^/]+)$/.exec(p);
+    if (vone) {
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
+      const id = decodeURIComponent(vone[1]);
+      const v = state.vault[id];
+      if (req.method === "GET") return v ? send(res, 200, { connectorId: id, version: v.version, data: v.data }) : send(res, 404, { error: "This connector isn't in the cloud.", code: "not_found" });
+      if (req.method === "DELETE") {
+        if (!v) return send(res, 404, { error: "This connector isn't in the cloud.", code: "not_found" });
+        delete state.vault[id];
+        return send(res, 200, { ok: true });
+      }
+      if (req.method === "PUT") {
+        const b = await readBody(req);
+        if (!b || !Number.isInteger(b.baseVersion) || !b.data || typeof b.data !== "object") return send(res, 400, { error: "Invalid request.", code: "bad_request" });
+        if (AI_KEY.test(JSON.stringify({ env: b.data.env, headers: b.data.headers }))) return send(res, 400, { error: "AI model keys stay on your computer.", code: "bad_request" });
+        if ((v ? v.version : 0) !== b.baseVersion) return send(res, 409, { error: "Changed elsewhere.", code: "conflict", version: v ? v.version : 0, data: v ? v.data : null });
+        state.vault[id] = { version: b.baseVersion + 1, data: b.data };
+        state.vaultPuts.push({ id, data: b.data });
+        return send(res, 200, { version: b.baseVersion + 1 });
+      }
+    }
+    const ostart = /^\/api\/v1\/cloud\/connectors\/([^/]+)\/oauth\/start$/.exec(p);
+    if (ostart && req.method === "POST") {
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
+      const id = decodeURIComponent(ostart[1]);
+      if (!state.vault[id]) return send(res, 400, { error: "Unknown connector.", code: "bad_request" });
+      const flowId = `00000000-0000-4000-8000-${String(state.flows.length + 1).padStart(12, "0")}`;
+      state.flows.push({ flowId, connectorId: id, held: false, confirmed: false, done: false });
+      return send(res, 200, { authUrl: `http://127.0.0.1:${port}/__oauth/authorize?flow=${flowId}`, flowId });
+    }
+    if (p === "/api/v1/cloud/connectors/oauth/finish" && req.method === "POST") {
+      const b = (await readBody(req)) || {};
+      const f = state.flows.find((x) => x.flowId === b.flowId);
+      if (!f || f.done) return send(res, 404, { error: "This sign-in isn't waiting here.", code: "not_found" });
+      if (!f.confirmed) return send(res, 409, { error: "Confirm your account on the sign-in page first.", code: "conflict" });
+      const v = finishFlow(f);
+      return send(res, 200, { connectorId: f.connectorId, version: v.version, data: v.data });
     }
     if (p.startsWith("/api/v1/cloud/")) return send(res, 404, { error: "Not found" });
     return proxy(req, res);
