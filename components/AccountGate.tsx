@@ -7,6 +7,7 @@
 import EditorModal from "./EditorModal";
 import { isRealCrash } from "@/lib/crash-filter";
 import { useCallback, useEffect, useState } from "react";
+import CloudAsk, { CloudQuestion } from "./CloudAsk";
 import { api } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
 import { GOALS, LEADERS } from "@/lib/onboarding-core";
@@ -234,7 +235,7 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
 
 // ---------- onboarding ----------
 
-const STEPS = ["leader", "team"] as const;
+const STEPS = ["leader", "team", "sync"] as const;
 
 type Leader = (typeof LEADERS)[number];
 type Suggested = { id: string; name: string; description: string; group: boolean; bots: { name: string; role: string; face: FaceT }[] };
@@ -354,7 +355,8 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
       const done = r.status === 409 && j?.done ? j.done : r.ok && j ? j : null;
       if (!done) throw new Error(j?.error ?? t("onb.teamError"));
       reach(ids.length ? "created" : "alone", { goals, setups: ids });
-      await finish();
+      // Last screen: the cloud sync question (Turn on / Stay local).
+      setStep(2);
     });
 
   const finish = async () => onDone(await api<AccountState>("/api/account", { method: "POST", body: JSON.stringify({ action: "onboarded" }) }));
@@ -464,6 +466,11 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
           </div>
         )}
 
+        {step === 2 && (
+          <div className="onb">
+            <CloudQuestion onDone={() => void run(finish)} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -524,6 +531,7 @@ export default function AccountGate({ children }: { children: React.ReactNode })
   return (
     <>
       {children}
+      <CloudAsk />
       <SettingsModal />
       <EditorModal />
     </>

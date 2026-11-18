@@ -123,6 +123,8 @@ export function validateBot(input: unknown, selfId?: string): BotInput | string 
     provider,
     model: provider && typeof o.model === "string" && o.model.trim() ? o.model.trim().slice(0, 120) : undefined,
     ...(o.hidden === true ? { hidden: true } : {}),
+    // "On this computer only": its chats never leave this computer (lib/cloud-sync.ts). Absent: in the cloud.
+    local: o.local === true ? true : undefined,
     tools: {
       web: tools.web === true,
       browser: tools.browser === true,
@@ -150,6 +152,8 @@ export function updateBot(id: string, input: BotInput): Bot | null {
     : { ...cur, ...input, id, createdAt: cur.createdAt };
   bots[i] = next;
   writeJson(botsFile(), { bots });
+  // Moved between "in the cloud" and "on this computer only": its chats are synced again (or taken off the account).
+  if (!!cur.local !== !!next.local) for (const c of listChats()) if (c.memberIds.includes(id)) changed(c.id, false);
   return next;
 }
 
@@ -222,10 +226,32 @@ export function getChat(id: string): Chat | null {
 let groupsRev = 0;
 export const groupsRevision = () => groupsRev;
 
-export function saveChat(chat: Chat): void {
-  chat.updatedAt = Date.now();
+/** Told about every chat saved or deleted (lib/cloud-sync.ts pushes it to the account). Never throws into the caller. */
+type ChatChange = (id: string, deleted: boolean) => void;
+const gs = globalThis as typeof globalThis & { __ooviChatChange?: Set<ChatChange> };
+const chatChange = (gs.__ooviChatChange ??= new Set<ChatChange>());
+export function onChatChange(fn: ChatChange): () => void {
+  chatChange.add(fn);
+  return () => {
+    chatChange.delete(fn);
+  };
+}
+function changed(id: string, deleted: boolean) {
+  for (const fn of chatChange) {
+    try {
+      fn(id, deleted);
+    } catch {
+      /* a listener must not break a save */
+    }
+  }
+}
+
+/** quiet: a copy that came from the account (cloud sync): kept as it is (its time too) and not sent back. */
+export function saveChat(chat: Chat, opts: { quiet?: boolean } = {}): void {
+  if (!opts.quiet) chat.updatedAt = Date.now();
   writeJson(chatFile(chat.id), chat);
   if (chat.kind === "group") groupsRev++;
+  if (!opts.quiet) changed(chat.id, false);
 }
 
 export function listChats(): Chat[] {
@@ -292,6 +318,7 @@ export function createGroup(g: { name: string; memberIds: string[]; leadId?: str
   const chat: Chat = { id: newId(), kind: "group", ...g, createdAt: now, updatedAt: now, entries: [] };
   writeJson(chatFile(chat.id), chat);
   groupsRev++;
+  changed(chat.id, false);
   return chat;
 }
 
@@ -309,13 +336,16 @@ export function setPinned(id: string, on: boolean): void {
   writeJson(pinsFile(), { ids: [...ids].slice(-50) });
 }
 
-export function deleteChat(id: string): void {
+/** quiet: deleted because it was deleted on another device (not sent back). */
+export function deleteChat(id: string, opts: { quiet?: boolean } = {}): void {
   setPinned(id, false);
   if (!ID_RE.test(id)) return;
+  const existed = fs.existsSync(chatFile(id));
   fs.rmSync(chatFile(id), { force: true });
   // The chat's shared work files (lib/workfiles.ts) go with it.
   fs.rmSync(path.join(dataDir(), "work", `${id}.json`), { force: true });
   groupsRev++;
+  if (existed && !opts.quiet) changed(id, true);
 }
 
 // ---------- screenshots ----------

@@ -141,3 +141,16 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   receive that person's Notion or Gmail access when they approve it; the masked account plus the tap makes them look.
   Same session as the start: unchanged (finished at once).
 
+- 2026-11-18, part A (desktop, branch `cloud-app`): the desktop follows part W's shapes exactly
+  (`web/lib/cloud-types.ts` on `cloud-web`, commit 405b96e): header `x-oovi-device: desktop:<deviceId>`; vault
+  bodies `{baseVersion, data}` / `{connectorId, version, data}` / `{items:[…]}` (a connector known at the last
+  sync and absent from a successful list = removed elsewhere, so removed here); jobs `{job:{jobId, …}}`,
+  heartbeat and done with `{deviceId}`; chats `{chatId, version, deleted, chat|null}`, 409 with `deleted`, 413
+  `over_limit` (account full: new chats stay here) or `too_big` (that chat stays here until it changes); code
+  `sync_off` = turned off on another device (stops here, keeps the chats). Also: the desktop is marked online by
+  `POST /jobs/claim` every 3 s; a chat it sends never has `workspace` or `allow` (this computer's project folder
+  and allowed actions), and those fields from the account are ignored; entries merge three-way by id (entries have
+  no `updatedAt`; the chat's `updatedAt` decides when both sides changed one entry); from the phone it runs
+  `message {text, effort?, deep?, plan?, entryId?, replyTo?}`, `decision {decisions, allowChat?} | {planDecision}
+  | {answers}` and `stop`, never "always allow" for folders or edits; the vault item carries `bots: string[]`
+  (which bots use the connector).
