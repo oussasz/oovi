@@ -7,10 +7,13 @@
 // - Control: while the user has control, the bot is paused (tools wait in
 //   waitWhileControlled) and nothing from the page reaches the model. Input from the user
 //   is only accepted while they have control, validated, clamped and rate-limited.
-//   Keystrokes and typed text are never logged or stored.
+//   Keystrokes and typed text are never logged or stored, except while the user records their steps to teach
+//   a skill ("Record steps"): then what they type (never into a password or code field) is kept in memory,
+//   shown to them, and saved only if they save the skill.
 //
 // State sits on globalThis so it survives dev hot reloads.
 
+import { addStep, type TeachStep, type Target } from "./teach-core";
 import type { CDPSession, Page } from "playwright-core";
 import { peekSession } from "./browser";
 import { getChat } from "./store";
@@ -52,6 +55,8 @@ type LiveState = {
   rate: { start: number; count: number };
   /** Input runs one event at a time, in order. */
   chain: Promise<unknown>;
+  /** Teach by showing: the user's steps while recording (lib/teach-core.ts), in memory only. */
+  rec?: TeachStep[];
 };
 
 /** How long a bot waits for the user (to take over, or to hand back). */
@@ -260,9 +265,9 @@ export function addViewer(id: string, v: Viewer): () => void {
 
 // ---------- control ----------
 
-export function liveInfo(id: string): { controlled: boolean; request?: TakeoverRequest } {
+export function liveInfo(id: string): { controlled: boolean; request?: TakeoverRequest; recording?: boolean } {
   const st = states.get(id);
-  return { controlled: !!st?.controlled, ...(st?.request ? { request: st.request } : {}) };
+  return { controlled: !!st?.controlled, ...(st?.request ? { request: st.request } : {}), ...(st?.rec ? { recording: true } : {}) };
 }
 
 export const isControlled = (id: string) => !!states.get(id)?.controlled;
@@ -425,7 +430,60 @@ export function parseInput(raw: unknown): LiveInput | null {
 
 export type InputOutcome = { ok: true } | { ok: false; status: number; error: string };
 
+/** What is at a point of the page, or in focus, in the words a person would use for it (for recorded steps). */
+function describeIn(page: Page, at: { x: number; y: number } | null): Promise<Target | null> {
+  return page
+    .evaluate((p) => {
+      const pick = (e: Element | null) => (e ? (e.closest("a,button,input,select,textarea,label,[role=button],[role=link],[role=option],[role=menuitem],[role=tab],[role=checkbox],[role=radio],[role=combobox],[role=textbox],[role=searchbox]") ?? e) : null);
+      const el = p ? pick(document.elementFromPoint(p.x, p.y)) : document.activeElement;
+      if (!el || el === document.body) return null;
+      const h = el as HTMLInputElement;
+      const byFor = h.id ? document.querySelector(`label[for="${CSS.escape(h.id)}"]`)?.textContent : null;
+      const label = (el.getAttribute("aria-label") || byFor || el.closest("label")?.textContent || (["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) ? h.placeholder || h.name || el.getAttribute("title") : (el as HTMLElement).innerText || el.getAttribute("title") || (el as HTMLImageElement).alt || h.value) || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      const type = el.tagName === "INPUT" ? (h.type || "text").toLowerCase() : undefined;
+      return { tag: el.tagName.toLowerCase(), ...(type ? { type } : {}), ...(el.getAttribute("role") ? { role: el.getAttribute("role")! } : {}), label, ...(type === "password" || /one-time-code|current-password|new-password/.test(h.autocomplete || "") ? { secret: true } : {}) };
+    }, at)
+    .catch(() => null);
+}
+
+async function record(page: Page, st: LiveState, ev: LiveInput) {
+  if (!st.rec) return;
+  st.rec = addStep(st.rec, { kind: "open", url: page.url(), title: await page.title().catch(() => "") });
+  if (ev.type === "mouse" && ev.action === "down" && ev.button === "left") {
+    const vp = await viewportOf(page, st);
+    const target = await describeIn(page, { x: ev.x * vp.width, y: ev.y * vp.height });
+    if (target) st.rec = addStep(st.rec, { kind: "click", target });
+  } else if (ev.type === "text") {
+    const target = await describeIn(page, null);
+    if (target) st.rec = addStep(st.rec, { kind: "type", target, text: ev.text });
+  } else if (ev.type === "key") st.rec = addStep(st.rec, { kind: "key", key: ev.key });
+}
+
+/** Start noting the user's steps (they must have control). */
+export function startRecording(id: string): boolean {
+  const st = states.get(id);
+  const sess = peekSession(id);
+  if (!st?.controlled || !sess) return false;
+  st.rec = addStep([], { kind: "open", url: sess.page.url() });
+  return true;
+}
+
+/** Stop and hand back what was noted (the page the user ended on included). */
+export async function stopRecording(id: string): Promise<TeachStep[] | null> {
+  const st = states.get(id);
+  if (!st?.rec) return null;
+  await st.chain.catch(() => {});
+  const sess = peekSession(id);
+  let steps = st.rec;
+  if (sess && !sess.page.isClosed()) steps = addStep(steps, { kind: "open", url: sess.page.url(), title: await sess.page.title().catch(() => "") });
+  st.rec = undefined;
+  return steps;
+}
+
+export const isRecording = (id: string) => !!states.get(id)?.rec;
+
 async function apply(page: Page, st: LiveState, ev: LiveInput) {
+  await record(page, st, ev);
   if (ev.type === "key") return page.keyboard.press(ev.key);
   if (ev.type === "text") {
     // Short plain text gets real key events (some sign-in and code fields listen for them);

@@ -266,7 +266,50 @@ function LiveView({ chatId, info, bot, name, onChange }: { chatId: string; info:
     moveFocus.current = null;
   }, [focusTick, meta.controlled]);
 
+  // Teach by showing: the user's steps while they have control become a skill draft they review.
+  const [recording, setRecording] = useState(false);
+  const [draft, setDraft] = useState<{ name: string; description: string; body: string } | null>(null);
+  const [savedSkill, setSavedSkill] = useState<string | null>(null);
+  async function teach(action: "record" | "stopRecord") {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await api<{ draft?: { name: string; description: string; body: string }; steps?: string[] }>("/api/browser/control", { method: "POST", body: JSON.stringify({ chat: chatId, bot: botId, action }) });
+      if (action === "record") {
+        setRecording(true);
+        setDraft(null);
+        setSavedSkill(null);
+      } else {
+        setRecording(false);
+        if (r.steps && r.steps.length > 1 && r.draft) setDraft(r.draft);
+        else setErr(t("teach.nothing"));
+      }
+    } catch (e) {
+      setErr((e as Error).message);
+      if (action === "stopRecord") setRecording(false);
+    } finally {
+      setBusy(false);
+      keysRef.current?.focus({ preventScroll: true });
+    }
+  }
+  async function saveDraft() {
+    if (!draft) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const sk = await api<{ name: string }>("/api/skills", { method: "POST", body: JSON.stringify(draft) });
+      setSavedSkill(sk.name);
+      setDraft(null);
+    } catch (e) {
+      setErr((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function control(action: "take" | "release") {
+    // Handing back while recording: the steps so far become the draft first.
+    if (action === "release" && recording) await teach("stopRecord");
     setBusy(true);
     setErr(null);
     try {
@@ -483,17 +526,65 @@ function LiveView({ chatId, info, bot, name, onChange }: { chatId: string; info:
 
         <div className="lb-actions">
           {ctl ? (
-            <button ref={doneRef} className="btn primary sm" onClick={() => void control("release")} disabled={busy}>
-              <Icon name="check" size={15} /> {t("live.done")}
-            </button>
+            <>
+              <button ref={doneRef} className="btn primary sm" onClick={() => void control("release")} disabled={busy}>
+                <Icon name="check" size={15} /> {t("live.done")}
+              </button>
+              {recording ? (
+                <button className="btn sm lb-rec on" onClick={() => void teach("stopRecord")} disabled={busy} aria-pressed="true">
+                  <span className="lb-rec-dot" aria-hidden="true" /> {t("teach.stop")}
+                </button>
+              ) : (
+                <button className="btn sm lb-rec" onClick={() => void teach("record")} disabled={busy} title={t("teach.recordTitle")}>
+                  <span className="lb-rec-dot" aria-hidden="true" /> {t("teach.record")}
+                </button>
+              )}
+            </>
           ) : (
             <button ref={takeRef} className="btn sm" onClick={() => void control("take")} disabled={busy || !live}>
               <Icon name="cursor" size={15} /> {t("live.take")}
             </button>
           )}
         </div>
+        {draft && (
+          <form
+            className="lb-teach"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void saveDraft();
+            }}
+          >
+            <b>{t("teach.title")}</b>
+            <p>{t("teach.intro")}</p>
+            <label>
+              {t("teach.name")}
+              <input dir="auto" value={draft.name} maxLength={60} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required />
+            </label>
+            <label>
+              {t("teach.goal")}
+              <input dir="auto" value={draft.description} maxLength={200} onChange={(e) => setDraft({ ...draft, description: e.target.value })} />
+            </label>
+            <label>
+              {t("teach.steps")}
+              <textarea dir="auto" rows={8} value={draft.body} onChange={(e) => setDraft({ ...draft, body: e.target.value })} />
+            </label>
+            <div className="row-btns">
+              <button className="btn sm primary" disabled={busy || !draft.name.trim() || !draft.body.trim()}>
+                {t("teach.save")}
+              </button>
+              <button type="button" className="btn sm" onClick={() => setDraft(null)}>
+                {t("teach.discard")}
+              </button>
+            </div>
+          </form>
+        )}
+        {savedSkill && (
+          <p className="notice small" role="status">
+            {t("teach.saved", { name: savedSkill })}
+          </p>
+        )}
         <p className="lb-note" id="lb-keys-note">
-          {ctl ? t("live.keysNote") : t("live.watchNote", { name })}
+          {ctl ? (recording ? t("teach.recordingNote") : t("live.keysNote")) : t("live.watchNote", { name })}
         </p>
         {err && (
           <p className="notice error small" role="alert">

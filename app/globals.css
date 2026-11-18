@@ -1211,3 +1211,12 @@ a.tag { text-decoration: none; }
 .cv-share-link { display: flex; gap: 6px; }
 .cv-share-link input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
 .cv-share-note { color: var(--muted); font-size: 12px; }
+.lb-rec-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--err); display: inline-block; }
+.lb-rec.on { border-color: var(--err); color: var(--err); }
+.lb-rec.on .lb-rec-dot { animation: lb-rec-blink 1.2s ease-in-out infinite; }
+@keyframes lb-rec-blink { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) { .lb-rec.on .lb-rec-dot { animation: none; } }
+.lb-teach { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--soft); font-size: 13px; }
+.lb-teach p { margin: 0; color: var(--muted); }
+.lb-teach label { display: flex; flex-direction: column; gap: 4px; font-weight: 600; }
+.lb-teach input, .lb-teach textarea { font: inherit; font-weight: 400; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); resize: vertical; }

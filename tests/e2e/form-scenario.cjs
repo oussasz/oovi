@@ -175,6 +175,26 @@ const check = (name, ok, detail = "") => {
   check("D) the site accepted the saved password typed by oovi", /WELCOME amina@example\.test/.test(seen.loginOut || ""), (seen.loginOut || "").match(/WELCOME[^\n]*|WRONG[^\n]*/)?.[0]);
   check("D) the password never reached the model, even when the page showed it back", !(seen.loginBodies || []).some((b) => b.includes("S3cret-Pass!42")) && /typed: ••••••/.test(seen.loginOut || ""));
 
+  // E: teach by showing. The user takes Scout's browser (still on the form), records, works with mouse and
+  // keyboard, and gets a skill draft with readable steps.
+  const ctl = (action) => api("POST", "/api/browser/control", { chat: dm, bot: scout.id, action });
+  const input = (events) => fetch(`${BASE}/api/browser/input`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat: dm, bot: scout.id, events }) });
+  check("E) recording needs control first", (await fetch(`${BASE}/api/browser/control`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ chat: dm, bot: scout.id, action: "record" }) })).status === 409);
+  await ctl("take");
+  const rec = await ctl("record");
+  check("E) recording starts", rec.recording === true, JSON.stringify(rec));
+  await input([{ type: "mouse", action: "down", x: 0.03, y: 0.04 }, { type: "mouse", action: "up", x: 0.03, y: 0.04 }]);
+  await input([{ type: "key", key: "Tab" }, { type: "key", key: "Control+a" }, { type: "text", text: "Karim" }, { type: "key", key: "Tab" }, { type: "key", key: "Control+a" }, { type: "text", text: "karim@example.test" }]);
+  await input([{ type: "key", key: "Enter" }]);
+  const stop = await ctl("stopRecord");
+  const steps = (stop.steps || []).join("\n");
+  check("E) the steps read as a person would say them", /^1\. Open http:\/\/127\.0\.0\.1:\d+\//.test(steps) && /Click “Contact”/.test(steps) && /Type “Karim” in the “Nom” field/.test(steps) && /Type “karim@example\.test” in the “Email” field/.test(steps) && /Press Enter\./.test(steps), steps);
+  check("E) a skill is drafted from them", /^Steps on 127\.0\.0\.1$/.test(stop.draft?.name || "") && /Follow the same steps/.test(stop.draft?.body || ""), JSON.stringify(stop.draft).slice(0, 160));
+  check("E) recording stopped", !stop.recording && (await ctl("stopRecord")).error !== undefined);
+  const made = await fetch(`${BASE}/api/skills`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...stop.draft, name: "Contact form" }) });
+  check("E) the user saves it as a skill", made.status === 201 && (await api("GET", "/api/skills")).some((k) => k.name === "Contact form"));
+  await ctl("release");
+
   log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
   server.kill();
   process.exit(results.every((x) => x.ok) ? 0 : 1);
