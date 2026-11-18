@@ -16,6 +16,9 @@ export function toolKind(tool: string, hints?: { readOnly?: boolean; destructive
   if (hints?.destructive) return "act";
   if (hints?.readOnly) return "read";
   const v = verbPart(tool);
+  // Zapier and Pipedream run any app's action through one tool, and say themselves which ones only read.
+  if (/(^|_)read_action$/.test(v)) return "read";
+  if (/(^|_)write_action$/.test(v)) return "act";
   // A reading verb first, and no acting word anywhere after it ("get_and_delete" acts).
   if (READ.test(v) && !ACT.test(v.replace(READ, ""))) return "read";
   return "act";

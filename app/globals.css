@@ -1235,3 +1235,7 @@ a.tag { text-decoration: none; }
 .allowed-sites { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
 .allowed-sites ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .allowed-sites li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; }
+.zap-apps { display: flex; flex-direction: column; gap: 8px; }
+.zap-ready { margin: 0; color: var(--ok); font-weight: 600; font-size: 13.5px; }
+.zap-other { display: flex; gap: 6px; }
+.zap-other input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }

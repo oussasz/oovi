@@ -1,0 +1,190 @@
+// oovi's Zapier page ("Your apps", lib/zapier.ts) against a stand-in Zapier connector with Zapier's tool
+// names: which apps are ready, the link to connect one app, "use all my Zapier apps", and what a bot is told
+// when a Zapier action fails with no reason. Run: node tests/e2e/zapier-scenario.cjs (SHOT=dir for screenshots)
+const http = require("node:http");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+
+const DATA = path.join(os.tmpdir(), "oovi-zapier-test");
+const PORT = 3329;
+const MODEL_PORT = 3388;
+const BASE = `http://127.0.0.1:${PORT}`;
+const LOG = path.join(os.tmpdir(), "oovi-zapier-log.txt");
+fs.writeFileSync(LOG, "");
+const log = (...a) => {
+  const line = `[${new Date().toISOString().slice(11, 19)}] ${a.join(" ")}`;
+  console.log(line);
+  fs.appendFileSync(LOG, line + "\n");
+};
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+const live = () => ({ balance: 999, dailyUsed: 1, dailyLimit: 500, resetsAt: new Date(Date.now() + 864e5).toISOString(), credits: 1 });
+const status = { state: "ok", message: null, displayName: "theOovi", balance: 999, dailyLimit: 500, dailyUsed: 1, resetsAt: new Date(Date.now() + 864e5).toISOString(), plan: { id: "free", name: "Free" }, planUntil: null, maxInputTokens: 100000, links: {} };
+const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content, stop_reason: stop, usage: { input_tokens: 100, output_tokens: 40 }, oovi: live() });
+const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
+const MCP_PORT = 3387;
+const seen = { bodies: [] };
+const lastTool = (msgs) => {
+  const prev = msgs[msgs.length - 2];
+  return prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
+};
+async function answer(body) {
+  seen.bodies.push(body);
+  const msgs = body.messages || [];
+  const tools = (body.tools || []).map((t) => t.name);
+  const read = tools.find((t) => /execute_zapier_read_action$/.test(t));
+  if (!lastTool(msgs)) return reply([{ type: "tool_use", id: `toolu_${Date.now()}`, name: read, input: { app: "gmail", action: "find_email", instructions: "latest invoice" } }], "tool_use");
+  const last = msgs.at(-1);
+  seen.result = (last.content || []).filter((x) => x.type === "tool_result").map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content))).join("\n");
+  return reply([{ type: "text", text: "READ-DONE" }], "end_turn");
+}
+
+(async () => {
+  const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+  const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+  const { z } = require("zod");
+  http
+    .createServer(async (req, res) => {
+      let raw = "";
+      req.on("data", (c) => (raw += c));
+      req.on("end", async () => {
+        const server = new McpServer({ name: "zapier", version: "1.0.0" });
+        server.registerTool("inspect_zapier_actions", { description: "List enabled actions" }, async () => ({ content: [{ type: "text", text: seen.provisioned ? "Enabled actions:\\n- gmail_find_email (Gmail)\\n- GoogleCalendarCLIAPI find_event (Google Calendar)\\n- slack_send_channel_message (Slack)" : "Enabled actions:\\n- gmail_find_email (Gmail)" }] }));
+        server.registerTool("manage_zapier_connections", { description: "Add a connection", inputSchema: { app: z.string(), action: z.enum(["set_default", "add_connection"]) } }, async (a) => {
+          seen.manage = a;
+          return { content: [{ type: "text", text: `Open https://mcp.zapier.com/mcp/servers/x/connections?app=${encodeURIComponent(a.app)} to connect.` }] };
+        });
+        server.registerTool("auto_provision_mcp", { description: "Provision" }, async () => {
+          seen.provisioned = true;
+          return { content: [{ type: "text", text: "Provisioned 3 apps." }] };
+        });
+        server.registerTool("get_configuration_url", { description: "Config" }, async () => ({ content: [{ type: "text", text: "https://mcp.zapier.com/mcp/servers/x/config" }] }));
+        server.registerTool("execute_zapier_read_action", { description: "Run a read action", inputSchema: { app: z.string(), action: z.string(), instructions: z.string() } }, async () => ({ content: [], isError: true }));
+        const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+        res.on("close", () => {
+          transport.close();
+          server.close();
+        });
+        await server.connect(transport);
+        await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+      });
+    })
+    .listen(MCP_PORT, "127.0.0.1");
+})();
+
+http
+  .createServer((req, res) => {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", async () => {
+      const send = (code, obj) => {
+        res.writeHead(code, { "content-type": "application/json" });
+        res.end(obj === undefined ? "" : JSON.stringify(obj));
+      };
+      const url = req.url.split("?")[0];
+      if (url === "/api/v1/ai/status") return send(200, status);
+      if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
+      if (url === "/api/v1/catalog") return send(200, { items: [] });
+      const rules = require("./model-rules.cjs");
+      if (url === "/api/v1/ai/messages" && req.method === "POST") {
+        const b = JSON.parse(raw);
+        const refused = rules.refusal(b);
+        if (refused) {
+          seen.refused = refused;
+          return send(400, { error: refused });
+        }
+        if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
+        const sysText = typeof b.system === "string" ? b.system : (b.system || []).map((x) => x.text || "").join("");
+        if (/You keep the running memory of a conversation/.test(sysText)) return send(200, reply([{ type: "text", text: "SUMMARY" }], "end_turn"));
+        return send(200, await answer(b));
+      }
+      return send(204);
+    });
+  })
+  .listen(MODEL_PORT, "127.0.0.1");
+
+let server = null;
+async function api(method, p, body) {
+  const r = await fetch(BASE + p, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const t = await r.text();
+  let j;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    j = t;
+  }
+  return { status: r.status, j };
+}
+const results = [];
+const check = (name, ok, detail = "") => {
+  results.push({ name, ok });
+  log(`${ok ? "PASS" : "FAIL"} ${name}${detail ? ` — ${detail}` : ""}`);
+};
+
+(async () => {
+  fs.rmSync(DATA, { recursive: true, force: true });
+  server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
+    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TELEGRAM_API: "http://127.0.0.1:1", OOVI_CLOUD_URL: `http://127.0.0.1:${MODEL_PORT}`, PORT: String(PORT) },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  server.stdout.on("data", (d) => fs.appendFileSync(LOG, `   [server] ${d}`));
+  server.stderr.on("data", (d) => fs.appendFileSync(LOG, `   [server!] ${d}`));
+  for (let i = 0; i < 120; i++) {
+    try {
+      if ((await fetch(`${BASE}/api/bots`)).ok) break;
+    } catch {}
+    await sleep(500);
+  }
+  const bots = (await api("GET", "/api/bots")).j;
+  const chief = (await api("GET", "/api/main")).j;
+  const dm = `dm-${chief.botId}`;
+  const idle = async (chat = dm) => {
+    for (let i = 0; i < 400; i++) {
+      const c = (await api("GET", `/api/chats/${chat}`)).j;
+      if (!c.running) return c;
+      await sleep(250);
+    }
+    throw new Error("the run didn't end");
+  };
+
+  const run = async (chat, body) => {
+    const r = await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    await r.text();
+    return idle(chat);
+  };
+  const add = await api("POST", "/api/mcp", { name: "Zapier", transport: "http", url: `http://127.0.0.1:${MCP_PORT}/mcp` });
+  const id = add.j.id;
+  check("Zapier stand-in added", add.status === 201, JSON.stringify(add.j));
+  let st = (await api("GET", `/api/mcp/${id}/zapier`)).j;
+  check("A) the apps that are ready are listed (from Zapier's enabled actions)", st.mode === "agentic" && JSON.stringify(st.ready) === '["Gmail"]' && st.manageUrl === "https://mcp.zapier.com/mcp/servers/x/config", JSON.stringify(st));
+  const con = await api("POST", `/api/mcp/${id}/zapier`, { op: "connect", app: "Google Calendar" });
+  check("B) one app: Zapier's own page to connect it, with the app filled in", con.status === 200 && /connections\?app=Google%20Calendar$/.test(con.j.url) && seen.manage?.action === "add_connection", JSON.stringify(con.j));
+  const pr = await api("POST", `/api/mcp/${id}/zapier`, { op: "provision" });
+  st = (await api("GET", `/api/mcp/${id}/zapier`)).j;
+  check("C) Use all my Zapier apps turns them on, and they show as ready", pr.j.ok === true && JSON.stringify(st.ready) === '["Gmail","Google Calendar","Slack"]', JSON.stringify(st.ready));
+  if (process.env.SHOT) {
+    const { chromium } = require("playwright");
+    const b = await chromium.launch();
+    const p = await b.newPage({ viewport: { width: 1200, height: 900 } });
+    await p.goto(`${BASE}/library?tab=connectors&item=zapier`);
+    await p.waitForSelector(".zap-apps", { timeout: 20000 }).catch(() => {});
+    await p.waitForTimeout(1200);
+    const el = (await p.locator(".cs-card").count()) ? p.locator(".cs-card").first() : p.locator("body");
+    await el.screenshot({ path: `${process.env.SHOT}/zapier-apps.png` });
+    await b.close();
+  }
+  await run(dm, { text: "find my latest invoice in gmail" });
+  check("D) a Zapier action failing with no reason: the bot is told what usually causes it and what to do", /Zapier gave no reason\. Next step:/.test(seen.result || "") && /Your apps/.test(seen.result || ""), (seen.result || "").slice(0, 300));
+  const helpText = JSON.stringify(seen.bodies.at(-1)?.tools || []);
+  check("D) the bot is not told to paste Zapier links", /don't paste Zapier links/.test(seen.result || ""));
+
+  log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
+  server.kill();
+  process.exit(results.every((x) => x.ok) ? 0 : 1);
+})().catch((e) => {
+  log(`ERROR ${e.message}`);
+  server?.kill();
+  process.exit(2);
+});

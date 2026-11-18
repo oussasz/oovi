@@ -3,6 +3,7 @@
 // The setup card under a connector in Marketplace > Connectors > Yours:
 // 1. signed in, 2. choose what oovi may do in the service, 3. test (the tools found right now),
 // 4. which bots can use it. Works for any connector; Zapier gets its own instructions.
+import ZapierApps from "./ZapierApps";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client";
 import { useI18n } from "./I18n";
@@ -161,14 +162,22 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
           <li>
             <span className="cs-num">2</span>
             <div>
-              <b>{t("conn.choose", { name: s.name })}</b>
-              <p className="note">{zapier ? t("conn.zapier.choose") : t("conn.chooseHint", { name: s.name })}</p>
-              {zapier && <p className="note cs-example">{t("conn.zapier.example")}</p>}
+              <b>{zapier && signedIn ? t("zap.title") : t("conn.choose", { name: s.name })}</b>
+              {zapier && signedIn ? (
+                <ZapierApps serverId={s.id} />
+              ) : (
+                <>
+                  <p className="note">{zapier ? t("conn.zapier.choose") : t("conn.chooseHint", { name: s.name })}</p>
+                  {zapier && <p className="note cs-example">{t("conn.zapier.example")}</p>}
+                </>
+              )}
+              {!(zapier && signedIn) && (
               <div className="cs-act">
                 <a className="btn sm" href={setupUrl} target="_blank" rel="noopener noreferrer">
                   {t("conn.open", { name: zapier ? "Zapier MCP" : s.name })} <Icon name="arrow" size={14} />
                 </a>
               </div>
+              )}
             </div>
           </li>
         )}
@@ -188,7 +197,18 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
                 {s.auth === "oauth" && <span className="cs-fix"> {t("conn.errorFix")}</span>}
               </div>
             )}
-            {shownTools && shownTools.length > 0 && (
+            {shownTools && shownTools.length > 0 && zapier && signedIn ? (
+              <details className="approval-detail">
+                <summary>{t("chat.details")}</summary>
+                <ul className="cs-tool-list">
+                  {shownTools.map((x) => (
+                    <li key={x.name}>
+                      <b>{x.name.replace(/_/g, " ")}</b>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            ) : shownTools && shownTools.length > 0 && (
               <div className="cs-tools">
                 <small>{found ? t("conn.foundNow", { count: shownTools.length }) : t("conn.foundLast", { count: shownTools.length })}</small>
                 <ul className="cs-tool-list">

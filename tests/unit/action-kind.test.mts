@@ -15,3 +15,9 @@ test("the server's own hints win", () => {
   assert.equal(toolKind("send_email", { readOnly: true }), "read");
   assert.equal(toolKind("get_rows", { destructive: true }), "act");
 });
+
+test("Zapier's read and write actions", () => {
+  assert.equal(toolKind("execute_zapier_read_action"), "read");
+  assert.equal(toolKind("mcp_zapier_execute_zapier_read_action"), "read");
+  assert.equal(toolKind("execute_zapier_write_action"), "act");
+});

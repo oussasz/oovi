@@ -1,3 +1,4 @@
+import { zapierNextStep } from "./zapier-core";
 import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
 import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
@@ -480,7 +481,15 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     }
     if (call.name.startsWith("mcp_")) {
       const r = await callMcpTool(call.name, input);
-      return r ? { id: call.id, name: call.name, content: r.content, isError: r.isError } : fail(call, "That MCP tool isn't available right now.");
+      if (!r) return fail(call, "That MCP tool isn't available right now.");
+      // Zapier often fails with no reason: say what usually causes it and what to do (lib/zapier-core.ts).
+      const server = mcpServerOf(call.name);
+      if (r.isError && server && /zapier/i.test(`${server.name} ${server.url ?? ""}`)) {
+        const own = mcpToolOf(call.name) ?? "";
+        const body = r.content.replace(/^Result from[^\n]*\n/, "").replace(/^\(empty\)$/, "");
+        return { id: call.id, name: call.name, content: `${r.content}\n${zapierNextStep(own, body)}`, isError: true };
+      }
+      return { id: call.id, name: call.name, content: r.content, isError: r.isError };
     }
     if (!TOOL_SPECS.some((t) => t.name === call.name)) return fail(call, `Unknown tool: ${call.name}`);
 
