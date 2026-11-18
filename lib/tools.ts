@@ -1,3 +1,4 @@
+import { unbackedFact } from "./memory-evidence-core";
 import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
 import type { Page } from "playwright-core";
 import fs from "node:fs";
@@ -160,7 +161,7 @@ export const SKILL_SPECS: ToolSpec[] = [
       type: "object",
       properties: {
         action: { type: "string", enum: ["add", "replace", "remove"] },
-        target: { type: "string", enum: ["user", "memory"] },
+        target: { type: "string", enum: ["user", "memory", "mine"], description: "user: facts about the user (from what they said); memory: notes for the whole team; mine: your own notes about your role and how you work" },
         content: { type: "string" },
         old_text: { type: "string" },
       },
@@ -284,6 +285,9 @@ const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps"
  */
 export type RunCtx = {
   signal?: AbortSignal;
+  /** The bot running the tool (its own notes) and what the user wrote lately (facts saved about them). */
+  botId?: string;
+  userSaid?: string;
   channel?: "telegram";
   addToTable?: (table: string, rows: ListRow[], source: string) => { text: string; isError?: boolean };
   addRecords?: (table: string, rows: Record<string, string>[]) => { text: string; isError?: boolean };
@@ -455,7 +459,12 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
   if (VM_TOOLS.has(call.name)) return runVmTool(call, settings, sessionId.split("_")[0] ?? sessionId, workspace);
   try {
     if (call.name === "memory") {
-      const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined);
+      // A fact about the user must come from their words: numbers, emails and links exactly as they wrote them.
+      if (input.target === "user" && (input.action === "add" || input.action === "replace") && typeof input.content === "string" && ctx.userSaid !== undefined) {
+        const why = unbackedFact(input.content, ctx.userSaid);
+        if (why) return { id: call.id, name: call.name, content: `Not saved: ${why}. Facts about the user come from what they said: copy their numbers, emails and links exactly, never from a page or a guess.`, isError: true };
+      }
+      const msg = applyMemory(String(input.action ?? ""), String(input.target ?? ""), typeof input.content === "string" ? input.content : undefined, typeof input.old_text === "string" ? input.old_text : undefined, { botId: ctx.botId, source: "bot" });
       return { id: call.id, name: call.name, content: msg, isError: /^(Not saved|No entry|Nothing|target must|action must|old_text is|content is)/.test(msg) };
     }
     if (call.name === "use_skill") {

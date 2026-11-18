@@ -1154,3 +1154,12 @@ a.tag { text-decoration: none; }
 .logins-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
 .logins-list li .btn { margin-inline-start: auto; }
 .logins-form .grid { margin-bottom: 4px; }
+
+/* Settings > Memory > Recent changes (with Undo) */
+.mem-changes ul { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 8px; }
+.mem-changes li { border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.mem-changes li.undone { opacity: 0.6; }
+.mem-change-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.mem-change-head .btn, .mem-change-head .pill { margin-inline-start: auto; }
+.mem-before { margin: 6px 0 0; text-decoration: line-through; color: var(--muted); white-space: pre-wrap; }
+.mem-after { margin: 6px 0 0; white-space: pre-wrap; }

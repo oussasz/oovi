@@ -323,8 +323,8 @@ export async function reflect(
       // "The user doesn't want the bots to use their PC" is never a fact the review may write (lib/lesson-rules.ts).
       if (!input.feedback && bansAbility(x.text)) continue;
       // A fact that refines a saved one replaces it ("likes apples" -> "likes green apples"); else it's added.
-      const replaced = !!x.replaces && /^Updated/.test(applyMemory("replace", "user", x.text, x.replaces));
-      if (replaced || /^Saved/.test(applyMemory("add", "user", x.text))) user.push(x.text);
+      const replaced = !!x.replaces && /^Updated/.test(applyMemory("replace", "user", x.text, x.replaces, { source: "review" }));
+      if (replaced || /^Saved/.test(applyMemory("add", "user", x.text, undefined, { source: "review" }))) user.push(x.text);
     }
   }
 

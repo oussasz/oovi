@@ -14,10 +14,10 @@ import Icon from "./Icon";
 type Target = "user" | "memory" | "knowledge";
 type Mem = Record<Target, string> & { limits: Record<Target, number>; updated: Record<Target, number | null> };
 type LessonView = { id: string; text: string; botId?: string; botName?: string; source: "reflection" | "feedback"; score: number; updatedAt: number };
-type Section = "about" | "lessons" | "soul" | "knowledge";
+type Section = "about" | "lessons" | "soul" | "knowledge" | "changes";
 type Msg = { ok: boolean; text: string } | null;
 
-const SECTIONS: Section[] = ["about", "lessons", "soul", "knowledge"];
+const SECTIONS: Section[] = ["about", "lessons", "soul", "knowledge", "changes"];
 const SEP = "\n§\n";
 const split = (s: string) =>
   s
@@ -452,7 +452,7 @@ export default function MemorySettings() {
     </div>
   );
 
-  const views: Record<Section, React.ReactNode> = { about, lessons: lessonsView, soul, knowledge };
+  const views: Record<Section, React.ReactNode> = { about, lessons: lessonsView, soul, knowledge, changes: <MemoryChanges onUndone={() => void api<Mem>("/api/memory").then(setMem).catch(() => {})} /> };
 
   return (
     <div className="mem-settings">
@@ -466,6 +466,67 @@ export default function MemorySettings() {
       </div>
       {views[section]}
       <Note msg={msg} />
+    </div>
+  );
+}
+
+type Change = { id: string; at: number; target: string; bot: string | null; action: string; before?: string; after?: string; source: string; undone?: boolean };
+
+/** Every change bots made to memory, newest first, each with Undo (lib/memory.ts journal). */
+function MemoryChanges({ onUndone }: { onUndone: () => void }) {
+  const { t, tag } = useI18n();
+  const [list, setList] = useState<Change[] | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const load = useCallback(() => {
+    api<{ changes: Change[] }>("/api/memory/journal")
+      .then((r) => setList(r.changes))
+      .catch(() => setList([]));
+  }, []);
+  useEffect(load, [load]);
+  async function undo(c: Change) {
+    setErr(null);
+    try {
+      await api("/api/memory/journal", { method: "POST", body: JSON.stringify({ id: c.id }) });
+      load();
+      onUndone();
+    } catch (e) {
+      setErr((e as Error).message);
+    }
+  }
+  const when = (ms: number) => {
+    try {
+      return new Intl.DateTimeFormat(tag, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(ms));
+    } catch {
+      return new Date(ms).toLocaleString();
+    }
+  };
+  if (!list) return <p className="muted">{t("common.loading")}</p>;
+  if (!list.length) return <p className="muted">{t("mem.changes.none")}</p>;
+  return (
+    <div className="mem-changes">
+      <p className="hint">{t("mem.changes.intro")}</p>
+      {err && <p className="err-text">{err}</p>}
+      <ul>
+        {list.map((c) => (
+          <li key={c.id} className={c.undone ? "undone" : ""}>
+            <div className="mem-change-head">
+              <b>{t(`mem.changes.${c.action === "add" ? "added" : c.action === "remove" ? "removed" : "changed"}`)}</b>
+              <span className="muted">
+                {t(c.target === "user" ? "mem.changes.aboutYou" : c.target === "mine" ? "mem.changes.ownNotes" : "mem.changes.teamNotes", { bot: c.bot ?? "" })} · {c.bot ?? t(`mem.changes.by.${c.source === "review" ? "review" : "bot"}`)} · {when(c.at)}
+              </span>
+              {!c.undone ? (
+                <button type="button" className="btn sm ghost" onClick={() => void undo(c)}>
+                  {t("mem.changes.undo")}
+                </button>
+              ) : (
+                <span className="pill">{t("mem.changes.undone")}</span>
+              )}
+            </div>
+            {c.before && c.action !== "add" && <p className="mem-before">{c.before}</p>}
+            {c.after && <p className="mem-after">{c.after}</p>}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

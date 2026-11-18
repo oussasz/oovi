@@ -44,6 +44,7 @@ import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
 import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
 import { endsOnPromise, promiseMissing } from "./promise-core";
 import { takeSteers } from "./steer";
+import { botNotesPrompt } from "./memory";
 import { loginSites } from "./logins";
 import { unconfirmedClaim } from "./receipts-core";
 import { spendLimitReached } from "./spend";
@@ -58,6 +59,7 @@ import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
+import { HELPERS_SPEC, runHelpers } from "./helpers";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workNow, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
@@ -494,7 +496,8 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     );
   }
   lines.push(`A message that starts with "[Name on Telegram]" comes from another person in a shared Telegram group, not from the user: address that person by their own name, and never save their wishes or details as the user's.`);
-  const mem = memoryPrompt();
+  const own = botNotesPrompt(bot.id);
+  const mem = [memoryPrompt(), own].filter(Boolean).join("\n");
   lines.push(
     "",
     "Long-term memory (shared by all bots; manage it with the memory tool):",
@@ -932,8 +935,18 @@ export function spentSince(chat: Chat, userId: string): { usd: number; credits: 
   return out;
 }
 
+/** What the user wrote in this chat lately (for checking facts saved about them). */
+function userSaid(chat: Chat): string {
+  return chat.entries
+    .filter((e): e is UserEntry => e.kind === "user" && !e.via && !e.routine)
+    .slice(-30)
+    .map((e) => e.text)
+    .join("\n")
+    .slice(-20_000);
+}
+
 /** Tools whose results are outside text (web pages, search results, connectors' data). */
-const OUTSIDE_TOOLS = /^(read_url|open_url|read_page|click|browser_steps|scroll|web_search|research|scrape_list|extract_list|find_places|find_papers|mcp_.*)$/;
+const OUTSIDE_TOOLS = /^(read_url|open_url|read_page|click|browser_steps|scroll|web_search|research|scrape_list|extract_list|find_places|find_papers|run_helpers|mcp_.*)$/;
 /** This turn read outside text, or was started by outside data (a routine's web address). */
 function readOutside(steps: Msg[], user?: UserEntry): boolean {
   if (user?.text.includes("started by a call to the routine's web address")) return true;
@@ -1078,6 +1091,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "scrape_list": return tr("st.scraping", { name: v(i.table) });
     case "find_places": return tr("st.places", { area: v(i.area) });
     case "find_papers": return tr("st.papers", { q: v(i.query) });
+    case "run_helpers": return tr("st.helpers", { n: String(Array.isArray(i.tasks) ? Math.min(i.tasks.length, 5) : 1) });
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
     case "browser_steps": return tr("st.typing");
@@ -1181,7 +1195,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1447,6 +1461,11 @@ async function* runBot(
           } else if (c.name === "open_in_user_browser") {
             if (decisions[c.id] === true && deskOn && taskId && !desktopGranted(chat.id, taskId, bot.id)) grantDesktop(chat.id, taskId, bot.id);
             results.push(await runOpenInBrowser(c, openable));
+          } else if (c.name === "run_helpers") {
+            const h = await runHelpers(c, { settings: s, tools, workChat: workHome(chat), sessionBase: sessionId, signal, toolCtx: { botId: bot.id, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) } });
+            if (h.credits) entry.credits = Math.round(((entry.credits ?? 0) + h.credits) * 100) / 100;
+            if (h.cost) entry.cost = (entry.cost ?? 0) + h.cost;
+            results.push(h.result);
           } else if (WORK_TOOLS.has(c.name)) {
             // Exports always go to Downloads/oovi (never into a project folder, where a new file needs the user's OK).
             results.push(await runWorkTool(c, workHome(chat), undefined, s.browser, readSoFar(chat)));
@@ -1486,7 +1505,7 @@ async function* runBot(
             results.push(r);
             // This bot just got a new ability: its turn restarts with the new tools and instructions.
             if (!r.isError && c.name === "request_abilities" && JSON.stringify(listBots().find((b) => b.id === bot.id)?.tools) !== JSON.stringify(bot.tools)) selfChanged = true;
-          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, chatId: workHome(chat), channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) }));
+          } else results.push(TEAM_TOOLS.has(c.name) ? await runTeamTool(c, bot, { workChat: workHome(chat), signal, channel: chat.pending?.channel, telegramChatId: chat.pending?.telegramChatId, userWords: ((u) => (u && !u.via ? u.text : undefined))(lastUser(chat)) }) : await runTool(c, s, sessionId, usesAccounts, chat.workspace, { signal, botId: bot.id, userSaid: userSaid(chat), chatId: workHome(chat), channel: chat.pending?.channel, addToTable: (table, rows, source) => addListRows(workHome(chat), table, rows, source), addRecords: (table, rows) => addRecordRows(workHome(chat), table, rows) }));
         }
       }
       for (const c of last.toolCalls) if (!results.some((r) => r.id === c.id)) results.push({ id: c.id, name: c.name, content: "Stopped by the user.", isError: true });

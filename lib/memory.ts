@@ -66,10 +66,16 @@ const size = (entries: string[]) => entries.join(SEP).length;
 export const SUSPICIOUS = /(ignore (all|any|previous|prior)|disregard (the|all|previous)|system prompt|you are now|new instructions|api[_ -]?key|password\s*[:=])/i;
 
 /** The memory tool. Returns a short result message for the model. */
-export function applyMemory(action: string, target: string, content?: string, oldText?: string): string {
-  if (target !== "user" && target !== "memory") return 'target must be "user" or "memory".';
+export function applyMemory(action: string, target: string, content?: string, oldText?: string, by?: { botId?: string; source?: string }): string {
+  // "mine": this bot's own notes (its role, its way of working): only it reads them.
+  if (target === "mine") {
+    if (!by?.botId) return 'target "mine" is only for a bot\'s own notes.';
+    return applyBotNotes(by.botId, action, content, oldText, by.source);
+  }
+  if (target !== "user" && target !== "memory") return 'target must be "user", "memory" or "mine".';
   const t = target as MemoryTarget;
   const entries = readEntries(t);
+  const log = (act: string, before?: string, after?: string) => journal({ target: t, action: act, ...(before !== undefined ? { before } : {}), ...(after !== undefined ? { after } : {}), ...(by?.botId ? { botId: by.botId } : {}), source: by?.source ?? "bot" });
   const text = (content ?? "").replace(/\s+\n/g, "\n").trim().slice(0, 600);
 
   if (action === "add") {
@@ -82,6 +88,7 @@ export function applyMemory(action: string, target: string, content?: string, ol
       return `Not saved: ${FILES[t]} is full (${size(entries)}/${LIMITS[t]} chars). Merge related entries with "replace" or drop stale ones with "remove", then add again.`;
     }
     writeEntries(t, next);
+    log("add", undefined, text);
     return `Saved to ${FILES[t]} (${size(next)}/${LIMITS[t]} chars).`;
   }
 
@@ -91,8 +98,9 @@ export function applyMemory(action: string, target: string, content?: string, ol
   if (i < 0) return `No entry in ${FILES[t]} contains "${oldText}".`;
 
   if (action === "remove") {
-    entries.splice(i, 1);
+    const [gone] = entries.splice(i, 1);
     writeEntries(t, entries);
+    log("remove", gone);
     return `Removed from ${FILES[t]}.`;
   }
   if (action === "replace") {
@@ -100,9 +108,11 @@ export function applyMemory(action: string, target: string, content?: string, ol
     if (SUSPICIOUS.test(text)) return "Not saved: memory can't store instructions or secrets.";
     if (WRONG_LESSON.test(text)) return "Not saved: a blank or slow page doesn't prove a site is down, so this can't be remembered as a rule.";
     const next = [...entries];
+    const before = next[i];
     next[i] = text;
     if (size(next) > LIMITS[t]) return `Not saved: that would exceed ${LIMITS[t]} chars. Shorten it.`;
     writeEntries(t, next);
+    log("replace", before, text);
     return `Updated ${FILES[t]} (${size(next)}/${LIMITS[t]} chars).`;
   }
   return 'action must be "add", "replace" or "remove".';
@@ -127,4 +137,114 @@ export function memoryPrompt(): string {
   const k = knowledgePrompt();
   if (k) parts.push(k);
   return parts.join("\n");
+}
+
+// ---------- each bot's own notes ----------
+
+export const BOT_NOTES_LIMIT = 1500;
+const botFile = (botId: string) => path.join(dataDir(), "memory", "bots", `${botId.replace(/[^\w-]/g, "").slice(0, 40)}.md`);
+
+export function readBotNotes(botId: string): string[] {
+  try {
+    return fs.readFileSync(botFile(botId), "utf8").split(/\r?\n§\r?\n/).map((e) => e.trim()).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+function writeBotNotes(botId: string, entries: string[]) {
+  fs.mkdirSync(path.dirname(botFile(botId)), { recursive: true });
+  fs.writeFileSync(botFile(botId), entries.join(SEP) + (entries.length ? "\n" : ""));
+}
+
+function applyBotNotes(botId: string, action: string, content?: string, oldText?: string, source?: string): string {
+  const entries = readBotNotes(botId);
+  const text = (content ?? "").replace(/\s+\n/g, "\n").trim().slice(0, 600);
+  const log = (act: string, before?: string, after?: string) => journal({ target: "mine", botId, action: act, ...(before !== undefined ? { before } : {}), ...(after !== undefined ? { after } : {}), source: source ?? "bot" });
+  if (action === "add") {
+    if (!text) return "Nothing to add.";
+    if (SUSPICIOUS.test(text)) return "Not saved: memory can't store instructions or secrets.";
+    if (entries.some((e) => e.toLowerCase() === text.toLowerCase())) return "Already in your notes.";
+    const next = [...entries, text];
+    if (size(next) > BOT_NOTES_LIMIT) return `Not saved: your notes are full (${size(entries)}/${BOT_NOTES_LIMIT} chars). Merge or remove notes first.`;
+    writeBotNotes(botId, next);
+    log("add", undefined, text);
+    return `Saved to your own notes (${size(next)}/${BOT_NOTES_LIMIT} chars).`;
+  }
+  const needle = (oldText ?? "").trim().toLowerCase();
+  if (!needle) return "old_text is required to find the note.";
+  const i = entries.findIndex((e) => e.toLowerCase().includes(needle));
+  if (i < 0) return `None of your notes contains "${oldText}".`;
+  if (action === "remove") {
+    const [gone] = entries.splice(i, 1);
+    writeBotNotes(botId, entries);
+    log("remove", gone);
+    return "Removed from your notes.";
+  }
+  if (action === "replace") {
+    if (!text || SUSPICIOUS.test(text)) return "Not saved.";
+    const before = entries[i];
+    entries[i] = text;
+    if (size(entries) > BOT_NOTES_LIMIT) return "Not saved: too long.";
+    writeBotNotes(botId, entries);
+    log("replace", before, text);
+    return "Updated your notes.";
+  }
+  return 'action must be "add", "replace" or "remove".';
+}
+
+/** A bot's own notes for its instructions (empty when it has none). */
+export function botNotesPrompt(botId: string): string {
+  const n = readBotNotes(botId);
+  return n.length ? [`Your own notes (only you see them; the memory tool with target "mine", ${size(n)}/${BOT_NOTES_LIMIT} chars):`, ...bullets(n)].join("\n") : "";
+}
+
+// ---------- the journal: every change, with undo ----------
+
+export type JournalEntry = { id: string; at: number; target: MemoryTarget | "mine"; botId?: string; action: string; before?: string; after?: string; source: string; undone?: boolean };
+const journalFile = () => path.join(dataDir(), "memory", "journal.json");
+const JOURNAL_MAX = 200;
+
+export function readJournal(): JournalEntry[] {
+  try {
+    const j = JSON.parse(fs.readFileSync(journalFile(), "utf8")) as { entries?: JournalEntry[] };
+    return Array.isArray(j.entries) ? j.entries : [];
+  } catch {
+    return [];
+  }
+}
+
+function journal(e: Omit<JournalEntry, "id" | "at">) {
+  try {
+    const all = readJournal();
+    all.push({ id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`, at: Date.now(), ...e });
+    fs.mkdirSync(path.dirname(journalFile()), { recursive: true });
+    fs.writeFileSync(journalFile(), JSON.stringify({ entries: all.slice(-JOURNAL_MAX) }));
+  } catch {
+    /* the journal never blocks a save */
+  }
+}
+
+/** Undo one change: an added line goes, a removed one comes back, a replaced one gets its old words back. */
+export function undoChange(id: string): string | null {
+  const all = readJournal();
+  const e = all.find((x) => x.id === id);
+  if (!e || e.undone) return "That change can't be undone (already undone, or too old).";
+  const read = () => (e.target === "mine" ? readBotNotes(e.botId ?? "") : readEntries(e.target));
+  const write = (list: string[]) => (e.target === "mine" ? writeBotNotes(e.botId ?? "", list) : writeEntries(e.target, list));
+  const list = read();
+  if (e.action === "add") {
+    const i = list.findIndex((x) => x === e.after);
+    if (i < 0) return "That line isn't there any more.";
+    list.splice(i, 1);
+  } else if (e.action === "remove") {
+    if (e.before && !list.includes(e.before)) list.push(e.before);
+  } else if (e.action === "replace") {
+    const i = list.findIndex((x) => x === e.after);
+    if (i < 0 || e.before === undefined) return "That line has changed since: edit it by hand.";
+    list[i] = e.before;
+  } else return "That change can't be undone.";
+  write(list);
+  e.undone = true;
+  fs.writeFileSync(journalFile(), JSON.stringify({ entries: all }));
+  return null;
 }
