@@ -3,7 +3,7 @@
 // One chat: messages (Markdown, tables, links), what the bot is doing right now (long-poll GET /events), the
 // composer (text, voice note to text), approval, question and plan cards, Stop, and "This needs your computer".
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { getJobs, waitForChat, ApiError, getChat } from "../_lib/api";
+import { waitForChat, ApiError, getChat } from "../_lib/api";
 import {
   agoShort,
   backoffMs,
@@ -77,7 +77,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const chat = cached?.chat;
   const version = cached?.version ?? 0;
   const [state, setState] = useState<"loading" | "ok" | "missing" | "error">(cached ? "ok" : "loading");
-  const [jobs, setJobs] = useState<JobInfo[] | null>([]);
+  const [jobs, setJobs] = useState<JobInfo[]>([]);
   const [answered, setAnswered] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [menu, setMenu] = useState<Entry | null>(null);
@@ -116,6 +116,8 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     let stop = false;
     let ctrl: AbortController | null = null;
     let fails = 0;
+    // Jobs that changed in the last 10 minutes come with the first answer; after that, only newer changes wake it.
+    let jobsAfter: string | null = new Date(Date.now() - 10 * 60_000).toISOString();
     const loop = async () => {
       // A bot at work: live at once. Otherwise the chat was just loaded; the wait starts a moment later.
       if (!runningRef.current) await new Promise((r) => setTimeout(r, 2500));
@@ -127,20 +129,22 @@ export function ChatScreen({ chatId }: { chatId: string }) {
         ctrl = new AbortController();
         const timer = window.setTimeout(() => ctrl?.abort(), 35_000);
         try {
-          const r = await waitForChat(chatId, versionRef.current, ctrl.signal);
+          const r = await waitForChat(chatId, versionRef.current, jobsAfter, ctrl.signal);
           fails = 0;
-          if (r && !stop) {
-            if (r.chat) putChat(r.version, { ...r.chat, id: chatId });
-            else {
-              const full = await getChat(chatId);
-              if (full?.chat) putChat(full.version, { ...full.chat, id: chatId });
-            }
+          if (stop) break;
+          if (r.now) jobsAfter = r.now;
+          setJobs(r.jobs);
+          if (r.deleted) {
+            void loadChat(chatId);
+          } else if (r.version > versionRef.current) {
+            const full = await getChat(chatId);
+            if (full?.chat) putChat(full.version, { ...full.chat, id: chatId });
             setState("ok");
           }
         } catch (err) {
           if (stop) break;
           const aborted = (err as Error)?.name === "AbortError";
-          if (err instanceof ApiError && err.status === 401) break;
+          if (err instanceof ApiError && (err.status === 401 || err.code === "sync_off")) break;
           if (!aborted) {
             fails++;
             await new Promise((r) => setTimeout(r, backoffMs(fails)));
@@ -165,25 +169,6 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   // ---------- the phone's messages and jobs ----------
   const mine = useMemo(() => pendingOutgoing(chat, outbox.filter((o) => o.chatId === chatId)), [chat, outbox, chatId]);
-  const waitingJobs = mine.some((o) => o.state === "sent") || !!chat?.entries.length;
-  useEffect(() => {
-    if (sync !== "on" || jobs === null || !waitingJobs) return;
-    let alive = true;
-    const load = async () => {
-      try {
-        const j = await getJobs(chatId);
-        if (alive) setJobs(j);
-      } catch {
-        /* keep the last answer */
-      }
-    };
-    void load();
-    const every = window.setInterval(() => document.visibilityState === "visible" && void load(), 10_000);
-    return () => {
-      alive = false;
-      window.clearInterval(every);
-    };
-  }, [chatId, sync, jobs === null, waitingJobs, version]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- read marks and scrolling ----------
   const entries = view?.entries ?? [];
@@ -215,7 +200,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   }, [answered, answerKey]);
 
   const computer = computerState(status);
-  const blocker = chatBlocker(view, jobs ?? [], computer.state, mine.some((o) => o.state === "sent"));
+  const blocker = chatBlocker(view, jobs, computer.state, mine.some((o) => o.state === "sent"));
   const canSend = sync === "on" && !localBot;
 
   const decide = useCallback(
@@ -225,7 +210,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
       const ok = await job(chatId, payload);
       if (ok === null) {
         setAnswered(null);
-        showToast(t("chat.sendFailed"));
+        showToast(m.lastJobError());
       }
     },
     [chatId, job, showToast, t],
@@ -237,7 +222,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     const ok = await job(chatId, { kind: "stop", payload: {} });
     if (ok === null) {
       setStopping(false);
-      showToast(t("chat.sendFailed"));
+      showToast(m.lastJobError());
     }
   };
 
@@ -497,7 +482,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
             onSend={async (text) => {
               tap();
               const ok = await m.send(chatId, text);
-              if (!ok) showToast(t("chat.sendFailed"));
+              if (!ok) showToast(m.lastJobError());
               return true;
             }}
           />

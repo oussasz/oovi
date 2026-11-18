@@ -128,7 +128,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, jobsEndpoint: true, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok" };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok" };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -137,7 +137,8 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     state.items = f.items;
     state.chats = {};
     for (const [id, chat] of Object.entries(f.chats)) state.chats[id] = { version: 3, chat, deleted: false, updatedAt: new Date(chat.updatedAt).toISOString() };
-    state.jobs = [];
+    // The runner could not do Rex's step (a file on the computer): W keeps the job as needs_computer.
+    state.jobs = [{ jobId: "job-rex", chatId: "dm-rex", kind: "message", payload: {}, status: "needs_computer", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }];
     state.devices = [
       { deviceId: "desk-1", kind: "desktop", name: l === "ar" ? "حاسوب المنزل" : "Home PC", lastSeen: new Date(Date.now() - 2 * H).toISOString(), online: false },
       { deviceId: "runner-1", kind: "runner", lastSeen: new Date().toISOString(), online: true },
@@ -150,7 +151,13 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     c.version += 1;
     c.chat.updatedAt = Date.now();
     c.updatedAt = new Date().toISOString();
-    for (const w of [...state.waiters]) if (w.chatId === id && c.version > w.after) w.wake();
+    for (const w of [...state.waiters]) if (w.chatId === id) w.wake();
+  };
+  /** A job's state changes (W: cloud_job.updated_at), which wakes the chat's long-polls. */
+  const setJob = (job, status) => {
+    job.status = status;
+    job.updatedAt = new Date().toISOString();
+    for (const w of [...state.waiters]) if (w.chatId === job.chatId) w.wake();
   };
 
   const send = (res, status, body, headers = {}) => {
@@ -181,7 +188,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
         : (state.chats[job.chatId] = { version: 0, deleted: false, updatedAt: "", chat: { id: job.chatId, kind: "direct", name: job.chatId.slice(3), memberIds: [job.chatId.slice(3)], createdAt: Date.now(), updatedAt: Date.now(), entries: [] } }).chat;
       const botId = chat.leadId || chat.memberIds[0];
       setTimeout(() => {
-        job.status = "claimed";
+        setJob(job, "claimed");
         chat.entries.push({ id: job.payload.entryId, kind: "user", text: job.payload.text, at: Date.now() });
         const e = { id: `r${Date.now()}`, kind: "bot", botId, at: Date.now(), text: "", status: "running", steps: [] };
         chat.entries.push(e);
@@ -199,7 +206,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
               if (e.status !== "running") return;
               e.status = "done";
               e.text = ar ? "تم! حجزت **غرفة لشخصين** وأرسلت لك التأكيد." : "Done! I asked for **a double room** and will tell you when they answer.";
-              job.status = "done";
+              setJob(job, "done");
               bump(job.chatId);
             }, job.slow ? 60_000 : replyDelayMs);
           }, replyDelayMs);
@@ -215,14 +222,14 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
           e.status = "done";
           e.text = allowed ? (ar ? "أرسلت البريد إلى الفندق ✅" : "Email sent to the hotel ✅") : ar ? "حسنًا، لم أرسل شيئًا." : "OK, I didn't send anything.";
         }
-        job.status = "done";
+        setJob(job, "done");
         bump(job.chatId);
       }, 600);
     } else if (job.kind === "stop" && c) {
       setTimeout(() => {
         for (const e of c.chat.entries) if (e.kind === "bot" && e.status === "running") e.status = "stopped";
-        for (const j of state.jobs) if (j.chatId === job.chatId && j.status !== "done") j.status = "done";
-        job.status = "done";
+        for (const j of state.jobs) if (j.chatId === job.chatId && j.status !== "done") setJob(j, "done");
+        setJob(job, "done");
         bump(job.chatId);
       }, 300);
     }
@@ -302,7 +309,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       });
     }
     if (p === "/api/v1/cloud/chats" && req.method === "GET") {
-      if (!state.sync) return send(res, 200, { chats: [], now: new Date().toISOString() });
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
       const since = url.searchParams.get("since");
       const list = Object.entries(state.chats)
         .filter(([, c]) => !since || c.updatedAt > since)
@@ -311,46 +318,59 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     }
     const one = /^\/api\/v1\/cloud\/chats\/([^/]+)$/.exec(p);
     if (one && req.method === "GET") {
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
       const c = state.chats[decodeURIComponent(one[1])];
-      if (!c || c.deleted || !state.sync) return send(res, 404, { error: "Chat not found." });
-      return send(res, 200, { chatId: c.chat.id, version: c.version, chat: c.chat });
+      if (!c) return send(res, 404, { error: "This chat isn't in the cloud.", code: "not_found" });
+      // W: a tombstone answers 200 with chat null.
+      return send(res, 200, { chatId: c.chat.id, version: c.version, deleted: c.deleted, chat: c.deleted ? null : c.chat });
     }
     if (p === "/api/v1/cloud/jobs" && req.method === "POST") {
       const b = await readBody(req);
       if (!b || typeof b.chatId !== "string" || !["message", "decision", "stop"].includes(b.kind) || typeof b.payload !== "object") return send(res, 400, { error: "Invalid job." });
       if (req.headers["content-type"] !== "application/json") return send(res, 415, { error: "JSON only." });
-      const job = { jobId: `job-${state.jobs.length + 1}`, chatId: b.chatId, kind: b.kind, payload: b.payload, status: "queued", createdAt: new Date().toISOString(), slow: state.slowNext === true };
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
+      if (state.busy) return send(res, 429, { error: "20 tasks are already waiting.", code: "busy" });
+      const job = { jobId: `job-${state.jobs.length + 1}`, chatId: b.chatId, kind: b.kind, payload: b.payload, status: "queued", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), slow: state.slowNext === true };
       state.slowNext = false;
       state.jobs.push(job);
+      setJob(job, "queued");
       if (!state.holdJobs) run(job);
       return send(res, 200, { jobId: job.jobId });
     }
-    if (p === "/api/v1/cloud/jobs" && req.method === "GET") {
-      if (!state.jobsEndpoint) return send(res, 404, { error: "Not found" });
-      const id = url.searchParams.get("chatId");
-      return send(res, 200, { jobs: state.jobs.filter((j) => j.chatId === id).map(({ jobId, kind, status, createdAt }) => ({ jobId, kind, status, createdAt })) });
-    }
     if (p === "/api/v1/cloud/events" && req.method === "GET") {
+      // W's answer: {chatId, changed, version, deleted, updatedAt, jobs (last 10 minutes), now}; never the chat itself.
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
       const chatId = url.searchParams.get("chatId");
       const after = Number(url.searchParams.get("after") || 0);
-      const c = state.chats[chatId];
-      if (!c || c.deleted || !state.sync) return send(res, 404, { error: "Chat not found." });
-      const reply = () => {
-        const cur = state.chats[chatId];
-        if (cur && cur.version > after) send(res, 200, { chatId, version: cur.version, chat: cur.chat });
-        else send(res, 200, { chatId, version: cur ? cur.version : after });
+      const jobsAfter = url.searchParams.get("jobsAfter");
+      const event = () => {
+        const c = state.chats[chatId];
+        const jobs = state.jobs
+          .filter((j) => j.chatId === chatId && Date.parse(j.updatedAt) > Date.now() - 600_000)
+          .map((j) => ({ jobId: j.jobId, kind: j.kind, status: j.status, error: null, updatedAt: j.updatedAt }));
+        const jobsChanged = !!jobsAfter && jobs.some((j) => j.updatedAt > jobsAfter);
+        const version = c ? c.version : 0;
+        return { body: { chatId, changed: version > after || jobsChanged, version, deleted: !!c?.deleted, updatedAt: c ? c.updatedAt : null, jobs, now: new Date().toISOString() } };
       };
-      if (c && c.version > after) return reply();
-      const w = { chatId, after, wake: () => done() };
+      const first = event();
+      if (first.body.changed) return send(res, 200, first.body);
       let finished = false;
+      const w = { chatId, wake: () => done() };
       const done = () => {
         if (finished) return;
+        const e = event();
+        if (!e.body.changed && Date.now() < deadline) return;
         finished = true;
         clearTimeout(timer);
         state.waiters.delete(w);
-        if (!res.writableEnded) reply();
+        if (!res.writableEnded) send(res, 200, e.body);
       };
-      const timer = setTimeout(done, longPollMs);
+      const deadline = Date.now() + longPollMs;
+      const timer = setTimeout(() => {
+        finished = true;
+        state.waiters.delete(w);
+        if (!res.writableEnded) send(res, 200, event().body);
+      }, longPollMs);
       state.waiters.add(w);
       req.on("close", () => {
         finished = true;

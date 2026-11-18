@@ -105,7 +105,7 @@ export type CloudStatus = {
 export type ChatListItem = { chatId: string; version: number; updatedAt: string; deleted: boolean; bytes: number };
 export type JobKind = "message" | "decision" | "stop";
 export type JobStatus = "queued" | "claimed" | "done" | "needs_computer" | "failed";
-export type JobInfo = { jobId: string; kind: JobKind; status: JobStatus; createdAt: string; error?: string };
+export type JobInfo = { jobId: string; kind: JobKind; status: JobStatus; error?: string | null; updatedAt?: string };
 
 /** What the phone sends with POST /jobs (mirrors the desktop's POST /api/chats/<id>/run body). */
 export type JobPayload =

@@ -37,7 +37,9 @@ type Ctx = {
   outbox: Outgoing[];
   send: (chatId: string, text: string) => Promise<boolean>;
   retry: (entryId: string) => Promise<boolean>;
+  /** The job's id, or null when it couldn't be sent (lastJobError says why, in words for people). */
   job: (chatId: string, job: JobPayload) => Promise<string | null>;
+  lastJobError: () => string;
   credits: Credits | null;
   loadCredits: () => Promise<void>;
   signedOut: () => void;
@@ -279,7 +281,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
           setSync(st.enabled ? "on" : "off");
           if (st.enabled) await refreshChats();
         } catch (err) {
-          if (err instanceof ApiError && (err.status === 404 || err.status === 501)) setSync("unavailable");
+          if (err instanceof ApiError && err.code === "sync_off") setSync("off");
+          else if (err instanceof ApiError && (err.status === 404 || err.status === 501)) setSync("unavailable");
           else if (err instanceof ApiError && err.status === 401) return;
           else setSync((s) => (s === "loading" ? (Object.keys(cache.current.chats).length ? "on" : "error") : s === "on" ? "on" : "error"));
         }
@@ -358,11 +361,15 @@ export function MobileApp({ children }: { children: ReactNode }) {
     });
   }, [ready, chats, updateOutbox]);
 
+  const jobError = useRef<Key>("chat.sendFailed");
   const job = useCallback(async (chatId: string, j: JobPayload): Promise<string | null> => {
     try {
       const r = await postJob(chatId, j);
       return r?.jobId ?? "";
-    } catch {
+    } catch (err) {
+      const code = err instanceof ApiError ? err.code : null;
+      jobError.current = code === "busy" ? "chat.busy" : code === "sync_off" ? "chat.syncOff" : code === "too_big" ? "chat.tooBig" : "chat.sendFailed";
+      if (code === "sync_off") setSync("off");
       return null;
     }
   }, []);
@@ -412,7 +419,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCredits: loadCreditsNow, signedOut }),
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut }),
     [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut],
   );
 

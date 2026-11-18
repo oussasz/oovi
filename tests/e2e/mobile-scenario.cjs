@@ -73,7 +73,7 @@ async function main() {
   const sb = await startStandin({ port: PORT, nextPort: NEXT_PORT, lang: "en", replyDelayMs: 700 });
   const S = sb.state;
   const browser = await chromium.launch({ args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"] });
-  const jobsOf = (kind) => S.jobs.filter((j) => j.kind === kind);
+  const jobsOf = (kind) => S.jobs.filter((j) => j.kind === kind && j.jobId !== "job-rex");
 
   try {
     if (SHOTS_ONLY) return await screenshots(browser, sb);

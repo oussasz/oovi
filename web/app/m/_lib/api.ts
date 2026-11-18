@@ -13,6 +13,11 @@ export class ApiError extends Error {
   ) {
     super(message);
   }
+  /** The website's stable error code (web/lib/cloud-types.ts CloudError), e.g. "sync_off", "busy". */
+  get code(): string | null {
+    const c = (this.body as { code?: unknown } | null)?.code;
+    return typeof c === "string" ? c : null;
+  }
 }
 
 export const SIGNED_OUT_EVENT = "oovi-m-signed-out";
@@ -67,34 +72,32 @@ export const getStatus = () => call<CloudStatus>("/api/v1/cloud/status");
 export const listChats = (since?: string) =>
   call<{ chats: ChatListItem[]; now: string }>(`/api/v1/cloud/chats${since ? `?since=${encodeURIComponent(since)}` : ""}`);
 
-export const getChat = (chatId: string, signal?: AbortSignal) =>
-  call<{ chatId: string; version: number; chat: Chat }>(`/api/v1/cloud/chats/${encodeURIComponent(chatId)}`, { signal });
+/** One chat. A deleted chat (tombstone: chat null) is answered as 404, like a chat that was never synced. */
+export async function getChat(chatId: string, signal?: AbortSignal): Promise<{ chatId: string; version: number; chat: Chat }> {
+  const r = await call<{ chatId: string; version: number; deleted?: boolean; chat: Chat | null }>(`/api/v1/cloud/chats/${encodeURIComponent(chatId)}`, { signal });
+  if (!r?.chat || r.deleted) throw new ApiError(404, "deleted", { code: "not_found" });
+  return { chatId: r.chatId, version: r.version, chat: r.chat };
+}
 
 export const postJob = (chatId: string, job: JobPayload) =>
   call<{ jobId: string }>("/api/v1/cloud/jobs", { method: "POST", json: { chatId, kind: job.kind, payload: job.payload } });
 
-/** The chat's recent jobs and their state. Optional in the contract: null when the website doesn't have it. */
-export async function getJobs(chatId: string): Promise<JobInfo[] | null> {
-  try {
-    const r = await call<{ jobs: JobInfo[] }>(`/api/v1/cloud/jobs?chatId=${encodeURIComponent(chatId)}`);
-    return Array.isArray(r?.jobs) ? r.jobs : [];
-  } catch (err) {
-    if (err instanceof ApiError && (err.status === 404 || err.status === 405)) return null;
-    throw err;
-  }
-}
+export type ChatEvent = { changed: boolean; version: number; deleted: boolean; jobs: JobInfo[]; now: string | null };
 
 /**
- * Waits (long-poll, 25 s on the server) for the chat's next version. Returns the new version and the chat when
- * the server sends it, or null when nothing changed before the wait ended.
+ * Waits (long-poll, up to 25 s on the server) until the chat's version is above `after` or one of its jobs changed
+ * after `jobsAfter`. Answers the version and the chat's jobs of the last 10 minutes (GET /api/v1/cloud/events).
  */
-export async function waitForChat(chatId: string, after: number, signal: AbortSignal): Promise<{ version: number; chat?: Chat } | null> {
-  const r = await call<{ version?: number; chat?: Chat; changed?: boolean } | null>(
-    `/api/v1/cloud/events?chatId=${encodeURIComponent(chatId)}&after=${after}`,
-    { signal },
-  );
-  if (!r || typeof r.version !== "number" || r.version <= after) return null;
-  return { version: r.version, ...(r.chat && typeof r.chat === "object" ? { chat: r.chat } : {}) };
+export async function waitForChat(chatId: string, after: number, jobsAfter: string | null, signal: AbortSignal): Promise<ChatEvent> {
+  const q = `chatId=${encodeURIComponent(chatId)}&after=${after}${jobsAfter ? `&jobsAfter=${encodeURIComponent(jobsAfter)}` : ""}`;
+  const r = await call<Partial<ChatEvent> | null>(`/api/v1/cloud/events?${q}`, { signal });
+  return {
+    changed: r?.changed === true || (typeof r?.version === "number" && r.version > after),
+    version: typeof r?.version === "number" ? r.version : after,
+    deleted: r?.deleted === true,
+    jobs: Array.isArray(r?.jobs) ? r.jobs.filter((j): j is JobInfo => !!j && typeof j.jobId === "string" && typeof j.status === "string") : [],
+    now: typeof r?.now === "string" ? r.now : null,
+  };
 }
 
 export const getSetup = () => call<{ version: number; items: Record<string, unknown> | null }>("/api/v1/setup");
