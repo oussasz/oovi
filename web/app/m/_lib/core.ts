@@ -260,8 +260,8 @@ export function togglePin(pins: string[], chat: Pick<Chat, "id" | "pinned">): st
 export type Activity = { mood: "thinking" | "reading" | "computer" | "working"; label: string };
 
 const ACT: Record<Lang, Record<string, string>> = {
-  en: { think: "Thinking…", write: "Writing…", search: "Searching the web", read: "Reading {host}", page: "Reading the page", browse: "Using the browser", table: "Updating the table", notes: "Writing notes", file: "Creating {name}", computer: "Working on your computer", places: "Looking for places", papers: "Looking for publications", team: "Asking the team", tool: "Using {name}", memory: "Remembering", skill: "Using a skill" },
-  fr: { think: "Réfléchit…", write: "Écrit…", search: "Cherche sur le web", read: "Lit {host}", page: "Lit la page", browse: "Utilise le navigateur", table: "Met à jour le tableau", notes: "Prend des notes", file: "Crée {name}", computer: "Travaille sur votre ordinateur", places: "Cherche des lieux", papers: "Cherche des publications", team: "Demande à l’équipe", tool: "Utilise {name}", memory: "Mémorise", skill: "Utilise une compétence" },
+  en: { think: "Thinking…", write: "typing…", search: "Searching the web", read: "Reading {host}", page: "Reading the page", browse: "Using the browser", table: "Updating the table", notes: "Writing notes", file: "Creating {name}", computer: "Working on your computer", places: "Looking for places", papers: "Looking for publications", team: "Asking the team", tool: "Using {name}", memory: "Remembering", skill: "Using a skill" },
+  fr: { think: "Réfléchit…", write: "écrit…", search: "Cherche sur le web", read: "Lit {host}", page: "Lit la page", browse: "Utilise le navigateur", table: "Met à jour le tableau", notes: "Prend des notes", file: "Crée {name}", computer: "Travaille sur votre ordinateur", places: "Cherche des lieux", papers: "Cherche des publications", team: "Demande à l’équipe", tool: "Utilise {name}", memory: "Mémorise", skill: "Utilise une compétence" },
   ar: { think: "يفكّر…", write: "يكتب…", search: "يبحث في الويب", read: "يقرأ {host}", page: "يقرأ الصفحة", browse: "يستخدم المتصفح", table: "يحدّث الجدول", notes: "يكتب ملاحظات", file: "ينشئ {name}", computer: "يعمل على حاسوبك", places: "يبحث عن أماكن", papers: "يبحث عن منشورات", team: "يسأل الفريق", tool: "يستخدم {name}", memory: "يتذكّر", skill: "يستخدم مهارة" },
 };
 
@@ -328,7 +328,7 @@ export function needsComputerAction(it: ApprovalItem): boolean {
 
 // ---------- the phone's messages on their way ----------
 
-export type Outgoing = { entryId: string; chatId: string; text: string; at: number; jobId?: string; state: "sending" | "sent" | "failed" };
+export type Outgoing = { entryId: string; chatId: string; text: string; at: number; jobId?: string; state: "sending" | "sent" | "failed"; replyTo?: { id: string; who: string; text: string } };
 
 /**
  * Messages sent from the phone that the chat does not show yet (the computer or the runner adds them). Matched by
@@ -415,4 +415,42 @@ export function stampLabel(at: number, now: number, lang: Lang, today: string, t
 export function safeMobileNext(raw: string | null | undefined): string {
   if (!raw || raw.includes("..") || raw.includes("\\") || raw.startsWith("/m/login")) return "/m";
   return /^\/m(\/[\w\-./%?=&]*)?$/.test(raw) ? raw : "/m";
+}
+
+// ---------- messenger habits (WhatsApp / Messenger): counts, archive, ticks ----------
+
+/** How many replies came since the user last looked (the badge on the row), at most 99. */
+export function unreadCount(chat: Chat, seenAt: number | undefined): number {
+  if (seenAt === undefined) return 0;
+  let n = 0;
+  for (const e of chat.entries) if (e.kind === "bot" && e.status !== "running" && !e.held && e.text.trim() && e.at > seenAt) n++;
+  return Math.min(99, n);
+}
+
+/** The archived chats leave the list; they are kept under "Archived". */
+export function splitArchived<T extends { chat: Pick<Chat, "id"> }>(rows: T[], archived: string[]): { main: T[]; archived: T[] } {
+  const set = new Set(archived);
+  return { main: rows.filter((r) => !set.has(r.chat.id)), archived: rows.filter((r) => set.has(r.chat.id)) };
+}
+
+export const toggleArchive = (archived: string[], chatId: string): string[] => (archived.includes(chatId) ? archived.filter((a) => a !== chatId) : [...archived, chatId]);
+
+/**
+ * The ticks under the user's own message: "read" once a bot answered after it, "delivered" when it is in the
+ * chat (the computer or the cloud has it). Messages still on their way use their Outgoing state.
+ */
+export function userTick(chat: Chat, entryId: string): "read" | "delivered" {
+  const i = chat.entries.findIndex((e) => e.id === entryId);
+  return i >= 0 && chat.entries.slice(i + 1).some((e) => e.kind === "bot") ? "read" : "delivered";
+}
+
+/** The time in a bubble: "14:05" / "2:05 PM". */
+export function bubbleTime(at: number, lang: Lang, timeZone = "UTC"): string {
+  const locale = lang === "ar" ? "ar-DZ" : lang === "fr" ? "fr-FR" : "en-US";
+  return new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone, numberingSystem: "latn" });
+}
+
+/** A short quote of a message for a reply ("Nova: Here are the 3…"). */
+export function quoteOf(text: string, max = 90): string {
+  return plainPreview(text, max);
 }

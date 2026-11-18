@@ -7,7 +7,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError, transcribe } from "../_lib/api";
 import { tap } from "../_lib/haptics";
 import { Icon } from "./Icon";
-import { Spinner } from "./kit";
+import { ActionSheet, Spinner } from "./kit";
 import { useM } from "./MobileApp";
 
 const MAX_SECONDS = 120;
@@ -27,7 +27,11 @@ export function Composer({
   onSend,
   onStop,
   onToast,
+  reply,
+  onCancelReply,
 }: {
+  reply?: { who: string; text: string } | null;
+  onCancelReply?: () => void;
   placeholder: string;
   running: boolean;
   stopping: boolean;
@@ -41,6 +45,7 @@ export function Composer({
   const [rec, setRec] = useState<"idle" | "recording" | "working">("idle");
   const [secs, setSecs] = useState(0);
   const [canVoice, setCanVoice] = useState(false);
+  const [attach, setAttach] = useState(false);
   const box = useRef<HTMLTextAreaElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -85,6 +90,10 @@ export function Composer({
     const h = wrap.current?.offsetHeight;
     if (h) document.documentElement.style.setProperty("--m-composer", `${h}px`);
   });
+
+  useEffect(() => {
+    if (reply) box.current?.focus();
+  }, [reply]);
 
   useEffect(
     () => () => {
@@ -167,11 +176,24 @@ export function Composer({
     recorder.current?.state === "recording" ? recorder.current.stop() : setRec("idle");
   };
 
-  const showStop = running && !text.trim() && rec === "idle";
+  const hasText = !!text.trim();
   const mmss = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+  // The button at the end, as in WhatsApp and Messages: Send with text, Stop while the bots work, else the microphone.
+  const end = hasText ? "send" : running && rec === "idle" ? "stop" : canVoice ? "mic" : "send";
 
   return (
     <div className="m-composer" ref={wrap}>
+      {reply && rec !== "recording" && (
+        <div className="m-replybar">
+          <span className="m-replybar__body" dir="auto">
+            <b>{t("chat.replyTo", { name: reply.who })}</b>
+            <span>{reply.text}</span>
+          </span>
+          <button type="button" className="m-icon-btn" onClick={onCancelReply} aria-label={t("chat.cancelReply")}>
+            <Icon name="close" size={18} stroke={2.4} />
+          </button>
+        </div>
+      )}
       {rec === "recording" ? (
         <div className="m-rec" role="status">
           <button type="button" className="m-icon-btn" onClick={() => finishVoice(false)} aria-label={t("common.cancel")}>
@@ -192,6 +214,9 @@ export function Composer({
         </div>
       ) : (
         <div className="m-composer__row">
+          <button type="button" className="m-icon-btn m-composer__plus" onClick={() => setAttach(true)} aria-label={t("chat.attach")} disabled={rec === "working"}>
+            <Icon name="plus" size={26} stroke={2} />
+          </button>
           <div className="m-composer__field">
             <textarea
               ref={box}
@@ -212,24 +237,35 @@ export function Composer({
               }}
             />
             {rec === "working" && <Spinner size={18} />}
-            {canVoice && rec === "idle" && !text.trim() && (
+            {canVoice && rec === "idle" && !hasText && end === "stop" && (
               <button type="button" className="m-icon-btn m-composer__mic" onClick={startVoice} aria-label={t("chat.voice")} disabled={disabled}>
                 <Icon name="mic" size={22} />
               </button>
             )}
           </div>
-          {showStop ? (
+          {end === "stop" ? (
             <button type="button" className="m-send m-send--stop" onClick={onStop} disabled={stopping} aria-label={stopping ? t("chat.stopping") : t("chat.stop")}>
               {stopping ? <Spinner size={16} /> : <Icon name="stop" size={30} stroke={0} />}
             </button>
+          ) : end === "mic" ? (
+            <button type="button" className="m-send m-send--mic" onClick={startVoice} disabled={disabled || rec !== "idle"} aria-label={t("chat.voice")}>
+              <Icon name="mic" size={22} stroke={2} />
+            </button>
           ) : (
-            <button type="button" className={`m-send${text.trim() && !disabled ? " is-on" : ""}`} onClick={send} disabled={!text.trim() || disabled} aria-label={t("chat.send")}>
+            <button type="button" className={`m-send${hasText && !disabled ? " is-on" : ""}`} onClick={send} disabled={!hasText || disabled} aria-label={t("chat.send")}>
               <Icon name="up" size={20} stroke={2.6} />
             </button>
           )}
         </div>
       )}
       {disabled && <p className="m-composer__hint">{t("chat.offlineSend")}</p>}
+      <ActionSheet
+        open={attach}
+        title={t("chat.attach")}
+        message={t("chat.attachSoon")}
+        onClose={() => setAttach(false)}
+        actions={canVoice ? [{ label: t("chat.voiceNote"), onPress: () => void startVoice() }] : []}
+      />
     </div>
   );
 }

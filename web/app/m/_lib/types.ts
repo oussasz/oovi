@@ -109,7 +109,7 @@ export type JobInfo = { jobId: string; kind: JobKind; status: JobStatus; error?:
 
 /** What the phone sends with POST /jobs (mirrors the desktop's POST /api/chats/<id>/run body). */
 export type JobPayload =
-  | { kind: "message"; payload: { text: string; entryId: string } }
+  | { kind: "message"; payload: { text: string; entryId: string; replyTo?: string } }
   | { kind: "decision"; payload: { decisions: Record<string, boolean> } | { answers: string[] | null } | { planDecision: { approve: boolean; items: string[] } } }
   | { kind: "stop"; payload: Record<string, never> };
 

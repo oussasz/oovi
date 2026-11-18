@@ -88,9 +88,9 @@ export function LargeTitle({ children }: { children: ReactNode }) {
 }
 
 export function TabBar() {
-  const { t, chats, seen } = useM();
+  const { t, chats, seen, archived } = useM();
   const path = usePathname() ?? "/m";
-  const unread = Object.values(chats).filter(({ chat }) => !chat.routine && isUnread(chat, seen[chat.id])).length;
+  const unread = Object.values(chats).filter(({ chat }) => !chat.routine && !archived.includes(chat.id) && isUnread(chat, seen[chat.id])).length;
   const tabs: { href: string; label: string; icon: IconName; on: boolean; badge?: number }[] = [
     { href: "/m", label: t("tab.chats"), icon: "chats", on: path === "/m" || path.startsWith("/m/c/"), badge: unread },
     { href: "/m/bots", label: t("tab.bots"), icon: "bots", on: path.startsWith("/m/bots") },
@@ -398,17 +398,20 @@ export function Spinner({ progress, size = 22 }: { progress?: number; size?: num
 export type SwipeAction = { label: string; icon: IconName; color: string; onPress: () => void };
 
 /**
- * A list row with an action under each side: swipe from the start edge for `lead`, from the end edge for
- * `trail` (mirrored in Arabic). Half a swipe shows the action, a long swipe does it. Long press opens `onMore`.
+ * A list row with actions under each side, like Mail and WhatsApp: swipe from the start edge for `lead`, from the
+ * end edge for `trail` (mirrored in Arabic). Half a swipe shows the actions, a long swipe does the outermost one.
+ * Long press (or the hidden "More actions" button for keyboards and screen readers) opens `onMore`.
  */
-export function SwipeRow({ lead, trail, children, onMore, moreLabel }: { lead?: SwipeAction; trail?: SwipeAction; children: ReactNode; onMore?: () => void; moreLabel: string }) {
+export function SwipeRow({ lead = [], trail = [], children, onMore, moreLabel }: { lead?: SwipeAction[]; trail?: SwipeAction[]; children: ReactNode; onMore?: () => void; moreLabel: string }) {
   const { dir } = useM();
   const [x, setX] = useState(0);
   const [drag, setDrag] = useState(false);
   const s = useRef<{ x: number; y: number; base: number; lock: "h" | "v" | null } | null>(null);
   const press = useRef(0);
-  const W = 84;
+  const W = 78;
   const sign = dir === "rtl" ? -1 : 1;
+  const openL = W * lead.length;
+  const openT = W * trail.length;
   const done = (a: SwipeAction | undefined) => {
     setX(0);
     if (a) {
@@ -416,20 +419,21 @@ export function SwipeRow({ lead, trail, children, onMore, moreLabel }: { lead?: 
       a.onPress();
     }
   };
+  const side = (acts: SwipeAction[], cls: string, width: number) =>
+    acts.length ? (
+      <div className={`m-swipe__acts ${cls}`} style={{ width }} aria-hidden>
+        {acts.map((a) => (
+          <button key={a.label} type="button" className="m-swipe__act" style={{ background: a.color }} tabIndex={-1} onClick={() => done(a)}>
+            <Icon name={a.icon} size={22} stroke={2.2} />
+            <span>{a.label}</span>
+          </button>
+        ))}
+      </div>
+    ) : null;
   return (
     <div className="m-swipe">
-      {lead && (
-        <button type="button" className="m-swipe__act m-swipe__act--lead" style={{ background: lead.color, width: Math.max(W, x * sign) }} tabIndex={-1} aria-hidden onClick={() => done(lead)}>
-          <Icon name={lead.icon} size={22} stroke={2.2} />
-          <span>{lead.label}</span>
-        </button>
-      )}
-      {trail && (
-        <button type="button" className="m-swipe__act m-swipe__act--trail" style={{ background: trail.color, width: Math.max(W, -x * sign) }} tabIndex={-1} aria-hidden onClick={() => done(trail)}>
-          <Icon name={trail.icon} size={22} stroke={2.2} />
-          <span>{trail.label}</span>
-        </button>
-      )}
+      {side(lead, "m-swipe__acts--lead", Math.max(openL, x * sign))}
+      {side(trail, "m-swipe__acts--trail", Math.max(openT, -x * sign))}
       <div
         className={`m-swipe__body${drag ? " is-drag" : ""}`}
         style={{ transform: x ? `translate3d(${x}px,0,0)` : undefined }}
@@ -457,11 +461,10 @@ export function SwipeRow({ lead, trail, children, onMore, moreLabel }: { lead?: 
           }
           if (st.lock !== "h") return;
           let nx = st.base + dx;
-          // Only toward a side that has an action.
-          if (nx * sign > 0 && !lead) nx = 0;
-          if (nx * sign < 0 && !trail) nx = 0;
+          if (nx * sign > 0 && !lead.length) nx = 0;
+          if (nx * sign < 0 && !trail.length) nx = 0;
           setDrag(true);
-          setX(Math.max(-260, Math.min(260, nx)));
+          setX(Math.max(-320, Math.min(320, nx)));
         }}
         onTouchEnd={() => {
           window.clearTimeout(press.current);
@@ -470,10 +473,10 @@ export function SwipeRow({ lead, trail, children, onMore, moreLabel }: { lead?: 
           setDrag(false);
           if (!st || st.lock !== "h") return;
           const v = x * sign;
-          if (v > 170) done(lead);
-          else if (v < -170) done(trail);
-          else if (v > W / 2) setX(W * sign);
-          else if (v < -W / 2) setX(-W * sign);
+          if (v > openL + 90) done(lead[0]);
+          else if (v < -(openT + 90)) done(trail[0]);
+          else if (v > openL / 2) setX(openL * sign);
+          else if (v < -openT / 2) setX(-openT * sign);
           else setX(0);
         }}
         onClickCapture={(e) => {

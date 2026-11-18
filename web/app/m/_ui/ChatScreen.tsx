@@ -19,9 +19,15 @@ import {
   runningEntry,
   stampLabel,
   textDir,
+  bubbleTime,
+  quoteOf,
+  userTick,
+  type Lang,
 } from "../_lib/core";
 import { tap } from "../_lib/haptics";
 import type { BotEntry, Chat, Entry, JobInfo, UserEntry } from "../_lib/types";
+
+type Reply = { id: string; who: string; text: string };
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner } from "./kit";
@@ -36,37 +42,82 @@ const zone = () => {
   }
 };
 
-/** Long-press on a bubble opens its menu (Copy). Movement cancels it, so scrolling never triggers it. */
-function useLongPress(onLong: () => void) {
+/**
+ * A message the user can act on like in WhatsApp: long press opens its menu (Reply, Copy); a swipe toward the
+ * reading direction's start (right in English, left in Arabic) replies to it. Scrolling never triggers either.
+ */
+function Swipeable({ children, onMenu, onReply, className }: { children: React.ReactNode; onMenu: () => void; onReply?: () => void; className?: string }) {
+  const { dir } = useM();
+  const sign = dir === "rtl" ? -1 : 1;
+  const [dx, setDx] = useState(0);
+  const st = useRef<{ x: number; y: number; lock: "h" | "v" | null; fired: boolean } | null>(null);
   const timer = useRef(0);
-  const start = useRef<{ x: number; y: number } | null>(null);
-  return {
-    onTouchStart: (e: React.TouchEvent) => {
-      const p = e.touches[0]!;
-      start.current = { x: p.clientX, y: p.clientY };
-      timer.current = window.setTimeout(() => {
-        tap("medium");
-        onLong();
-      }, 480);
-    },
-    onTouchMove: (e: React.TouchEvent) => {
-      const p = e.touches[0]!;
-      if (start.current && Math.hypot(p.clientX - start.current.x, p.clientY - start.current.y) > 8) window.clearTimeout(timer.current);
-    },
-    onTouchEnd: () => window.clearTimeout(timer.current),
-    onContextMenu: (e: React.MouseEvent) => {
-      e.preventDefault();
-      onLong();
-    },
+  const end = () => {
+    window.clearTimeout(timer.current);
+    const s = st.current;
+    st.current = null;
+    if (s?.lock === "h" && dx * sign >= 64 && onReply) {
+      tap("medium");
+      onReply();
+    }
+    setDx(0);
   };
+  return (
+    <div
+      className={`m-swipeable${className ? ` ${className}` : ""}`}
+      onTouchStart={(e) => {
+        const p = e.touches[0]!;
+        st.current = { x: p.clientX, y: p.clientY, lock: null, fired: false };
+        timer.current = window.setTimeout(() => {
+          if (st.current && !st.current.lock) {
+            st.current.fired = true;
+            tap("medium");
+            onMenu();
+          }
+        }, 480);
+      }}
+      onTouchMove={(e) => {
+        const s = st.current;
+        if (!s) return;
+        const p = e.touches[0]!;
+        const mx = p.clientX - s.x;
+        const my = p.clientY - s.y;
+        if (!s.lock && (Math.abs(mx) > 8 || Math.abs(my) > 8)) {
+          s.lock = Math.abs(mx) > Math.abs(my) * 1.4 && !!onReply ? "h" : "v";
+          window.clearTimeout(timer.current);
+        }
+        if (s.lock === "h") setDx(Math.max(0, Math.min(90, mx * sign)) * sign);
+      }}
+      onTouchEnd={end}
+      onTouchCancel={end}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        onMenu();
+      }}
+    >
+      {onReply && (
+        <span className="m-swipeable__icon" style={{ opacity: Math.min(1, Math.abs(dx) / 64) }} aria-hidden>
+          <Icon name="reply" size={20} stroke={2.2} />
+        </span>
+      )}
+      <div className={`m-swipeable__body${dx ? " is-drag" : ""}`} style={{ transform: dx ? `translateX(${dx}px)` : undefined }}>
+        {children}
+      </div>
+    </div>
+  );
 }
 
-function Bubble({ entry, children, mine, onMenu, className }: { entry: Entry; children: React.ReactNode; mine: boolean; onMenu: (e: Entry) => void; className?: string }) {
-  const lp = useLongPress(() => onMenu(entry));
+/** Time and ticks at the end of a bubble (WhatsApp-style). */
+function Meta({ at, tick, lang, zone, t }: { at: number; tick?: "sending" | "sent" | "delivered" | "read" | "failed"; lang: Lang; zone: string; t: ReturnType<typeof useM>["t"] }) {
   return (
-    <div className={`m-bubble${mine ? " m-bubble--me" : " m-bubble--bot"}${className ? ` ${className}` : ""}`} {...lp}>
-      {children}
-    </div>
+    <span className="m-meta">
+      <time>{bubbleTime(at, lang, zone)}</time>
+      {tick === "sending" && <Icon name="clock" size={13} stroke={2} />}
+      {tick === "sent" && <Icon name="tick" size={14} stroke={2.2} />}
+      {(tick === "delivered" || tick === "read") && <Icon name="ticks" size={16} stroke={2} className={tick === "read" ? "is-read" : ""} />}
+      {tick === "failed" && <Icon name="warn" size={14} stroke={2.2} />}
+      {tick && <span className="m-sr-only">{t(tick === "failed" ? "chat.notSent" : `tick.${tick}`)}</span>}
+    </span>
   );
 }
 
@@ -81,6 +132,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const [answered, setAnswered] = useState<string | null>(null);
   const [stopping, setStopping] = useState(false);
   const [menu, setMenu] = useState<Entry | null>(null);
+  const [reply, setReply] = useState<Reply | null>(null);
   const showToast = m.toast;
   const endRef = useRef<HTMLDivElement>(null);
   const firstScroll = useRef(true);
@@ -201,7 +253,8 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   const computer = computerState(status);
   const blocker = chatBlocker(view, jobs, computer.state, mine.some((o) => o.state === "sent"));
-  const canSend = sync === "on" && !localBot;
+  // "loading": the status is on its way (first start on this phone); the box shows, sending waits for the answer.
+  const canSend = (sync === "on" || sync === "loading") && !localBot;
 
   const decide = useCallback(
     async (key: string, payload: Parameters<typeof job>[1]) => {
@@ -258,14 +311,18 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     ) : null;
   };
 
+  const replyFor = (e: Entry): Reply => ({ id: e.id, who: e.kind === "user" ? t("common.you") : (bot(e.botId)?.name ?? "oovi"), text: quoteOf(e.text) });
+  const quote = (r: { who: string; text: string } | undefined) =>
+    r ? (
+      <span className="m-quote" dir="auto">
+        <b>{r.who}</b>
+        <span>{r.text.slice(0, 140)}</span>
+      </span>
+    ) : null;
+
   const renderUser = (e: UserEntry) => (
     <div className="m-msg m-msg--me" key={e.id}>
       {stamp(e.at)}
-      {e.replyTo && (
-        <div className="m-reply" dir="auto">
-          <b>{e.replyTo.who}</b> {e.replyTo.text.slice(0, 120)}
-        </div>
-      )}
       {(e.attachments ?? []).map((a) => (
         <div className="m-file" key={a.id}>
           <Icon name="file" size={18} />
@@ -273,9 +330,15 @@ export function ChatScreen({ chatId }: { chatId: string }) {
         </div>
       ))}
       {e.text.trim() && (
-        <Bubble entry={e} mine onMenu={setMenu}>
-          <p dir={textDir(e.text)}>{e.text}</p>
-        </Bubble>
+        <Swipeable onMenu={() => setMenu(e)} onReply={canSend ? () => setReply(replyFor(e)) : undefined}>
+          <div className="m-bubble m-bubble--me">
+            {quote(e.replyTo)}
+            <p dir={textDir(e.text)}>
+              {e.text}
+              <Meta at={e.at} tick={view ? userTick(view, e.id) : "delivered"} lang={lang} zone={tzName} t={t} />
+            </p>
+          </div>
+        </Swipeable>
       )}
     </div>
   );
@@ -300,9 +363,12 @@ export function ChatScreen({ chatId }: { chatId: string }) {
           </span>
           <div className="m-msg__col">
             {text.trim() && (
-              <Bubble entry={e} mine={false} onMenu={setMenu}>
-                <Markdown text={text} />
-              </Bubble>
+              <Swipeable onMenu={() => setMenu(e)} onReply={canSend ? () => setReply(replyFor(e)) : undefined}>
+                <div className="m-bubble m-bubble--bot">
+                  <Markdown text={text} />
+                  {!live && <Meta at={e.at} lang={lang} zone={tzName} t={t} />}
+                </div>
+              </Swipeable>
             )}
             {live && act && (
               <div className="m-live" role="status" aria-live="polite">
@@ -428,9 +494,13 @@ export function ChatScreen({ chatId }: { chatId: string }) {
                 void m.retry(o.entryId);
               }}
             >
-              <p dir={textDir(o.text)}>{o.text}</p>
+              {quote(o.replyTo)}
+              <p dir={textDir(o.text)}>
+                {o.text}
+                <Meta at={o.at} tick={o.state} lang={lang} zone={tzName} t={t} />
+              </p>
             </button>
-            <span className={`m-out${o.state === "failed" ? " is-failed" : ""}`}>{o.state === "sending" ? t("chat.sending") : o.state === "sent" ? t("chat.sent") : t("chat.notSent")}</span>
+            {o.state === "failed" && <span className="m-out is-failed">{t("chat.notSent")}</span>}
           </div>
         ))}
         {approvalCard}
@@ -479,9 +549,13 @@ export function ChatScreen({ chatId }: { chatId: string }) {
             onStop={stop}
             disabled={!online}
             onToast={showToast}
+            reply={reply}
+            onCancelReply={() => setReply(null)}
             onSend={async (text) => {
               tap();
-              const ok = await m.send(chatId, text);
+              const r = reply;
+              setReply(null);
+              const ok = await m.send(chatId, text, r ?? undefined);
               if (!ok) showToast(m.lastJobError());
               return true;
             }}
@@ -497,6 +571,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
         actions={
           menu
             ? [
+                ...(canSend ? [{ label: t("chat.reply"), onPress: () => setReply(replyFor(menu)) }] : []),
                 {
                   label: t("common.copy"),
                   onPress: () => {

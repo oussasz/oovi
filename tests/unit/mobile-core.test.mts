@@ -180,7 +180,7 @@ test("live status from the last tool call, in three languages", () => {
   assert.equal(activityOf({ id: "1", name: "create_document", input: { filename: "C:\\Users\\me\\report.docx" } }, "en").label, "Creating report.docx");
   assert.equal(activityOf({ id: "1", name: "mcp_notion_search", input: {} }, "en").label, "Using notion search");
   assert.equal(activityOf(undefined, "ar").label, "يفكّر…");
-  assert.equal(liveActivity({ id: "e", kind: "bot", botId: "b", at: 1, text: "", status: "running", steps: [{ role: "assistant", text: "Hello", toolCalls: [] }] }, "en").label, "Writing…");
+  assert.equal(liveActivity({ id: "e", kind: "bot", botId: "b", at: 1, text: "", status: "running", steps: [{ role: "assistant", text: "Hello", toolCalls: [] }] }, "en").label, "typing…");
 });
 
 test("approval decisions and computer-only actions", () => {
@@ -264,4 +264,26 @@ test("after sign-in, only pages of the phone app (never another site)", async ()
   assert.equal(safeMobileNext("/m/c/dm-oovi"), "/m/c/dm-oovi");
   assert.equal(safeMobileNext("/m/settings?x=1"), "/m/settings?x=1");
   for (const bad of ["https://evil.example", "//evil.example", "/m/../admin", "/admin", "/mark.png", "/m/login?next=/m", "/m\\evil", null, ""]) assert.equal(safeMobileNext(bad), "/m", String(bad));
+});
+
+test("messenger habits: unread counts, archive, ticks, quotes", async () => {
+  const { unreadCount, splitArchived, toggleArchive, userTick, quoteOf } = await import("../../web/app/m/_lib/core.ts");
+  const c = chat({
+    entries: [
+      { id: "u1", kind: "user", text: "hi", at: 10 },
+      { id: "b1", kind: "bot", botId: "b1", at: 20, text: "one", status: "done" },
+      { id: "b2", kind: "bot", botId: "b1", at: 30, text: "two", status: "done" },
+      { id: "b3", kind: "bot", botId: "b1", at: 40, text: "", status: "running" },
+      { id: "u2", kind: "user", text: "ok", at: 50 },
+    ],
+  });
+  assert.equal(unreadCount(c, 15), 2);
+  assert.equal(unreadCount(c, 25), 1);
+  assert.equal(unreadCount(c, undefined), 0);
+  const rows = [{ chat: { id: "a" } }, { chat: { id: "b" } }];
+  assert.deepEqual(splitArchived(rows, ["b"]), { main: [rows[0]], archived: [rows[1]] });
+  assert.deepEqual(toggleArchive(toggleArchive([], "x"), "x"), []);
+  assert.equal(userTick(c, "u1"), "read");
+  assert.equal(userTick(c, "u2"), "delivered");
+  assert.equal(quoteOf("**Bold** reply with [a link](https://x)"), "Bold reply with a link");
 });

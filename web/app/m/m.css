@@ -169,7 +169,8 @@ html.m-locked body {
   white-space: nowrap;
 }
 .m-sr-focus:focus {
-  position: static !important;
+  position: relative !important;
+  z-index: 2;
   width: auto;
   height: 44px;
   clip: auto;
@@ -518,25 +519,34 @@ html.m-root[lang="ar"] .m-large {
   position: relative;
   overflow: hidden;
 }
-.m-swipe__act {
+.m-swipe__acts {
   position: absolute;
   top: 0;
   bottom: 0;
+  display: flex;
+  overflow: hidden;
+}
+.m-swipe__acts--lead {
+  inset-inline-start: 0;
+}
+/* The first action of each side sits at the screen's edge (a long swipe does it). */
+.m-swipe__acts--trail {
+  inset-inline-end: 0;
+  flex-direction: row-reverse;
+}
+.m-swipe__act {
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 3px;
-  color: #fff;
+  min-width: 0;
+  color: #fff !important;
   font-size: 0.765rem;
   font-weight: 500;
   overflow: hidden;
-}
-.m-swipe__act--lead {
-  inset-inline-start: 0;
-}
-.m-swipe__act--trail {
-  inset-inline-end: 0;
+  white-space: nowrap;
 }
 .m-swipe__body {
   position: relative;
@@ -2017,4 +2027,227 @@ html.m-kb-open .m-composer {
 }
 .m-addc .m-section {
   margin-inline: 0;
+}
+
+/* ---------- messenger habits ---------- */
+.m-chat__bottom {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.m-chat__bottom .m-chat__preview {
+  flex: 1;
+  min-width: 0;
+}
+.m-chat__time.is-unread {
+  color: var(--m-tint);
+  font-weight: 500;
+}
+.m-count {
+  flex: none;
+  min-width: 21px;
+  height: 21px;
+  margin-top: 2px;
+  padding: 0 6px;
+  border-radius: 11px;
+  background: var(--m-tint-bg);
+  color: #fff;
+  font-size: 0.706rem;
+  font-weight: 600;
+  line-height: 21px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.m-count--dot {
+  min-width: 12px;
+  width: 12px;
+  height: 12px;
+  margin-top: 6px;
+  padding: 0;
+}
+.m-chat {
+  padding-inline-start: 14px;
+}
+.m-archrow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  margin: 0 0 2px;
+  padding: 0 16px 0 28px;
+  color: var(--m-label) !important;
+  font-weight: 500;
+  border-bottom: 0.5px solid var(--m-sep);
+}
+.m-archrow svg {
+  color: var(--m-label-2);
+}
+.m-archrow span:nth-child(2) {
+  flex: 1;
+}
+.m-archrow__n {
+  color: var(--m-label-2);
+  font-size: 0.882rem;
+}
+.m-archrow__n.is-unread {
+  color: var(--m-tint);
+  font-weight: 600;
+}
+
+/* time and ticks inside bubbles */
+.m-meta {
+  float: inline-end;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin: 7px 0 -5px 10px;
+  margin-inline-start: 10px;
+  margin-inline-end: -3px;
+  font-size: 0.647rem;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0.78;
+  font-variant-numeric: tabular-nums;
+}
+.m-bubble--me .m-meta {
+  color: rgba(255, 255, 255, 0.92);
+  opacity: 1;
+}
+.m-bubble--bot .m-meta {
+  float: none;
+  display: flex;
+  justify-content: flex-end;
+  margin: 2px -3px -3px 0;
+  color: var(--m-label-2);
+}
+.m-meta .is-read {
+  color: #a8e1ff;
+}
+.m-bubble--out.is-failed .m-meta {
+  color: var(--m-red);
+}
+.m-bubble--out .m-meta {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* a quoted message inside a bubble, and the reply bar above the box */
+.m-quote {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  margin: 0 -4px 6px;
+  padding: 5px 9px;
+  border-radius: 9px;
+  border-inline-start: 3px solid currentColor;
+  background: rgba(0, 0, 0, 0.12);
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+.m-bubble--bot .m-quote {
+  background: var(--m-fill);
+  border-inline-start-color: var(--m-tint);
+}
+.m-quote b {
+  font-weight: 600;
+}
+.m-quote span {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  opacity: 0.9;
+}
+.m-replybar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 720px;
+  margin: 0 auto 6px;
+  padding: 6px 4px 6px 12px;
+  border-radius: 12px;
+  background: var(--m-fill);
+  border-inline-start: 3px solid var(--m-tint);
+  animation: m-pop 0.3s var(--m-spring);
+}
+.m-replybar__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+.m-replybar__body b {
+  color: var(--m-tint);
+  font-weight: 600;
+}
+.m-replybar__body span {
+  color: var(--m-label-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* swipe a message to reply */
+.m-swipeable {
+  position: relative;
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  touch-action: pan-y;
+}
+.m-msg--me .m-swipeable {
+  align-items: flex-end;
+}
+.m-msg__col .m-swipeable {
+  align-items: flex-start;
+}
+.m-swipeable__body {
+  max-width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: inherit;
+  transition: transform 0.35s var(--m-spring);
+}
+.m-swipeable__body.is-drag {
+  transition: none;
+}
+.m-swipeable__icon {
+  position: absolute;
+  top: 50%;
+  inset-inline-start: -2px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-top: -15px;
+  border-radius: 50%;
+  background: var(--m-fill);
+  color: var(--m-label-2);
+  pointer-events: none;
+}
+.m-msg--me .m-bubble,
+.m-msg__col .m-bubble {
+  max-width: min(82vw, 560px);
+}
+.m-msg__col .m-bubble--bot {
+  max-width: 100%;
+}
+
+/* composer: + on the start side, the round button on the end */
+.m-composer__row {
+  align-items: flex-end;
+}
+.m-composer__plus {
+  width: 38px;
+  height: 38px;
+  color: var(--m-tint);
+}
+.m-send--mic {
+  background: transparent;
+  color: var(--m-tint);
+}
+.m-send--mic:disabled {
+  opacity: 0.4;
 }

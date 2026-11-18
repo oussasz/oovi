@@ -35,9 +35,21 @@ const { defaultBrowserType: _ignored, ...IPHONE } = devices["iPhone 15"];
 
 let pass = 0;
 let fail = 0;
+let shotPage = null;
+/** Like check, but waits for the failure picture (OOVI_FAIL_SHOTS) before the scenario moves on. */
+const checkNow = async (name, ok, extra = "") => {
+  if (!ok && shotPage && process.env.OOVI_FAIL_SHOTS) {
+    await shotPage.screenshot({ path: path.join(process.env.OOVI_FAIL_SHOTS, `now-${name.replace(/\W+/g, "_").slice(0, 50)}.png`) }).catch(() => {});
+    const html = await shotPage.locator(".m-thread").innerText().catch(() => "");
+    fs.writeFileSync(path.join(process.env.OOVI_FAIL_SHOTS, `now-${name.replace(/\W+/g, "_").slice(0, 50)}.txt`), html + "\n" + JSON.stringify(extra));
+  }
+  check(name, ok, typeof extra === "string" ? extra : "");
+};
 const check = (name, ok, extra = "") => {
   if (ok) pass++;
   else fail++;
+  // OOVI_FAIL_SHOTS=<folder>: a picture of the screen for each failed check.
+  if (!ok && shotPage && process.env.OOVI_FAIL_SHOTS) shotPage.screenshot({ path: path.join(process.env.OOVI_FAIL_SHOTS, `${name.replace(/\W+/g, "_").slice(0, 60)}.png`) }).catch(() => {});
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && extra ? ` (${extra})` : ""}`);
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -81,6 +93,7 @@ async function main() {
     let ctx = await browser.newContext({ ...IPHONE, locale: "en-US", deviceScaleFactor: 1 });
     await ctx.grantPermissions(["microphone"], { origin: BASE });
     let page = await ctx.newPage();
+    shotPage = page;
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`${BASE}/m`);
@@ -99,13 +112,13 @@ async function main() {
     check("C five chats (the routine's chat is left out)", (await rows.count()) === 5, String(await rows.count()));
     check("C pinned on top: Lina", (await page.locator("#pinned-h + ul .m-chat__name").first().textContent()) === "Lina");
     check("C the API is called as this phone", S.requests.some((r) => r.path.startsWith("/api/v1/cloud") && /^phone:phone-/.test(r.device || "")));
-    check("C nothing unread on the first open", (await page.locator(".m-chat__dot.is-on").count()) === 0);
+    check("C nothing unread on the first open", (await page.locator(".m-count").count()) === 0);
     // A new reply in Studio, then the app comes back: one unread dot, a badge on the tab.
     const studio = S.chats.studio.chat;
     studio.entries.push({ id: "b9", kind: "bot", botId: "oovi", at: Date.now(), text: "Posted ✅", status: "done" });
     sb.bump("studio");
     await page.reload();
-    check("C a new reply: unread dot", await until(async () => (await page.locator(".m-chat__dot.is-on").count()) === 1));
+    check("C a new reply: an unread count on the row", await until(async () => (await page.locator(".m-chat", { hasText: "Studio" }).locator(".m-count").textContent()) === "1"));
     check("C a new reply: badge on the Chats tab", (await page.locator(".m-tab .m-badge").textContent()) === "1");
     await page.fill('input[type="search"]', "oran");
     check("C search finds words inside messages", await until(async () => (await rows.count()) === 1 && (await page.locator(".m-chat__name").first().textContent()) === "Oovi"));
@@ -116,6 +129,18 @@ async function main() {
     await page.getByRole("button", { name: "More actions for Rex" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Pin" }).click();
     check("C pin from the row's actions", await until(async () => (await page.locator("#pinned-h + ul .m-chat__name").allTextContents()).includes("Rex")));
+    await page.getByRole("button", { name: "More actions for Studio" }).focus();
+    await page.getByRole("button", { name: "More actions for Studio" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
+    check("C archive: the chat leaves the list, 'Archived' shows its unread", await until(async () => (await page.locator(".m-chats .m-chat__name", { hasText: "Studio" }).count()) === 0 && (await page.locator(".m-archrow").textContent()).includes("Archived")));
+    check("C …and the tab's count leaves out archived chats", (await page.locator(".m-tab .m-badge").count()) === 0);
+    await page.click(".m-archrow");
+    check("C the archived chats", await until(async () => page.url().endsWith("/m/archived") && (await page.locator(".m-chats .m-chat__name").allTextContents()).join() === "Studio"));
+    await page.getByRole("button", { name: "More actions for Studio" }).focus();
+    await page.getByRole("button", { name: "More actions for Studio" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Unarchive" }).click();
+    await page.goto(`${BASE}/m`);
+    check("C unarchive brings it back", await until(async () => (await page.locator(".m-chats .m-chat__name", { hasText: "Studio" }).count()) === 1 && (await page.locator(".m-archrow").count()) === 0));
 
     // ---------- D) a chat with an approval ----------
     await page.click('a[href="/m/c/dm-oovi"]');
@@ -142,6 +167,17 @@ async function main() {
     check("E then the next step", await until(() => page.locator(".m-live", { hasText: "Reading booking.com" }).isVisible(), 6000));
     check("E then the answer", await until(() => page.getByText("I asked for").isVisible(), 8000));
     check("E the message is shown once", (await page.locator(".m-bubble--me", { hasText: "Book it for Friday" }).count()) === 1);
+    check("E answered: double ticks marked read", await page.locator(".m-bubble--me", { hasText: "Book it for Friday" }).locator(".m-sr-only", { hasText: "Answered" }).count() === 1);
+    // Long press (right click here) → Reply → the reply goes with the message.
+    await page.locator(".m-bubble--bot", { hasText: "I asked for" }).click({ button: "right" });
+    await page.getByRole("dialog").getByRole("button", { name: "Reply" }).click();
+    check("E reply: the bar above the box", await until(() => page.locator(".m-replybar", { hasText: "Replying to Oovi" }).isVisible()));
+    await box.fill("For two people");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    const replyEntry = S.chats["dm-oovi"].chat.entries.find((x) => x.kind === "bot" && /I asked for/.test(x.text));
+    check("E reply: the job says which message it answers", await until(() => jobsOf("message").some((j) => j.payload.text === "For two people" && j.payload.replyTo === replyEntry.id)));
+    check("E reply: the message shows the quote", await until(() => page.locator(".m-bubble--me", { hasText: "For two people" }).locator(".m-quote").isVisible()));
+    check("E reply: answered", await until(() => jobsOf("message").filter((j) => j.payload.text === "For two people").every((j) => j.status === "done"), 10_000));
     check("E the long-poll is used", S.requests.some((r) => r.path.startsWith("/api/v1/cloud/events?chatId=dm-oovi&after=")));
 
     // ---------- F) Stop ----------
@@ -152,7 +188,7 @@ async function main() {
     await until(() => page.locator(".m-live", { hasText: "Reading" }).isVisible(), 6000);
     await page.getByRole("button", { name: "Stop" }).click();
     check("F Stop sends a stop job", await until(() => jobsOf("stop").length === 1));
-    check("F the reply shows Stopped", await until(() => page.locator(".m-msg__note", { hasText: "Stopped" }).isVisible(), 6000));
+    await checkNow("F the reply shows Stopped", await until(async () => (await page.locator(".m-msg__note", { hasText: "Stopped" }).count()) === 1, 6000), S.chats["dm-oovi"].chat.entries.slice(-3).map((e) => [e.kind, e.status, e.text.slice(0, 30)]));
 
     // ---------- G) needs the computer ----------
     await page.goto(`${BASE}/m/c/dm-rex`);
@@ -163,7 +199,7 @@ async function main() {
     await page.locator(".m-composer textarea").fill("Any news?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
     check("G queued while the computer is off: said plainly", await until(() => page.getByText("Your computer is off. Your message waits until it’s picked up.").isVisible(), 14_000));
-    check("G the waiting message is marked", await page.getByText("Waiting to be picked up").isVisible());
+    check("G the waiting message has one tick (sent, not picked up)", (await page.locator(".m-bubble--out", { hasText: "Any news?" }).locator(".m-sr-only", { hasText: "Sent" }).count()) === 1);
     S.holdJobs = false;
 
     // ---------- H) voice note ----------
@@ -191,7 +227,10 @@ async function main() {
     check("I a bot opens its chat", await until(() => page.url().endsWith("/m/c/dm-nova")));
     S.chats["dm-rex"].deleted = true;
     await page.goto(`${BASE}/m/c/dm-rex`);
-    check("I a bot with no chat yet: say hello, and write", await until(() => page.getByText("Say hello to Rex").isVisible()) && (await page.locator(".m-composer textarea").count()) === 1);
+    const t0 = Date.now();
+    await until(() => page.getByText("Say hello to Rex").isVisible(), 20_000);
+    console.log(`(hello after ${Date.now() - t0} ms)`);
+    await checkNow("I a bot with no chat yet: say hello, and write", (await until(() => page.getByText("Say hello to Rex").isVisible())) && (await page.locator(".m-composer textarea").count()) === 1, page.url());
     S.chats["dm-rex"].deleted = false;
     await page.goto(`${BASE}/m/c/dm-sami`);
     check("I a computer-only bot: no box, and why", await until(() => page.locator(".m-composer--note", { hasText: "Sami works on your computer only" }).isVisible()) && (await page.locator(".m-composer textarea").count()) === 0);

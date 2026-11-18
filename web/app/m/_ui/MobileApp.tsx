@@ -8,7 +8,7 @@ import { ApiError, SIGNED_OUT_EVENT, finishSignIn, getChat, getCredits, getMe, g
 import { finishProblem, pendingToHandle, viewOfVault, type ConnectorView, type PendingSignIn } from "../_lib/connectors";
 import { useToast } from "./kit";
 import { signInRecent } from "./signin";
-import { lastShownEntry, newId, pendingOutgoing, phoneSetup, pickLang, slimChat, togglePin as togglePinList, type Lang, type Outgoing } from "../_lib/core";
+import { lastShownEntry, newId, pendingOutgoing, phoneSetup, pickLang, slimChat, toggleArchive as toggleArchiveList, togglePin as togglePinList, type Lang, type Outgoing } from "../_lib/core";
 import { translate, type Key } from "../_lib/i18n";
 import * as L from "../_lib/local";
 import type { Chat, CloudStatus, Credits, JobPayload, Me, PhoneSetup, SetupBot } from "../_lib/types";
@@ -34,11 +34,14 @@ type Ctx = {
   putChat: (version: number, chat: Chat) => void;
   pins: string[];
   togglePin: (chat: Chat) => void;
+  /** Chats moved out of the list (kept under "Archived" on this phone). */
+  archived: string[];
+  toggleArchive: (chatId: string) => void;
   seen: Record<string, number>;
   markSeen: (chatId: string, at?: number) => void;
   markUnread: (chatId: string) => void;
   outbox: Outgoing[];
-  send: (chatId: string, text: string) => Promise<boolean>;
+  send: (chatId: string, text: string, replyTo?: Outgoing["replyTo"]) => Promise<boolean>;
   retry: (entryId: string) => Promise<boolean>;
   /** The job's id, or null when it couldn't be sent (lastJobError says why, in words for people). */
   job: (chatId: string, job: JobPayload) => Promise<string | null>;
@@ -91,6 +94,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const [chats, setChats] = useState<Record<string, L.CachedChat>>({});
   const [refreshing, setRefreshing] = useState(false);
   const [pins, setPins] = useState<string[]>([]);
+  const [archived, setArchived] = useState<string[]>([]);
   const [seen, setSeen] = useState<Record<string, number>>({});
   const [outbox, setOutbox] = useState<Outgoing[]>([]);
   const [credits, setCredits] = useState<Credits | null>(null);
@@ -123,10 +127,14 @@ export function MobileApp({ children }: { children: ReactNode }) {
       setSetup(s.setup);
       setupAt.current = s.at;
     }
-    setStatus(L.loadStatus());
+    const st = L.loadStatus();
+    setStatus(st);
+    // Start from what this phone last knew, so screens don't flash "not synced" while the status loads.
+    if (st) setSync(st.enabled ? "on" : "off");
     setMe(L.loadMe());
     setCredits(L.loadCredits());
     setPins(L.loadPins());
+    setArchived(L.loadArchived());
     const sn = L.loadSeen();
     seenBase.current = sn;
     setSeen(sn ?? {});
@@ -168,6 +176,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
     setCredits(null);
     setOutbox([]);
     setPins([]);
+    setArchived([]);
     setSeen({});
     setConnectors({});
     vaultVersions.current = {};
@@ -426,6 +435,14 @@ export function MobileApp({ children }: { children: ReactNode }) {
     });
   }, []);
 
+  const toggleArchive = useCallback((chatId: string) => {
+    setArchived((a) => {
+      const next = toggleArchiveList(a, chatId);
+      L.saveArchived(next);
+      return next;
+    });
+  }, []);
+
   const markSeen = useCallback((chatId: string, at?: number) => {
     setSeen((s) => {
       const chat = cache.current.chats[chatId]?.chat;
@@ -482,7 +499,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const deliver = useCallback(
     async (o: Outgoing) => {
       updateOutbox((list) => list.map((x) => (x.entryId === o.entryId ? { ...x, state: "sending" } : x)));
-      const jobId = await job(o.chatId, { kind: "message", payload: { text: o.text, entryId: o.entryId } });
+      const jobId = await job(o.chatId, { kind: "message", payload: { text: o.text, entryId: o.entryId, ...(o.replyTo ? { replyTo: o.replyTo.id } : {}) } });
       updateOutbox((list) => list.map((x) => (x.entryId === o.entryId ? { ...x, state: jobId === null ? "failed" : "sent", ...(jobId ? { jobId } : {}) } : x)));
       return jobId !== null;
     },
@@ -490,8 +507,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async (chatId: string, text: string) => {
-      const o: Outgoing = { entryId: newId(), chatId, text: text.slice(0, 20_000), at: Date.now(), state: "sending" };
+    async (chatId: string, text: string, replyTo?: Outgoing["replyTo"]) => {
+      const o: Outgoing = { entryId: newId(), chatId, text: text.slice(0, 20_000), at: Date.now(), state: "sending", ...(replyTo ? { replyTo } : {}) };
       updateOutbox((list) => [...list, o]);
       return deliver(o);
     },
@@ -524,8 +541,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
-    [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
+    [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
   );
 
   return (

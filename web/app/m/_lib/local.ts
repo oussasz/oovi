@@ -59,6 +59,8 @@ export const saveMe = (m: Me) => write("me", m);
 /** Connectors as the phone shows them (name, on/off, bots, signed in or not): never a key or a token. */
 export const loadConnectors = () => read<{ at: number; views: Record<string, ConnectorView>; versions: Record<string, number> }>("connectors", { at: 0, views: {}, versions: {} });
 export const saveConnectors = (c: { at: number; views: Record<string, ConnectorView>; versions: Record<string, number> }) => write("connectors", c);
+export const loadArchived = () => read<string[]>("archived", []);
+export const saveArchived = (a: string[]) => write("archived", a);
 export const loadPins = () => read<string[]>("pins", []);
 export const savePins = (p: string[]) => write("pins", p);
 export const loadSeen = () => read<Record<string, number> | null>("seen", null);
