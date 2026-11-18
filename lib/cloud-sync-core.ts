@@ -297,3 +297,27 @@ export function vaultMerge(local: VaultItem, remote: VaultItem): VaultItem {
   const oauth = !local.oauth?.tokens ? (remote.oauth ?? local.oauth) : !remote.oauth?.tokens ? local.oauth : rAt > lAt ? remote.oauth : local.oauth;
   return { ...local, env: fill(local.env, remote.env), headers: fill(local.headers, remote.headers), ...(oauth ? { oauth } : {}) };
 }
+
+/**
+ * The id a phone's message gets in the chat: the phone's own, else one made from the job, the same rule as the cloud
+ * runner (runner/core.mjs entryIdFor). So a job run again (the runner said it needs the computer, or let it go)
+ * finds its own message.
+ */
+export function jobEntryId(jobId: string, payload: unknown): string {
+  const p = (payload && typeof payload === "object" ? payload : {}) as Record<string, unknown>;
+  const own = p.entryId;
+  return typeof own === "string" && /^[\w-]{1,40}$/.test(own) ? own : `j${String(jobId).replace(/[^\w]/g, "").slice(0, 24)}`;
+}
+
+/**
+ * Before a job runs again: its message and the bots' answers after it (until the user's next message) are taken
+ * out, e.g. the cloud's "This needs your computer" reply, so the message is run once and shows once.
+ * null: the chat doesn't hold that message (nothing to take out).
+ */
+export function withoutJobEntry<T extends { entries: { id: string; kind: string }[]; pending?: unknown }>(chat: T, entryId: string): T | null {
+  const at = chat.entries.findIndex((e) => e.id === entryId);
+  if (at < 0) return null;
+  let end = at + 1;
+  while (end < chat.entries.length && chat.entries[end]!.kind !== "user") end++;
+  return { ...chat, entries: [...chat.entries.slice(0, at), ...chat.entries.slice(end)], pending: undefined };
+}

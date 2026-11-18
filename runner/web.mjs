@@ -38,15 +38,20 @@ export function webClient(cfg) {
 
   return {
     /** {job | null}. exclude: accounts already busy on this runner (fairness). */
-    claim: async (exclude) => (await call("POST", "/claim", { runnerId: cfg.runnerId, exclude })).body?.job ?? null,
+    claim: async (exclude) => {
+      const job = (await call("POST", "/claim", { runnerId: cfg.runnerId, exclude })).body?.job ?? null;
+      // The website names it jobId (web/lib/cloud-types.ts RunnerClaimedJob).
+      return job ? { ...job, id: job.jobId ?? job.id } : null;
+    },
     /** false: the lease is gone (another runner or the desktop has the job now). */
-    heartbeat: async (jobId) => (await call("POST", `/jobs/${enc(jobId)}/heartbeat`, {}, { ok: [404, 409, 410] })).status < 300,
-    done: (jobId, outcome) => call("POST", `/jobs/${enc(jobId)}/done`, outcome),
+    heartbeat: async (jobId) => (await call("POST", `/jobs/${enc(jobId)}/heartbeat`, { runnerId: cfg.runnerId }, { ok: [404, 409, 410] })).status < 300,
+    done: (jobId, outcome) => call("POST", `/jobs/${enc(jobId)}/done`, { runnerId: cfg.runnerId, ...outcome }),
     /** Back to the queue (this runner is stopping). */
-    release: (jobId) => call("POST", `/jobs/${enc(jobId)}/release`, {}, { ok: [404, 409, 410] }),
+    release: (jobId) => call("POST", `/jobs/${enc(jobId)}/release`, { runnerId: cfg.runnerId }, { ok: [404, 409, 410] }),
     getChat: async (userId, chatId) => {
       const r = await call("GET", `/chats/${enc(userId)}/${enc(chatId)}`, undefined, { ok: [404] });
-      return r.status === 404 ? { version: 0, chat: null } : { version: Number(r.body?.version) || 0, chat: r.body?.chat ?? null };
+      // A deleted chat (tombstone) keeps its version: a new save must build on it.
+      return r.status === 404 ? { version: 0, chat: null, deleted: false } : { version: Number(r.body?.version) || 0, chat: r.body?.chat ?? null, deleted: r.body?.deleted === true };
     },
     /** {version} or {conflict: {version, chat}}. */
     putChat: async (userId, chatId, baseVersion, chat) => {

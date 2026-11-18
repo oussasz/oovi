@@ -111,7 +111,7 @@ export type JobInfo = { jobId: string; kind: JobKind; status: JobStatus; error: 
 export type EventsResponse = { chatId: string; changed: boolean; version: number; deleted: boolean; updatedAt: string | null; jobs: JobInfo[]; now: string };
 
 // ---- runner-only (header x-oovi-runner) ----
-export type RunnerClaimRequest = { runnerId: string };
+export type RunnerClaimRequest = { runnerId: string; exclude?: string[] };
 export type RunnerClaimedJob = ClaimedJob & { userId: string };
 export type RunnerClaimResponse = { job: RunnerClaimedJob | null };
 export type RunnerJobRequest = { runnerId: string };
@@ -119,3 +119,6 @@ export type RunnerDoneRequest = { runnerId: string; status: "done" | "failed" | 
 // GET/PUT /runner/chats/<userId>/<chatId>: same bodies as /chats/<chatId>.
 // GET/PUT /runner/vault/<userId>/<connectorId>: same bodies as /vault/<connectorId> (PUT for refreshed sign-ins).
 // POST /runner/ai/<userId>: same body and answer as /api/v1/ai/messages, billed to that user.
+// (part R, merged in cloud-integration) RunnerClaimRequest may carry exclude: userId[] (accounts already busy on
+// that runner). POST /runner/jobs/<id>/release {runnerId} → {ok} or 409: back to the queue. GET/PUT
+// /runner/setup/<userId>: same bodies as /api/v1/setup (only for accounts that sync).

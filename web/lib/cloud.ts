@@ -461,7 +461,7 @@ export async function claimForDesktop(userId: string, deviceId: string, chatIds:
  * The cloud runner claims a job of any account that syncs: only jobs that waited RUNNER_DELAY_SECONDS with no
  * desktop of that account online, never one left for the computer (needs_computer).
  */
-export async function claimForRunner(runnerId: string): Promise<RunnerClaimedJob | null> {
+export async function claimForRunner(runnerId: string, exclude: string[] = []): Promise<RunnerClaimedJob | null> {
   await ensureCloudTables();
   if (Math.random() < 0.02) {
     await pool.query("DELETE FROM cloud_job WHERE status IN ('done', 'failed') AND updated_at < now() - interval '1 day'").catch(() => {});
@@ -471,8 +471,9 @@ export async function claimForRunner(runnerId: string): Promise<RunnerClaimedJob
     `j.status <> 'needs_computer'
      AND j.created_at < now() - make_interval(secs => ${RUNNER_DELAY_SECONDS})
      AND EXISTS (SELECT 1 FROM cloud_sync s WHERE s.user_id = j.user_id AND s.enabled)
-     AND NOT EXISTS (SELECT 1 FROM cloud_device d WHERE d.user_id = j.user_id AND d.kind = 'desktop' AND d.last_seen > now() - make_interval(secs => ${ONLINE_SECONDS}))`,
-    [],
+     AND NOT EXISTS (SELECT 1 FROM cloud_device d WHERE d.user_id = j.user_id AND d.kind = 'desktop' AND d.last_seen > now() - make_interval(secs => ${ONLINE_SECONDS}))
+     AND NOT (j.user_id = ANY($1::text[]))`,
+    [exclude],
   );
   if (!r) return null;
   await touchDevice(r.user_id, "runner", runnerId).catch(() => {});
@@ -488,6 +489,17 @@ export async function heartbeat(jobId: string, by: string, userId: string | null
     [jobId, by, userId],
   );
   return rows[0] ? iso(rows[0].lease_until) : null;
+}
+
+/** The runner gives a claimed job back to the queue (it is stopping, or can't take it now). false = not its lease. */
+export async function releaseJob(jobId: string, by: string): Promise<boolean> {
+  await ensureCloudTables();
+  const r = await pool.query(
+    `UPDATE cloud_job SET status = 'queued', claimed_by = NULL, lease_until = NULL, updated_at = now()
+      WHERE id = $1 AND claimed_by = $2 AND status = 'claimed'`,
+    [jobId, by],
+  );
+  return !!r.rowCount;
 }
 
 /** Ends a claim. done/failed clear the payload; needs_computer puts the job back for the desktop. */

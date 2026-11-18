@@ -340,7 +340,9 @@ async function connect(s: McpServer): Promise<Conn> {
 
   // Cloud runner: only connectors with a web address on the internet (a program on the user's computer, or an
   // address on the server's own network, never runs there).
-  if (cloudRunner() && (s.transport !== "http" || isPrivateHost(new URL(s.url ?? "http://localhost").hostname))) throw new Error(`${s.name} runs on the user's computer.`);
+  // (OOVI_CLOUD_TEST_HOSTS: host:port of a stand-in connector in tests/e2e/cloud-integration-scenario.cjs only.)
+  const testHost = (process.env.OOVI_CLOUD_TEST_HOSTS || "").split(",").filter(Boolean).includes(new URL(s.url ?? "http://localhost").host);
+  if (cloudRunner() && (s.transport !== "http" || (isPrivateHost(new URL(s.url ?? "http://localhost").hostname) && !testHost))) throw new Error(`${s.name} runs on the user's computer.`);
   let client = new Client({ name: "oovi", version: "0.4.0" });
   if (s.transport === "stdio") {
     const env: Record<string, string> = { ...getDefaultEnvironment(), ...(s.env ?? {}) };

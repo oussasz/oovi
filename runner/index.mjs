@@ -88,6 +88,8 @@ async function startJobServer(job, dir, token) {
     OOVI_JOB_USER: job.userId,
     ...(typeof job.userName === "string" ? { OOVI_JOB_USER_NAME: job.userName.slice(0, 80) } : {}),
     NEXT_TELEMETRY_DISABLED: "1",
+    // Tests only: a stand-in connector on this machine (never set on a server).
+    ...(process.env.RUNNER_TEST_HOSTS ? { OOVI_CLOUD_TEST_HOSTS: process.env.RUNNER_TEST_HOSTS } : {}),
   };
   const child = fork(path.join(here, "job-server.cjs"), [], { env, execArgv: [`--max-old-space-size=${cfg.memoryMb}`], stdio: ["ignore", "ignore", "pipe", "ipc"], serialization: "advanced" });
   // Its error output can quote a chat: only its size is kept, never shown.
@@ -216,6 +218,8 @@ async function runJob(job, ctl) {
 
     // The chat as the account has it; a retried job starts its message over.
     const got = await web.getChat(job.userId, job.chatId);
+    // Deleted on another device after the message was sent: nothing to answer in.
+    if (got.deleted) throw new Error("chat not found");
     version = got.version;
     let chat = got.chat;
     let work = null;

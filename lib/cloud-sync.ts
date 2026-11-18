@@ -27,6 +27,7 @@ import {
   entryBase,
   forUpload,
   hashOf,
+  jobEntryId,
   jobInput,
   mergeChat,
   problemOf,
@@ -34,6 +35,7 @@ import {
   scrubSecrets,
   vaultAction,
   vaultMerge,
+  withoutJobEntry,
   type EntryBase,
   type SyncProblem,
   type VaultItem,
@@ -638,6 +640,16 @@ async function runJob(job: Job): Promise<void> {
       return void (await done("done"));
     }
     const input = ji.input as RunInput;
+    if (job.kind === "message") {
+      // The message gets the job's id; if the chat already holds it (the cloud runner answered "This needs your
+      // computer", or let the job go), it and its answers go first: the message is run, and shows, once.
+      input.entryId = jobEntryId(job.jobId, job.payload);
+      if (!isRunning(id)) {
+        const cur = chatHere(id);
+        const fresh = cur ? withoutJobEntry(cur, input.entryId) : null;
+        if (fresh) saveChat(fresh);
+      }
+    }
     if (isRunning(id)) {
       // A message while the bots work: read at their next step, as in the app.
       if (typeof input.text === "string" && steerRun(id, input)) return void (await done("done"));
