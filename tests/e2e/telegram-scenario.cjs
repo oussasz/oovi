@@ -58,6 +58,10 @@ async function answerAsync(body) {
     if (hasResult) return reply([{ type: "text", text: "TGSEND-DONE" }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_tg_${Date.now()}`, name: "send_telegram", input: { text: "TG-HELLO from your bot" } }], "tool_use");
   }
+  if (/REPLACE-TEAM/.test(u)) {
+    if (hasResult) return reply([{ type: "text", text: "REPLACED" }], "end_turn");
+    return reply([{ type: "tool_use", id: `toolu_rep_${Date.now()}`, name: "work_table", input: { action: "replace", table: "Clients", rows: [["Nouveau C", "0555 77 88 99"]] } }], "tool_use");
+  }
   if (/REMIND-TG/.test(u)) {
     seen.remindTools = (body.tools || []).map((t) => t.name);
     if (hasResult) return reply([{ type: "text", text: "REMIND-SET" }], "end_turn");
@@ -290,6 +294,13 @@ const check = (name, ok, detail = "") => {
   await fetch(`${BASE}/api/chats/dm-${mainId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "TGSEND send me hello on my Telegram now" }) }).then((r) => r.text());
   await waitFor((m) => sent.indexOf(m) >= n8 && /TG-HELLO/.test(m.text), 30_000, "telegram message from the app");
   check("a bot asked in the app sends the message to the user's Telegram (built-in, no connector)", (seen.tgTools || []).includes("send_telegram") && sent.slice(n8).some((m) => /TG-HELLO from your bot/.test(m.text)));
+
+  // "Replace the old list": the table holds only the new rows (add would only fill empty cells).
+  const n10 = sent.length;
+  userSays("REPLACE-TEAM remplace l'ancienne liste par: Nouveau C, 0555 77 88 99");
+  await waitFor((m) => sent.indexOf(m) >= n10 && /REPLACED/.test(m.text), 30_000, "replace reply");
+  const tbl = await (await fetch(`${BASE}/api/chats/dm-${mainId}/canvas?table=Clients&from=0`)).json();
+  check("replacing a table keeps only the new rows, as the Canvas shows", JSON.stringify(tbl.rows) === JSON.stringify([["Nouveau C", "0555 77 88 99"]]), JSON.stringify(tbl.rows));
 
   // "Remind me here" from Telegram: the reminder comes back to Telegram (and to the chat in the app), with no model call.
   const n9 = sent.length;

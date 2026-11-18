@@ -47,8 +47,34 @@ export function zapierMode(tools: readonly string[]): "agentic" | "classic" | "n
   return "none";
 }
 
-/** What a failed Zapier action tells the bot to do next (Zapier often gives no reason). */
+/** What a failed Zapier action tells the bot to do next, from what the error says (Zapier often gives no reason). */
 export function zapierNextStep(tool: string, errorText: string): string {
-  const said = errorText.trim() ? "" : " Zapier gave no reason.";
-  return `${said} Next step: this usually means the app isn't connected in Zapier yet, or this action isn't turned on. Call inspect_zapier_actions to see what is on (or auto_provision_mcp to turn on the apps already connected in Zapier), then try again once. If the app is missing, tell the user in one short line to add it in oovi: Marketplace > Zapier > "Your apps" (one click per app); don't paste Zapier links unless they ask.`.trim();
+  const e = errorText.trim();
+  const isRun = /execute_zapier_(read|write)_action/.test(tool);
+  // The inputs were wrong (a field missing, params sent as text, a date in the wrong form).
+  if (e && /invalid (input|param|argument|value)|expected (record|object|string|number|array)|received (string|undefined|null)|required (field|param|property)|is required|missing (required|field|param)|validation|must be (an? )?(object|string|number|array|valid)|unrecognized key|bad request|400\b|unprocessable/i.test(e))
+    return `Next step: the inputs were wrong, not the connection. Call inspect_zapier_actions with this app and action to get its exact fields, then call ${isRun ? "it" : tool} again once with: app, action, instructions (in plain words, e.g. "find the events in my main calendar from 2026-11-18 00:00 to 23:59"), output (what you want back), and params only as an object with the field names inspect showed (never as JSON text). When unsure of a field, leave it out of params and say it in instructions: Zapier fills it in. If it fails again the same way, stop and tell the user what you could not get.`;
+  // The app or the action isn't connected / turned on.
+  return `${e ? "" : "Zapier gave no reason. "}Next step: this usually means the app isn't connected in Zapier yet, or this action isn't turned on. Call inspect_zapier_actions to see what is on (or auto_provision_mcp to turn on the apps already connected in Zapier), then try again once. If the app is missing, tell the user in one short line to add it in oovi: Marketplace > Zapier > "Your apps" (one click per app); don't paste Zapier links unless they ask.`;
+}
+
+/** A Zapier action call with its required plain-words fields filled when the bot left them out (Zapier refuses the call otherwise). */
+export function completeZapierRun(tool: string, input: Record<string, unknown>): Record<string, unknown> {
+  if (!/execute_zapier_(read|write)_action$/.test(tool) || !input || typeof input !== "object") return input;
+  const out = { ...input };
+  if (typeof out.params === "string" && out.params.trim().startsWith("{")) {
+    try {
+      const j: unknown = JSON.parse(out.params);
+      if (j && typeof j === "object" && !Array.isArray(j)) out.params = j;
+    } catch {
+      /* left as it was: Zapier says what's wrong */
+    }
+  }
+  const has = (k: string) => typeof out[k] === "string" && (out[k] as string).trim() !== "";
+  if (!has("instructions")) {
+    const p = out.params && typeof out.params === "object" ? Object.entries(out.params as Record<string, unknown>).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("; ") : "";
+    out.instructions = `Run the ${String(out.action ?? "action")} action in ${String(out.app ?? "the app")}${p ? ` with ${p}` : ""}.`;
+  }
+  if (!has("output")) out.output = "All the useful fields of the results (titles, dates, people, links, ids).";
+  return out;
 }

@@ -75,14 +75,14 @@ export const WORK_SPECS: ToolSpec[] = [
   {
     name: "work_table",
     description:
-      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty); a long table comes in parts: act on each part (update, check) before reading the next, because older reads are shortened to save space. update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. columns: reorder, rename, empty (clear) or drop columns of the whole table at once, without retyping rows (order lists the columns in their new order; a column left out is removed, a new name is added empty). chart: draw a chart from the table's number columns (it follows the table's numbers). Add rows as you find them, in batches, rather than all at the end. Never rebuild or retype a table from memory: change it with update/columns and deliver it with work_export. The user sees these tables, notes and charts live in the Canvas beside the chat and can edit them by hand: read again before changing rows they may have edited.",
+      "The team's shared tables for this chat: every bot adds its rows to the same table, so results add up instead of living in chat messages. Use it for any list you build (prospects, contacts, products, sources, tasks). add: append rows (the table is created on first use with `columns`); a row whose name (first column) or phone number is already there is completed, never repeated. read: see rows (use `missing` to list only rows where a column is still empty); a long table comes in parts: act on each part (update, check) before reading the next, because older reads are shortened to save space. replace: put new rows in place of ALL the table's rows (with `columns` to change the header too), when the user wants the list replaced ('replace the old team', 'start the list over'): add never overwrites a value already there. update: change cells of one row (a column that isn't there yet, such as Status, is added). remove: delete rows by number. columns: reorder, rename, empty (clear) or drop columns of the whole table at once, without retyping rows (order lists the columns in their new order; a column left out is removed, a new name is added empty). chart: draw a chart from the table's number columns (it follows the table's numbers). Add rows as you find them, in batches, rather than all at the end. Never rebuild or retype a table from memory: change it with update/columns and deliver it with work_export. The user sees these tables, notes and charts live in the Canvas beside the chat and can edit them by hand: read again before changing rows they may have edited.",
     parameters: {
       type: "object",
       properties: {
-        action: { type: "string", enum: ["add", "read", "update", "remove", "columns", "chart"] },
+        action: { type: "string", enum: ["add", "replace", "read", "update", "remove", "columns", "chart"] },
         table: { type: "string", description: "Table name, e.g. 'Prospects Alger'. Use the existing one when the team already has it." },
-        columns: { type: "array", items: { type: "string" }, description: "add, new table only: the header row. Put the name first; include a Source column for where each row was found." },
-        rows: { type: "array", items: {}, description: "add: rows as arrays in column order, or objects keyed by column name. Leave a cell empty when you don't have the value; never invent one." },
+        columns: { type: "array", items: { type: "string" }, description: "add (new table only) or replace: the header row. Put the name first; include a Source column for where each row was found." },
+        rows: { type: "array", items: {}, description: "add or replace: rows as arrays in column order, or objects keyed by column name. Leave a cell empty when you don't have the value; never invent one." },
         row: { type: "integer", description: "update: the row number" },
         values: { type: "object", description: "update: {column name: new value}. A new column name adds that column." },
         rows_to_remove: { type: "array", items: { type: "integer" }, description: "remove: row numbers" },
@@ -234,7 +234,27 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
     if (call.name === "work_table") {
       const wanted = String(i.table ?? "");
       const existing = nameOf(store, wanted, "tables");
-      if (i.action === "add") {
+      if (i.action === "replace" && existing) {
+        // Everything the table held is swapped for the new rows (the previous version stays in the Canvas history).
+        const given = fromText(i.rows);
+        if (!Array.isArray(given) || !given.length) return bad("rows must be a list with at least one row (the new content of the table).");
+        const t = store.tables[existing]!;
+        const newCols = (Array.isArray(fromText(i.columns)) ? (fromText(i.columns) as unknown[]) : []).map((c) => String(c ?? "").trim()).filter(Boolean);
+        const was = t.rows.length;
+        const checked = seen ? dropUnseen(newCols.length ? newCols : t.columns, given, seen) : { rows: given, dropped: [] };
+        const backup = { columns: t.columns, rows: t.rows };
+        if (newCols.length) t.columns = [...new Set(newCols)];
+        t.rows = [];
+        const r = addRows(store, existing, null, checked.rows);
+        if (r.error || !r.added) {
+          t.columns = backup.columns;
+          t.rows = backup.rows;
+          return bad(r.error ?? "None of the new rows could be used: nothing was changed.");
+        }
+        saveWork(chatId, store);
+        return ok([`Replaced: the ${was} old rows are gone, ${r.added} new rows are in. Now: ${tableLine(existing, store.tables[existing]!)}. The user sees it in the Canvas (the old version is in its history).`, droppedNote(checked.dropped)].filter(Boolean).join("\n"));
+      }
+      if (i.action === "add" || i.action === "replace") {
         // Models sometimes send the rows as text (a JSON string) instead of a list: read it as the list it is.
         const given = fromText(i.rows);
         const cols = existing ? store.tables[existing]!.columns : (Array.isArray(fromText(i.columns)) ? (fromText(i.columns) as unknown[]) : []).map(String);
@@ -285,7 +305,7 @@ export async function runWorkTool(call: ToolCall, chatId: string, ws: Workspace 
         saveWork(chatId, store);
         return ok(`Chart "${made.name}" (${made.chart.type}: ${made.chart.y.join(", ")} by ${made.chart.x}) is in the user's Canvas. It follows the table: when the numbers change, so does the chart.`);
       }
-      return bad("action must be add, read, update, remove, columns or chart.");
+      return bad("action must be add, replace, read, update, remove, columns or chart.");
     }
 
     if (call.name === "work_notes") {

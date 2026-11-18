@@ -125,6 +125,15 @@ export function Canvas({ chatId, running, onClose, focus }: { chatId: string; ru
     setMenu("");
     void loadIndex();
   }, [focus?.at, focus?.kind, focus?.name, loadIndex]);
+  // The bots just finished: show their last change at once (not at the next slow refresh).
+  const wasRunning = useRef(running);
+  useEffect(() => {
+    if (wasRunning.current && !running) {
+      void loadIndex();
+      if (!editing.current) setTick((n) => n + 1);
+    }
+    wasRunning.current = running;
+  }, [running, loadIndex]);
   // Bots at work: the pages fill in while the user watches.
   useEffect(() => {
     const every = setInterval(

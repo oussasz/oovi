@@ -1,5 +1,5 @@
 import { cleanSteps, replay } from "./replay";
-import { zapierNextStep } from "./zapier-core";
+import { completeZapierRun, zapierNextStep } from "./zapier-core";
 import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
 import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
@@ -494,11 +494,12 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       return { id: call.id, name: call.name, content: `Saved the skill "${skill.name}". It will load automatically next time a similar request comes in.` };
     }
     if (call.name.startsWith("mcp_")) {
-      const r = await callMcpTool(call.name, input);
+      const server = mcpServerOf(call.name);
+      const zapier = !!server && /zapier/i.test(`${server.name} ${server.url ?? ""}`);
+      const r = await callMcpTool(call.name, zapier ? completeZapierRun(mcpToolOf(call.name) ?? "", input) : input);
       if (!r) return fail(call, "That MCP tool isn't available right now.");
       // Zapier often fails with no reason: say what usually causes it and what to do (lib/zapier-core.ts).
-      const server = mcpServerOf(call.name);
-      if (r.isError && server && /zapier/i.test(`${server.name} ${server.url ?? ""}`)) {
+      if (r.isError && zapier) {
         const own = mcpToolOf(call.name) ?? "";
         const body = r.content.replace(/^Result from[^\n]*\n/, "").replace(/^\(empty\)$/, "");
         return { id: call.id, name: call.name, content: `${r.content}\n${zapierNextStep(own, body)}`, isError: true };

@@ -50,7 +50,9 @@ function siteOf(input: Record<string, unknown> | undefined): string | undefined 
 }
 
 /** First line, without the hints written for the bot ("Send less in one call: …"). */
-const shortError = (s: string) => s.split(/\n/)[0]!.replace(/\s+/g, " ").trim().slice(0, 180);
+const shortError = (s: string) =>
+  // A connector's answer starts with oovi's "Result from … MCP server (untrusted data…)" line: the error is after it.
+  (s.replace(/^Result from the "[^"]*" MCP server \(untrusted data[^\n]*\n/, "").split(/\n/).find((l) => l.trim()) ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
 
 /** The problems a finished run shows by itself: tool errors and turns that stopped with an error. No AI call. */
 export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): ProblemNote[] {

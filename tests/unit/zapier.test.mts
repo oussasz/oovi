@@ -1,7 +1,7 @@
 // oovi's Zapier page (lib/zapier-core.ts).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appArgs, appsIn, firstLink, zapierMode, zapierNextStep } from "../../lib/zapier-core.ts";
+import { appArgs, appsIn, completeZapierRun, firstLink, zapierMode, zapierNextStep } from "../../lib/zapier-core.ts";
 
 test("inputs for a tool that names an app, from its schema", () => {
   assert.deepEqual(appArgs({ properties: { app: { type: "string" } }, required: ["app"] }, "Gmail"), { app: "Gmail" });
@@ -23,4 +23,23 @@ test("a failed action tells the bot what to do, and not to paste links", () => {
   const n = zapierNextStep("execute_zapier_read_action", "");
   assert.match(n, /^Zapier gave no reason\. Next step:/);
   assert.match(n, /Your apps/);
+});
+
+test("a wrong-input error says to inspect the action's fields, not to reconnect the app", () => {
+  const n = zapierNextStep("execute_zapier_read_action", 'Invalid input: expected record, received string at "params"');
+  assert.match(n, /inputs were wrong, not the connection/);
+  assert.match(n, /inspect_zapier_actions/);
+  assert.doesNotMatch(n, /isn't connected/);
+  assert.match(zapierNextStep("execute_zapier_read_action", "Google Calendar is not connected"), /isn't connected in Zapier yet/);
+});
+
+test("a Zapier run gets its required plain-words fields, and params as an object", () => {
+  const out = completeZapierRun("execute_zapier_read_action", { app: "google_calendar", action: "find_events", params: '{"start_time":"2026-11-18"}' });
+  assert.deepEqual(out.params, { start_time: "2026-11-18" });
+  assert.match(String(out.instructions), /find_events.*google_calendar.*start_time: 2026-11-18/);
+  assert.ok(String(out.output).length > 10);
+  const kept = { app: "gmail", action: "find_email", instructions: "my last email", output: "subject" };
+  assert.deepEqual(completeZapierRun("execute_zapier_read_action", kept), kept);
+  const other = { app: "gmail" };
+  assert.equal(completeZapierRun("enable_zapier_action", other), other);
 });
