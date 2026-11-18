@@ -12,6 +12,8 @@ import { fmtAgo, fmtDate, fmtDateTime, fmtInt, fmtUsd, platformLabel } from "@/c
 import { USAGE_LABELS } from "@/components/admin/usage-labels";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { CreditsPanel } from "./CreditsPanel";
+import { getStatus } from "@/lib/cloud";
+import { fmtBytes } from "@/lib/cloud-core";
 import { correctEmailAction, markEmailVerifiedAction, resendVerificationAction } from "./actions";
 
 export const dynamic = "force-dynamic";
@@ -47,6 +49,8 @@ export default async function AdminUser({ params }: { params: Promise<{ id: stri
   const { user, events, crashes, usage, counts } = detail;
   const signals = (await getSignals([user.id]))?.get(user.id) ?? null;
   const verdict = signals ? assess(user, signals) : null;
+  // Cloud sync: counts, sizes and devices only. The console never reads chats or sign-ins (a rule of the product).
+  const cloud = await getStatus(user.id).catch(() => null);
   const gap = (a: string | null, b: string | null) => {
     if (!a || !b) return "–";
     const m = Math.max(0, Math.round((new Date(b).getTime() - new Date(a).getTime()) / 60_000));
@@ -196,6 +200,31 @@ Only do this when you know the address belongs to them.`}
               <dd>{signals.sameNetwork ? `${fmtInt(signals.sameNetwork)} other (last 30 days)` : "None"}</dd>
             </dl>
           </>
+        )}
+      </Section>
+
+      <Section title="Cloud sync" sub="Optional sync of chats and connector sign-ins. Counts and sizes only: chats and sign-ins are never shown here.">
+        {!cloud ? (
+          <Empty>Cloud sync can&rsquo;t be read right now.</Empty>
+        ) : (
+          <dl className="adm-dl">
+            <dt>Syncs</dt>
+            <dd>{cloud.enabled ? "Yes" : "No"}</dd>
+            <dt>Chats</dt>
+            <dd>{fmtInt(cloud.chats)}</dd>
+            <dt>Size</dt>
+            <dd>
+              {fmtBytes(cloud.bytes)} of {fmtBytes(cloud.limit)}
+            </dd>
+            <dt>Last sync</dt>
+            <dd>{cloud.lastSync ? `${fmtDateTime(cloud.lastSync)} (${fmtAgo(cloud.lastSync)})` : "–"}</dd>
+            <dt>Devices</dt>
+            <dd>
+              {cloud.devices.length
+                ? cloud.devices.map((d) => `${d.kind === "desktop" ? "Computer" : d.kind === "phone" ? "Phone" : "Cloud runner"}${d.online ? " (online)" : `, seen ${fmtAgo(d.lastSeen)}`}`).join(" · ")
+                : "None yet"}
+            </dd>
+          </dl>
         )}
       </Section>
 

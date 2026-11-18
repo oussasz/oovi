@@ -6,6 +6,8 @@ import { getAiToday } from "@/lib/ai-stats";
 import { getOperatingCosts } from "@/lib/cost-stats";
 import { githubDownloadCounts } from "@/lib/releases";
 import { funnel } from "@/lib/onboarding-funnel";
+import { cloudOverview } from "@/lib/cloud";
+import { fmtBytes } from "@/lib/cloud-core";
 import { DOWNLOAD_TARGETS } from "@/lib/releases";
 import { BarChart, LineChart, SplitBars, StackedBarChart } from "@/components/admin/Charts";
 import { Empty, Kpi, PageHead, PeriodPicker, Section } from "@/components/admin/ui";
@@ -17,7 +19,7 @@ export const metadata: Metadata = { title: "Overview" };
 export default async function AdminOverview({ searchParams }: { searchParams: Promise<{ period?: string }> }) {
   await requireAdmin();
   const period = parsePeriod((await searchParams).period);
-  const [o, gh, ai, costs, first] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday(), getOperatingCosts(period), funnel(period)]);
+  const [o, gh, ai, costs, first, cloud] = await Promise.all([getOverview(period), githubDownloadCounts(), getAiToday(), getOperatingCosts(period), funnel(period), cloudOverview()]);
   const perUser = (cost: number, users: number) => (users ? fmtUsd(cost / users) : "–");
 
   const stickiness = o.mau.value ? o.dau.value / o.mau.value : null;
@@ -56,6 +58,11 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
           label="Activation"
           value={fmtPct(activation)}
           hint={`${fmtInt(o.activated)} of ${fmtInt(o.totalUsers)} accounts opened the desktop app`}
+        />
+        <Kpi
+          label="Cloud sync"
+          value={cloud ? fmtInt(cloud.syncing) : "–"}
+          hint={cloud ? `Accounts syncing their chats · ${fmtInt(cloud.chats)} chats, ${fmtBytes(cloud.bytes)}` : "Can't be read right now"}
         />
         <Kpi label="Downloads, last 7 days" value={fmtInt(o.downloads7.value)} change={o.downloads7} previousLabel="the 7 days before" hint={splitText(o.downloadsByTarget7)} />
         <Kpi label="Downloads, last 30 days" value={fmtInt(o.downloads30.value)} change={o.downloads30} previousLabel="the 30 days before" hint={splitText(o.downloadsByTarget30)} />

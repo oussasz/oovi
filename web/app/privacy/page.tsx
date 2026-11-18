@@ -13,7 +13,10 @@ export default function PrivacyPage() {
         <p>
           <b>The short version:</b> your chats, files and API keys are saved on your computer. Your setup (bots, groups,
           skills, routines, settings and what your bots learned about you) is also kept, encrypted, with your oovi account
-          so it follows you to your other computers; your chats never are. If you
+          so it follows you to your other computers. Cloud sync is optional and off unless you turn it on: then your
+          chats (text) and your connectors’ sign-ins are also kept, encrypted, on our server, so you can use them on
+          your phone and your bots can do some tasks while your computer is off. Your own AI API keys never leave your
+          computer. If you
           use theOovi, our built-in model, each request passes through our server to our AI provider to be answered; we
           don’t store or read it, and we keep only numbers (how many credits and tokens it used). With your own API key,
           requests go straight from your computer to your provider. Your oovi account stores what we need to sign you in
@@ -30,7 +33,10 @@ export default function PrivacyPage() {
       </p>
 
       <h2>2. What stays on your device</h2>
-      <p>The oovi App is designed to keep your work local. The following is stored only on your own computer:</p>
+      <p>
+        The oovi App is designed to keep your work local. The following is stored only on your own computer (unless
+        you turn on cloud sync, section 3, which then copies your chats and connector sign-ins as described there):
+      </p>
       <ul>
         <li>your chats, prompts and files (including what your bots make in a chat);</li>
         <li>your AI provider API keys, which are stored encrypted;</li>
@@ -76,7 +82,70 @@ export default function PrivacyPage() {
         succeeded.
       </p>
 
-      <h2>3. What we collect for your account</h2>
+      <h2>3. Optional cloud sync (off unless you turn it on)</h2>
+      <p>
+        Cloud sync is a choice. It is off until you turn it on in the App (Settings &gt; Sync, or the question the App
+        asks you once). It is the same for free and paid accounts.
+      </p>
+      <p>
+        <b>What is uploaded when it is on.</b>
+      </p>
+      <ul>
+        <li>
+          The text of your chats with your bots and groups (messages, your bots’ answers and the steps they took), so
+          they are the same on your computers and your phone. Old chats are uploaded when you turn sync on. Files you
+          attach or your bots make are not uploaded yet: the phone shows their name and that they are on your computer.
+        </li>
+        <li>
+          Each bot can stay “on this computer only”: its chats are never uploaded. A group chat is uploaded only if
+          every bot in it is a cloud bot.
+        </li>
+        <li>
+          Your connectors’ settings and sign-ins (for example the access that lets your bots read your email or your
+          calendar), so your phone and our server can use them.
+        </li>
+        <li>
+          Messages and answers you send from your phone (a new message, an approval, Stop), until your computer or our
+          server has handled them.
+        </li>
+        <li>
+          Which of your devices use sync and when each was last seen (a random device id and its kind: computer, phone
+          or our server). No device name, no location.
+        </li>
+      </ul>
+      <p>
+        <b>Never uploaded:</b> your own AI provider API keys (for example OpenAI, Anthropic or Gemini keys). They stay
+        on your computer, and our server never uses them. On the phone and on our server, only theOovi answers, with
+        your theOovi credits.
+      </p>
+      <p>
+        <b>How it is kept.</b> Everything above is stored compressed and encrypted in our database. The encryption key
+        is kept apart from the database, in our server’s settings. Each account has a size limit (100 MB of compressed
+        chats); past it, new chats stay on your computer and the App tells you.
+      </p>
+      <p>
+        <b>Our server can read it, and when it does.</b> So that your phone works and some tasks can run while your
+        computer is off, our server can open what you synced: to show your chats on your phone, and to run a task you
+        or a routine asked for (a message sent from your phone, a routine marked to run in the cloud) using your
+        connectors’ sign-ins, for example to read your new emails when you asked for that. This is not end-to-end
+        encryption: we hold what is needed to read it. When a task needs your computer (your files, the desktop, the
+        bots’ browser, your own API key), it waits until you open oovi on your computer. Requests to theOovi made for
+        these tasks are billed to your credits and handled as in section 2.
+      </p>
+      <p>
+        <b>People at oovi don’t read your chats.</b> As a rule of the product, our admin console never shows the
+        content of chats or sign-ins: only whether an account syncs, how many chats, how much space, when it last
+        synced and its devices. There is no screen or tool for our team to read them. This is a rule we keep, not a
+        technical impossibility, and we would only access them where the law requires it.
+      </p>
+      <p>
+        <b>Turning it off and deleting.</b> Turn sync off in the App (Settings &gt; Sync) at any time. The App asks
+        you first, then everything above is deleted from our server at once (your computer keeps its own copy). A chat
+        you delete is removed from our server at once; a small marker without content (its id and the time) stays up
+        to 30 days so your other devices remove it too. Deleting your oovi account deletes all of it.
+      </p>
+
+      <h2>4. What we collect for your account</h2>
       <p>When you create and use an oovi account, we store:</p>
       <ul>
         <li><b>Email address and name</b>: to identify your account and let you sign in.</li>
@@ -123,11 +192,11 @@ export default function PrivacyPage() {
         <a href="https://www.paddle.com/legal/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>.
       </p>
       <p>
-        We do <b>not</b> store the content of your chats, prompts or files. Your setup and Telegram messages are kept
-        only as described in section 2.
+        We do <b>not</b> store the content of your chats, prompts or files, unless you turn on cloud sync (section 3).
+        Your setup and Telegram messages are kept only as described in section 2.
       </p>
 
-      <h2>4. Crash reports and usage statistics</h2>
+      <h2>5. Crash reports and usage statistics</h2>
       <p>
         If the App runs into an error, it may send a crash report to help us fix bugs. A crash report contains the App
         version, your operating system, and technical error details (an error message, a stack trace and limited
@@ -151,14 +220,14 @@ export default function PrivacyPage() {
         addresses. We use this to understand how oovi is used and to improve it.
       </p>
 
-      <h2>5. Website</h2>
+      <h2>6. Website</h2>
       <p>
         Our website uses only the cookies needed to keep you signed in to your account. We don’t use advertising or
         cross-site tracking cookies. Our hosting provider may keep standard server logs (such as IP address and
         request details) for security and reliability.
       </p>
 
-      <h2>6. How we use your data</h2>
+      <h2>7. How we use your data</h2>
       <ul>
         <li>to create and run your account and sign you in to the App and website;</li>
         <li>to keep the Service secure, prevent abuse and enforce our <Link href="/terms">Terms</Link>;</li>
@@ -179,36 +248,43 @@ export default function PrivacyPage() {
         personal data and we don’t use it for advertising.
       </p>
 
-      <h2>7. Who we share it with</h2>
+      <h2>8. Who we share it with</h2>
       <p>
         We use a small number of service providers to run oovi, who process data on our behalf: our website and API
-        hosting provider, our database provider, our reseller Paddle (for purchases, payments, tax and receipts) and, for theOovi requests only, our AI provider (Anthropic). They may store data in other countries; where required, we rely on
+        hosting provider, our database provider, the cloud server provider that runs tasks while your computer is off
+        (for people who turn on cloud sync), our reseller Paddle (for purchases, payments, tax and receipts) and, for theOovi requests only, our AI provider (Anthropic). They may store data in other countries; where required, we rely on
         appropriate safeguards for international transfers. We may also disclose data if required by law, or to
         protect the rights and safety of our users or others. If oovi is involved in a merger or acquisition, account
         data may be transferred as part of it, subject to this policy.
       </p>
 
-      <h2>8. How long we keep it</h2>
+      <h2>9. How long we keep it</h2>
       <ul>
         <li>Account data is kept while your account exists.</li>
         <li>Sign-in sessions expire after about 60 days of inactivity, or when you sign out.</li>
         <li>Crash reports are kept only as long as useful for fixing bugs, and no longer than 12 months.</li>
         <li>Credit records, theOovi usage numbers, pilot requests and feedback are kept while your account exists.</li>
         <li>Your setup copy is kept while your account exists. Telegram messages are kept until oovi collects them, 24 hours at most.</li>
+        <li>
+          Synced chats and connector sign-ins are kept while cloud sync is on; they are deleted at once when you turn
+          it off or delete your account. A deleted chat leaves a marker without content for up to 30 days. Messages
+          from your phone are deleted from our server within a day after they are handled.
+        </li>
         <li>Billing and payment records are kept as long as tax and accounting laws require, even after you delete your account.</li>
       </ul>
 
-      <h2>9. Deleting your account</h2>
+      <h2>10. Deleting your account</h2>
       <p>
         You can delete your account at any time from your <Link href="/account">account page</Link>. This permanently
         deletes your account data (email, name, profile photo, terms acceptance, sessions), your credits and their
-        history, theOovi usage numbers, pilot requests, feedback, crash reports, your setup copy and your Telegram
-        relay data linked to your account. Backups, if any, are overwritten in the normal course. Deleting your account does not remove data
+        history, theOovi usage numbers, pilot requests, feedback, crash reports, your setup copy, your cloud sync data (synced
+        chats, connector sign-ins, messages from your phone and the list of your devices) and your Telegram relay data
+        linked to your account. Backups, if any, are overwritten in the normal course. Deleting your account does not remove data
         stored in the App on your own computer; you can remove that by uninstalling the App and deleting its data
         folder.
       </p>
 
-      <h2>10. Your rights</h2>
+      <h2>11. Your rights</h2>
       <p>
         Depending on where you live, you may have the right to access, correct, delete or export your personal data,
         and to object to or restrict certain processing. You can update your name and photo and delete your account
@@ -216,25 +292,25 @@ export default function PrivacyPage() {
         data protection authority.
       </p>
 
-      <h2>11. Security</h2>
+      <h2>12. Security</h2>
       <p>
         We use reasonable measures to protect your data, including encrypted connections (HTTPS), hashed passwords and
         access controls. No system is perfectly secure, so please use a strong, unique password.
       </p>
 
-      <h2>12. Children</h2>
+      <h2>13. Children</h2>
       <p>
         oovi is only for people aged 18 or older, and we don’t knowingly collect data from anyone younger. If you
         believe someone under 18 has created an account, contact us and we’ll delete it.
       </p>
 
-      <h2>13. Changes to this policy</h2>
+      <h2>14. Changes to this policy</h2>
       <p>
         We may update this policy. If changes are significant, we’ll let you know in the App or by email. The version
         and date at the top show the current version.
       </p>
 
-      <h2>14. Contact</h2>
+      <h2>15. Contact</h2>
       <p>
         Questions or requests about privacy? Email <Ph>{CONTACT_EMAIL}</Ph>.
       </p>

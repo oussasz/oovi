@@ -111,7 +111,17 @@ export default function TermsPage() {
         to the extent the law and your AI provider’s terms allow. Your chats, prompts and files are stored locally on
         your device. To bring your setup to your other computers, a copy of your bots, skills, routines, settings and
         what your bots learned is kept, encrypted, with your account, as the Privacy Policy describes. We use it only
-        for that and don’t claim any rights to Your Content. You are responsible for having the rights to anything you
+        for that and don’t claim any rights to Your Content.
+      </p>
+      <p>
+        <b>Optional cloud sync.</b> If you turn on cloud sync, the text of your chats and your connectors’ settings
+        and sign-ins are also kept, encrypted, with your account, so you can use them on your phone. You allow us to
+        use them only to provide what you ask for: showing your chats on your devices, and running tasks you or your
+        routines ask for while your computer is off, including acting through your connectors with their sign-ins
+        (for example reading your email when you asked for that). Those tasks use theOovi and your credits; your own
+        AI provider keys are never uploaded or used by our server. Sync is off unless you turn it on, and turning it
+        off deletes this copy from our server at once. Each account has a size limit for synced chats. The Privacy
+        Policy (section 3) explains exactly what is uploaded and who can read it. You are responsible for having the rights to anything you
         give your bots.
       </p>
 

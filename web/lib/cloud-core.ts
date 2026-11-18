@@ -129,3 +129,18 @@ export function logCode(err: unknown): string {
   if (e && typeof e.name === "string" && /^[A-Za-z]{1,40}$/.test(e.name)) return e.name;
   return "error";
 }
+
+/** 3.4 MB, 820 KB, 0 B: for Settings and the admin console. */
+export function fmtBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return "0 B";
+  if (n < 1024) return `${Math.round(n)} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  const mb = n / (1024 * 1024);
+  return mb < 1024 ? `${mb < 10 ? mb.toFixed(1) : Math.round(mb)} MB` : `${(mb / 1024).toFixed(1)} GB`;
+}
+
+/** The admin's one-line view of an account's sync: counts and sizes only, never content. */
+export function syncCell(s: { enabled: boolean; chats: number; bytes: number } | null | undefined): string {
+  if (!s || !s.enabled) return "No";
+  return `Yes · ${s.chats} ${s.chats === 1 ? "chat" : "chats"} · ${fmtBytes(s.bytes)}`;
+}

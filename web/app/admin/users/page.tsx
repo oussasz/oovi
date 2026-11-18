@@ -9,6 +9,8 @@ import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { CsvButton } from "@/components/admin/CsvButton";
 import { ActionForm } from "@/components/admin/ActionForm";
 import { latestVersion, peopleBehind } from "@/lib/update-ask";
+import { cloudSummaries } from "@/lib/cloud";
+import { syncCell } from "@/lib/cloud-core";
 import { sendUpdateAsk } from "./actions";
 import { fmtAgo, fmtDate, fmtInt, fmtNumber, platformLabel } from "@/components/admin/format";
 
@@ -49,6 +51,8 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
   const plans = new Map(planList.map((p) => [p.id, p]));
   // Country and "does it look like a person?". Null if the signal columns can't be read: the list still works.
   const signals = await getSignals(rows.map((r) => r.id));
+  // Cloud sync per account: yes/no, chats, size (never content). Null if the tables can't be read.
+  const cloud = await cloudSummaries(rows.map((r) => r.id));
   const verdicts = new Map(rows.map((r) => [r.id, signals?.get(r.id) ? assess(r, signals.get(r.id)!) : null]));
   const flagged = [...verdicts.values()].filter((v) => v?.level === "suspicious").length;
   const pages = Math.max(1, Math.ceil(total / USERS_PAGE_SIZE));
@@ -130,6 +134,7 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                   <th>App version</th>
                   <th>Platform</th>
                   <th>Terms</th>
+                  <th>Syncs</th>
                 </tr>
               </thead>
               <tbody>
@@ -154,6 +159,7 @@ export default async function AdminUsers({ searchParams }: { searchParams: Promi
                     <td className="adm-mono">{u.appVersion ?? "–"}</td>
                     <td>{platformLabel(u.platform)}</td>
                     <td className="nowrap">{u.termsVersion ?? "–"}</td>
+                    <td className="nowrap">{cloud ? syncCell(cloud.get(u.id)) : "–"}</td>
                   </tr>
                 ))}
               </tbody>
