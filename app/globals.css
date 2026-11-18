@@ -1203,3 +1203,11 @@ a.tag { text-decoration: none; }
 .pal-empty { color: var(--muted); cursor: default; }
 .math-block { display: block; overflow-x: auto; overflow-y: hidden; padding: 6px 0; text-align: center; }
 .math .katex { font-size: 1.05em; }
+.inline-chart { margin: 8px 0 0; padding: 10px 12px; max-width: 560px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); }
+.inline-chart figcaption { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; font-size: 13px; font-weight: 600; }
+.inline-chart figcaption span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-share { width: min(340px, 86vw); padding: 12px; display: flex; flex-direction: column; gap: 8px; font-size: 13px; }
+.cv-share p { margin: 0; }
+.cv-share-link { display: flex; gap: 6px; }
+.cv-share-link input { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px; padding: 5px 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.cv-share-note { color: var(--muted); font-size: 12px; }

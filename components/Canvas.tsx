@@ -36,13 +36,57 @@ export function Canvas({ chatId, running, onClose }: { chatId: string; running: 
   const [sel, setSel] = useState<Sel | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [made, setMade] = useState<MadeFile | null>(null);
-  const [menu, setMenu] = useState<"" | "new" | "export" | "history" | "chart">("");
+  const [menu, setMenu] = useState<"" | "new" | "export" | "history" | "chart" | "share">("");
+  // Pages shared by a public link (lib/shares.ts), by "kind:name".
+  const [shares, setShares] = useState<Record<string, { url: string; at: number }>>({});
+  const [sharing, setSharing] = useState(false);
+  const [copied, setCopied] = useState(false);
   // A name to type (a page's, a column's): a small field in the panel (the desktop app has no prompt box).
   const [asking, setAsking] = useState<{ label: string; value: string; ok: (v: string) => void } | null>(null);
   const ask = useCallback((label: string, value: string, ok: (v: string) => void) => setAsking({ label, value, ok }), []);
   // While the user is typing in a page, a refresh from the bots' side must not replace what they type.
   const editing = useRef(false);
   const [tick, setTick] = useState(0);
+
+  const loadShares = useCallback(async () => {
+    try {
+      setShares((await api<{ shares: Record<string, { url: string; at: number }> }>(`/api/chats/${chatId}/share`)).shares);
+    } catch {
+      /* none shown */
+    }
+  }, [chatId]);
+  useEffect(() => void loadShares(), [loadShares]);
+  async function share(s: Sel, update: boolean) {
+    if (s.kind === "chart") return;
+    setSharing(true);
+    setMsg(null);
+    try {
+      const r = await api<{ share: { url: string; at: number } }>(`/api/chats/${chatId}/share`, { method: "POST", body: JSON.stringify({ kind: s.kind, name: s.name }) });
+      setShares((cur) => ({ ...cur, [key(s)]: r.share }));
+      if (!update) void navigator.clipboard?.writeText(r.share.url).then(() => setCopied(true)).catch(() => {});
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setSharing(false);
+    }
+  }
+  async function unshare(s: Sel) {
+    setSharing(true);
+    setMsg(null);
+    try {
+      await api(`/api/chats/${chatId}/share`, { method: "DELETE", body: JSON.stringify({ kind: s.kind, name: s.name }) });
+      setShares((cur) => {
+        const n = { ...cur };
+        delete n[key(s)];
+        return n;
+      });
+      setMenu("");
+    } catch (e) {
+      setMsg((e as Error).message);
+    } finally {
+      setSharing(false);
+    }
+  }
 
   const loadIndex = useCallback(async () => {
     try {
@@ -204,6 +248,42 @@ export function Canvas({ chatId, running, onClose }: { chatId: string; running: 
                         {t(`cv.format.${f}` as "cv.format.xlsx")}
                       </button>
                     ))}
+                  </div>
+                )}
+              </div>
+              <div className="cv-menu-wrap">
+                <button className={`btn sm${shares[key(sel)] ? " on" : ""}`} onClick={() => (setMenu(menu === "share" ? "" : "share"), setCopied(false))} aria-expanded={menu === "share"}>
+                  <Icon name="globe" size={14} /> {t(shares[key(sel)] ? "cv.shared" : "cv.share")}
+                </button>
+                {menu === "share" && (
+                  <div className="cv-menu end cv-share" role="dialog" aria-label={t("cv.share")}>
+                    {shares[key(sel)] ? (
+                      <>
+                        <p>{t("cv.shareOn")}</p>
+                        <div className="cv-share-link">
+                          <input readOnly value={shares[key(sel)]!.url} onFocus={(e) => e.target.select()} aria-label={t("cv.shareLink")} />
+                          <button className="btn sm primary" onClick={() => void navigator.clipboard?.writeText(shares[key(sel)]!.url).then(() => setCopied(true)).catch(() => {})}>
+                            {t(copied ? "chat.copied" : "cv.copyLink")}
+                          </button>
+                        </div>
+                        <p className="cv-share-note">{t("cv.shareSnapshot", { when: new Date(shares[key(sel)]!.at).toLocaleString() })}</p>
+                        <div className="row-btns">
+                          <button className="btn sm" disabled={sharing} onClick={() => void share(sel, true)}>
+                            {t("cv.shareUpdate")}
+                          </button>
+                          <button className="btn sm danger" disabled={sharing} onClick={() => void unshare(sel)}>
+                            {t("cv.shareStop")}
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <p>{t("cv.shareWhat")}</p>
+                        <button className="btn sm primary" disabled={sharing} onClick={() => void share(sel, false)}>
+                          {sharing ? t("cv.sharing") : t("cv.shareMake")}
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

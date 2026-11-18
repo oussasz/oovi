@@ -280,6 +280,19 @@ await pool.query(`
   );
   CREATE INDEX IF NOT EXISTS routine_hook_events_user_idx ON routine_hook_events (user_id, id);
 
+  -- Pages shared by a public link (keep in sync with lib/public-pages.ts PAGES_DDL).
+  CREATE TABLE IF NOT EXISTS public_pages (
+    id          TEXT PRIMARY KEY,
+    user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    title       TEXT NOT NULL,
+    content     JSONB NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    views       INT NOT NULL DEFAULT 0,
+    hidden      BOOLEAN NOT NULL DEFAULT false
+  );
+  CREATE INDEX IF NOT EXISTS public_pages_user_idx ON public_pages (user_id);
+
   -- Telegram relay (keep in sync with lib/telegram-relay.ts RELAY_DDL).
   CREATE TABLE IF NOT EXISTS telegram_relays (
     user_id      TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,

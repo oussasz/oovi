@@ -26,6 +26,7 @@ import QuestionCards, { AnsweredQuestions } from "./QuestionCards";
 import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { Canvas } from "./Canvas";
+import { ChartView, type ChartType } from "./ChartView";
 import { EFFORT_LEVELS } from "@/lib/slash";
 import SettingsLink from "./SettingsLink";
 
@@ -466,6 +467,33 @@ function MsgTools({ text, onReply, onFork }: { text: string; onReply?: () => voi
   );
 }
 
+/** A chart a bot made, shown small in the chat (it follows its table); the full one is in the Canvas. */
+function InlineChart({ chatId, name }: { chatId: string; name: string }) {
+  const { t } = useI18n();
+  const [c, setC] = useState<{ chart: { type: ChartType; title?: string }; data: Parameters<typeof ChartView>[0]["data"] } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    api<NonNullable<typeof c>>(`/api/chats/${chatId}/canvas?chart=${encodeURIComponent(name)}`)
+      .then((r) => alive && setC(r))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [chatId, name]);
+  if (!c) return null;
+  return (
+    <figure className="inline-chart">
+      <figcaption>
+        <Icon name="chart" size={14} /> <span dir="auto">{c.chart.title || name}</span>
+        <button type="button" className="btn sm" onClick={() => window.dispatchEvent(new Event("oovi:open-canvas"))}>
+          {t("chat.openCanvas")}
+        </button>
+      </figcaption>
+      <ChartView type={c.chart.type} data={c.data} />
+    </figure>
+  );
+}
+
 function ReplyActions({ e, chatId, onUpdate, tools }: { e: BotEntry; chatId: string; onUpdate: (e: BotEntry) => void; tools?: ReactNode }) {
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
@@ -755,6 +783,9 @@ function BotMessage(props: {
             {typeof e.credits === "number" && <span className="handoff-cost" title={t("chat.teamCostTitle")}>{t("chat.teamCost", { n: e.handoff.length * 4 })}</span>}
           </div>
         )}
+        {[...new Set(rows.filter((r) => r.call.name === "work_table" && r.call.input.action === "chart" && r.result && !r.result.isError).map((r) => r.result!.content.match(/^Chart "(.+?)" \(/)?.[1]).filter((n): n is string => !!n))].slice(-3).map((n) => (
+          <InlineChart key={n} chatId={chatId} name={n} />
+        ))}
         {e.status === "done" && !!e.text && <ReplyActions e={e} chatId={chatId} onUpdate={onUpdate} tools={tools} />}
         {e.status !== "done" && e.status !== "running" && !!e.text && tools && <div className="msg-actions">{tools}</div>}
       </div>
@@ -997,6 +1028,20 @@ export default function ChatView({ id }: { id: string }) {
       ctrlRef.current?.abort();
     };
   }, [id, stream]);
+
+  // "Open in Canvas" under a chart in the chat.
+  useEffect(() => {
+    const on = () => {
+      setShowCanvas(true);
+      try {
+        localStorage.setItem(`oovi.canvas.${id}`, "1");
+      } catch {
+        /* storage unavailable */
+      }
+    };
+    window.addEventListener("oovi:open-canvas", on);
+    return () => window.removeEventListener("oovi:open-canvas", on);
+  }, [id]);
 
   // Find in this chat: the matching messages, and moving between them.
   const findHits = useMemo(() => (chat && findOpen && findQ.trim() ? findInChat(chat, findQ) : []), [chat, findOpen, findQ]);

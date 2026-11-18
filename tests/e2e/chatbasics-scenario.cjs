@@ -25,7 +25,7 @@ const live = () => ({ balance: 999, dailyUsed: 1, dailyLimit: 500, resetsAt: new
 const status = { state: "ok", message: null, displayName: "theOovi", balance: 999, dailyLimit: 500, dailyUsed: 1, resetsAt: new Date(Date.now() + 864e5).toISOString(), plan: { id: "free", name: "Free" }, planUntil: null, maxInputTokens: 100000, links: {} };
 const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content, stop_reason: stop, usage: { input_tokens: 100, output_tokens: 40 }, oovi: live() });
 const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
-const seen = { bodies: [] };
+const seen = { bodies: [], pages: {} };
 async function answer(body) {
   seen.bodies.push(body);
   const last = textOf(body.messages.at(-1));
@@ -45,6 +45,18 @@ http
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
       if (url === "/api/v1/catalog") return send(200, { items: [] });
+      // The website's shared pages (web/app/api/v1/pages), as a stand-in.
+      if (url === "/api/v1/pages" && req.method === "POST") {
+        const b = JSON.parse(raw);
+        if (b.id && !seen.pages[b.id]) return send(404, { error: "That shared page isn't there any more." });
+        const id = b.id || `p${String((seen.made = (seen.made || 0) + 1)).padStart(21, "0")}`;
+        seen.pages[id] = b;
+        return send(200, { id, url: `https://site.test/p/${id}` });
+      }
+      if (url === "/api/v1/pages" && req.method === "DELETE") {
+        delete seen.pages[new URL(req.url, "http://x").searchParams.get("id")];
+        return send(204);
+      }
       const rules = require("./model-rules.cjs");
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         const b = JSON.parse(raw);
@@ -154,6 +166,34 @@ const check = (name, ok, detail = "") => {
   await api("PUT", `/api/chats/${f.j.id}`, { pinned: true });
   await api("DELETE", `/api/chats/${f.j.id}`);
   check("E) deleting a pinned copy removes it from the list", !(await api("GET", "/api/chats")).j.some((x) => x.id === f.j.id));
+
+  // F: share a Canvas page by a public link.
+  const P = `/api/chats/${dm}/canvas`;
+  await api("PATCH", P, { op: "newNote", name: "Plan" });
+  await api("PATCH", P, { op: "note", name: "Plan", text: "# Oran\n- 30 cafés" });
+  const sh = await api("POST", `/api/chats/${dm}/share`, { kind: "note", name: "Plan" });
+  const pid = sh.j.share?.id;
+  check("F) a page is shared: the website gets its title and text, the app keeps the link", sh.status === 200 && /^https:\/\/site\.test\/p\//.test(sh.j.share.url) && seen.pages[pid]?.title === "Plan" && seen.pages[pid].content.kind === "notes" && /30 cafés/.test(seen.pages[pid].content.text), JSON.stringify(sh.j));
+  await api("PATCH", P, { op: "note", name: "Plan", text: "# Oran\n- 31 cafés" });
+  const up = await api("POST", `/api/chats/${dm}/share`, { kind: "note", name: "Plan" });
+  check("F) updating keeps the same link", up.j.share.id === pid && /31 cafés/.test(seen.pages[pid].content.text));
+  await api("PATCH", P, { op: "rename", kind: "note", name: "Plan", to: "Plan Oran" });
+  const listed = (await api("GET", `/api/chats/${dm}/share`)).j.shares;
+  check("F) a renamed page keeps its link", listed["note:Plan Oran"]?.id === pid && !listed["note:Plan"]);
+  delete seen.pages[pid];
+  const again = await api("POST", `/api/chats/${dm}/share`, { kind: "note", name: "Plan Oran" });
+  check("F) removed on the website meanwhile: sharing again makes a new link", again.status === 200 && again.j.share.id !== pid && seen.pages[again.j.share.id]?.title === "Plan Oran");
+  await api("PATCH", P, { op: "newTable", name: "Leads", columns: ["Name", "Phone"] });
+  await api("PATCH", P, { op: "addRow", table: "Leads" });
+  await api("PATCH", P, { op: "cell", table: "Leads", row: 0, col: 0, value: "Café A" });
+  const tb = await api("POST", `/api/chats/${dm}/share`, { kind: "table", name: "Leads" });
+  check("F) a table is shared with its columns and rows", seen.pages[tb.j.share.id]?.content.kind === "table" && seen.pages[tb.j.share.id].content.rows[0][0] === "Café A");
+  const stop = await api("DELETE", `/api/chats/${dm}/share`, { kind: "table", name: "Leads" });
+  check("F) stop sharing removes it from the website", stop.status === 200 && !seen.pages[tb.j.share.id] && !(await api("GET", `/api/chats/${dm}/share`)).j.shares["table:Leads"]);
+  await api("PATCH", P, { op: "delete", kind: "note", name: "Plan Oran" });
+  await sleep(300);
+  check("F) deleting a shared page stops sharing it", !seen.pages[again.j.share.id]);
+  check("F) a missing page can't be shared", (await api("POST", `/api/chats/${dm}/share`, { kind: "note", name: "Nope" })).status === 400);
 
   log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
   server.kill();

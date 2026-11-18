@@ -3,6 +3,8 @@
 // to a real file (the same export the bots use: one deliverable, one file).
 import { applyEdit, chartData, restoreSnapshot, type CanvasEdit } from "@/lib/canvas-core";
 import { guard } from "@/lib/guard";
+import { dropShares, renameShare } from "@/lib/shares";
+import { cleanFileName } from "@/lib/workfiles-core";
 import { loadSettings } from "@/lib/settings";
 import { getChat } from "@/lib/store";
 import { loadHistory, loadWork, runWorkTool, saveWork } from "@/lib/workfiles";
@@ -89,6 +91,9 @@ export async function PATCH(req: Request, { params }: Ctx) {
     if (err) return Response.json({ error: err }, { status: 400 });
   }
   saveWork(chat.id, store);
+  // A shared page keeps its link when renamed, and stops being shared when deleted.
+  if (e.op === "rename" && e.kind !== "chart") renameShare(chat.id, e.kind, cleanFileName(e.name), cleanFileName(e.to));
+  if (e.op === "delete" && e.kind !== "chart") void dropShares(chat.id, { kind: e.kind, name: cleanFileName(e.name) });
   return Response.json({ ok: true });
 }
 

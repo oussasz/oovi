@@ -1,5 +1,6 @@
 import { closeSession } from "@/lib/browser";
 import { guard } from "@/lib/guard";
+import { dropShares } from "@/lib/shares";
 import { stopVm } from "@/lib/sandbox";
 import { isRunning, stopRun, whenIdle } from "@/lib/runner";
 import { groupAsksFor } from "@/lib/delegations";
@@ -73,6 +74,8 @@ export async function DELETE(req: Request, { params }: Ctx) {
   await whenIdle(chat.id, 15_000);
   await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
   await stopVm(chat.id);
+  // Its pages shared by a link stop being shared.
+  await dropShares(chat.id).catch(() => {});
   deleteChat(chat.id);
   return new Response(null, { status: 204 });
 }
