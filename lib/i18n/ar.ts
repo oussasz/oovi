@@ -1203,7 +1203,7 @@ const ar: Dict = {
   "bot.squishTitle": "{name}: اضغط ليقفز",
   "bot.noRole": "لا دور بعد",
   "bot.squishHint": "اضغط على الوجه ليقفز.",
-  "bot.pictureHint": "اختر أي مظهر أدناه للعودة إلى الشخصية، أو غيّر الصورة من المظهر > صورتك.",
+  "bot.pictureHint": "اختر أي مظهر أدناه للعودة إلى الشخصية، أو غيّر الصورة من الشكل > صورتك.",
   "bot.previewMood": "معاينة التعبير",
   "bot.shuffleLook": "شكل عشوائي",
   "bot.editTitle": "تعديل {name}",
