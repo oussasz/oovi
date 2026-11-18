@@ -12,7 +12,6 @@ import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import SettingsLink from "./SettingsLink";
-import FirstHour from "./FirstHour";
 import { openEditor } from "./EditorModal";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
@@ -152,7 +151,6 @@ export default function Home() {
         )}
       </section>
 
-      {chief && !needsKey && <FirstHour chief={chief} />}
 
       <section>
         <h2 className="section-title">{t("common.groups")}</h2>
