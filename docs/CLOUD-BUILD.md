@@ -158,7 +158,8 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   header `x-oovi-runner: <RUNNER_SECRET>` (403 without it), JSON, `cache-control: no-store`. The runner holds no
   database credentials and never logs chat content. Built and tested against a stand-in in
   `tests/e2e/runner-scenario.cjs` (the stand-in there is the exact shape the runner expects).
-  - `POST /claim {runnerId, exclude?: userId[]}` → `{job: {id, userId, chatId, kind, payload, createdAt, timezone?, userName?} | null}`.
+  - `POST /claim {runnerId, exclude?: userId[]}` → `{job: {jobId, userId, chatId, kind, payload, was, createdAt, leaseUntil, timezone?, userName?} | null}`
+    (heartbeat, done and release carry `{runnerId}` in their body; see web/lib/cloud-types.ts).
     `payload` unsealed. `exclude`: accounts that already have a job on this runner (fairness; one job per account at
     a time by default). `timezone` (IANA, optional): the job's server runs in it ("today", routine times); else UTC.
     `userName` (optional): what the bots call the user. Claim rule as above (older than 5 s and no online desktop,

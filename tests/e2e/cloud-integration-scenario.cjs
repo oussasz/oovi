@@ -254,6 +254,19 @@ async function stopRunner() {
     chat = await cloudChat(dm);
     check("…and the bot said so in the user's language (French)", texts(chat).some((t) => /ordinateur/.test(t) && /oovi/.test(t)), JSON.stringify(texts(chat).slice(-2)));
     await stopRunner();
+
+    // ---- the runner API on the real website: fairness (exclude) and release ----
+    const rapi = (p2, body) => fetch(`${SITE}/api/v1/cloud/runner${p2}`, { method: "POST", headers: { "x-oovi-runner": RUNNER_SECRET, "content-type": "application/json" }, body: JSON.stringify(body) }).then(async (x) => ({ status: x.status, j: await x.json().catch(() => null) }));
+    const probe = (await site("POST", "/api/v1/cloud/jobs", { chatId: dm, kind: "message", payload: { text: "PHONE-probe" } })).j.jobId;
+    await sleep(6000); // the runner waits 5 s before taking a job
+    check("claim skips an account the runner says is busy (exclude)", (await rapi("/claim", { runnerId: "probe-runner", exclude: [USER] })).j?.job === null);
+    const got = (await rapi("/claim", { runnerId: "probe-runner" })).j?.job;
+    check("…and gives it without exclude (jobId, userId)", got?.jobId === probe && got?.userId === USER, JSON.stringify(got && { jobId: got.jobId, userId: got.userId }));
+    check("another runner can't release it", (await rapi(`/jobs/${probe}/release`, { runnerId: "other-runner" })).status === 409);
+    check("its runner releases it: back in the queue", (await rapi(`/jobs/${probe}/release`, { runnerId: "probe-runner" })).status === 200 && (await job(probe)).status === "queued");
+    check("the runner API refuses a wrong secret", (await fetch(`${SITE}/api/v1/cloud/runner/claim`, { method: "POST", headers: { "x-oovi-runner": "wrong", "content-type": "application/json" }, body: JSON.stringify({ runnerId: "x" }) })).status === 401);
+    await db.query("DELETE FROM cloud_job WHERE id = $1", [probe]);
+
     await startApp();
     j = await waitFor("the desktop runs the job left for it", async () => (["done", "failed"].includes((await job(needId))?.status) ? job(needId) : null), 120_000);
     check("the desktop, back on, picks up the needs_computer job and runs it", j?.status === "done" && /^desktop:/.test(j.claimed_by || ""), JSON.stringify(await job(needId)));

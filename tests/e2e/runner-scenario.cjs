@@ -99,12 +99,14 @@ const website = http.createServer(async (req, res) => {
     j.status = "claimed";
     j.claims++;
     j.lease = Date.now() + 120_000;
-    const { status: _s, claims: _c, released: _r, lease: _l, ...job } = j;
-    return send(res, 200, { job });
+    // The website's shape (web/lib/cloud-types.ts RunnerClaimedJob): jobId, was, leaseUntil.
+    const { status: _s, claims: _c, released: _r, lease: _l, id, ...job } = j;
+    return send(res, 200, { job: { jobId: id, ...job, was: "queued", leaseUntil: new Date(j.lease).toISOString() } });
   }
   if ((r = /^\/jobs\/([\w-]+)\/(heartbeat|done|release)$/.exec(p))) {
     const j = jobs.find((x) => x.id === r[1]);
     if (!j || j.status !== "claimed") return send(res, 409, { error: "not yours" });
+    if (body.runnerId !== "test-runner") return send(res, 400, { error: "runnerId is missing or invalid." });
     if (r[2] === "heartbeat") j.lease = Date.now() + 120_000;
     else if (r[2] === "release") {
       j.status = "queued";

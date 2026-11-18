@@ -1,5 +1,41 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Cloud integration: W + A + R together, for real (branch `cloud-integration`, 2026-11-18, nothing deployed)
+Tested with the REAL website (web/, built, `next start`) on a throwaway local PostgreSQL, the real desktop app
+(built) and the real runner (as Node and as the Docker image); stand-ins only for theOovi's upstream model and for a
+connector (a real MCP server on this machine that needs its key). `tests/e2e/cloud-integration-scenario.cjs`
+(needs TEST_DATABASE_URL to a database on this machine; it refuses any other): 28/28 twice with the runner as
+Node; with the runner as the Docker image it passed before the last 5 checks (runner API probes) were added.
+- **Checked end to end:** the desktop turns sync on; its chat, setup and a connector with its key reach the website
+  (the key sealed in the database, never in clear); a phone message (POST /api/v1/cloud/jobs) is claimed and answered
+  by the desktop while it is on; with the desktop off, the runner claims it, pulls the setup, installs the connector
+  from the vault exactly as the desktop wrote it, calls it with its key (MCP-RESULT-42), answers, pushes, and GET
+  /chats shows it; theOovi calls are billed to the account; a step that needs the computer: the runner answers in
+  French and leaves the job `needs_computer`; the desktop, opened again, claims it and runs it, and the message shows
+  once with the real answer; the runner API's exclude and release work; a wrong runner secret is refused; the
+  runner's logs carry no chat text, keys or tokens.
+- **Found and fixed:**
+  1. Runner vs W's real API: a claimed job is `jobId` (not `id`), and heartbeat/done need `{runnerId}` in the body.
+     The runner now sends both (runner/web.mjs); a tombstoned chat ends the job (chat_not_found).
+  2. The website had no runner `release` and no runner `setup` route, and ignored `exclude` (all in the contract note
+     of part R). Added `POST /runner/jobs/<id>/release`, `GET/PUT /runner/setup/<userId>` (only for accounts that
+     sync), and `exclude` in `claimForRunner` (web/lib/cloud.ts, web/app/api/v1/cloud/runner/…); types noted in
+     web/lib/cloud-types.ts.
+  3. Desktop: a job the runner left as needs_computer was run as a NEW message: the chat showed the message twice
+     with the cloud's "needs your computer" reply between them (proved by running the scenario without the fix).
+     Now the message gets the job's id (same rule as the runner: lib/cloud-sync-core.ts `jobEntryId`) and, if the
+     chat already holds it, it and its answers are taken out first (`withoutJobEntry`) (lib/cloud-sync.ts runJob).
+  4. Vault shape: A's `vaultConnectors` and the runner's `installVaultConnector` match (name, transport, url,
+     headers, auth, oauth {clientInfo, tokens, signedInAt}, enabled, trusted); nothing to change. Connectors that run
+     as a program (stdio) are in the vault too but the runner never runs them.
+  5. Test-only: `OOVI_CLOUD_TEST_HOSTS` (lib/mcp.ts) lets the cloud runner reach the stand-in connector on 127.0.0.1;
+     the runner passes it to a job only from RUNNER_TEST_HOSTS, never set on a server.
+- **Rerun, all pass:** tsc (root and web); unit tests 378 (1 skipped, as before; new: cloud-job-entry); npm run build
+  (root and web); runner scenario 22/22; A's cloud-sync scenario 38/38; W's scripts/test-cloud.cjs 136/136; cost
+  scenario weighted 169,901 (unchanged), 11/11.
+- **Not checked:** a real theOovi, a real OAuth connector refreshed by the runner (the vault write-back path ran only
+  against stand-ins), the phone app (part M) itself, the image on arm64, a real server or Azure.
+
 ## Cloud W: website storage and API for cloud sync (branch `cloud-web`, 2026-11-18, NOT DEPLOYED, NOT RELEASED)
 Part W of `docs/CLOUD-BUILD.md` (the contract; what had to change is listed at its bottom). Nothing uses it until
 the desktop app (part A), the phone app (M) and the runner (R) are built. Deploying it alone changes nothing for
