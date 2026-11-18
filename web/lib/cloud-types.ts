@@ -48,7 +48,9 @@ export type ChatTooBig = CloudError & { bytes: number; limit: number };
 export type ChatDeleteResponse = { version: number };
 
 // ---- vault (a connector's settings and sign-in; never AI keys) ----
-export type VaultListResponse = { items: { connectorId: string; version: number; updatedAt: string }[] };
+/** pending: sign-ins that came back to another browser. here=true: this session started it and can finish it. */
+export type PendingSignIn = { flowId: string; connectorId: string; status: "waiting_finish" | "waiting_confirm"; here: boolean };
+export type VaultListResponse = { items: { connectorId: string; version: number; updatedAt: string }[]; pending: PendingSignIn[] };
 export type VaultGetResponse = { connectorId: string; version: number; data: Record<string, unknown> };
 export type VaultPutRequest = { baseVersion: number; data: Record<string, unknown> };
 export type VaultPutResponse = { version: number };
@@ -66,7 +68,14 @@ export type VaultData = Record<string, unknown> & { url?: string; oauth?: Record
 // ---- connectors signed in from the phone ----
 /** POST /connectors/<connectorId>/oauth/start {url?} → {authUrl}: open it in the same browser (the session must match). */
 export type OAuthStartRequest = { url?: string };
-export type OAuthStartResponse = { authUrl: string };
+export type OAuthStartResponse = { authUrl: string; flowId: string };
+/**
+ * When the sign-in comes back to a browser without this session (iPhone home-screen app → Safari), that browser shows
+ * the account (masked) and "Yes, it's my account". Then GET /vault lists the flow as waiting_finish and the app calls
+ * POST /connectors/oauth/finish {flowId} (same session only, once) → the vault entry.
+ */
+export type OAuthFinishRequest = { flowId: string };
+export type OAuthFinishResponse = { connectorId: string; version: number; data: VaultData };
 /**
  * GET /connectors/oauth/callback (the service sends the browser here) → 303 to /m/connectors?connected=<id>,
  * or /m/connectors?error=expired|denied|failed|signed_out|sync_off[&id=<id>].

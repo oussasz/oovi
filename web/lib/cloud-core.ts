@@ -235,3 +235,72 @@ export function connectorsReturn(connectorId: string | null, outcome: { ok: true
   }
   return `/m/connectors?${q.toString()}`;
 }
+
+// ---------- a sign-in that comes back to a browser without the starting session (iPhone home-screen app) ----------
+
+/** o***@gmail.com: enough for a person to notice it isn't their account, not enough to read it. */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at < 1) return "***";
+  return `${email[0]}***${email.slice(at)}`;
+}
+
+export type PageLang = "ar" | "fr" | "en";
+/** The page's language from the browser's Accept-Language (Arabic, French, else English). */
+export function pickLang(acceptLanguage: string | null): PageLang {
+  for (const part of (acceptLanguage ?? "").toLowerCase().split(",")) {
+    const tag = part.trim().slice(0, 2);
+    if (tag === "ar" || tag === "fr" || tag === "en") return tag;
+  }
+  return "en";
+}
+
+const esc = (s: string) => s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
+
+const HOLD_TEXT: Record<PageLang, { title: string; lead: string; other: string; yes: string; notYou: string; back: string; gone: string }> = {
+  en: {
+    title: "Finish connecting {service}",
+    lead: "This connects {service} to the oovi account {email}.",
+    other: "You are signed in here with a different oovi account.",
+    yes: "Yes, it's my account",
+    notYou: "Not you? Close this page: nothing will be connected.",
+    back: "Go back to the oovi app to finish connecting {service}.",
+    gone: "This sign-in has expired or was already used. Start again in the oovi app.",
+  },
+  fr: {
+    title: "Terminer la connexion de {service}",
+    lead: "Ceci connecte {service} au compte oovi {email}.",
+    other: "Vous êtes connecté ici avec un autre compte oovi.",
+    yes: "Oui, c'est mon compte",
+    notYou: "Ce n'est pas vous ? Fermez cette page : rien ne sera connecté.",
+    back: "Retournez dans l'app oovi pour terminer la connexion de {service}.",
+    gone: "Cette connexion a expiré ou a déjà été utilisée. Recommencez dans l'app oovi.",
+  },
+  ar: {
+    title: "إكمال ربط {service}",
+    lead: "سيُربط {service} بحساب oovi ‏{email}.",
+    other: "أنت مسجّل هنا بحساب oovi آخر.",
+    yes: "نعم، هذا حسابي",
+    notYou: "لست أنت؟ أغلق هذه الصفحة: لن يُربط أي شيء.",
+    back: "ارجع إلى تطبيق oovi لإكمال ربط {service}.",
+    gone: "انتهت صلاحية تسجيل الدخول هذا أو استُعمل من قبل. ابدأ من جديد في تطبيق oovi.",
+  },
+};
+
+/**
+ * The small page shown where the sign-in came back without the session that started it. "ask": the account (masked)
+ * and one button that confirms it; "done": go back to the app; "gone": expired. Everything is escaped; no script.
+ */
+export function holdPageHtml(o: { lang: PageLang; step: "ask" | "done" | "gone"; service?: string; email?: string; otherAccount?: boolean; holdToken?: string; action?: string }): string {
+  const t = HOLD_TEXT[o.lang];
+  const fill = (s: string) => esc(s).replace("{service}", `<b>${esc(o.service ?? "")}</b>`).replace("{email}", `<b dir="ltr">${esc(o.email ?? "")}</b>`);
+  let main: string;
+  if (o.step === "ask") {
+    main = `<h1>${fill(t.title)}</h1><p>${fill(t.lead)}</p>${o.otherAccount ? `<p class="warn">${fill(t.other)}</p>` : ""}
+<form method="post" action="${esc(o.action ?? "")}"><input type="hidden" name="hold" value="${esc(o.holdToken ?? "")}"><button type="submit">${fill(t.yes)}</button></form>
+<p class="small">${fill(t.notYou)}</p>`;
+  } else if (o.step === "done") main = `<h1>✓</h1><p>${fill(t.back)}</p>`;
+  else main = `<p>${fill(t.gone)}</p>`;
+  return `<!doctype html><html lang="${o.lang}" dir="${o.lang === "ar" ? "rtl" : "ltr"}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>oovi</title>
+<style>body{font:17px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;margin:0;padding:48px 20px;background:#f5f5f7;color:#1d1d1f}main{max-width:420px;margin:0 auto;background:#fff;border-radius:18px;padding:28px 24px;box-shadow:0 1px 3px rgba(0,0,0,.08)}h1{font-size:22px;margin:0 0 12px}button{width:100%;font:inherit;font-weight:600;padding:14px;border:0;border-radius:12px;background:#007aff;color:#fff;margin:8px 0}.warn{color:#b3261e}.small{font-size:14px;color:#6e6e73}@media (prefers-color-scheme:dark){body{background:#000;color:#f5f5f7}main{background:#1c1c1e}.small{color:#98989d}.warn{color:#ff6961}}</style></head><body><main>${main}</main></body></html>`;
+}

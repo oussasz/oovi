@@ -163,3 +163,20 @@ test("after a sign-in, the phone's Connectors page", async () => {
   assert.equal(connectorsReturn("mcp:notion", { error: "expired" }), "/m/connectors?error=expired&id=mcp%3Anotion");
   assert.equal(connectorsReturn(null, { error: "signed_out" }), "/m/connectors?error=signed_out");
 });
+
+test("sign-in back in another browser: masked account, language, a page that can't run anything", async () => {
+  const { maskEmail, pickLang, holdPageHtml } = await import("../../web/lib/cloud-core.ts");
+  assert.equal(maskEmail("oussama@gmail.com"), "o***@gmail.com");
+  assert.equal(maskEmail("a@b.co"), "a***@b.co");
+  assert.equal(maskEmail("nope"), "***");
+  assert.equal(pickLang("fr-FR,fr;q=0.9,en;q=0.8"), "fr");
+  assert.equal(pickLang("ar-DZ,ar;q=0.9"), "ar");
+  assert.equal(pickLang("de-DE,en;q=0.5"), "en");
+  assert.equal(pickLang(null), "en");
+  const evil = holdPageHtml({ lang: "en", step: "ask", service: '<script>alert(1)</script>', email: 'x"><img src=x>@a.b', holdToken: '"><b>', action: "/x" });
+  assert.ok(!evil.includes("<script>alert") && !evil.includes("<img") && !evil.includes('"><b>'), "everything is escaped");
+  assert.ok(evil.includes("Yes, it&#39;s my account") && evil.includes('method="post"'));
+  const ar = holdPageHtml({ lang: "ar", step: "done", service: "Notion" });
+  assert.ok(ar.includes('dir="rtl"') && ar.includes("<b>Notion</b>") && !ar.includes("<form"));
+  assert.ok(holdPageHtml({ lang: "fr", step: "gone" }).includes("a expiré"));
+});

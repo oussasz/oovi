@@ -130,3 +130,14 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   as the phone app, not a separate one, or the callback finds no session). The client is registered for the
   website's redirect address: the desktop and the runner refresh with `oauth.clientInfo` as it is. `PUT /vault`
   refuses values that look like AI model keys (sk-ant-, sk-proj-, sk-or-v1-, gsk_, xai-, old sk-…) with 400.
+- 2026-11-18, part W, a sign-in that comes back to ANOTHER browser (iPhone home-screen app → Safari, another cookie
+  jar). Asked by the main session. The callback no longer says signed_out: it keeps the code sealed, unused (10 minutes,
+  once) and shows a small page (Arabic, French or English from the browser) with the account masked (o***@gmail.com)
+  and ONE button "Yes, it's my account" (POST /connectors/oauth/confirm, the page's own hold token, no session).
+  `GET /vault` answers `pending: [{flowId, connectorId, status: waiting_confirm|waiting_finish, here}]`; the app
+  (here=true) calls `POST /api/v1/cloud/connectors/oauth/finish {flowId}` (only the account AND session that started
+  it, once) → `{connectorId, version, data}`. `oauth/start` also answers `flowId`. Why the button (not in the request):
+  without it, someone could start a sign-in on their own account, send the link to another person, and quietly
+  receive that person's Notion or Gmail access when they approve it; the masked account plus the tap makes them look.
+  Same session as the start: unchanged (finished at once).
+

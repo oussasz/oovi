@@ -84,9 +84,15 @@ export const CLOUD_DDL = `
     session_hash TEXT NOT NULL,
     connector_id TEXT NOT NULL,
     data         JSONB NOT NULL,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    id           UUID NOT NULL,
+    held         JSONB NULL,
+    hold_hash    TEXT NULL,
+    confirmed    BOOLEAN NOT NULL DEFAULT false
   );
   CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
+  CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_id_idx ON cloud_oauth_flow (id);
+  CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_hold_idx ON cloud_oauth_flow (hold_hash);
 `;
 
 const g = globalThis as typeof globalThis & { __ooviCloudTables?: Promise<void> };

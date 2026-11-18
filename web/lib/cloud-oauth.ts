@@ -3,8 +3,11 @@
 // the browser back to the WEBSITE, which stores the tokens sealed in the connector's cloud_vault entry.
 //
 // Safety:
-// - The flow's state is 32 random bytes; only its SHA-256 is stored. It works once (deleted when used), for 10
-//   minutes, and only for the same signed-in account AND session that started it.
+// - The flow's state is 32 random bytes; only its SHA-256 is stored. It works once, for 10 minutes. Back in the
+//   browser of the session that started it: finished at once. Back elsewhere (an iPhone home-screen app opens the
+//   sign-in in Safari, another cookie jar): the code is kept sealed, the page shows the account (masked) and asks
+//   "Yes, it's my account"; only then can the STARTING session finish it (POST /connectors/oauth/finish). Without
+//   that tap, someone who sends another person a sign-in link could quietly receive their connector.
 // - The PKCE verifier and the client registration are sealed in the flow row; nothing is kept in memory, so it
 //   works across server instances.
 // - The website only calls public https addresses for a sign-in (every hop checked, also after redirects and DNS):
@@ -16,7 +19,7 @@ import type { OAuthClientInformationMixed, OAuthClientMetadata, OAuthTokens } fr
 import { pool } from "./db";
 import { siteUrl } from "./site";
 import { ensureCloudTables, getVault, isEnabled, saveVaultSignIn, sealJson, unsealJson } from "./cloud";
-import { MAX_OPEN_FLOWS, OAUTH_FLOW_SECONDS, checkConnectorUrl, isPrivateAddress } from "./cloud-core";
+import { MAX_OPEN_FLOWS, OAUTH_FLOW_SECONDS, checkConnectorUrl, isPrivateAddress, maskEmail } from "./cloud-core";
 
 export const CLOUD_CALLBACK_PATH = "/api/v1/cloud/connectors/oauth/callback";
 const redirectUri = () => `${siteUrl()}${CLOUD_CALLBACK_PATH}`;
@@ -108,7 +111,7 @@ export async function guardedFetch(input: string | URL | Request, init?: Request
   throw new Error("too many redirects");
 }
 
-export type StartResult = { authUrl: string } | { error: "sync_off" | "no_url" | "bad_url" | "too_many" | "failed"; message: string };
+export type StartResult = { authUrl: string; flowId: string } | { error: "sync_off" | "no_url" | "bad_url" | "too_many" | "failed"; message: string };
 
 /** Starts a sign-in for a connector of this account. The url comes from its vault entry, else from the request. */
 export async function startCloudSignIn(userId: string, sessionId: string, connectorId: string, urlFromRequest: unknown): Promise<StartResult> {
@@ -135,47 +138,159 @@ export async function startCloudSignIn(userId: string, sessionId: string, connec
   } catch {
     return { error: "failed", message: "This service's sign-in couldn't be reached. Check its address, or try again later." };
   }
-  const flow = { url: url.toString(), verifier: provider.data.verifier, clientInfo: provider.data.clientInfo, redirectUrl: provider.data.redirectUrl };
-  await pool.query("INSERT INTO cloud_oauth_flow (state_hash, user_id, session_hash, connector_id, data) VALUES ($1, $2, $3, $4, $5)", [
+  const name = typeof stored?.name === "string" && stored.name.trim() ? stored.name.trim().slice(0, 80) : url.hostname;
+  const flow = { url: url.toString(), name, verifier: provider.data.verifier, clientInfo: provider.data.clientInfo, redirectUrl: provider.data.redirectUrl };
+  const flowId = crypto.randomUUID();
+  await pool.query("INSERT INTO cloud_oauth_flow (state_hash, user_id, session_hash, connector_id, data, id) VALUES ($1, $2, $3, $4, $5, $6)", [
     sha(state),
     userId,
     sha(sessionId),
     connectorId,
     sealJson(flow).sealed,
+    flowId,
   ]);
-  return { authUrl: provider.authUrl };
+  return { authUrl: provider.authUrl, flowId };
 }
 
-export type FinishResult = { connectorId: string } | { error: "expired" | "denied" | "failed" | "sync_off"; connectorId: string | null };
+type Flow = { url: string; name?: string; verifier?: string; clientInfo?: OAuthClientInformationMixed; redirectUrl?: string };
 
-/**
- * The service sent the browser back with ?code&state (or ?error). The flow is used up whatever happens. It must
- * belong to the same account and session, and be under 10 minutes old.
- */
-export async function finishCloudSignIn(userId: string, sessionId: string, state: string, code: string | null, providerError: boolean): Promise<FinishResult> {
-  await ensureCloudTables();
-  if (!/^[0-9a-f]{64}$/.test(state)) return { error: "expired", connectorId: null };
-  const { rows } = await pool.query(
-    `DELETE FROM cloud_oauth_flow WHERE state_hash = $1
-     RETURNING user_id, session_hash, connector_id, data, created_at > now() - make_interval(secs => ${OAUTH_FLOW_SECONDS}) AS fresh`,
-    [sha(state)],
-  );
-  const f = rows[0];
-  // Another account's or session's state is treated as unknown: nothing about it is revealed.
-  if (!f || f.user_id !== userId || f.session_hash !== sha(sessionId)) return { error: "expired", connectorId: null };
-  const connectorId = f.connector_id as string;
-  if (!f.fresh) return { error: "expired", connectorId };
-  if (providerError || !code) return { error: "denied", connectorId };
-  const flow = unsealJson<{ url: string; verifier?: string; clientInfo?: OAuthClientInformationMixed; redirectUrl?: string }>(f.data);
+/** Exchanges the code for tokens and stores them in the connector's vault entry. */
+async function exchange(userId: string, connectorId: string, flow: Flow, state: string, code: string): Promise<{ version: number } | "failed" | "sync_off"> {
   const provider = new FlowProvider({ verifier: flow.verifier, clientInfo: flow.clientInfo, redirectUrl: flow.redirectUrl }, state);
   try {
     const r = await auth(provider, { serverUrl: flow.url, authorizationCode: code, fetchFn: guardedFetch });
-    if (r !== "AUTHORIZED" || !provider.data.tokens) return { error: "failed", connectorId };
+    if (r !== "AUTHORIZED" || !provider.data.tokens) return "failed";
   } catch {
-    return { error: "failed", connectorId };
+    return "failed";
   }
   const { verifier: _v, ...keep } = provider.data;
   const saved = await saveVaultSignIn(userId, connectorId, flow.url, keep);
-  if ("off" in saved) return { error: "sync_off", connectorId };
-  return { connectorId };
+  return "off" in saved ? "sync_off" : saved;
+}
+
+export type CallbackResult =
+  | { connectorId: string }
+  | { error: "expired" | "denied" | "failed" | "sync_off"; connectorId: string | null }
+  /** Came back without the session that started it: the code is kept (sealed, not exchanged) for the app to finish. */
+  | { held: true; connectorId: string; holdToken: string; service: string; email: string; otherAccount: boolean };
+
+/**
+ * The service sent the browser back with ?code&state (or ?error). With the session that started it: the code is
+ * exchanged at once and the flow is gone. Without it (an iPhone home-screen app whose sign-in opened in Safari, a
+ * different cookie jar): the code is kept sealed, unused, under the same 10-minute limit; the page here asks the
+ * person to confirm the (masked) account, then the starting session finishes it (finishHeld). A state works once.
+ */
+export async function callbackCloudSignIn(userId: string | null, sessionId: string | null, state: string, code: string | null, providerError: boolean): Promise<CallbackResult> {
+  await ensureCloudTables();
+  if (!/^[0-9a-f]{64}$/.test(state)) return { error: "expired", connectorId: null };
+  const c = await pool.connect();
+  try {
+    await c.query("BEGIN");
+    const f = (
+      await c.query(
+        `SELECT f.user_id, f.session_hash, f.connector_id, f.data, f.held IS NOT NULL AS held,
+                f.created_at > now() - make_interval(secs => ${OAUTH_FLOW_SECONDS}) AS fresh, u.email
+           FROM cloud_oauth_flow f JOIN "user" u ON u.id = f.user_id WHERE f.state_hash = $1 FOR UPDATE OF f`,
+        [sha(state)],
+      )
+    ).rows[0];
+    // Unknown, or its state already used for a held code: nothing about it is revealed.
+    if (!f || f.held) {
+      await c.query("ROLLBACK");
+      return { error: "expired", connectorId: null };
+    }
+    const connectorId = f.connector_id as string;
+    const mine = userId === f.user_id && sessionId !== null && sha(sessionId) === f.session_hash;
+    if (!f.fresh || providerError || !code || mine) {
+      await c.query("DELETE FROM cloud_oauth_flow WHERE state_hash = $1", [sha(state)]);
+      await c.query("COMMIT");
+      if (!f.fresh) return { error: "expired", connectorId };
+      if (providerError || !code) return { error: "denied", connectorId };
+      const r = await exchange(f.user_id, connectorId, unsealJson<Flow>(f.data), state, code);
+      return typeof r === "string" ? { error: r, connectorId } : { connectorId };
+    }
+    const holdToken = crypto.randomBytes(32).toString("hex");
+    await c.query("UPDATE cloud_oauth_flow SET held = $2, hold_hash = $3 WHERE state_hash = $1", [sha(state), sealJson({ code, state }).sealed, sha(holdToken)]);
+    await c.query("COMMIT");
+    const flow = unsealJson<Flow>(f.data);
+    return { held: true, connectorId, holdToken, service: flow.name ?? new URL(flow.url).hostname, email: maskEmail(String(f.email)), otherAccount: !!userId && userId !== f.user_id };
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    c.release();
+  }
+}
+
+/** The person tapped "Yes, it's my account" on the held page (no session needed: the hold token is the proof). */
+export async function confirmHeld(holdToken: string): Promise<{ service: string } | null> {
+  await ensureCloudTables();
+  if (!/^[0-9a-f]{64}$/.test(holdToken)) return null;
+  const { rows } = await pool.query(
+    `UPDATE cloud_oauth_flow SET confirmed = true
+      WHERE hold_hash = $1 AND held IS NOT NULL AND created_at > now() - make_interval(secs => ${OAUTH_FLOW_SECONDS}) RETURNING data`,
+    [sha(holdToken)],
+  );
+  if (!rows[0]) return null;
+  const flow = unsealJson<Flow>(rows[0].data);
+  return { service: flow.name ?? new URL(flow.url).hostname };
+}
+
+export type FinishHeldResult =
+  | { connectorId: string; version: number; data: Record<string, unknown> }
+  | { error: "not_found" | "expired" | "not_back" | "not_confirmed" | "failed" | "sync_off" };
+
+/** POST /connectors/oauth/finish {flowId}: only the account AND session that started the flow. Single use. */
+export async function finishHeld(userId: string, sessionId: string, flowId: string): Promise<FinishHeldResult> {
+  await ensureCloudTables();
+  const c = await pool.connect();
+  let f: { connector_id: string; data: unknown; held: unknown };
+  try {
+    await c.query("BEGIN");
+    const row = (
+      await c.query(
+        `SELECT connector_id, data, held, confirmed, created_at > now() - make_interval(secs => ${OAUTH_FLOW_SECONDS}) AS fresh
+           FROM cloud_oauth_flow WHERE id = $1 AND user_id = $2 AND session_hash = $3 FOR UPDATE`,
+        [flowId, userId, sha(sessionId)],
+      )
+    ).rows[0];
+    if (!row) {
+      await c.query("ROLLBACK");
+      return { error: "not_found" };
+    }
+    if (!row.fresh) {
+      await c.query("DELETE FROM cloud_oauth_flow WHERE id = $1", [flowId]);
+      await c.query("COMMIT");
+      return { error: "expired" };
+    }
+    if (!row.held || !row.confirmed) {
+      await c.query("ROLLBACK");
+      return { error: row.held ? "not_confirmed" : "not_back" };
+    }
+    await c.query("DELETE FROM cloud_oauth_flow WHERE id = $1", [flowId]);
+    await c.query("COMMIT");
+    f = row;
+  } catch (err) {
+    await c.query("ROLLBACK").catch(() => {});
+    throw err;
+  } finally {
+    c.release();
+  }
+  const held = unsealJson<{ code: string; state: string }>(f.held);
+  const r = await exchange(userId, f.connector_id, unsealJson<Flow>(f.data), held.state, held.code);
+  if (typeof r === "string") return { error: r };
+  const entry = await getVault(userId, f.connector_id);
+  if (!entry || "off" in entry) return { error: "sync_off" };
+  return { connectorId: f.connector_id, version: entry.version, data: entry.data };
+}
+
+/** Sign-ins of this account waiting in the cloud (shown in GET /vault so the app finishes them on focus). */
+export async function pendingSignIns(userId: string, sessionId: string): Promise<{ flowId: string; connectorId: string; status: "waiting_finish" | "waiting_confirm"; here: boolean }[]> {
+  await ensureCloudTables();
+  const { rows } = await pool.query(
+    `SELECT id, connector_id, confirmed, session_hash FROM cloud_oauth_flow
+      WHERE user_id = $1 AND held IS NOT NULL AND created_at > now() - make_interval(secs => ${OAUTH_FLOW_SECONDS}) ORDER BY created_at`,
+    [userId],
+  );
+  return rows.map((r) => ({ flowId: r.id, connectorId: r.connector_id, status: r.confirmed ? "waiting_finish" : "waiting_confirm", here: r.session_hash === sha(sessionId) }));
 }

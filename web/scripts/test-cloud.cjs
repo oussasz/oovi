@@ -411,21 +411,66 @@ async function run(A, B, C) {
   check("sign-in starts: the service's page, with PKCE, a state and the website's callback", r.status === 200 && !!au && au.searchParams.get("code_challenge_method") === "S256" && /^[0-9a-f]{64}$/.test(au.searchParams.get("state") ?? "") && au.searchParams.get("redirect_uri") === `${BASE}/api/v1/cloud/connectors/oauth/callback`, JSON.stringify(r.body).slice(0, 200));
   const flowRow = await db.query("SELECT state_hash, data::text AS t FROM cloud_oauth_flow WHERE user_id = 'cloudtest_a'");
   check("the flow keeps only a hash of the state, and its verifier sealed", flowRow.rowCount === 1 && flowRow.rows[0].state_hash !== au?.searchParams.get("state") && /"iv"/.test(flowRow.rows[0].t) && !flowRow.rows[0].t.includes("verifier"));
+  // Back in the browser of the session that started it: finished at once.
   let ap = approve(r.body.authUrl);
-  check("another account can't finish it", (await cb({ code: ap.code, state: ap.state }, B)).includes("error=expired"));
-  check("...and the state is then used up", (await cb({ code: ap.code, state: ap.state })).includes("error=expired"));
-  ap = approve((await start("mcp:demo")).body.authUrl);
-  const A2 = crypto.randomBytes(24).toString("hex");
-  await db.query(`INSERT INTO session (id, token, "userId", "expiresAt", "createdAt", "updatedAt") VALUES ('s_cloudtest_a2', $1, 'cloudtest_a', now() + interval '1 day', now(), now())`, [A2]);
-  check("the same account in another session can't finish it", (await cb({ code: ap.code, state: ap.state }, A2)).includes("error=expired"));
-  ap = approve((await start("mcp:demo")).body.authUrl);
-  check("signed out on the way back: asked to sign in, the flow kept", (await cb({ code: ap.code, state: ap.state }, null)).includes("error=signed_out") && (await db.query("SELECT 1 FROM cloud_oauth_flow WHERE user_id = 'cloudtest_a'")).rowCount === 1);
   r = { loc: await cb({ code: ap.code, state: ap.state }) };
-  check("finished: back to the phone's Connectors page", r.loc.endsWith("/m/connectors?connected=mcp%3Ademo"), r.loc);
+  check("same session: finished at once, back to the phone's Connectors page", r.loc.endsWith("/m/connectors?connected=mcp%3Ademo"), r.loc);
   r = await req("GET", "/api/v1/cloud/vault/mcp:demo", { token: A });
   check("tokens stored in the connector's vault entry, its settings kept, no verifier", r.body?.data?.oauth?.tokens?.refresh_token === "refresh-1" && r.body.data.oauth.clientInfo?.client_id?.startsWith("cid-") && r.body.data.enabled === true && r.body.data.bots?.[0] === "b1" && !("verifier" in r.body.data.oauth) && r.body.version === 2);
   check("the runner can read the sign-in", (await req("GET", "/api/v1/cloud/runner/vault/cloudtest_a/mcp:demo", { runner: RUNNER })).body?.data?.oauth?.tokens?.refresh_token === "refresh-1");
   check("a used state can't be replayed", (await cb({ code: ap.code, state: ap.state })).includes("error=expired"));
+
+  // Back in ANOTHER browser (an iPhone home-screen app opens the sign-in in Safari: no session there).
+  const A2 = crypto.randomBytes(24).toString("hex");
+  await db.query(`INSERT INTO session (id, token, "userId", "expiresAt", "createdAt", "updatedAt") VALUES ('s_cloudtest_a2', $1, 'cloudtest_a', now() + interval '1 day', now(), now())`, [A2]);
+  const cbFull = async (q, token, lang = "en") => {
+    const x = await fetch(`${BASE}/api/v1/cloud/connectors/oauth/callback?${new URLSearchParams(q)}`, { redirect: "manual", headers: { "accept-language": lang, ...(token ? { authorization: `Bearer ${token}` } : {}) } });
+    return { status: x.status, csp: x.headers.get("content-security-policy") ?? "", html: await x.text() };
+  };
+  const holdOf = (html) => /name="hold" value="([0-9a-f]{64})"/.exec(html)?.[1] ?? "";
+  const confirm = (hold, origin = BASE) =>
+    fetch(`${BASE}/api/v1/cloud/connectors/oauth/confirm`, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded", origin, "accept-language": "fr" }, body: `hold=${hold}` }).then(async (x) => ({ status: x.status, html: await x.text() }));
+  const finish = (flowId, token = A) => req("POST", "/api/v1/cloud/connectors/oauth/finish", { token, body: { flowId } });
+  const pending = async (token = A) => (await req("GET", "/api/v1/cloud/vault", { token })).body?.pending ?? [];
+  let st = await start("mcp:demo");
+  const flowId = st.body.flowId;
+  ap = approve(st.body.authUrl);
+  let h = await cbFull({ code: ap.code, state: ap.state }, null, "fr-FR,fr;q=0.9");
+  const hold = holdOf(h.html);
+  check("no session on the way back: a page in French, the account masked, one button, no script", h.status === 200 && h.html.includes('lang="fr"') && h.html.includes("a***@cloud.test") && h.html.includes("Oui, c&#39;est mon compte") && !h.html.includes("<script") && /default-src 'none'/.test(h.csp) && hold.length === 64);
+  const heldRow = await db.query("SELECT held::text AS t, hold_hash FROM cloud_oauth_flow WHERE id = $1", [flowId]);
+  check("the code is kept sealed and NOT exchanged yet", !!heldRow.rows[0]?.t && !heldRow.rows[0].t.includes(ap.code) && heldRow.rows[0].hold_hash !== hold && codes.has(ap.code));
+  check("the same state can't come back twice", (await cb({ code: ap.code, state: ap.state }, null)).includes("error=expired"));
+  check("GET /vault lists it, waiting for the account's confirmation, here=true", (await pending()).some((p) => p.flowId === flowId && p.status === "waiting_confirm" && p.here === true));
+  check("not confirmed yet: finish waits (409)", (await finish(flowId)).status === 409);
+  check("another account can't finish it (404)", (await finish(flowId, B)).status === 404);
+  check("the same account in another session can't finish it (404), and sees here=false", (await finish(flowId, A2)).status === 404 && (await pending(A2)).some((p) => p.flowId === flowId && p.here === false));
+  check("confirm from another website: refused", (await confirm(hold, "https://evil.example")).status === 403);
+  check("a made-up confirm token: expired page", (await confirm("0".repeat(64))).status === 410);
+  let cf = await confirm(hold);
+  check("confirmed: 'go back to the oovi app' (French)", cf.status === 200 && cf.html.includes("Retournez dans l&#39;app oovi"), cf.html.slice(0, 200));
+  check("GET /vault: waiting_finish", (await pending()).some((p) => p.flowId === flowId && p.status === "waiting_finish"));
+  r = await finish(flowId);
+  check("the starting session finishes it: the vault entry with the tokens", r.status === 200 && r.body.connectorId === "mcp:demo" && r.body.data?.oauth?.tokens?.refresh_token === "refresh-1" && r.body.data.bots?.[0] === "b1" && r.body.version === 3, JSON.stringify(r.body).slice(0, 200));
+  check("finish twice: 404", (await finish(flowId)).status === 404);
+  check("nothing left pending", !(await pending()).some((p) => p.flowId === flowId));
+  check("a held flow's state can't be used after it was finished", (await cb({ code: ap.code, state: ap.state }, null)).includes("error=expired"));
+
+  st = await start("mcp:demo");
+  ap = approve(st.body.authUrl);
+  h = await cbFull({ code: ap.code, state: ap.state }, B);
+  check("back in a browser signed in to ANOTHER account: held, with a warning and the starter's masked account", h.status === 200 && h.html.includes("different oovi account") && h.html.includes("a***@cloud.test"));
+  await confirm(holdOf(h.html));
+  check("...the other account still can't finish it", (await finish(st.body.flowId, B)).status === 404);
+  await db.query("UPDATE cloud_oauth_flow SET created_at = now() - interval '11 minutes' WHERE id = $1", [st.body.flowId]);
+  check("held over 10 minutes: finish says expired (410), then it's gone (404)", (await finish(st.body.flowId)).status === 410 && (await finish(st.body.flowId)).status === 404);
+  st = await start("mcp:demo");
+  ap = approve(st.body.authUrl);
+  h = await cbFull({ code: ap.code, state: ap.state }, null, "ar");
+  check("the page in Arabic, right to left", h.html.includes('dir="rtl"') && h.html.includes("نعم، هذا حسابي"));
+  await db.query("UPDATE cloud_oauth_flow SET created_at = now() - interval '11 minutes' WHERE id = $1", [st.body.flowId]);
+  check("confirming after 10 minutes: expired page", (await confirm(holdOf(h.html))).status === 410);
+
   ap = approve((await start("mcp:demo")).body.authUrl);
   await db.query("UPDATE cloud_oauth_flow SET created_at = now() - interval '11 minutes' WHERE user_id = 'cloudtest_a'");
   check("after 10 minutes: expired (with the connector's id)", (await cb({ code: ap.code, state: ap.state })).includes("error=expired&id=mcp%3Ademo"));
