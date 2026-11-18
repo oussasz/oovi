@@ -1,5 +1,56 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Cloud A: desktop sync and worker (built 2026-11-18 on branch `cloud-app`, NOT RELEASED, nothing published)
+Part A of `docs/CLOUD-BUILD.md`. Needs the website API (part W, branch `cloud-web`) live before release: without
+it, "Turn on" says "Sync isn't available on oovi's server yet" and nothing else changes.
+- **What the user sees.** Settings > Sync (new tab): one switch, off by default; plain words on what is uploaded
+  (chats as text, connectors with their sign-ins) and what never leaves (model keys, search keys, website
+  passwords, local-only bots' chats, files); then the status (last sync, chats in sync / kept here, space used,
+  devices, problems in plain words, "Sync now"). Turning off asks first, then deletes the server copy at once.
+  First run: a third screen asks "Keep your chats on your phone too?" (Turn on / Stay local). Existing users: the
+  same question once, as a window in the app (`components/CloudAsk.tsx`). Edit bot: "Where this bot's chats live":
+  In the cloud (default) / On this computer only (`Bot.local`). Settings > Data's old "coming soon · paid" card now
+  points to Sync. Texts in en, ar, fr, es, de, tr.
+- **Where.** Rules (pure, unit-tested): `lib/cloud-sync-core.ts`. Service and worker: `lib/cloud-sync.ts` (started
+  in `instrumentation.ts`). App route: `app/api/cloud/route.ts`. Hooks: `lib/store.ts` (`onChatChange`, quiet
+  saves/deletes for copies from the account, a bot switched local/cloud marks its chats), `lib/mcp.ts`
+  (`vaultConnectors`, `applyVaultConnector`). State per account: `cloud-sync.json` + `cloud-sync/<chatId>.json`
+  (version, fingerprint, entries agreed at the last sync). Device id: `<data>/.device-id`.
+- **How it syncs.** On: old chats upload in the background (newest first, progress in Settings). Each saved change
+  is pushed 1.5 s later (every 0.8 s while bots work, so the phone sees it live). Every 15 s (and when the window
+  gets the focus): pull what changed (`GET /chats?since`), push what changed here; every 5 min a full look at all
+  chats. Entries merge three-way by id (entries have no `updatedAt`, so each side's entry fingerprints at the last
+  sync are kept); 409 = merge and send again; 413 = new chats stay here, Settings says the space is full. A chat
+  travels only if all its bots are "cloud" (a group with one local bot stays local; routine chats the same).
+  Deleting a chat sends a tombstone; a tombstone from the account deletes it here. A bot moved to local takes its
+  chats off the account at once.
+- **Security.** Every request is scrubbed of the model keys, search keys, E2B key, saved website passwords and the
+  session token (`scrubSecrets`), even inside a connector. A chat's project folder and "allowed for this chat"
+  rules are never uploaded and never taken from another device (no device can grant itself rights here). From
+  the phone the desktop takes only: message, approval yes/no (+ "allow in this chat"), plan answer, question
+  answers, Stop; never "always allow folders/edits". No chat content in logs.
+- **Desktop worker.** While oovi runs, signed in and sync on: `POST /jobs/claim` every 3 s (this is also what
+  registers the device as online: the contract has no other device call, noted at the bottom of
+  `docs/CLOUD-BUILD.md`), pulls the chat first, runs the job with the normal runner (`startRun`, `steerRun` if the
+  bots are already working, `stopRun` for Stop), heartbeats every 30 s, pushes the chat at the end, then `done`.
+  Up to 3 jobs at once (different chats).
+- **Verified** (on this branch's final build): `npx tsc --noEmit` clean; unit tests __UNIT__;
+  `npm run build` OK; `node tests/e2e/cloud-sync-scenario.cjs` 29/29 against a stand-in website (off until yes;
+  old chats uploaded; local-only bot and its group never sent; keys/passwords/session never in any sync request;
+  a key typed in a chat is "[hidden]" in the uploaded copy; connector with its key in the vault; a change from
+  another device merged and shown; another device can't set the project folder or allowed actions here; two
+  devices at once (409) keep both; a phone message run here and pushed while running; Stop; unknown and
+  local-only jobs refused; tombstones both ways; full account; turning off deletes the server copy, keeps local,
+  and stops all calls). Existing scenarios on the same build: __E2E__. Screens looked at in a browser
+  (question, Settings > Sync in English and Arabic, bot editor).
+- **Not verified.** The real website API (part W wasn't pushed when this was built: the stand-in follows the
+  contract, see the notes at the bottom of `docs/CLOUD-BUILD.md`); the phone app; Windows/Mac (run "Tests on
+  Windows, Mac and Linux" before a release); real chat sizes against the 100 MB limit (bot replies keep their
+  tool steps, so heavy research chats are large); connectors whose sign-in refresh behaves differently on two
+  computers at once.
+- **Before release.** Website (part W) deployed first; privacy page and terms rewritten (part W/owner, the
+  in-app text already says the server can open chats to run tasks); the owner decides when.
+
 ## 0.12.3 (released 2026-11-18, owner said "build the version and publish it, minor update")
 - One answer per question (owner: 5 messages for "anything new in my email or calendar?", long waits, "correction: I told you before…"). Causes: the done-check's extra rounds each posted a new message and the bot thought the user had read its draft; optional offers ("shall I draft a reply?", "shall I check again?") counted as unfinished; the bot answered from snippets before checking. Now: an extra round continues IN the same reply (`pending.continueIn`, `BotEntry.held`; the draft stays in the steps for the model, the user sees only the final text; the bot is told the user never saw the draft, `UNSEEN_DRAFT`); offers of extras are "done" (`DONE_CHECK_SYSTEM`); ordinary requests get one extra round at most (big jobs keep 4); rule "look everything up first, then answer once" in FOR_THE_USER. bigjob scenario K (42/42). Cost job 169,901 (safety CAPTCHA bullet shortened to fit). NOT checked with a real model on a real inbox.
 

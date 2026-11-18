@@ -1245,3 +1245,4 @@ a.tag { text-decoration: none; }
 .cloud-ask p { line-height: 1.5; }
 .cloud-ask .plain-list { margin-block: 10px 14px; }
 .sync-meter { display: block; width: 100%; max-width: 360px; margin-top: 6px; accent-color: var(--text); }
+.card .plain-list + .card-h { margin-top: 14px; }
