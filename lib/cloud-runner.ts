@@ -1,7 +1,8 @@
 // The cloud runner's side inside the app's server (OOVI_CLOUD_RUNNER=1, started by runner/job-server.cjs for one
 // job, in a fresh data folder). runner/ talks to it over the process's IPC channel; nothing is served over HTTP.
-//   prepare {chat, work, vault}  → the account's setup (through the runner's proxy), then the chat, its work
-//                                   files and the account's connectors with their sign-in
+//   prepare {chatId, chat, work} → the account's setup (through the runner's proxy), then the chat and its work
+//                                   files; answers the connectors the chat's bots use (mcpIds)
+//   connectors {vault}           → those connectors with their sign-in, from the account's vault
 //   run {chatId, kind, payload}  → runs it with the app's own orchestrator; "step" after every saved change,
 //                                   "ended" at the end (needsComputer: the tool that needed the computer)
 //   stop {chatId}, chat {chatId} (the chat and its work files as they are now)
@@ -15,7 +16,7 @@ import { installVaultConnector, vaultSignIn, type VaultConnector } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { startRun, stopRun, subscribe } from "./runner";
 import { pullSetup, syncSetup } from "./setup-sync";
-import { getChat, saveChat } from "./store";
+import { getChat, listBots, saveChat } from "./store";
 import type { Chat } from "./types";
 import { loadWork, saveWork } from "./workfiles";
 import type { WorkStore } from "./workfiles-core";
@@ -39,6 +40,13 @@ async function handle(m: Msg): Promise<void> {
     const chat = m.chat as Chat | null;
     if (chat && typeof chat.id === "string") saveChat(chat);
     if (chat && m.work && typeof m.work === "object") saveWork(chat.id, m.work as WorkStore);
+    // The connectors this chat's bots use: only those are fetched from the vault.
+    const here = getChat(String(m.chatId));
+    const bots = listBots().filter((b) => here?.memberIds.includes(b.id));
+    const mcpIds = [...new Set(bots.flatMap((b) => b.tools.mcp ?? []))];
+    return reply(m, { ok: !!here, mcpIds, ...(here ? {} : { error: "chat not found" }) });
+  }
+  if (m.type === "connectors") {
     let connectors = 0;
     for (const v of Array.isArray(m.vault) ? (m.vault as VaultConnector[]) : []) {
       if (!installVaultConnector(v)) continue;
