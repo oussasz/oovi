@@ -30,7 +30,7 @@ export function ChatsScreen() {
   const shown = useMemo(
     () =>
       q.trim()
-        ? rows.filter((r) => matchesQuery(q, [chatTitle(r.chat, (id) => bot(id)?.name), chatPreview(r.chat, names), ...r.chat.memberIds.map((id) => bot(id)?.name ?? "")]))
+        ? rows.filter((r) => matchesQuery(q, [chatTitle(r.chat, (id) => bot(id)?.name), ...r.chat.memberIds.map((id) => bot(id)?.name ?? ""), ...r.chat.entries.map((e) => e.text.slice(0, 2000))]))
         : rows,
     [rows, q, bot, names],
   );

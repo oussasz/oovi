@@ -135,14 +135,12 @@ html.m-locked body {
 .mapp *::after {
   box-sizing: border-box;
 }
-.mapp button,
-.mapp input,
-.mapp textarea {
+.mapp :where(button, input, textarea) {
   font: inherit;
   color: inherit;
   letter-spacing: inherit;
 }
-.mapp button {
+.mapp :where(button) {
   background: none;
   border: 0;
   padding: 0;
@@ -150,7 +148,7 @@ html.m-locked body {
   -webkit-user-select: none;
   user-select: none;
 }
-.mapp a {
+.mapp :where(a) {
   color: var(--m-tint);
   text-decoration: none;
 }
@@ -401,8 +399,6 @@ html.m-root[lang="ar"] .m-large {
   color: var(--m-label-2);
   font-size: 0.765rem;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 .m-noresult {
   margin: 32px 16px;
@@ -563,10 +559,8 @@ html.m-root[lang="ar"] .m-large {
 .m-section__head {
   margin: 0 16px 6px;
   color: var(--m-label-2);
-  font-size: 0.765rem;
+  font-size: 0.82rem;
   font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.02em;
 }
 .m-section__foot {
   margin: 6px 16px 0;
@@ -1131,7 +1125,7 @@ html.m-root[lang="ar"] .m-large {
   color: var(--m-tint);
 }
 .m-screen--chat .m-nav__row {
-  grid-template-columns: minmax(56px, 1fr) minmax(0, 3fr) minmax(16px, 1fr);
+  grid-template-columns: minmax(84px, 1fr) minmax(0, 2.4fr) minmax(84px, 1fr);
 }
 .m-screen--chat .m-nav__title {
   display: flex;
@@ -1502,6 +1496,9 @@ html.m-root[data-mtheme="dark"] .m-card {
   border-radius: 12px;
   background: var(--m-fill);
 }
+.m-card__items li > span:first-child {
+  white-space: pre-line;
+}
 .m-card__items li {
   display: flex;
   flex-direction: column;
@@ -1870,4 +1867,12 @@ html.m-kb-open .m-composer {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+}
+
+/* A Latin name in an Arabic row (or the reverse) keeps the row's side: its own direction, the page's alignment. */
+.mapp[dir="ltr"] :is(.m-row__title, .m-row__sub, .m-chat__name, .m-chat__preview, .m-chathead__name, .m-msg__name, .m-q legend, .m-card__head h2) {
+  text-align: left;
+}
+.mapp[dir="rtl"] :is(.m-row__title, .m-row__sub, .m-chat__name, .m-chat__preview, .m-chathead__name, .m-msg__name, .m-q legend, .m-card__head h2) {
+  text-align: right;
 }

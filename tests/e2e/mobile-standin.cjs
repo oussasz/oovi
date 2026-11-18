@@ -1,0 +1,384 @@
+// A stand-in for the website's API in front of the built website (web/, `next start`), for the phone app's
+// tests and screenshots: the cloud API of docs/CLOUD-BUILD.md (/api/v1/cloud), the account's setup, credits,
+// voice notes and sign-in. Everything else goes to the real website. Nothing leaves this machine; no real
+// account, password or key is used (the stand-in password is "standin-pass").
+const http = require("node:http");
+
+const H = 3_600_000;
+
+function fixtures(lang, now = Date.now()) {
+  const ar = lang === "ar";
+  const face = (color, shape, hair, eyes, top = 0, wear = 0, cheeks = 0, mouth = 0) => ({ color, shape, hair, eyes, nose: 0, mouth, cheeks, top, wear });
+  const bots = {
+    oovi: { name: "Oovi", role: ar ? "القائد" : "Chief", face: face(0, 0, 0, 1, 0, 0, 1, 0), createdAt: 1 },
+    nova: { name: "Nova", role: ar ? "باحثة" : "Researcher", face: face(8, 1, 2, 0, 3, 0, 0, 1), createdAt: 2 },
+    rex: { name: "Rex", role: ar ? "كاتب" : "Writer", face: face(2, 3, 4, 2, 0, 1, 0, 3), createdAt: 3 },
+    lina: { name: "Lina", role: ar ? "مبيعات" : "Sales", face: face(1, 2, 7, 1, 6, 0, 2, 1), createdAt: 4 },
+    sami: { name: "Sami", role: ar ? "مساعد على الحاسوب" : "Desktop helper", face: face(7, 4, 0, 4, 7, 0, 0, 2), createdAt: 5, local: true },
+  };
+  const items = { main: "oovi" };
+  for (const [id, b] of Object.entries(bots)) items[`bot:${id}`] = { ...b, instructions: "SECRET-INSTRUCTIONS", tools: { web: true, browser: false } };
+  items["group:studio"] = { name: ar ? "الاستوديو" : "Studio", memberIds: ["oovi", "nova", "rex"], leadId: "oovi", orchestrate: true, createdAt: 1 };
+  items["mcp:gmail"] = { name: "Gmail", transport: "http", url: "https://mcp.example.test/gmail?token=SECRET-TOKEN", envKeys: ["GMAIL_KEY"], headerKeys: [], enabled: true, trusted: false, createdAt: 1 };
+  items["mcp:notion"] = { name: "Notion", transport: "http", url: "https://mcp.example.test/notion", envKeys: [], headerKeys: ["Authorization"], enabled: true, trusted: false, createdAt: 2 };
+  items["mcp:calendar"] = { name: "Google Calendar", transport: "http", url: "https://mcp.example.test/cal", envKeys: [], headerKeys: [], enabled: false, trusted: false, createdAt: 3 };
+  items["mcp:files"] = { name: ar ? "ملفات الحاسوب" : "Computer files", transport: "stdio", command: "npx", args: ["-y", "files-server", "C:\\Users\\me"], envKeys: [], headerKeys: [], enabled: true, trusted: true, createdAt: 4 };
+  items.settings = { approvals: "ask" };
+
+  const hotelsAsk = ar ? "لقى لي 3 فنادق في وهران للويكاند الجاي، أقل من 12000 دينار لليلة" : "Find me 3 hotels in Oran for next weekend, under 12,000 DA a night";
+  const hotelsReply = ar
+    ? "وجدت **3 فنادق** مناسبة في وهران:\n\n| الفندق | السعر لليلة | التقييم |\n|---|--:|:-:|\n| [إيبيس وهران](https://all.accor.com/) | 9 800 دج | 4.1 |\n| فندق الأندلس | 11 200 دج | 4.3 |\n| رويال وهران | 11 900 دج | 4.6 |\n\nالأرخص هو **إيبيس**، قريب من الواجهة البحرية. هل أرسل طلب الحجز بالبريد؟"
+    : "I found **3 hotels** in Oran that fit:\n\n| Hotel | Per night | Rating |\n|---|--:|:-:|\n| [Ibis Oran](https://all.accor.com/) | 9,800 DA | 4.1 |\n| Hôtel Andalous | 11,200 DA | 4.3 |\n| Royal Oran | 11,900 DA | 4.6 |\n\nThe cheapest is **Ibis**, close to the seafront. Shall I email them a booking request?";
+  const chats = {
+    "dm-oovi": {
+      id: "dm-oovi",
+      kind: "direct",
+      name: "Oovi",
+      memberIds: ["oovi"],
+      createdAt: now - 30 * H,
+      updatedAt: now - 0.2 * H,
+      entries: [
+        { id: "u1", kind: "user", text: hotelsAsk, at: now - 0.5 * H },
+        { id: "b1", kind: "bot", botId: "oovi", at: now - 0.45 * H, text: hotelsReply, status: "done", steps: [{ role: "tool", results: [{ id: "x", name: "web_search", content: "BIG TOOL RESULT ".repeat(50) }] }], credits: 1.2 },
+        { id: "u2", kind: "user", text: ar ? "إيه، أرسل لهم" : "Yes, send it", at: now - 0.25 * H },
+        { id: "b2", kind: "bot", botId: "oovi", at: now - 0.2 * H, text: "", status: "waiting" },
+      ],
+      pending: {
+        approval: {
+          entryId: "b2",
+          botId: "oovi",
+          items: [
+            {
+              call: { id: "call-mail", name: "mcp_gmail_send_email", input: {} },
+              summary: ar ? "إرسال بريد في Gmail\nإلى: reservations@ibis-oran.example\nالموضوع: طلب حجز، 21-23 نوفمبر" : "Send an email in Gmail\nTo: reservations@ibis-oran.example\nSubject: Booking request, Nov 21–23",
+              detail: ar ? "مرحبا، أود حجز غرفة لشخصين من 21 إلى 23 نوفمبر." : "Hello, I would like to book a double room from November 21 to 23.",
+            },
+          ],
+          at: now - 0.2 * H,
+        },
+      },
+    },
+    "dm-nova": {
+      id: "dm-nova",
+      kind: "direct",
+      name: "Nova",
+      memberIds: ["nova"],
+      createdAt: now - 50 * H,
+      updatedAt: now - 0.05 * H,
+      entries: [
+        { id: "u1", kind: "user", text: ar ? "قارن لي أفضل 5 برامج CRM لفريق صغير" : "Compare the top 5 CRM tools for a team of 4", at: now - 0.06 * H },
+        { id: "b1", kind: "bot", botId: "nova", at: now - 0.05 * H, text: "", status: "running", steps: [{ role: "assistant", text: "", toolCalls: [{ id: "c1", name: "web_search", input: { query: "best CRM small team 2026" } }] }] },
+      ],
+    },
+    studio: {
+      id: "studio",
+      kind: "group",
+      name: ar ? "الاستوديو" : "Studio",
+      memberIds: ["oovi", "nova", "rex"],
+      leadId: "oovi",
+      createdAt: now - 80 * H,
+      updatedAt: now - 1.5 * H,
+      entries: [
+        { id: "u1", kind: "user", text: ar ? "حضّروا لي منشور لينكدإن على إطلاق التطبيق" : "Draft a LinkedIn post for the app launch", at: now - 2 * H },
+        { id: "b1", kind: "bot", botId: "nova", at: now - 1.8 * H, text: ar ? "جمعت 3 نقاط قوية من صفحة المنتج." : "I pulled 3 strong points from the product page.", status: "done" },
+        { id: "b2", kind: "bot", botId: "rex", at: now - 1.5 * H, text: ar ? "ها هي المسودة:\n\n> 🚀 فريقك من البوتات صار في جيبك.\n\nهل نضيف صورة؟" : "Here is the draft:\n\n> 🚀 Your team of bots now fits in your pocket.\n\nShall we add a picture?", status: "done" },
+      ],
+    },
+    "dm-rex": {
+      id: "dm-rex",
+      kind: "direct",
+      name: "Rex",
+      memberIds: ["rex"],
+      createdAt: now - 90 * H,
+      updatedAt: now - 26 * H,
+      entries: [
+        { id: "u1", kind: "user", text: ar ? "افتح التقرير اللي في سطح المكتب ولخصو لي" : "Open the report on my desktop and summarize it", at: now - 26.1 * H },
+        { id: "b1", kind: "bot", botId: "rex", at: now - 26 * H, text: ar ? "هذا يحتاج إلى حاسوبك: افتح oovi عليه وسأقوم بذلك." : "This needs your computer: open oovi on it and I'll do it.", status: "done", errorCode: "needs_computer" },
+      ],
+    },
+    "dm-lina": {
+      id: "dm-lina",
+      kind: "direct",
+      name: "Lina",
+      memberIds: ["lina"],
+      createdAt: now - 200 * H,
+      updatedAt: now - 100 * H,
+      pinned: true,
+      entries: [
+        { id: "u1", kind: "user", text: ar ? "شكرا على قائمة العملاء! نكملو غدوة" : "Thanks for the prospect list! Let's continue tomorrow", at: now - 100 * H },
+        { id: "b1", kind: "bot", botId: "lina", at: now - 99.9 * H, text: ar ? "بكل سرور. القائمة محفوظة في جدول «العملاء»." : "Anytime. The list is saved in the “Prospects” table.", status: "done" },
+      ],
+    },
+    "routine-1": {
+      id: "routine-1",
+      kind: "direct",
+      name: "Morning brief",
+      memberIds: ["oovi"],
+      routine: "r1",
+      createdAt: now - 10 * H,
+      updatedAt: now - 1 * H,
+      entries: [{ id: "u1", kind: "user", text: "brief", at: now - 1 * H }],
+    },
+  };
+  return { items, chats };
+}
+
+/**
+ * Starts the stand-in. opts: {port, nextPort, lang, longPollMs}. Returns {server, state, close, setLang}.
+ * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
+ */
+function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
+  const state = { signedIn: false, sync: true, statusMissing: false, jobsEndpoint: true, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok" };
+  const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
+
+  const load = (l) => {
+    const f = fixtures(l);
+    state.lang = l;
+    state.items = f.items;
+    state.chats = {};
+    for (const [id, chat] of Object.entries(f.chats)) state.chats[id] = { version: 3, chat, deleted: false, updatedAt: new Date(chat.updatedAt).toISOString() };
+    state.jobs = [];
+    state.devices = [
+      { deviceId: "desk-1", kind: "desktop", name: l === "ar" ? "حاسوب المنزل" : "Home PC", lastSeen: new Date(Date.now() - 2 * H).toISOString(), online: false },
+      { deviceId: "runner-1", kind: "runner", lastSeen: new Date().toISOString(), online: true },
+    ];
+  };
+  load(lang);
+
+  const bump = (id) => {
+    const c = state.chats[id];
+    c.version += 1;
+    c.chat.updatedAt = Date.now();
+    c.updatedAt = new Date().toISOString();
+    for (const w of [...state.waiters]) if (w.chatId === id && c.version > w.after) w.wake();
+  };
+
+  const send = (res, status, body, headers = {}) => {
+    res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store", ...headers });
+    res.end(body === undefined ? "" : JSON.stringify(body));
+  };
+  const readBody = (req) =>
+    new Promise((resolve) => {
+      let s = "";
+      req.on("data", (d) => (s += d));
+      req.on("end", () => {
+        try {
+          resolve(s ? JSON.parse(s) : {});
+        } catch {
+          resolve(null);
+        }
+      });
+    });
+  const signed = (req) => state.signedIn && /(^|;\s*)standin=1/.test(req.headers.cookie || "");
+
+  // What the computer (or the runner) does with a job from the phone, played back in a few steps.
+  const run = (job) => {
+    const c = state.chats[job.chatId];
+    const ar = state.lang === "ar";
+    if (job.kind === "message") {
+      const chat = c
+        ? c.chat
+        : (state.chats[job.chatId] = { version: 0, deleted: false, updatedAt: "", chat: { id: job.chatId, kind: "direct", name: job.chatId.slice(3), memberIds: [job.chatId.slice(3)], createdAt: Date.now(), updatedAt: Date.now(), entries: [] } }).chat;
+      const botId = chat.leadId || chat.memberIds[0];
+      setTimeout(() => {
+        job.status = "claimed";
+        chat.entries.push({ id: job.payload.entryId, kind: "user", text: job.payload.text, at: Date.now() });
+        const e = { id: `r${Date.now()}`, kind: "bot", botId, at: Date.now(), text: "", status: "running", steps: [] };
+        chat.entries.push(e);
+        bump(job.chatId);
+        setTimeout(() => {
+          if (e.status !== "running") return;
+          e.steps.push({ role: "assistant", text: "", toolCalls: [{ id: "s1", name: "web_search", input: { query: job.payload.text } }] });
+          bump(job.chatId);
+          setTimeout(() => {
+            if (e.status !== "running") return;
+            e.steps.push({ role: "tool", results: [{ id: "s1", name: "web_search", content: "results" }] });
+            e.steps.push({ role: "assistant", text: "", toolCalls: [{ id: "s2", name: "read_url", input: { url: "https://www.booking.com/hotel/dz/ibis.html" } }] });
+            bump(job.chatId);
+            setTimeout(() => {
+              if (e.status !== "running") return;
+              e.status = "done";
+              e.text = ar ? "تم! حجزت **غرفة لشخصين** وأرسلت لك التأكيد." : "Done! I asked for **a double room** and will tell you when they answer.";
+              job.status = "done";
+              bump(job.chatId);
+            }, job.slow ? 60_000 : replyDelayMs);
+          }, replyDelayMs);
+        }, replyDelayMs);
+      }, 300);
+    } else if (job.kind === "decision" && c) {
+      setTimeout(() => {
+        const ap = c.chat.pending && c.chat.pending.approval;
+        c.chat.pending = undefined;
+        const e = ap && c.chat.entries.find((x) => x.id === ap.entryId);
+        const allowed = job.payload.decisions && Object.values(job.payload.decisions).every(Boolean);
+        if (e) {
+          e.status = "done";
+          e.text = allowed ? (ar ? "أرسلت البريد إلى الفندق ✅" : "Email sent to the hotel ✅") : ar ? "حسنًا، لم أرسل شيئًا." : "OK, I didn't send anything.";
+        }
+        job.status = "done";
+        bump(job.chatId);
+      }, 600);
+    } else if (job.kind === "stop" && c) {
+      setTimeout(() => {
+        for (const e of c.chat.entries) if (e.kind === "bot" && e.status === "running") e.status = "stopped";
+        for (const j of state.jobs) if (j.chatId === job.chatId && j.status !== "done") j.status = "done";
+        job.status = "done";
+        bump(job.chatId);
+      }, 300);
+    }
+  };
+
+  const proxy = (req, res) => {
+    const p = http.request({ host: "127.0.0.1", port: nextPort, path: req.url, method: req.method, headers: { ...req.headers, host: `127.0.0.1:${port}` } }, (r) => {
+      res.writeHead(r.statusCode || 502, r.headers);
+      r.pipe(res);
+    });
+    p.on("error", () => send(res, 502, { error: "website not running" }));
+    req.pipe(p);
+  };
+
+  const server = http.createServer(async (req, res) => {
+    const url = new URL(req.url, `http://127.0.0.1:${port}`);
+    const p = url.pathname;
+    if (p.startsWith("/api/")) state.requests.push({ method: req.method, path: p + url.search, at: Date.now(), device: req.headers["x-oovi-device"] || null });
+
+    // ---- sign-in (better-auth's endpoints, as the website's auth client calls them) ----
+    if (p === "/api/auth/get-session") return send(res, 200, signed(req) ? { session: { id: "s1", userId: user.id, expiresAt: new Date(Date.now() + 1e9).toISOString() }, user } : null);
+    if (p === "/api/auth/sign-in/email" && req.method === "POST") {
+      const b = (await readBody(req)) || {};
+      if (b.email === user.email && b.password === "standin-pass") {
+        state.signedIn = true;
+        return send(res, 200, { redirect: false, token: "t", user }, { "set-cookie": "standin=1; Path=/; HttpOnly; SameSite=Lax" });
+      }
+      return send(res, 401, { code: "INVALID_EMAIL_OR_PASSWORD", message: "Invalid email or password" });
+    }
+    if (p === "/api/auth/sign-out" && req.method === "POST") {
+      state.signedIn = false;
+      return send(res, 200, { success: true }, { "set-cookie": "standin=; Path=/; Max-Age=0" });
+    }
+    if (p.startsWith("/api/v1/avatars/")) return send(res, 404, { error: "no picture" });
+
+    const isApi = p.startsWith("/api/v1/");
+    if (isApi && !signed(req)) return send(res, 401, { error: "Not signed in or session expired." });
+
+    if (p === "/api/v1/me") return send(res, 200, { user: { id: user.id, email: user.email, name: user.name, image: null, createdAt: user.createdAt } });
+    if (p === "/api/v1/setup") return send(res, 200, { version: 7, items: state.items });
+    if (p === "/api/v1/ai/status")
+      return send(res, 200, {
+        state: "ok",
+        message: null,
+        displayName: "theOovi",
+        balance: 1840.5,
+        dailyLimit: 400,
+        dailyUsed: 37.2,
+        resetsAt: new Date().toISOString(),
+        plan: { id: "plus", name: "Plus" },
+        planUntil: null,
+        maxInputTokens: 100000,
+        maxConcurrent: 2,
+        links: { subscribe: "https://oovi.conuron.com/pricing", pricing: "https://oovi.conuron.com/pricing", pilot: "", feedback: "" },
+        pilot: { open: false, eligible: false, public: false, status: null, credits: 0 },
+        desktop: true,
+      });
+    if (p === "/api/v1/ai/transcribe" && req.method === "POST") {
+      const b = await readBody(req);
+      if (!b || typeof b.audio !== "string" || !/^audio\/|^video\/webm/.test(String(b.mime))) return send(res, 400, { error: "Send {audio: base64, mime: audio/…}." });
+      state.lastAudio = { mime: b.mime, bytes: Buffer.from(b.audio, "base64").length };
+      if (state.transcribe === "off") return send(res, 503, { error: "Voice notes aren't available yet." });
+      return send(res, 200, { text: state.lang === "ar" ? "احجز الأرخص من فضلك" : "Book the cheapest one please", seconds: 3, credits: 0.1 });
+    }
+
+    // ---- the cloud API (docs/CLOUD-BUILD.md) ----
+    if (p.startsWith("/api/v1/cloud/") && state.statusMissing) return send(res, 404, { error: "Not found" });
+    if (p === "/api/v1/cloud/status" && req.method === "GET") {
+      const list = Object.values(state.chats).filter((c) => !c.deleted);
+      return send(res, 200, {
+        enabled: state.sync,
+        bytes: state.sync ? 3_400_000 : 0,
+        limit: 100 * 1024 * 1024,
+        chats: state.sync ? list.length : 0,
+        lastSync: state.sync ? new Date(Date.now() - 120_000).toISOString() : null,
+        devices: state.devices,
+      });
+    }
+    if (p === "/api/v1/cloud/chats" && req.method === "GET") {
+      if (!state.sync) return send(res, 200, { chats: [], now: new Date().toISOString() });
+      const since = url.searchParams.get("since");
+      const list = Object.entries(state.chats)
+        .filter(([, c]) => !since || c.updatedAt > since)
+        .map(([chatId, c]) => ({ chatId, version: c.version, updatedAt: c.updatedAt, deleted: c.deleted, bytes: 1000 }));
+      return send(res, 200, { chats: list, now: new Date().toISOString() });
+    }
+    const one = /^\/api\/v1\/cloud\/chats\/([^/]+)$/.exec(p);
+    if (one && req.method === "GET") {
+      const c = state.chats[decodeURIComponent(one[1])];
+      if (!c || c.deleted || !state.sync) return send(res, 404, { error: "Chat not found." });
+      return send(res, 200, { chatId: c.chat.id, version: c.version, chat: c.chat });
+    }
+    if (p === "/api/v1/cloud/jobs" && req.method === "POST") {
+      const b = await readBody(req);
+      if (!b || typeof b.chatId !== "string" || !["message", "decision", "stop"].includes(b.kind) || typeof b.payload !== "object") return send(res, 400, { error: "Invalid job." });
+      if (req.headers["content-type"] !== "application/json") return send(res, 415, { error: "JSON only." });
+      const job = { jobId: `job-${state.jobs.length + 1}`, chatId: b.chatId, kind: b.kind, payload: b.payload, status: "queued", createdAt: new Date().toISOString(), slow: state.slowNext === true };
+      state.slowNext = false;
+      state.jobs.push(job);
+      if (!state.holdJobs) run(job);
+      return send(res, 200, { jobId: job.jobId });
+    }
+    if (p === "/api/v1/cloud/jobs" && req.method === "GET") {
+      if (!state.jobsEndpoint) return send(res, 404, { error: "Not found" });
+      const id = url.searchParams.get("chatId");
+      return send(res, 200, { jobs: state.jobs.filter((j) => j.chatId === id).map(({ jobId, kind, status, createdAt }) => ({ jobId, kind, status, createdAt })) });
+    }
+    if (p === "/api/v1/cloud/events" && req.method === "GET") {
+      const chatId = url.searchParams.get("chatId");
+      const after = Number(url.searchParams.get("after") || 0);
+      const c = state.chats[chatId];
+      if (!c || c.deleted || !state.sync) return send(res, 404, { error: "Chat not found." });
+      const reply = () => {
+        const cur = state.chats[chatId];
+        if (cur && cur.version > after) send(res, 200, { chatId, version: cur.version, chat: cur.chat });
+        else send(res, 200, { chatId, version: cur ? cur.version : after });
+      };
+      if (c && c.version > after) return reply();
+      const w = { chatId, after, wake: () => done() };
+      let finished = false;
+      const done = () => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        state.waiters.delete(w);
+        if (!res.writableEnded) reply();
+      };
+      const timer = setTimeout(done, longPollMs);
+      state.waiters.add(w);
+      req.on("close", () => {
+        finished = true;
+        clearTimeout(timer);
+        state.waiters.delete(w);
+      });
+      return;
+    }
+    if (p.startsWith("/api/v1/cloud/")) return send(res, 404, { error: "Not found" });
+    return proxy(req, res);
+  });
+
+  return new Promise((resolve) => {
+    server.listen(port, "127.0.0.1", () =>
+      resolve({
+        server,
+        state,
+        setLang: load,
+        bump,
+        close: () =>
+          new Promise((r) => {
+            for (const w of state.waiters) w.wake();
+            server.closeAllConnections?.();
+            server.close(() => r());
+          }),
+      }),
+    );
+  });
+}
+
+module.exports = { startStandin, fixtures };
