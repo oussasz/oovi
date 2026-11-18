@@ -4,12 +4,13 @@
 // - window: a window in the app that shows the HTML (in a locked frame: no scripts, links open in the
 //   user's browser), once per person;
 // - bar: a line at the top of the app, like the update bar, that opens the window.
-// Audience: everyone, or one test person (by email) to check it before everyone sees it. Each person's
+// Audience: everyone, or the people the owner chose (one address or several: lib/announcement-audience.ts). Each person's
 // "seen" and "closed" are kept, so it is counted and never shown again on any of their computers.
 // Tables are created on first use (and in scripts/migrate.mjs).
 import crypto from "node:crypto";
 import { pool } from "./db";
 import { siteUrl } from "./site";
+import { peopleOf, type PersonState } from "./announcement-audience";
 
 export const ANN_STATUSES = ["draft", "live", "ended"] as const;
 export type AnnStatus = (typeof ANN_STATUSES)[number];
@@ -21,7 +22,9 @@ export type Announcement = {
   email: boolean;
   window: boolean;
   bar: boolean;
-  /** "" = everyone; an email = only that person (a test). */
+  /** The plain-text message chosen people get by email: an ordinary email from oovi, not a news email. */
+  message: string;
+  /** "" = everyone; otherwise the chosen people's addresses, lower-cased and joined by commas. */
   testEmail: string;
   status: AnnStatus;
   startsAt: string | null;
@@ -42,6 +45,7 @@ export const ANN_DDL = `
     ch_window  BOOLEAN NOT NULL DEFAULT true,
     ch_bar     BOOLEAN NOT NULL DEFAULT false,
     test_email TEXT NOT NULL DEFAULT '',
+    message    TEXT NOT NULL DEFAULT '',
     status     TEXT NOT NULL DEFAULT 'draft',
     starts_at  TIMESTAMPTZ NULL,
     ends_at    TIMESTAMPTZ NULL,
@@ -57,6 +61,7 @@ export const ANN_DDL = `
     PRIMARY KEY (announcement_id, user_id, kind)
   );
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS news_opt_out BOOLEAN NOT NULL DEFAULT false;
+  ALTER TABLE announcements ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '';
 `;
 
 const g = globalThis as typeof globalThis & { __ooviAnnTables?: boolean };
@@ -77,6 +82,7 @@ function toAnn(r: Record<string, unknown>): Announcement {
     window: r.ch_window === true,
     bar: r.ch_bar === true,
     testEmail: String(r.test_email ?? ""),
+    message: String(r.message ?? ""),
     status: (ANN_STATUSES as readonly string[]).includes(String(r.status)) ? (r.status as AnnStatus) : "draft",
     startsAt: iso(r.starts_at),
     endsAt: iso(r.ends_at),
@@ -109,20 +115,20 @@ export async function getAnnouncement(id: string): Promise<(Announcement & { sta
   return { ...toAnn(rows[0]), stats: Object.fromEntries(s.rows.map((x) => [String(x.kind), Number(x.n)])) };
 }
 
-export type AnnInput = Pick<Announcement, "title" | "barText" | "html" | "email" | "window" | "bar" | "testEmail" | "startsAt" | "endsAt">;
+export type AnnInput = Pick<Announcement, "title" | "barText" | "html" | "email" | "window" | "bar" | "testEmail" | "message" | "startsAt" | "endsAt">;
 
 export async function saveAnnouncement(id: string | null, v: AnnInput, by: string): Promise<string> {
   await ensureAnnTables();
-  const vals = [v.title, v.barText, v.html, v.email, v.window, v.bar, v.testEmail.toLowerCase(), v.startsAt, v.endsAt];
+  const vals = [v.title, v.barText, v.html, v.email, v.window, v.bar, v.testEmail.toLowerCase(), v.startsAt, v.endsAt, v.message];
   if (id) {
     await pool.query(
-      "UPDATE announcements SET title=$2, bar_text=$3, html=$4, ch_email=$5, ch_window=$6, ch_bar=$7, test_email=$8, starts_at=$9, ends_at=$10, updated_at=now() WHERE id=$1",
+      "UPDATE announcements SET title=$2, bar_text=$3, html=$4, ch_email=$5, ch_window=$6, ch_bar=$7, test_email=$8, starts_at=$9, ends_at=$10, message=$11, updated_at=now() WHERE id=$1",
       [id, ...vals],
     );
     return id;
   }
   const { rows } = await pool.query(
-    "INSERT INTO announcements (title, bar_text, html, ch_email, ch_window, ch_bar, test_email, starts_at, ends_at, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id",
+    "INSERT INTO announcements (title, bar_text, html, ch_email, ch_window, ch_bar, test_email, starts_at, ends_at, message, created_by) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id",
     [...vals, by],
   );
   return String(rows[0].id);
@@ -148,7 +154,7 @@ export async function activeFor(userId: string, email: string): Promise<{ id: st
        FROM announcements a
       WHERE a.status = 'live' AND (a.ch_window OR a.ch_bar)
         AND (a.starts_at IS NULL OR a.starts_at <= now()) AND (a.ends_at IS NULL OR a.ends_at > now())
-        AND (a.test_email = '' OR a.test_email = lower($2))
+        AND (a.test_email = '' OR lower($2) = ANY(string_to_array(a.test_email, ',')))
         AND NOT EXISTS (SELECT 1 FROM announcement_events e WHERE e.announcement_id = a.id AND e.user_id = $1 AND e.kind = 'closed')
       ORDER BY a.created_at DESC LIMIT 3`,
     [userId, email],
@@ -165,14 +171,16 @@ export async function recordEvent(id: string, userId: string, kind: (typeof EVEN
 
 // ---------- email ----------
 
-/** The people the email goes to now (at most `limit`): the audience, minus who got it or unsubscribed. */
+/**
+ * The people the email goes to now (at most `limit`), minus who got it already. Everyone: confirmed, not blocked, not
+ * unsubscribed (it is news). Chosen people: every chosen address that has an account (a personal message, not news).
+ */
 export async function emailRecipients(a: Announcement, limit: number): Promise<{ id: string; email: string; name: string | null }[]> {
   await ensureAnnTables();
   const { rows } = await pool.query(
     `SELECT u.id, u.email, u.name FROM "user" u
-      WHERE u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked'
-        AND ($2 = '' OR lower(u.email) = $2)
-        AND ($2 <> '' OR u.news_opt_out = false)
+      WHERE (($2 = '' AND u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked' AND u.news_opt_out = false)
+          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ','))))
         AND NOT EXISTS (SELECT 1 FROM announcement_events e WHERE e.announcement_id = $1 AND e.user_id = u.id AND e.kind = 'emailed')
       ORDER BY u."createdAt" LIMIT $3`,
     [a.id, a.testEmail.toLowerCase(), limit],
@@ -185,12 +193,29 @@ export async function emailCounts(a: Announcement): Promise<{ sent: number; left
   const sent = await pool.query("SELECT count(*) AS n FROM announcement_events WHERE announcement_id = $1 AND kind = 'emailed'", [a.id]);
   const left = await pool.query(
     `SELECT count(*) AS n FROM "user" u
-      WHERE u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked'
-        AND ($2 = '' OR lower(u.email) = $2) AND ($2 <> '' OR u.news_opt_out = false)
+      WHERE (($2 = '' AND u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked' AND u.news_opt_out = false)
+          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ','))))
         AND NOT EXISTS (SELECT 1 FROM announcement_events e WHERE e.announcement_id = $1 AND e.user_id = u.id AND e.kind = 'emailed')`,
     [a.id, a.testEmail.toLowerCase()],
   );
   return { sent: Number(sent.rows[0]?.n ?? 0), left: Number(left.rows[0]?.n ?? 0) };
+}
+
+/** For chosen people: who has no account (nothing is sent) and whose address was never confirmed (it may be mistyped). */
+export async function audienceReport(a: Pick<Announcement, "testEmail">): Promise<{ email: string; state: PersonState }[]> {
+  const people = peopleOf(a.testEmail);
+  if (!people.length) return [];
+  await ensureAnnTables();
+  const { rows } = await pool.query(
+    `SELECT lower(email) AS email, "emailVerified" AS ok FROM "user" WHERE lower(email) = ANY($1)`,
+    [people],
+  );
+  const by = new Map(rows.map((r) => [String(r.email), r]));
+  return people.map((email) => {
+    const u = by.get(email);
+    const state: PersonState = !u ? "no-account" : u.ok !== true ? "not-confirmed" : "ok";
+    return { email, state };
+  });
 }
 
 // One-click unsubscribe: a link signed for that person (no sign-in needed), as mail providers expect.
