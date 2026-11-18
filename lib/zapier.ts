@@ -58,3 +58,14 @@ export async function zapierProvision(serverId: string): Promise<{ ok: boolean; 
   const r = await callServerTool(serverId, "auto_provision_mcp", {});
   return { ok: !r.isError, text: cleanText(r.text) };
 }
+
+/** Removes one app from what the bots can use (Zapier's disable_zapier_action for the app). The app stays in the user's Zapier. */
+export async function zapierRemove(serverId: string, app: string): Promise<{ ok: boolean; text: string }> {
+  const tools = await serverTools(serverId);
+  const off = tools.find((t) => t.name === "disable_zapier_action");
+  if (!off) return { ok: false, text: "This Zapier connection can't do that here: remove the app on Zapier's page (Manage in Zapier)." };
+  const args = appArgs(off.inputSchema as Schema | undefined, app);
+  if (typeof args === "string") return { ok: false, text: args };
+  const r = await callServerTool(serverId, off.name, args);
+  return { ok: !r.isError, text: cleanText(r.text) };
+}

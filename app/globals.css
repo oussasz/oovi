@@ -1235,3 +1235,6 @@ a.tag { text-decoration: none; }
 .look-panel { min-height: 64px; }
 .look-panel .opt-group { margin: 0; }
 .look-picture { display: flex; flex-direction: column; gap: 8px; }
+.mk-checking { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
+.chip-x { margin-inline-start: 4px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; opacity: 0.7; }
+.chip-x:hover { opacity: 1; }

@@ -84,7 +84,7 @@ export default function TelegramSettings() {
             <button className="btn" disabled={busy} onClick={() => void run(() => call("POST", { action: "test" }), t("tg.testSent"))}>
               {t("tg.test")}
             </button>
-            <button className="btn" disabled={busy} onClick={() => void run(() => call("DELETE"), t("tg.disconnected"))}>
+            <button className="btn" disabled={busy} onClick={() => window.confirm(t("tg.confirmDisconnect")) && void run(() => call("DELETE"), t("tg.disconnected"))}>
               {t("tg.disconnect")}
             </button>
           </div>

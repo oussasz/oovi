@@ -1,8 +1,8 @@
 // The user's apps in Zapier (lib/zapier.ts): GET what's ready; POST {op: "connect", app} the link to connect
-// one app; POST {op: "provision"} turns on every app already connected in Zapier.
+// one app; POST {op: "remove", app} stops the bots using it; POST {op: "provision"} turns on every app already connected in Zapier.
 import { guard } from "@/lib/guard";
 import { getServer } from "@/lib/mcp";
-import { zapierConnectLink, zapierProvision, zapierStatus } from "@/lib/zapier";
+import { zapierConnectLink, zapierProvision, zapierRemove, zapierStatus } from "@/lib/zapier";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +26,11 @@ export async function POST(req: Request, { params }: Ctx) {
   const b = (await req.json().catch(() => null)) as { op?: unknown; app?: unknown } | null;
   try {
     if (b?.op === "provision") return Response.json(await zapierProvision(id));
+    if (b?.op === "remove") {
+      const app = String(b.app ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
+      if (!app) return Response.json({ error: "Choose an app." }, { status: 400 });
+      return Response.json(await zapierRemove(id, app));
+    }
     if (b?.op === "connect") {
       const app = String(b.app ?? "").replace(/\s+/g, " ").trim().slice(0, 60);
       if (!app) return Response.json({ error: "Choose an app." }, { status: 400 });
@@ -35,5 +40,5 @@ export async function POST(req: Request, { params }: Ctx) {
   } catch (e) {
     return fail(e);
   }
-  return Response.json({ error: "op must be connect or provision." }, { status: 400 });
+  return Response.json({ error: "op must be connect, remove or provision." }, { status: 400 });
 }

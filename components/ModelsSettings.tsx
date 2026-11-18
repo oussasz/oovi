@@ -120,6 +120,11 @@ export default function ModelsSettings({ s, onSaved, onMsg }: { s: PublicSetting
       const url = (urls[p] ?? "").trim();
       if (PROVIDERS[p].needsKey && !key && !s.providers[p]?.hasKey) throw new Error(t("models.needKey"));
       const wasConnected = isConnected(s, p);
+      // "Connected" only once the provider accepted the key (or the address answered): nothing is saved before.
+      if (key || urls[p] !== undefined) {
+        const c = (await fetch("/api/settings/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ provider: p, apiKey: key, ...(urls[p] !== undefined ? { baseUrl: url } : {}) }) }).then((x) => x.json())) as { ok: boolean; error?: string };
+        if (!c.ok) throw new Error(c.error ?? t("models.failed"));
+      }
       const patch: NonNullable<SettingsPatch["providers"]>[ProviderId] = {};
       if (key) patch.apiKey = key;
       if (urls[p] !== undefined) patch.baseUrl = url;
@@ -329,7 +334,7 @@ export default function ModelsSettings({ s, onSaved, onMsg }: { s: PublicSetting
                     )}
                     <div className="row-btns">
                       <button className="btn primary sm" onClick={() => void connect(p)} disabled={!!busy}>
-                        {busy === `connect-${p}` ? t("common.loading") : t("models.save")}
+                        {busy === `connect-${p}` ? t("mk.checking") : t("models.save")}
                       </button>
                       <button className="btn sm" onClick={() => setEditing(null)}>
                         {t("common.cancel")}

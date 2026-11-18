@@ -51,7 +51,11 @@ async function answer(body) {
       req.on("data", (c) => (raw += c));
       req.on("end", async () => {
         const server = new McpServer({ name: "zapier", version: "1.0.0" });
-        server.registerTool("inspect_zapier_actions", { description: "List enabled actions" }, async () => ({ content: [{ type: "text", text: seen.provisioned ? "Enabled actions:\\n- gmail_find_email (Gmail)\\n- GoogleCalendarCLIAPI find_event (Google Calendar)\\n- slack_send_channel_message (Slack)" : "Enabled actions:\\n- gmail_find_email (Gmail)" }] }));
+        server.registerTool("inspect_zapier_actions", { description: "List enabled actions" }, async () => ({ content: [{ type: "text", text: (seen.provisioned ? "Enabled actions:\\n- gmail_find_email (Gmail)\\n- GoogleCalendarCLIAPI find_event (Google Calendar)\\n- slack_send_channel_message (Slack)" : "Enabled actions:\\n- gmail_find_email (Gmail)").split("\\n").filter((l) => !(seen.removed || []).some((a) => l.includes(`(${a})`))).join("\\n") }] }));
+        server.registerTool("disable_zapier_action", { description: "Disable an app's actions", inputSchema: { app: z.string(), action: z.string().optional() } }, async (a) => {
+          seen.removed = [...(seen.removed || []), a.app];
+          return { content: [{ type: "text", text: `Disabled ${a.app}.` }] };
+        });
         server.registerTool("manage_zapier_connections", { description: "Add a connection", inputSchema: { app: z.string(), action: z.enum(["set_default", "add_connection"]) } }, async (a) => {
           seen.manage = a;
           return { content: [{ type: "text", text: `Open https://mcp.zapier.com/mcp/servers/x/connections?app=${encodeURIComponent(a.app)} to connect.` }] };
@@ -164,6 +168,20 @@ const check = (name, ok, detail = "") => {
   const pr = await api("POST", `/api/mcp/${id}/zapier`, { op: "provision" });
   st = (await api("GET", `/api/mcp/${id}/zapier`)).j;
   check("C) Use all my Zapier apps turns them on, and they show as ready", pr.j.ok === true && JSON.stringify(st.ready) === '["Gmail","Google Calendar","Slack"]', JSON.stringify(st.ready));
+  const rm = await api("POST", `/api/mcp/${id}/zapier`, { op: "remove", app: "Slack" });
+  const st2 = (await api("GET", `/api/mcp/${id}/zapier`)).j;
+  check("E) one app can be removed, and it no longer shows as ready", rm.j.ok === true && JSON.stringify(st2.ready) === '["Gmail","Google Calendar"]' && JSON.stringify(seen.removed) === '["Slack"]', JSON.stringify(st2.ready));
+  // An AI key is checked before it is called connected: a refused key is refused, and nothing is saved.
+  const keySrv = http.createServer((req, res) => {
+    res.writeHead(req.headers.authorization === "Bearer good-key" ? 200 : 401, { "content-type": "application/json" });
+    res.end('{"data":[]}');
+  });
+  await new Promise((r) => keySrv.listen(3343, "127.0.0.1", r));
+  const bad = await api("POST", "/api/settings/check", { provider: "custom", apiKey: "wrong-key", baseUrl: "http://127.0.0.1:3343/v1" });
+  const good = await api("POST", "/api/settings/check", { provider: "custom", apiKey: "good-key", baseUrl: "http://127.0.0.1:3343/v1" });
+  const down = await api("POST", "/api/settings/check", { provider: "custom", baseUrl: "http://127.0.0.1:1/v1" });
+  check("F) an AI key the provider refuses is not called connected", bad.j.ok === false && /refused this key/.test(bad.j.error) && good.j.ok === true && down.j.ok === false && /Couldn't reach/.test(down.j.error), JSON.stringify([bad.j, good.j, down.j]));
+  keySrv.close();
   if (process.env.SHOT) {
     const { chromium } = require("playwright");
     const b = await chromium.launch();

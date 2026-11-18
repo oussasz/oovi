@@ -233,7 +233,19 @@ export default function Marketplace() {
   }
 
   // ---------- connectors ----------
-  const hasServer = (name: string) => servers.some((s) => s.name.toLowerCase() === name.toLowerCase());
+  const serverOf = (name: string) => servers.find((s) => s.name.toLowerCase() === name.toLowerCase());
+  /**
+   * Where a connector really stands: "ready" only once it is signed in and answered (never just because the
+   * button was pressed); "checking" while the user signs in or oovi tests it; "signin" / "error" need a click.
+   */
+  const connState = (s: Server | undefined): "none" | "checking" | "signin" | "error" | "ready" => {
+    if (!s) return "none";
+    const catId = allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id;
+    if (waiting?.id === s.id || (!!catId && busy === `add-${catId}`) || busy === `signin-${s.id}`) return "checking";
+    if (s.auth === "oauth" && !s.signedIn) return "signin";
+    if (s.status === "error") return "error";
+    return s.status === "connected" ? "ready" : "checking";
+  };
 
   const addConnector = (c: CatalogConnector, vals: Record<string, string>) =>
     run(`add-${c.id}`, async () => {
@@ -473,9 +485,32 @@ export default function Marketplace() {
   const shownConnectors = allConnectors.filter((c) => (cat === "all" || !!ql || c.category === cat) && match(c.name, c.description, c.by));
   // Fall back to the built-in item, so hiding one in the admin console never breaks the page.
   const zapier = allConnectors.find((c) => c.id === "zapier") ?? CONNECTORS.find((c) => c.id === "zapier")!;
+  /** The state of a connector the user already added, as a small control: a spinner, Connect, Fix or a check. */
+  const stateControl = (s: Server, big = false) => {
+    const st = connState(s);
+    if (st === "checking")
+      return (
+        <span className="mk-checking" role="status">
+          <span className="mk-spin" aria-hidden /> {t("mk.checking")}
+        </span>
+      );
+    if (st === "signin")
+      return (
+        <button className={big ? "btn primary" : "btn sm primary"} disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
+          {t("mk.connect")}
+        </button>
+      );
+    if (st === "error")
+      return (
+        <button className={big ? "btn" : "btn sm"} onClick={() => (setDetail(null), setView("yours"), setSetupOpen(s.id))} title={s.error}>
+          {t("mk.fix")}
+        </button>
+      );
+    return big ? <span className="tag ok">{t("mk.alreadyConnected", { name: s.name })}</span> : done(t("mk.connectedOk"));
+  };
   const connectorAction = (c: CatalogConnector) =>
-    hasServer(c.name) ? (
-      done(t("mk.added"))
+    serverOf(c.name) ? (
+      stateControl(serverOf(c.name)!)
     ) : c.soon ? (
       <button className="mk-soon" onClick={() => setSoonItem(c)}>
         {t("mk.soon")}
@@ -494,8 +529,8 @@ export default function Marketplace() {
             <small>{t("mk.featured")}</small>
             <h3>{t("mk.featureAppsTitle")}</h3>
             <p>{t("mk.featureApps")}</p>
-            {hasServer(zapier.name) ? (
-              done(t("mk.added"))
+            {serverOf(zapier.name) ? (
+              stateControl(serverOf(zapier.name)!, true)
             ) : (
               <button className="btn" onClick={() => startInstall(zapier)} disabled={!!busy}>
                 {t("mk.connectWith", { name: zapier.name })}
@@ -550,7 +585,7 @@ export default function Marketplace() {
             <div className="mk-grid">
               {registry.slice(0, 30).map((r) => {
                 const c = regToConnector(r);
-                return card(r.name, <Logo src={githubOwnerLogo(r.repo)} />, c.name, c.description, c.by, hasServer(c.name) ? done(t("mk.added")) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
+                return card(r.name, <Logo src={githubOwnerLogo(r.repo)} />, c.name, c.description, c.by, serverOf(c.name) ? stateControl(serverOf(c.name)!) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
               })}
             </div>
           )}
@@ -1144,8 +1179,22 @@ export default function Marketplace() {
                   </dl>
                   {c.soon && <p className="notice small">{c.soon}</p>}
                   <div className="row-btns">
-                    {hasServer(c.name) ? (
-                      <span className="tag ok">{t("mk.added")}</span>
+                    {serverOf(c.name) ? (
+                      <>
+                        {stateControl(serverOf(c.name)!, true)}
+                        {(() => {
+                          const sv = serverOf(c.name)!;
+                          return sv.auth === "oauth" && sv.signedIn ? (
+                            <button className="btn" disabled={!!busy} onClick={() => disconnect(sv)}>
+                              {t("conn.disconnect")}
+                            </button>
+                          ) : (
+                            <button className="btn" disabled={!!busy} onClick={() => removeServer(sv)}>
+                              {t("conn.removeConnection")}
+                            </button>
+                          );
+                        })()}
+                      </>
                     ) : c.soon ? (
                       <button className="btn primary" onClick={() => (setDetail(null), setSoonItem(c))}>
                         {t("mk.soon")}
@@ -1316,10 +1365,8 @@ export default function Marketplace() {
             <div className="row-btns">
               {(["zapier", "pipedream"] as const).map((gid) => {
                 const g = allConnectors.find((c) => c.id === gid) ?? CONNECTORS.find((c) => c.id === gid)!;
-                return hasServer(g.name) ? (
-                  <span key={gid} className="tag ok">
-                    {t("mk.alreadyConnected", { name: g.name })}
-                  </span>
+                return serverOf(g.name) ? (
+                  <span key={gid}>{stateControl(serverOf(g.name)!, true)}</span>
                 ) : (
                   <button
                     key={gid}

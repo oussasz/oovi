@@ -48,6 +48,22 @@ export default function ZapierApps({ serverId }: { serverId: string }) {
     }
   }
 
+  async function remove(app: string) {
+    if (!window.confirm(t("zap.removeConfirm", { app }))) return;
+    setBusy(app);
+    setMsg(null);
+    try {
+      const r = await api<{ ok: boolean; text: string }>(`/api/mcp/${serverId}/zapier`, { method: "POST", body: JSON.stringify({ op: "remove", app }) });
+      // Shown as removed only once Zapier's list says so.
+      await load();
+      setMsg({ ok: r.ok, text: r.ok ? t("zap.removed", { app }) : r.text });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function provision() {
     setBusy("*");
     setMsg(null);
@@ -77,11 +93,16 @@ export default function ZapierApps({ serverId }: { serverId: string }) {
         {POPULAR.map((app) =>
           ready.has(app) ? (
             <span key={app} className="chip on" title={t("zap.isReady")}>
-              <Icon name="check" size={13} /> {app}
+              {busy === app ? <span className="mk-spin" aria-hidden /> : <Icon name="check" size={13} />} {app}
+              {st.mode === "agentic" && (
+                <button type="button" className="chip-x" disabled={!!busy} onClick={() => void remove(app)} aria-label={t("zap.remove", { app })} title={t("zap.remove", { app })}>
+                  ×
+                </button>
+              )}
             </span>
           ) : (
             <button key={app} type="button" className="chip" disabled={!!busy} onClick={() => void connect(app)} title={t("zap.connectTitle", { app })}>
-              <Icon name="plus" size={13} /> {app}
+              {busy === app ? <span className="mk-spin" aria-hidden /> : <Icon name="plus" size={13} />} {app}
             </button>
           ),
         )}
