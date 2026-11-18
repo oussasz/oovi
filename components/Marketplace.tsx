@@ -17,7 +17,7 @@ import { openSettings } from "./SettingsModal";
 
 type Tab = "connectors" | "skills" | "plugins";
 type View = "yours" | "discover";
-type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number };
+type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number; replay?: boolean };
 type Server = {
   id: string;
   name: string;
@@ -823,6 +823,7 @@ export default function Marketplace() {
               <div className="tags">
                 <span className="tag">{t("lib.used", { n: s.uses })}</span>
                 {s.source === "learned" && <span className="tag ok">{t("lib.learned")}</span>}
+                {s.replay && <span className="tag ok" title={t("lib.recordedHint")}>{t("lib.recorded")}</span>}
               </div>
             </div>
             <div className="mk-card-act">

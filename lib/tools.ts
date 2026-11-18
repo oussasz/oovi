@@ -1,3 +1,4 @@
+import { cleanSteps, replay } from "./replay";
 import { zapierNextStep } from "./zapier-core";
 import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
@@ -11,7 +12,7 @@ import type { ToolSpec } from "./llm";
 import { callMcpTool, mcpServerOf, mcpToolKind, mcpToolOf } from "./mcp";
 import { applyMemory } from "./memory";
 import { searchWithNote } from "./search";
-import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
+import { getSkill, listSkills, markUsed, readReplay, saveSkill } from "./skills";
 import type { Settings } from "./settings";
 import { saveShot } from "./store";
 import type { ApprovalItem, BotTools, ToolCall, ToolResult, Workspace } from "./types";
@@ -52,6 +53,19 @@ export const TOOL_SPECS: ToolSpec[] = [
     name: "type",
     description: "Type text into a numbered input element (replaces its contents). Set submit=true to press Enter afterwards. On a dropdown (select), give the text of the choice you want: it is chosen. Tick a checkbox with click.",
     parameters: { type: "object", properties: { element: { type: "integer" }, text: { type: "string" }, submit: { type: "boolean" } }, required: ["element", "text"] },
+  },
+  {
+    name: "replay_skill",
+    description:
+      "Run a skill the user recorded by showing it (skills marked 'recorded'): oovi repeats the user's steps in your browser by itself, quickly, without you reading each page. Give values to type instead of the user's examples, by field name. It stops at the first step it can't find (the page changed, a sign-in): you get the page there and carry on with browser tools.",
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string", description: "The skill's name" },
+        values: { type: "object", additionalProperties: { type: "string" }, description: "Optional: field name → text to type instead of the recorded example, e.g. {\"Email\": \"karim@x.dz\"}" },
+      },
+      required: ["name"],
+    },
   },
   {
     name: "browser_steps",
@@ -279,7 +293,7 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps", "fill_login", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps", "replay_skill", "fill_login", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
 
 /**
  * What runTool needs from the run: its stop signal, where the user is writing from, and how rows
@@ -473,7 +487,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       const skill = getSkill(String(input.name ?? ""));
       if (!skill) return fail(call, `No skill called "${String(input.name ?? "")}". Saved skills: ${listSkills().map((s) => s.name).join(", ") || "none yet"}.`);
       markUsed(skill.slug);
-      return { id: call.id, name: call.name, content: `SKILL: ${skill.name}\n${skill.description}\n\n${skill.body}` };
+      return { id: call.id, name: call.name, content: `SKILL: ${skill.name}\n${skill.description}${skill.replay ? `\n(Recorded by the user: run it with replay_skill "${skill.name}".)` : ""}\n\n${skill.body}` };
     }
     if (call.name === "save_skill") {
       const skill = saveSkill({ name: String(input.name ?? ""), description: String(input.description ?? ""), body: String(input.instructions ?? ""), source: "learned" });
@@ -588,6 +602,20 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       }
       }
       return pageResult(call, sess, 0, true, sessionId, ctx);
+    }
+    case "replay_skill": {
+      const skill = getSkill(String(input.name ?? ""));
+      const steps = skill ? cleanSteps(readReplay(skill.slug)) : [];
+      if (!skill || !steps.length) return fail(call, `${skill ? `"${skill.name}" wasn't recorded by the user, so it can't be replayed: load it with use_skill and follow it.` : `No skill called "${String(input.name ?? "")}".`} Recorded skills: ${listSkills().filter((s) => s.replay).map((s) => s.name).join(", ") || "none"}.`);
+      markUsed(skill.slug);
+      const values = Object.fromEntries(Object.entries(input.values && typeof input.values === "object" ? (input.values as Record<string, unknown>) : {}).map(([k, v]) => [k, String(v ?? "")]));
+      const r = await replay(page, steps, values, ctx.signal);
+      await settle(sess.page);
+      const res = await pageResult(call, sess, 0, true, sessionId, ctx);
+      const head = r.stoppedAt
+        ? `Replayed "${skill.name}" up to step ${r.stoppedAt.index + 1} of ${steps.length}: ${r.stoppedAt.why}. Done so far: ${r.done.join("; ") || "nothing"}. Carry on from here with browser tools (the skill's steps: use_skill "${skill.name}").`
+        : `Replayed "${skill.name}": all ${steps.length} steps done (${r.done.join("; ")}). Check the page below before saying it's done.`;
+      return { ...res, content: `${head}\n${res.content}` };
     }
     case "browser_steps": {
       const raw = Array.isArray(input.steps) ? input.steps.slice(0, 12) : [];
@@ -857,7 +885,7 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
     if (!src.allowed) return true;
   }
   if (!settings.approvals.clicksAndTyping && !usesAccounts) return false;
-  if (call.name === "type" || call.name === "browser_steps" || call.name === "download_file" || call.name === "upload_file") return true;
+  if (call.name === "type" || call.name === "browser_steps" || call.name === "replay_skill" || call.name === "download_file" || call.name === "upload_file") return true;
   if (call.name === "click") {
     if (usesAccounts) return true;
     const el = peekSession(sessionId)?.elements.get(Number(call.input.element));
@@ -909,6 +937,12 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
     return tr("ok.fillLogin", { site: l?.site ?? host, username: l?.username ?? "?" });
   }
   if (call.name === "memory") return tr("ok.memory", { content: String(call.input.content ?? "").slice(0, 400) });
+  if (call.name === "replay_skill") {
+    const sk = getSkill(String(call.input.name ?? ""));
+    const steps = sk ? cleanSteps(readReplay(sk.slug)) : [];
+    const values = (call.input.values && typeof call.input.values === "object" ? call.input.values : {}) as Record<string, unknown>;
+    return [tr("ok.replay", { name: sk?.name ?? String(call.input.name ?? ""), n: steps.length }), ...Object.entries(values).slice(0, 6).map(([k, v]) => `${k}: ${String(v ?? "").slice(0, 120)}`)].join("\n");
+  }
   if (call.name === "browser_steps") {
     // Each step said as the single-action card would say it, one per line.
     const steps = Array.isArray(call.input.steps) ? (call.input.steps as Record<string, unknown>[]).slice(0, 12) : [];

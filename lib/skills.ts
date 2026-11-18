@@ -10,7 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { dataDir } from "./settings";
 
-export type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number; createdAt: number; updatedAt: number };
+export type Skill = { slug: string; name: string; description: string; body: string; source?: string; uses: number; createdAt: number; updatedAt: number; /** Recorded by the user (teach by showing): its steps can be replayed by code (lib/replay.ts). */ replay?: boolean };
 type Meta = Record<string, { uses: number; source?: string; createdAt: number; updatedAt: number; lastUsed?: number }>;
 
 const dir = () => path.join(dataDir(), "skills");
@@ -65,7 +65,7 @@ export function listSkills(): Skill[] {
     try {
       const p = parseSkill(fs.readFileSync(path.join(dir(), slug, "SKILL.md"), "utf8"));
       const m = meta[slug];
-      out.push({ slug, name: p.name || slug, description: p.description || "", body: p.body, source: m?.source, uses: m?.uses ?? 0, createdAt: m?.createdAt ?? 0, updatedAt: m?.updatedAt ?? 0 });
+      out.push({ slug, name: p.name || slug, description: p.description || "", body: p.body, source: m?.source, uses: m?.uses ?? 0, createdAt: m?.createdAt ?? 0, updatedAt: m?.updatedAt ?? 0, ...(fs.existsSync(path.join(dir(), slug, "replay.json")) ? { replay: true } : {}) });
     } catch {
       /* skip unreadable skill */
     }
@@ -78,7 +78,14 @@ export function getSkill(slugOrName: string): Skill | undefined {
   return listSkills().find((s) => s.slug === k || s.slug === slugify(k) || s.name.toLowerCase() === k);
 }
 
-export function saveSkill(input: { name: string; description: string; body: string; source?: string; slug?: string }): Skill {
+/** The recorded steps of a skill (teach by showing), or [] when it has none. */
+export function readReplay(slug: string): unknown[] {
+  if (!SLUG_RE.test(slug)) return [];
+  const j = readJson<{ steps?: unknown[] }>(path.join(dir(), slug, "replay.json"), {});
+  return Array.isArray(j.steps) ? j.steps : [];
+}
+
+export function saveSkill(input: { name: string; description: string; body: string; source?: string; slug?: string; replay?: unknown[] }): Skill {
   const name = input.name.trim().replace(/\s+/g, " ").slice(0, 80);
   const description = input.description.trim().slice(0, 500);
   const body = input.body.trim().slice(0, 40_000);
@@ -88,6 +95,7 @@ export function saveSkill(input: { name: string; description: string; body: stri
   const slug = input.slug && SLUG_RE.test(input.slug) ? input.slug : slugify(name);
   fs.mkdirSync(path.join(dir(), slug), { recursive: true });
   fs.writeFileSync(path.join(dir(), slug, "SKILL.md"), toMd({ name, description, body }));
+  if (input.replay?.length) writeJson(path.join(dir(), slug, "replay.json"), { steps: input.replay.slice(0, 80) });
   const meta = readJson<Meta>(metaFile(), {});
   const now = Date.now();
   meta[slug] = { uses: meta[slug]?.uses ?? 0, source: input.source ?? meta[slug]?.source, createdAt: meta[slug]?.createdAt ?? now, updatedAt: now };

@@ -268,13 +268,13 @@ function LiveView({ chatId, info, bot, name, onChange }: { chatId: string; info:
 
   // Teach by showing: the user's steps while they have control become a skill draft they review.
   const [recording, setRecording] = useState(false);
-  const [draft, setDraft] = useState<{ name: string; description: string; body: string } | null>(null);
+  const [draft, setDraft] = useState<{ name: string; description: string; body: string; replay?: unknown[] } | null>(null);
   const [savedSkill, setSavedSkill] = useState<string | null>(null);
   async function teach(action: "record" | "stopRecord") {
     setBusy(true);
     setErr(null);
     try {
-      const r = await api<{ draft?: { name: string; description: string; body: string }; steps?: string[] }>("/api/browser/control", { method: "POST", body: JSON.stringify({ chat: chatId, bot: botId, action }) });
+      const r = await api<{ draft?: { name: string; description: string; body: string; replay?: unknown[] }; steps?: string[] }>("/api/browser/control", { method: "POST", body: JSON.stringify({ chat: chatId, bot: botId, action }) });
       if (action === "record") {
         setRecording(true);
         setDraft(null);

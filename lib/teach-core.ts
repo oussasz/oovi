@@ -106,7 +106,7 @@ export function skillFromSteps(steps: TeachStep[], name: string, goal = ""): { n
     name: n,
     description: (goal.trim() || `What the user showed, step by step${site ? `, on ${site}` : ""}`).slice(0, 200),
     body: [
-      `The user showed how to do this in the bots' browser${site ? ` on ${site}` : ""}. Follow the same steps, in the same order, with browser tools (browser_steps can do several at once).`,
+      `The user showed how to do this in the bots' browser${site ? ` on ${site}` : ""}. Run it with replay_skill (the steps are done by code, quickly; give other values for the fields when the task needs them). If replay_skill stops at a step, carry on from there with browser tools, following the same steps in the same order.`,
       goal.trim() ? `Goal: ${goal.trim()}` : "",
       "",
       ...lines,

@@ -61,6 +61,13 @@ function answer(body) {
     seen.loginOut = out;
     return text(`LOGIN-RESULT: ${out.replace(/\s+/g, " ").slice(0, 300)}`);
   }
+  const curUser = msgs.filter((m) => m.role === "user" && (typeof m.content === "string" || (Array.isArray(m.content) && m.content.some((b) => b.type === "text")))).at(-1);
+  if (/REPLAY:/.test(JSON.stringify(curUser || ""))) {
+    seen.replayTools = (body.tools || []).map((t) => t.name);
+    if (!lastTool) return call("replay_skill", { name: "Contact form", values: { Nom: "Sara" } });
+    seen.replayOut = out;
+    return text("REPLAY-DONE");
+  }
   if (/SITE:/.test(JSON.stringify(msgs))) {
     // Two clicks on the same site: the first may ask, the second must not once the site is allowed.
     const from = msgs.map((m) => /SITE:/.test(JSON.stringify(m)) && m.role === "user").lastIndexOf(true);
@@ -199,11 +206,18 @@ const check = (name, ok, detail = "") => {
   const stop = await ctl("stopRecord");
   const steps = (stop.steps || []).join("\n");
   check("E) the steps read as a person would say them", /^1\. Open http:\/\/127\.0\.0\.1:\d+\//.test(steps) && /Click “Contact”/.test(steps) && /Type “Karim” in the “Nom” field/.test(steps) && /Type “karim@example\.test” in the “Email” field/.test(steps) && /Press Enter\./.test(steps), steps);
-  check("E) a skill is drafted from them", /^Steps on 127\.0\.0\.1$/.test(stop.draft?.name || "") && /Follow the same steps/.test(stop.draft?.body || ""), JSON.stringify(stop.draft).slice(0, 160));
+  check("E) a skill is drafted from them", /^Steps on 127\.0\.0\.1$/.test(stop.draft?.name || "") && /replay_skill/.test(stop.draft?.body || "") && Array.isArray(stop.draft?.replay) && stop.draft.replay.length > 3, JSON.stringify(stop.draft).slice(0, 160));
   check("E) recording stopped", !stop.recording && (await ctl("stopRecord")).error !== undefined);
   const made = await fetch(`${BASE}/api/skills`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...stop.draft, name: "Contact form" }) });
   check("E) the user saves it as a skill", made.status === 201 && (await api("GET", "/api/skills")).some((k) => k.name === "Contact form"));
   await ctl("release");
+  check("E) the saved skill keeps the recorded steps", (await api("GET", "/api/skills")).some((k) => k.name === "Contact form" && k.replay === true));
+  // G: the bot replays it by code, with another name typed in.
+  await api("POST", "/api/settings", { approvals: { clicksAndTyping: false } });
+  await fetch(`${BASE}/api/chats/${dm}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "REPLAY: send the contact form again for Sara" }) }).then((r) => r.text());
+  for (let i = 0; i < 240 && (await api("GET", `/api/chats/${dm}`)).running; i++) await sleep(250);
+  check("G) bots with a browser get replay_skill", (seen.replayTools || []).includes("replay_skill"));
+  check("G) the recorded steps ran by code, with the new value, in one call", /Replayed "Contact form": all \d+ steps done/.test(seen.replayOut || "") && /typed "Sara" in "Nom"/.test(seen.replayOut || ""), (seen.replayOut || "").slice(0, 300));
 
   // F: fewer approval cards. Clicks ask; "Allow for this chat" covers the site in that chat only;
   // "Always on this site" covers every chat; Settings lists the site.

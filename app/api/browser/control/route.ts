@@ -27,7 +27,7 @@ export async function POST(req: Request) {
   } else if (body?.action === "stopRecord") {
     const steps = await stopRecording(sessionId);
     if (!steps) return Response.json({ error: "Nothing was being recorded." }, { status: 409 });
-    return Response.json({ ...liveInfo(sessionId), steps: describeSteps(steps), draft: skillFromSteps(steps, "") });
+    return Response.json({ ...liveInfo(sessionId), steps: describeSteps(steps), draft: { ...skillFromSteps(steps, ""), replay: steps } });
   } else {
     return Response.json({ error: "action must be take, release, record or stopRecord." }, { status: 400 });
   }

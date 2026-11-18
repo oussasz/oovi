@@ -153,7 +153,7 @@ const PLAN_MODE_TOOLS = new Set([
 ]);
 
 /** Actions in the bots' browser that an approved plan covers. */
-const PLAN_COVERED = new Set(["click", "type", "browser_steps", "fill_login", "download_file", "upload_file"]);
+const PLAN_COVERED = new Set(["click", "type", "browser_steps", "replay_skill", "fill_login", "download_file", "upload_file"]);
 const uploadAllowed = (c: ToolCall, s: Settings) => ((src) => !("error" in src) && src.allowed)(uploadSource(c.input.path, s));
 
 /** For a bot that can act on the user's computer or accounts: one plan, approved once, instead of a card per step. */
@@ -1119,6 +1119,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
     case "browser_steps": return tr("st.typing");
+    case "replay_skill": return tr("st.replay", { name: v(i.name) });
     case "fill_login": return tr("st.signingIn");
     case "go_back": return tr("st.goingBack");
     case "download_file": return tr("st.downloading");
