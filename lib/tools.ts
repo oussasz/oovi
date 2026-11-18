@@ -1,5 +1,6 @@
 import { cleanSteps, replay } from "./replay";
 import { completeZapierRun, zapierNextStep } from "./zapier-core";
+import { isReminder } from "./routines-tools";
 import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
 import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
@@ -872,7 +873,7 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
   // Creating a routine sets up unattended runs: always ask (the orchestrator words the card).
-  if (call.name === "propose_routine") return true;
+  if (call.name === "propose_routine") return !isReminder(call);
   if (call.name === "use_skill") return false;
   // MCP servers can do anything; ask unless the user marked the server as trusted.
   // Connectors: what only reads (search, list, get) never asks; sending, changing, deleting or paying asks,

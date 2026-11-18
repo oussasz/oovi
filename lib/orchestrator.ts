@@ -56,7 +56,7 @@ import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
-import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, proposalOf, runRoutineTool } from "./routines-tools";
+import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, isReminder, proposalOf, runRoutineTool } from "./routines-tools";
 import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
 import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
@@ -667,7 +667,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   lines.push("", "When you work out a reliable way to do a multi-step task the user is likely to ask for again, save it with save_skill.");
   if (tools.some((t) => t.name === "propose_routine")) {
     lines.push(
-      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when. A one-time reminder (\"remind me at 5\", \"in 20 minutes\", \"demain à 9h\", \"فكرني على الخمسة\", \"ذكرني بعد عشر دقايق\") is set_reminder: it is posted where the user asked (this chat, or Telegram when they wrote from Telegram), at no cost. A task to DO later (look up, write, send) is propose_routine with frequency once. Watching something (a price, a listing, a page for news): add watch_url and only_when_new, so nothing is spent or sent while nothing changes.",
+      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when. A one-time reminder (\"ذكرني بعد عشر دقايق\", \"rappelle-moi à 9h\") is propose_routine with reminder; a task to do later, frequency once. Watching something (a price, a listing, a page for news): add watch_url and only_when_new, so nothing is spent or sent while nothing changes.",
     );
   }
   const answersUser = lead ? lead.id === bot.id : true;
@@ -1132,8 +1132,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "memory": return tr("st.memory");
     case "list_groups": return tr("st.groups");
     case "list_routines": return tr("st.routines");
-    case "propose_routine": return tr("st.routine", { name: v(i.name) });
-    case "set_reminder": return tr("st.reminder");
+    case "propose_routine": return typeof i.reminder === "string" && i.reminder.trim() ? tr("st.reminder") : tr("st.routine", { name: v(i.name) });
     case "request_abilities": return tr("st.abilities");
     case "use_project_folder": return tr("st.folder");
     case "propose_team": return tr("st.team", { name: v(i.name) });
@@ -1335,7 +1334,7 @@ async function* runBot(
       const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
       // Auto mode: only what can't be undone or changes the team asks (AUTO_STILL_ASKS).
-      const asks = (c: ToolCall) => (auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c));
+      const asks = (c: ToolCall) => (auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c)) && !isReminder(c);
       // What one OK can cover beyond this once (the bots' browser on a site, one connector action); already
       // allowed for this chat, or the site always, means no card (lib/approval-scope-core.ts).
       const scopeFor = (c: ToolCall) => scopeOf(c.name, peekSession(sessionId)?.page.url(), { destructive: c.name.startsWith("mcp_") && mcpDestructive(c.name) });
@@ -1357,7 +1356,8 @@ async function* runBot(
               // action"), opening an app is part of that OK: its card says so. Otherwise it asks.
               tools.some((t) => t.name === c.name) && "app" in appFor(c) && !(deskGranted && !askEvery)
             : c.name === "propose_routine"
-              ? tools.some((t) => t.name === c.name) && typeof proposalOf(c, bot) !== "string"
+              ? // A plain reminder only posts its text to the user: no card.
+                tools.some((t) => t.name === c.name) && !isReminder(c) && typeof proposalOf(c, bot) !== "string"
             : SPECIALIST_TOOLS.has(c.name)
               ? tools.some((t) => t.name === c.name) && specialistValid(c, chat, bot)
               : c.name === USE_FOLDER_SPEC.name

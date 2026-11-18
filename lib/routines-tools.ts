@@ -29,12 +29,13 @@ export const LIST_ROUTINES_SPEC: ToolSpec = {
 export const PROPOSE_ROUTINE_SPEC: ToolSpec = {
   name: "propose_routine",
   description:
-    "Propose a routine: a task a bot does on its own on a schedule, e.g. 'every morning at 8, summarize my unread email'. The user sees the details and approves it before it's created. Use it when the user asks for something recurring. Each run happens in the routine's own chat, without the user watching, so write a complete, self-contained instruction.",
+    "Propose a routine: a task a bot does on its own on a schedule, e.g. 'every morning at 8, summarize my unread email'. The user sees the details and approves it before it's created. Use it when the user asks for something recurring. Runs are unattended: write a complete, self-contained instruction.",
   parameters: {
     type: "object",
     properties: {
+      reminder: { type: "string", description: "Plain reminder: the text to post later as it is, where the user asked (no card)" },
       name: { type: "string", description: "Short name, e.g. 'Morning email'" },
-      instruction: { type: "string", description: "What the bot does on each run, written as a complete request. The run's reply is delivered to the user by itself, so ask for the message itself (e.g. \"Tell me in Darija the 3 main news of the day\"), in the user's language." },
+      instruction: { type: "string", description: "What the bot does on each run, written as a complete request." },
       frequency: {
         type: "string",
         enum: ["once", "minutes", "hourly", "daily", "weekly"],
@@ -46,34 +47,17 @@ export const PROPOSE_ROUTINE_SPEC: ToolSpec = {
       every_minutes: { type: "integer", enum: [15, 20, 30], description: "minutes only" },
       until: { type: "string", description: "minutes only: HH:MM when the window ends (with `time` as its start), e.g. 08:00 to 20:00" },
       only_when_new: { type: "boolean", description: "Post only when there is something new or worth telling (monitoring, alerts): a run with nothing new sends nothing." },
-      watch_url: { type: "string", description: "A page or feed to check with plain code before each run (a price, a listing, a news page): when it hasn't changed, the run is skipped at no cost; when it changed, the run gets what changed." },
+      watch_url: { type: "string", description: "A page or feed checked by plain code before each run (price, listing, news): unchanged, the run is skipped for free; changed, the run gets what changed." },
       days: { type: "array", items: { type: "string", enum: [...DAYS] }, description: "weekly only: the days" },
       every_hours: { type: "integer", minimum: 1, maximum: 24, description: "hourly only" },
       bot: { type: "string", description: "Name of the bot that runs it (default: you)" },
       send_to_telegram: { type: "boolean", description: "Also send each result to the user's Telegram (only if they asked)" },
     },
-    required: ["name", "instruction", "frequency"],
+    required: ["frequency"],
   },
 };
 
-export const SET_REMINDER_SPEC: ToolSpec = {
-  name: "set_reminder",
-  description:
-    "Remind the user of something later, one time (\"remind me in 10 minutes to turn off the oven\", \"فكرني على الخمسة\", \"ذكرني بعد عشر دقايق\", \"rappelle-moi demain à 9h\"). The reminder text is posted as it is, with no AI run: in this chat with a desktop notification, and on Telegram when the user asked from Telegram or asks for it there. No card: it is set at once. For a task the bot must DO later (look something up, send an email), use propose_routine with frequency once.",
-  parameters: {
-    type: "object",
-    properties: {
-      text: { type: "string", description: "What the user is told, in their language and words, short and clear, e.g. \"⏰ طفي الفرن! البيض راهو واجد\"" },
-      in_minutes: { type: "integer", minimum: 1, maximum: 10080, description: "In this many minutes from now" },
-      time: { type: "string", description: "Or at this 24-hour HH:MM, the user's local time" },
-      date: { type: "string", description: "With time: YYYY-MM-DD (default: today, or tomorrow if the time has passed)" },
-      telegram: { type: "boolean", description: "Also send it to Telegram (set it when the user asks for Telegram; a request made from Telegram goes back there anyway)" },
-    },
-    required: ["text"],
-  },
-};
-
-export const ROUTINE_SPECS: ToolSpec[] = [LIST_ROUTINES_SPEC, PROPOSE_ROUTINE_SPEC, SET_REMINDER_SPEC];
+export const ROUTINE_SPECS: ToolSpec[] = [LIST_ROUTINES_SPEC, PROPOSE_ROUTINE_SPEC];
 export const ROUTINE_TOOLS: ReadonlySet<string> = new Set(ROUTINE_SPECS.map((s) => s.name));
 
 /** propose_routine's arguments as a routine, or an error message for the bot. */
@@ -143,15 +127,18 @@ const when = (ms: number | null | undefined, tz: string) => {
 /** Where the request came from: the chat (results and reminders are posted back there) and whether it came from Telegram. */
 export type RoutineOrigin = { chatId?: string; fromTelegram?: boolean };
 
-/** set_reminder's arguments as a one-time reminder, or an error message for the bot. */
+/** A plain reminder: propose_routine with `reminder` and frequency once (no card, no AI run). */
+export const isReminder = (call: ToolCall) => call.name === "propose_routine" && typeof call.input.reminder === "string" && call.input.reminder.trim() !== "" && (call.input.frequency ?? "once") === "once";
+
+/** A reminder's arguments as a one-time routine, or an error message for the bot. */
 export function reminderOf(call: ToolCall, self: Bot, origin: RoutineOrigin = {}): RoutineInput | string {
   const i = call.input;
-  const text = String(i.text ?? "").trim();
+  const text = String(i.reminder ?? i.text ?? "").trim();
   if (!text) return "Write the reminder's text.";
   if (!(Number(i.in_minutes) > 0) && !String(i.time ?? "").trim()) return "Say when: in_minutes, or time (HH:MM) with an optional date.";
   const p = proposalOf({ ...call, input: { name: text.replace(/\s+/g, " ").slice(0, 40), instruction: text, frequency: "once", in_minutes: i.in_minutes, time: i.time, date: i.date } }, self);
   if (typeof p === "string") return p;
-  const tg = i.telegram === true || origin.fromTelegram === true;
+  const tg = i.send_to_telegram === true || origin.fromTelegram === true;
   return { ...p, remind: true, notifyTelegram: tg, ...(tg ? { postTelegram: true } : {}), ...(origin.chatId ? { postTo: origin.chatId } : {}) };
 }
 
@@ -174,7 +161,7 @@ export function runRoutineTool(call: ToolCall, self: Bot, origin: RoutineOrigin 
     );
   }
 
-  if (call.name === "set_reminder") {
+  if (isReminder(call)) {
     const p = reminderOf(call, self, origin);
     if (typeof p === "string") return bad(p);
     const r = createRoutine(p);

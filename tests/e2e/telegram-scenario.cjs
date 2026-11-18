@@ -65,7 +65,7 @@ async function answerAsync(body) {
   if (/REMIND-TG/.test(u)) {
     seen.remindTools = (body.tools || []).map((t) => t.name);
     if (hasResult) return reply([{ type: "text", text: "REMIND-SET" }], "end_turn");
-    return reply([{ type: "tool_use", id: `toolu_rem_${Date.now()}`, name: "set_reminder", input: { text: "طفي الفرن REMIND-OVEN", in_minutes: 1 } }], "tool_use");
+    return reply([{ type: "tool_use", id: `toolu_rem_${Date.now()}`, name: "propose_routine", input: { reminder: "طفي الفرن REMIND-OVEN", frequency: "once", in_minutes: 1 } }], "tool_use");
   }
   if (/VOICE-NOTE/.test(u)) return reply([{ type: "text", text: /^🎤 VOICE-NOTE/.test(u) ? "VOICE-HEARD" : "VOICE-WRONG" }], "end_turn");
   if (/LONG/.test(u)) {
@@ -309,7 +309,7 @@ const check = (name, ok, detail = "") => {
   const callsBefore = seen.model || 0;
   const rem = await waitFor((m) => sent.indexOf(m) >= n9 && /⏰ طفي الفرن REMIND-OVEN/.test(m.text), 120_000, "reminder on Telegram");
   const dmRem = await (await fetch(`${BASE}/api/chats/dm-${mainId}`)).json();
-  check("a reminder asked from Telegram comes back on Telegram, set without a card", (seen.remindTools || []).includes("set_reminder") && !!rem);
+  check("a reminder asked from Telegram comes back on Telegram, set without a card", (seen.remindTools || []).includes("propose_routine") && !!rem);
   check("the reminder is also in the chat in the app, and cost no model call", dmRem.entries.some((e) => e.kind === "bot" && /⏰ طفي الفرن REMIND-OVEN/.test(e.text)) && (seen.model || 0) === callsBefore, `${(seen.model || 0) - callsBefore} calls`);
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));

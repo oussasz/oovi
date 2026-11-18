@@ -74,7 +74,7 @@ http
         const hasResult = Array.isArray(lastMsg.content) && lastMsg.content.some((x) => x.type === "tool_result");
         const tool = (name, input) => send(200, { ...reply(""), content: [{ type: "tool_use", id: `toolu_${Math.random().toString(36).slice(2)}`, name, input }], stop_reason: "tool_use" });
         const userAsk = textOf(msgs.filter((m) => m.role === "user" && textOf(m).trim()).at(-1) || {});
-        if (/REMIND-APP/.test(userAsk)) return hasResult ? send(200, reply("REMIND-SET")) : tool("set_reminder", { text: "Turn off the oven REMIND-OVEN", in_minutes: 1 });
+        if (/REMIND-APP/.test(userAsk)) return hasResult ? send(200, reply("REMIND-SET")) : tool("propose_routine", { reminder: "Turn off the oven REMIND-OVEN", frequency: "once", in_minutes: 1 });
         if (/LATER-TASK/.test(userAsk)) return hasResult ? send(200, reply("LATER-SET")) : tool("propose_routine", { name: "Later news", instruction: "LATER-RUN: tell me the news", frequency: "once", in_minutes: 1 });
         if (/LATER-RUN/.test(last)) return send(200, reply(/Your reply IS what the user receives/.test(JSON.stringify(b)) ? "LATER-RESULT: here is the news." : "LATER-NOT-TOLD"));
         if (/QUIET-CHECK/.test(last)) return send(200, reply("NO_NEWS"));
