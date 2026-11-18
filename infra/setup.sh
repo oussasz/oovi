@@ -17,7 +17,6 @@ set -euo pipefail
 
 DIR=/opt/oovi-runner
 IMAGE_DEFAULT="ghcr.io/oussasz/oovi-runner:latest"
-WEB_DEFAULT="https://oovi.conuron.com"
 
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
 die() { printf '\n\033[31mStopped: %s\033[0m\n' "$*" >&2; exit 1; }
