@@ -28,7 +28,8 @@ const WEB = path.join(ROOT, "web");
 const NEXT_PORT = 3472;
 const PORT = 3471;
 const BASE = `http://127.0.0.1:${PORT}`;
-const SHOTS = process.argv.includes("--shots");
+const SHOTS_ONLY = process.argv.includes("--shots-only");
+const SHOTS = SHOTS_ONLY || process.argv.includes("--shots");
 const SHOT_DIR = path.join(ROOT, "docs", "mobile");
 const { defaultBrowserType: _ignored, ...IPHONE } = devices["iPhone 15"];
 
@@ -75,6 +76,7 @@ async function main() {
   const jobsOf = (kind) => S.jobs.filter((j) => j.kind === kind);
 
   try {
+    if (SHOTS_ONLY) return await screenshots(browser, sb);
     // ---------- A) sign-in ----------
     let ctx = await browser.newContext({ ...IPHONE, locale: "en-US", deviceScaleFactor: 1 });
     await ctx.grantPermissions(["microphone"], { origin: BASE });
@@ -303,8 +305,9 @@ async function screenshots(browser, sb) {
       const page = await ctx.newPage();
       const shot = async (name, url, prep) => {
         await page.goto(BASE + url);
-        await page.waitForLoadState("networkidle").catch(() => {});
-        await sleep(900);
+        // The chat screens keep a long-poll open, so "network idle" never comes: wait for the screen itself.
+        await page.locator(".m-screen").first().waitFor({ timeout: 8000 }).catch(() => {});
+        await sleep(1200);
         if (prep) await prep(page);
         const file = path.join(SHOT_DIR, `${lang}-${scheme}-${name}.jpg`);
         await page.screenshot({ path: file, type: "jpeg", quality: 82 });

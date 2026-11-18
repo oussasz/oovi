@@ -86,6 +86,8 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const firstScroll = useRef(true);
   const versionRef = useRef(version);
   versionRef.current = version;
+  const runningRef = useRef(false);
+  runningRef.current = !!(chat && runningEntry(chat));
 
   // A direct chat with a bot that has no messages yet is a new chat (the computer creates it on the first message).
   const dmBotId = chatId.startsWith("dm-") ? chatId.slice(3) : null;
@@ -115,6 +117,8 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     let ctrl: AbortController | null = null;
     let fails = 0;
     const loop = async () => {
+      // A bot at work: live at once. Otherwise the chat was just loaded; the wait starts a moment later.
+      if (!runningRef.current) await new Promise((r) => setTimeout(r, 2500));
       while (!stop) {
         if (document.visibilityState !== "visible" || !navigator.onLine) {
           await new Promise((r) => setTimeout(r, 1500));
@@ -357,7 +361,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
             )}
             {it.detail && (
               <details>
-                <summary>…</summary>
+                <summary>{t("chat.approval.details")}</summary>
                 <pre dir="auto">{it.detail.slice(0, 2000)}</pre>
               </details>
             )}

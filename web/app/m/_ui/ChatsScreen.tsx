@@ -55,8 +55,9 @@ export function ChatsScreen() {
           lead={r.unread ? { label: t("chats.read"), icon: "read", color: "var(--m-blue)", onPress: () => m.markSeen(c.id) } : { label: t("chats.unread"), icon: "unread", color: "var(--m-blue)", onPress: () => m.markUnread(c.id) }}
           trail={{ label: r.pinned ? t("chats.unpin") : t("chats.pin"), icon: "pin", color: "var(--m-orange)", onPress: () => m.togglePin(c) }}
         >
-          <Link href={`/m/c/${encodeURIComponent(c.id)}`} className="m-chat" aria-label={`${title}${r.unread ? `, ${t("chats.unreadDot")}` : ""}. ${preview}`}>
+          <Link href={`/m/c/${encodeURIComponent(c.id)}`} className="m-chat">
             <span className={`m-chat__dot${r.unread ? " is-on" : ""}`} aria-hidden />
+            {r.unread && <span className="m-sr-only">{t("chats.unreadDot")}, </span>}
             <span className="m-chat__face" aria-hidden>
               <ChatFace faces={faces} size={52} mood={running ? "working" : undefined} />
             </span>
@@ -66,6 +67,7 @@ export function ChatsScreen() {
                   {title}
                 </span>
                 <span className="m-chat__time">
+                  {r.pinned && <Icon name="pin" size={13} stroke={2.2} className="m-chat__pin" />}
                   {listTime(r.at, now, lang, off, zone)}
                   <Icon name="chevron" size={14} stroke={2.6} className="m-flip" />
                 </span>
@@ -75,7 +77,6 @@ export function ChatsScreen() {
                 {running && !waiting ? <span className="m-chat__busy">{preview || t("chats.working")}</span> : preview}
               </span>
             </span>
-            {r.pinned && <Icon name="pin" size={14} stroke={2} className="m-chat__pin" />}
           </Link>
         </SwipeRow>
       </li>

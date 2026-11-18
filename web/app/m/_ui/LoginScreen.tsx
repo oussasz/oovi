@@ -60,7 +60,7 @@ export function LoginScreen() {
           <div className="m-group m-group--form">
             <label className="m-field">
               <span>{t("login.email")}</span>
-              <input type="email" inputMode="email" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} />
+              <input type="email" inputMode="email" placeholder="name@example.com" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false} dir="ltr" required value={email} onChange={(e) => setEmail(e.target.value)} />
             </label>
             <label className="m-field">
               <span>{t("login.password")}</span>

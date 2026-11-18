@@ -21,7 +21,7 @@ html.m-root {
   --m-tint-soft: rgba(61, 85, 219, 0.12);
   --m-bubble: #e9e9eb;
   --m-red: #d70015;
-  --m-green: #248a3d;
+  --m-green: #1d7a33;
   --m-green-dot: #34c759;
   --m-orange: #c93400;
   --m-blue: #0a60ff;
@@ -496,9 +496,6 @@ html.m-root[lang="ar"] .m-large {
   color: var(--m-tint);
 }
 .m-chat__pin {
-  position: absolute;
-  top: 12px;
-  inset-inline-start: 44px;
   color: var(--m-orange);
 }
 .m-pill {
@@ -1125,7 +1122,7 @@ html.m-root[lang="ar"] .m-large {
   color: var(--m-tint);
 }
 .m-screen--chat .m-nav__row {
-  grid-template-columns: minmax(84px, 1fr) minmax(0, 2.4fr) minmax(84px, 1fr);
+  grid-template-columns: minmax(104px, 1fr) minmax(0, 2.4fr) minmax(104px, 1fr);
 }
 .m-screen--chat .m-nav__title {
   display: flex;
@@ -1875,4 +1872,14 @@ html.m-kb-open .m-composer {
 }
 .mapp[dir="rtl"] :is(.m-row__title, .m-row__sub, .m-chat__name, .m-chat__preview, .m-chathead__name, .m-msg__name, .m-q legend, .m-card__head h2) {
   text-align: right;
+}
+
+/* Narrow phones (iPhone SE 1st gen, 320 pt): the back button keeps only its arrow. */
+@media (max-width: 359px) {
+  .m-nav__back span {
+    display: none;
+  }
+  .m-screen--chat .m-nav__row {
+    grid-template-columns: 48px minmax(0, 1fr) 48px;
+  }
 }

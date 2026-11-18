@@ -220,7 +220,7 @@ export function Composer({
           </div>
           {showStop ? (
             <button type="button" className="m-send m-send--stop" onClick={onStop} disabled={stopping} aria-label={stopping ? t("chat.stopping") : t("chat.stop")}>
-              {stopping ? <Spinner size={16} /> : <Icon name="stop" size={14} stroke={0} />}
+              {stopping ? <Spinner size={16} /> : <Icon name="stop" size={30} stroke={0} />}
             </button>
           ) : (
             <button type="button" className={`m-send${text.trim() && !disabled ? " is-on" : ""}`} onClick={send} disabled={!text.trim() || disabled} aria-label={t("chat.send")}>

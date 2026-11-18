@@ -45,6 +45,10 @@ type Ctx = {
 
 const MobileCtx = createContext<Ctx | null>(null);
 
+/** Screens opened inside the app since it started: Back goes back to the last one rather than to a fixed page. */
+let screensVisited = 0;
+export const canGoBack = () => screensVisited > 1;
+
 export function useM(): Ctx {
   const c = useContext(MobileCtx);
   if (!c) throw new Error("useM outside MobileApp");
@@ -120,6 +124,10 @@ export function MobileApp({ children }: { children: ReactNode }) {
       window.removeEventListener("offline", off);
     };
   }, []);
+
+  useEffect(() => {
+    screensVisited++;
+  }, [pathname]);
 
   // Language, direction and look on the page itself (the website's root page says lang="en").
   useEffect(() => {

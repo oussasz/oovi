@@ -11,7 +11,7 @@ import type { Mood } from "@/lib/faces";
 import { isUnread } from "../_lib/core";
 import { tap } from "../_lib/haptics";
 import { Icon, type IconName } from "./Icon";
-import { useM } from "./MobileApp";
+import { canGoBack, useM } from "./MobileApp";
 
 // ---------- scrolling ----------
 
@@ -62,9 +62,10 @@ export function NavBar({
             <button
               type="button"
               className="m-nav__back"
+              aria-label={back.label}
               onClick={() => {
                 tap();
-                if (window.history.length > 1 && document.referrer.startsWith(window.location.origin)) router.back();
+                if (canGoBack()) router.back();
                 else router.push(back.href);
               }}
             >
