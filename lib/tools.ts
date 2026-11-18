@@ -1,10 +1,11 @@
+import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
 import type { Page } from "playwright-core";
 import fs from "node:fs";
 import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
 import { cleanText, consumeUserUse, isControlled, MAX_REASON, requestTakeover, waitWhileControlled } from "./browser-live";
 import type { ToolSpec } from "./llm";
-import { callMcpTool, mcpServerOf } from "./mcp";
+import { callMcpTool, mcpServerOf, mcpToolKind } from "./mcp";
 import { applyMemory } from "./memory";
 import { searchWithNote } from "./search";
 import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
@@ -72,6 +73,20 @@ export const TOOL_SPECS: ToolSpec[] = [
         },
       },
       required: ["steps"],
+    },
+  },
+  {
+    name: "fill_login",
+    description:
+      "Sign in with the user's saved login for the site open in your browser (they saved it in Settings > Saved logins): oovi types the username, the password and, when the site asks, the two-step code itself. You never see them. Give the element numbers of the username and password fields (or only the code field on a two-step code page); leave them out to let oovi find the fields. Then click the site's sign-in button.",
+    parameters: {
+      type: "object",
+      properties: {
+        username_element: { type: "integer" },
+        password_element: { type: "integer" },
+        code_element: { type: "integer", description: "The two-step code field (6 digits)" },
+        account: { type: "string", description: "Which saved username, when the user has several for this site" },
+      },
     },
   },
   { name: "go_back", description: "Go back to the previous page.", parameters: { type: "object", properties: {} } },
@@ -261,7 +276,7 @@ async function screenshot(page: Page): Promise<string | undefined> {
   }
 }
 
-const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
+const BROWSER_TOOLS = ["open_url", "read_page", "click", "type", "browser_steps", "fill_login", "go_back", "scroll", "extract_list", "scrape_list", "download_file", "upload_file", "request_user_takeover"];
 
 /**
  * What runTool needs from the run: its stop signal, where the user is writing from, and how rows
@@ -294,7 +309,7 @@ const userNote = (sess: Session) => `The user used the browser; the page may hav
 export function toolsFor(t: BotTools): ToolSpec[] {
   // Collecting a public site's list is reading, not acting: every bot that can search has scrape_list
   // (it uses the private browser when a page needs one). Clicking and typing need the browser ability.
-  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : s.name === "scrape_list" ? t.web || t.browser : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC, PAPERS_SPEC] : [])];
+  return [...TOOL_SPECS.filter((s) => (s.name === "web_search" ? t.web : s.name === "scrape_list" ? t.web || t.browser : s.name === "fill_login" ? t.browser && loginSites().length > 0 : BROWSER_TOOLS.includes(s.name) ? t.browser : false)), ...(t.web || t.browser ? [...READER_SPECS, PLACES_SPEC, PAPERS_SPEC] : [])];
 }
 
 async function pageResult(call: ToolCall, sess: Session, offset: number, withElements: boolean, sessionId: string, ctx: RunCtx): Promise<ToolResult> {
@@ -476,6 +491,9 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     const sess = await getSession(sessionId, settings.browser, useAccounts);
     const res = await browserTool(call, sess, settings, sessionId, ctx);
     if (consumeUserUse(sessionId)) res.content = `${userNote(sess)}\n${res.content}`;
+    // A saved password or two-step code never reaches a bot, even when a page shows it back.
+    const hide = loginSites().length ? secretsToHide() : [];
+    if (hide.length) res.content = hideSecrets(res.content, hide);
     return res;
   } catch (e) {
     return fail(call, hint(e, settings));
@@ -603,6 +621,44 @@ async function browserTool(call: ToolCall, sess: Session, settings: Settings, se
       const blank = await waitForContent(sess.page);
       const res = withSlowNote(await pageResult(call, sess, 0, true, sessionId, ctx), blank, false);
       return { ...res, content: `Done, in order: ${done.join("; ")}.\n${res.content}` };
+    }
+    case "fill_login": {
+      let host = "";
+      try {
+        host = new URL(page.url()).hostname;
+      } catch {
+        return fail(call, "Open the site's sign-in page first.");
+      }
+      const login = loginFor(host, typeof input.account === "string" ? input.account : undefined);
+      if (!login) return fail(call, `There is no saved login for ${host}. Ask the user to add one in Settings > Saved logins ([open](oovi://settings/logins)), or to sign in themselves (request_user_takeover).`);
+      const el = (n: unknown) => (Number.isInteger(Number(n)) && n !== undefined && n !== null ? page.locator(`[data-oc-id="${Number(n)}"]`).first() : null);
+      const done: string[] = [];
+      // The code page of a two-step sign-in.
+      if (input.code_element !== undefined) {
+        const code = login.code();
+        if (!code) return fail(call, `The saved login for ${login.site} has no two-step key. Ask the user for the code (ask_user) or to take over.`);
+        const c = el(input.code_element);
+        if (!c || !(await c.count())) return fail(call, `Element ${String(input.code_element)} not found. Get a fresh element list first.`);
+        await c.fill(code, { timeout: 10_000 });
+        done.push("the two-step code");
+      } else {
+        // The password only ever goes into a password field.
+        const pw = el(input.password_element) ?? page.locator('input[type="password"]:visible').first();
+        if (!(await pw.count())) return fail(call, "No password field on this page. Open the site's sign-in page (some sites ask for the username first: fill it, continue, then call fill_login again).");
+        if ((await pw.getAttribute("type").catch(() => "")) !== "password") return fail(call, "That element isn't a password field: the password is only typed into a password field.");
+        const user = el(input.username_element) ?? page.locator('input[type="email"]:visible, input[type="text"]:visible, input[type="tel"]:visible, input:not([type]):visible').first();
+        if (input.username_element !== undefined || ((await user.count()) && (await user.inputValue().catch(() => "x")) === "")) {
+          if (await user.count()) {
+            await user.fill(login.username, { timeout: 10_000 });
+            done.push(`the username (${login.username})`);
+          }
+        }
+        await pw.fill(login.password, { timeout: 10_000 });
+        done.push("the password");
+      }
+      await settle(sess.page);
+      const res = await pageResult(call, sess, 0, true, sessionId, ctx);
+      return { ...res, content: `Filled ${done.join(" and ")} for ${login.site} from the user's saved login (you can't see them). Now click the sign-in or continue button.\n${res.content}` };
     }
     case "scroll": {
       if (page.url() === "about:blank") return fail(call, "Open a page first (open_url).");
@@ -763,13 +819,17 @@ export function needsApproval(call: ToolCall, settings: Settings, sessionId: str
   if (DOC_TOOLS.has(call.name)) return DOC_WRITE_TOOLS.has(call.name) && !!workspace && !workspace.autoEdit;
   // Cloud computer: it's a separate machine, so only bringing a file into the project folder asks.
   if (VM_TOOLS.has(call.name)) return call.name === "vm_download" && !!workspace && !workspace.autoEdit;
+  // Typing the user's saved password into a site: always asks (an approved plan covers it).
+  if (call.name === "fill_login") return true;
   // Saving a skill changes how bots behave later: always ask.
   if (call.name === "save_skill") return true;
   // Creating a routine sets up unattended runs: always ask (the orchestrator words the card).
   if (call.name === "propose_routine") return true;
   if (call.name === "use_skill") return false;
   // MCP servers can do anything; ask unless the user marked the server as trusted.
-  if (call.name.startsWith("mcp_")) return !mcpServerOf(call.name)?.trusted;
+  // Connectors: what only reads (search, list, get) never asks; sending, changing, deleting or paying asks,
+  // unless the user marked the connector as trusted.
+  if (call.name.startsWith("mcp_")) return !mcpServerOf(call.name)?.trusted && mcpToolKind(call.name) === "act";
   // Attaching a file sends it to a website: a file outside Downloads/oovi and outside the folders the user
   // allowed always asks; a file the bots may already read follows the same setting as typing.
   if (call.name === "upload_file") {
@@ -809,6 +869,17 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
   const target = el ? `${el.kind} "${el.label}"` : `element ${String(call.input.element)}`;
   if (call.name === "click") return tr("ok.click", { target, where });
   if (call.name === "type") return `${tr("ok.type", { text: String(call.input.text ?? ""), target, where })}${call.input.submit ? tr("ok.typeEnter") : ""}`;
+  if (call.name === "fill_login") {
+    let host = "";
+    try {
+      host = sess ? new URL(sess.page.url()).hostname : "";
+    } catch {
+      host = "";
+    }
+    const l = host ? loginFor(host, typeof call.input.account === "string" ? call.input.account : undefined) : null;
+    return tr("ok.fillLogin", { site: l?.site ?? host, username: l?.username ?? "?" });
+  }
+  if (call.name === "memory") return tr("ok.memory", { content: String(call.input.content ?? "").slice(0, 400) });
   if (call.name === "browser_steps") {
     // Each step said as the single-action card would say it, one per line.
     const steps = Array.isArray(call.input.steps) ? (call.input.steps as Record<string, unknown>[]).slice(0, 12) : [];

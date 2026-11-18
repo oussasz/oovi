@@ -1148,3 +1148,9 @@ a.tag { text-decoration: none; }
 @keyframes mic-pulse { 50% { opacity: 0.3; } }
 @keyframes mic-turn { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .mic-btn.on::before, .mic-spin { animation: none; } }
+
+/* Settings > Saved logins */
+.logins-list { list-style: none; margin: 8px 0 14px; padding: 0; display: grid; gap: 6px; }
+.logins-list li { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 10px; border: 1px solid var(--border); border-radius: 10px; }
+.logins-list li .btn { margin-inline-start: auto; }
+.logins-form .grid { margin-bottom: 4px; }

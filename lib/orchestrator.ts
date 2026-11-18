@@ -44,6 +44,7 @@ import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
 import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
 import { endsOnPromise, promiseMissing } from "./promise-core";
 import { takeSteers } from "./steer";
+import { loginSites } from "./logins";
 import { unconfirmedClaim } from "./receipts-core";
 import { spendLimitReached } from "./spend";
 import { overCap, runCap } from "./spend-core";
@@ -141,7 +142,7 @@ const PLAN_MODE_TOOLS = new Set([
 ]);
 
 /** Actions in the bots' browser that an approved plan covers. */
-const PLAN_COVERED = new Set(["click", "type", "browser_steps", "download_file", "upload_file"]);
+const PLAN_COVERED = new Set(["click", "type", "browser_steps", "fill_login", "download_file", "upload_file"]);
 const uploadAllowed = (c: ToolCall, s: Settings) => ((src) => !("error" in src) && src.allowed)(uploadSource(c.input.path, s));
 
 /** For a bot that can act on the user's computer or accounts: one plan, approved once, instead of a card per step. */
@@ -541,6 +542,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
     }
     if (bot.tools.browser) {
       lines.push(
+        ...(loginSites().length ? [`The user saved logins for: ${loginSites().slice(0, 40).join(", ")}. To sign in on one of these sites in your browser, use fill_login: oovi types the username, password and two-step code itself (you never see them). Never ask the user for a password.`] : []),
         "Element numbers for click/type come from the latest element list. Several actions on the same page (filling a form, ticking boxes, then its button) go in ONE browser_steps call, not one click/type at a time. After an action, elements marked NEW are what it made appear.",
         "To get a file, use download_file with a direct link, or click its download button. Files are saved to the user's Downloads/oovi folder. Never try to open or run downloaded files.",
         "To put a file into a page (attach it to an email, import it into a dashboard, upload a document or picture), use upload_file with the file's full path: it works with file fields and with buttons that open the file chooser. Never tell the user to choose the file themselves.",
@@ -930,6 +932,14 @@ export function spentSince(chat: Chat, userId: string): { usd: number; credits: 
   return out;
 }
 
+/** Tools whose results are outside text (web pages, search results, connectors' data). */
+const OUTSIDE_TOOLS = /^(read_url|open_url|read_page|click|browser_steps|scroll|web_search|research|scrape_list|extract_list|find_places|find_papers|mcp_.*)$/;
+/** This turn read outside text, or was started by outside data (a routine's web address). */
+function readOutside(steps: Msg[], user?: UserEntry): boolean {
+  if (user?.text.includes("started by a call to the routine's web address")) return true;
+  return steps.some((m) => m.role === "tool" && m.results.some((r) => OUTSIDE_TOOLS.test(r.name) && !r.isError));
+}
+
 /** Tools that exist only with "Control this computer". */
 const DESK_TOOLS = new Set(["open_in_user_browser", "send_screenshot", "open_app", "manage_window"]);
 /**
@@ -1071,6 +1081,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "click": return tr("st.clicking");
     case "type": return tr("st.typing");
     case "browser_steps": return tr("st.typing");
+    case "fill_login": return tr("st.signingIn");
     case "go_back": return tr("st.goingBack");
     case "download_file": return tr("st.downloading");
     case "upload_file": return tr("st.uploading", { what: baseName(i.path) });
@@ -1308,6 +1319,10 @@ async function* runBot(
                 ? tools.some((t) => t.name === c.name) && typeof folderTarget(c.input, chat.workspace) !== "string"
               : ADMIN_TOOLS.has(c.name)
                 ? tools.some((t) => t.name === c.name) && adminValid(c, bot, isMain)
+              : c.name === "memory"
+                ? // After reading web pages, emails or other outside text in this turn, saving to memory asks:
+                  // a page can't plant a lasting "fact" or instruction by itself (prompt injection).
+                  c.input.action !== "remove" && readOutside(entry.steps, lastUser(chat))
                 : // A folder the user already allowed for this task isn't asked about again. Clicks and typing in
                   // the bots' browser are covered by an approved plan (files outside the allowed folders still ask).
                   !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) &&

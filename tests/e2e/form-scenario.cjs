@@ -30,9 +30,12 @@ const FORM = `<!doctype html><html><head><meta charset="utf-8"><title>Contact</t
 <label><input id="a" type="checkbox" aria-label="J'accepte"> J'accepte</label>
 <button id="go" onclick="document.getElementById('out').textContent='SENT: '+document.getElementById('n').value+'|'+document.getElementById('e').value+'|'+document.getElementById('c').selectedOptions[0].text+'|'+(document.getElementById('a').checked?'yes':'no');document.getElementById('thanks').style.display='inline'">Envoyer</button>
 <p id="out">nothing yet</p><button id="thanks" style="display:none">Merci, voir ma demande</button></body></html>`;
+const LOGIN = `<!doctype html><html><head><meta charset="utf-8"><title>Sign in</title></head><body><h1>Sign in</h1>
+<input id="u" type="email" aria-label="Email"><input id="p" type="password" aria-label="Password">
+<button onclick="var ok=document.getElementById('p').value==='S3cret-Pass!42';document.getElementById('out').textContent=(ok?'WELCOME ':'WRONG ')+document.getElementById('u').value+' (typed: '+document.getElementById('p').value+')'">Sign in</button><p id="out">signed out</p></body></html>`;
 http.createServer((req, res) => {
   res.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  res.end(FORM);
+  res.end(req.url.startsWith("/login") ? LOGIN : FORM);
 }).listen(SITE_PORT, "127.0.0.1");
 
 const live = () => ({ balance: 999, dailyUsed: 1, dailyLimit: 500, resetsAt: new Date(Date.now() + 864e5).toISOString(), credits: 1 });
@@ -49,6 +52,15 @@ function answer(body) {
   const out = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
   const prev = msgs[msgs.length - 2];
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
+  if (/LOGIN:/.test(JSON.stringify(msgs))) {
+    seen.loginBodies = [...(seen.loginBodies || []), JSON.stringify(body)];
+    seen.loginTools = (body.tools || []).map((t) => t.name);
+    if (!lastTool) return call("open_url", { url: `${SITE}/login` });
+    if (lastTool === "open_url") return call("fill_login", {});
+    if (lastTool === "fill_login") return call("click", { element: Number((out.match(/\[(\d+)\][^\n]*"Sign in"/) || [])[1]) });
+    seen.loginOut = out;
+    return text(`LOGIN-RESULT: ${out.replace(/\s+/g, " ").slice(0, 300)}`);
+  }
   if (!/FORM:/.test(JSON.stringify(msgs))) return text("ok");
   seen.calls++;
   seen.tools = (body.tools || []).map((t) => t.name);
@@ -137,6 +149,32 @@ const check = (name, ok, detail = "") => {
   check("A) three model calls for the whole task (open, fill and send, answer), not one per field", seen.calls === 3, `${seen.calls} calls`);
   check("B) what the click made appear is marked NEW", /\[\d+\] NEW button "Merci, voir ma demande"/.test(seen.out), (seen.out.match(/INTERACTIVE ELEMENTS[^\n]*/) || [""])[0]);
   check("C) the bot answered", /FORM-RESULT/.test(last?.text || ""), last?.text?.slice(0, 120));
+  // D: a saved login typed by oovi, never seen by the bot.
+  const saved = await fetch(`${BASE}/api/logins`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site: "127.0.0.1", username: "amina@example.test", password: "S3cret-Pass!42" }) });
+  check("D) a login is saved (and listed without its password)", saved.status === 201 && !JSON.stringify(await api("GET", "/api/logins")).includes("S3cret"));
+  await api("POST", "/api/settings", { approvals: { clicksAndTyping: false } });
+  const dm2 = `dm-${bots.find((b) => b.name === "Quill").id}`;
+  const quill = bots.find((b) => b.name === "Quill");
+  await api("PUT", `/api/bots/${quill.id}`, { ...quill, tools: { ...quill.tools, browser: true, web: true } });
+  const runLogin = fetch(`${BASE}/api/chats/${dm2}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "LOGIN: sign in to my dashboard" }) }).then((r) => r.text());
+  // The sign-in asks first, naming the site and the account.
+  let card = null;
+  for (let i = 0; i < 120 && !card; i++) {
+    const c2 = await api("GET", `/api/chats/${dm2}`);
+    card = c2.pending?.approval;
+    if (!c2.running && !card) break;
+    await sleep(500);
+  }
+  await runLogin;
+  check("D) signing in asks first, naming the site and the account", !!card && /127\.0\.0\.1/.test(card.items[0].summary) && /amina@example\.test/.test(card.items[0].summary), card?.items?.[0]?.summary);
+  if (card) {
+    await fetch(`${BASE}/api/chats/${dm2}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(card.items.map((it) => [it.call.id, true])) }) }).then((r) => r.text());
+    for (let i = 0; i < 120 && (await api("GET", `/api/chats/${dm2}`)).running; i++) await sleep(500);
+  }
+  check("D) bots with a browser get fill_login once a login is saved", (seen.loginTools || []).includes("fill_login"));
+  check("D) the site accepted the saved password typed by oovi", /WELCOME amina@example\.test/.test(seen.loginOut || ""), (seen.loginOut || "").match(/WELCOME[^\n]*|WRONG[^\n]*/)?.[0]);
+  check("D) the password never reached the model, even when the page showed it back", !(seen.loginBodies || []).some((b) => b.includes("S3cret-Pass!42")) && /typed: ••••••/.test(seen.loginOut || ""));
+
   log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
   server.kill();
   process.exit(results.every((x) => x.ok) ? 0 : 1);

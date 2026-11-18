@@ -9,12 +9,13 @@ import ComputerFilesSettings from "./ComputerFilesSettings";
 import DesktopControlSettings from "./DesktopControlSettings";
 import Icon, { type IconName } from "./Icon";
 import MemorySettings from "./MemorySettings";
+import SavedLogins from "./SavedLogins";
 import ModelsSettings from "./ModelsSettings";
 import TelegramSettings from "./TelegramSettings";
 import { UpdateCard } from "./Updates";
 
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "profile" | "models" | "memory" | "telegram" | "accounts" | "search" | "browser" | "computer" | "safety" | "language" | "data" | "about";
+type Tab = "profile" | "models" | "memory" | "telegram" | "accounts" | "search" | "browser" | "computer" | "logins" | "safety" | "language" | "data" | "about";
 type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
 /** "Français (French)": the language's own name, plus its name in the UI language when different. */
@@ -39,6 +40,7 @@ const TABS: { id: Tab; icon: IconName }[] = [
   { id: "search", icon: "zoomIn" },
   { id: "browser", icon: "cursor" },
   { id: "computer", icon: "server" },
+  { id: "logins", icon: "user" },
   { id: "safety", icon: "shield" },
   { id: "language", icon: "lang" },
   { id: "data", icon: "box" },
@@ -508,6 +510,7 @@ export default function SettingsForm() {
     search: searchSection,
     browser: browserSection,
     computer: computerSection,
+    logins: <SavedLogins />,
     safety: safetySection,
     language: languageSection,
     data: dataSection,

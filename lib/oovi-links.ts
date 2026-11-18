@@ -3,7 +3,7 @@
 // or a bot's editor. Anything else is not a link. No Node imports here.
 
 const ID_RE = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
-const SETTINGS = ["profile", "models", "memory", "telegram", "accounts", "search", "browser", "computer", "safety", "language", "data", "about"];
+const SETTINGS = ["profile", "models", "memory", "telegram", "accounts", "search", "browser", "computer", "logins", "safety", "language", "data", "about"];
 const MARKET_TABS: Record<string, string> = { connector: "connectors", connectors: "connectors", skill: "skills", skills: "skills", plugin: "plugins", plugins: "plugins" };
 
 /** Where an oovi:// link goes: an in-app path, or a Settings tab. null = not a valid target. */
