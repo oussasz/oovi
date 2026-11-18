@@ -1,6 +1,6 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
-## After 0.12.2 (NOT RELEASED: the owner says when)
+## 0.12.3 (released 2026-11-18, owner said "build the version and publish it, minor update")
 - One answer per question (owner: 5 messages for "anything new in my email or calendar?", long waits, "correction: I told you before…"). Causes: the done-check's extra rounds each posted a new message and the bot thought the user had read its draft; optional offers ("shall I draft a reply?", "shall I check again?") counted as unfinished; the bot answered from snippets before checking. Now: an extra round continues IN the same reply (`pending.continueIn`, `BotEntry.held`; the draft stays in the steps for the model, the user sees only the final text; the bot is told the user never saw the draft, `UNSEEN_DRAFT`); offers of extras are "done" (`DONE_CHECK_SYSTEM`); ordinary requests get one extra round at most (big jobs keep 4); rule "look everything up first, then answer once" in FOR_THE_USER. bigjob scenario K (42/42). Cost job 169,901 (safety CAPTCHA bullet shortened to fit). NOT checked with a real model on a real inbox.
 
 ## 0.12.2 (released 2026-11-18, owner said "build the version and publish it, minor update")
