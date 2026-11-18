@@ -22,6 +22,17 @@ if (!fs.existsSync(sessionFile)) {
   fs.writeFileSync(sessionFile, JSON.stringify({ token, user, onboarded: process.env.OOVI_TEST_ONBOARDED !== "0", savedAt: Date.now() }, null, 1));
 }
 
+// The cloud sync question (components/CloudAsk.tsx) counts as answered "Stay local", so screenshots aren't covered
+// by it. OOVI_TEST_CLOUD_ASK=1 leaves it unanswered.
+if (process.env.OOVI_TEST_CLOUD_ASK !== "1") {
+  const acc = path.join(data, "accounts", "p1test");
+  const f = path.join(acc, "cloud-sync.json");
+  if (!fs.existsSync(f)) {
+    fs.mkdirSync(acc, { recursive: true });
+    fs.writeFileSync(f, JSON.stringify({ enabled: false, asked: true }));
+  }
+}
+
 const dir = process.env.OOVI_STANDALONE || path.resolve(__dirname, "../../.next/standalone");
 process.chdir(dir);
 require(path.join(dir, "server.js"));

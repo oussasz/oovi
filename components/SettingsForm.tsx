@@ -5,6 +5,7 @@ import type { PublicSettings, SettingsPatch } from "@/lib/settings";
 import { api, resizeImage } from "@/lib/client";
 import { LOCALES, NATIVE_NAMES, type Locale } from "@/lib/i18n";
 import { announceLanguage, useI18n } from "./I18n";
+import CloudSyncSettings from "./CloudSyncSettings";
 import ComputerFilesSettings from "./ComputerFilesSettings";
 import DesktopControlSettings from "./DesktopControlSettings";
 import Icon, { type IconName } from "./Icon";
@@ -15,7 +16,7 @@ import TelegramSettings from "./TelegramSettings";
 import { UpdateCard } from "./Updates";
 
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
-type Tab = "profile" | "models" | "memory" | "telegram" | "accounts" | "search" | "browser" | "computer" | "logins" | "safety" | "language" | "data" | "about";
+type Tab = "profile" | "models" | "memory" | "telegram" | "sync" | "accounts" | "search" | "browser" | "computer" | "logins" | "safety" | "language" | "data" | "about";
 type Account = { loggedIn: boolean; cloudUrl: string; appVersion?: string; user: { email: string; name: string; image: string | null } | null };
 
 /** "Français (French)": the language's own name, plus its name in the UI language when different. */
@@ -36,6 +37,7 @@ const TABS: { id: Tab; icon: IconName }[] = [
   { id: "models", icon: "cpu" },
   { id: "memory", icon: "bulb" },
   { id: "telegram", icon: "send" },
+  { id: "sync", icon: "cloud" },
   { id: "accounts", icon: "globe" },
   { id: "search", icon: "zoomIn" },
   { id: "browser", icon: "cursor" },
@@ -500,9 +502,12 @@ export default function SettingsForm() {
           </label>
         </div>
       </div>
-      <div className="card disabled-card" aria-disabled="true">
-        <h3 className="card-h">{t("settings.data.sync")} <span className="badge">{t("settings.data.syncBadge")}</span></h3>
+      <div className="card">
+        <h3 className="card-h">{t("settings.data.sync")}</h3>
         <p className="note">{t("settings.data.syncNote")}</p>
+        <div className="row-btns">
+          <button className="btn" onClick={() => pickTab("sync")}>{t("settings.tab.sync")}</button>
+        </div>
       </div>
     </>
   );
@@ -535,6 +540,7 @@ export default function SettingsForm() {
     models: modelsSection,
     memory: <MemorySettings />,
     telegram: <TelegramSettings />,
+    sync: <CloudSyncSettings />,
     accounts: accountsSection,
     search: searchSection,
     browser: browserSection,
@@ -566,7 +572,7 @@ export default function SettingsForm() {
           <h2>{t(`settings.tab.${current.id}`)}</h2>
           {sections[tab]}
           <div className="savebar">
-            {tab !== "profile" && tab !== "data" && tab !== "models" && tab !== "memory" && tab !== "telegram" && (
+            {tab !== "profile" && tab !== "data" && tab !== "models" && tab !== "memory" && tab !== "telegram" && tab !== "sync" && (
               <button className="btn primary" onClick={() => void save()} disabled={saving}>{t("common.save")}</button>
             )}
             {msg && <span className={msg.ok ? "msg-ok" : "msg-err"}>{msg.text}</span>}

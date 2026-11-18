@@ -1238,3 +1238,10 @@ a.tag { text-decoration: none; }
 .mk-checking { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .chip-x { margin-inline-start: 4px; border: 0; background: none; color: inherit; cursor: pointer; font-size: 15px; line-height: 1; padding: 0 2px; opacity: 0.7; }
 .chip-x:hover { opacity: 1; }
+
+/* Cloud sync: the one question (components/CloudAsk.tsx) and Settings > Sync */
+.modal-window.cloud-ask-window { width: min(560px, 100%); height: auto; max-height: 100%; padding: 28px; }
+.cloud-ask h2 { margin: 0 0 10px; font-size: 20px; }
+.cloud-ask p { line-height: 1.5; }
+.cloud-ask .plain-list { margin-block: 10px 14px; }
+.sync-meter { display: block; width: 100%; max-width: 360px; margin-top: 6px; accent-color: var(--text); }

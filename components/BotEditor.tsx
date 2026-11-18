@@ -53,6 +53,13 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
   const [pictureErr, setPictureErr] = useState<string | null>(null);
   const [wasMain, setWasMain] = useState(false);
   const { t, rich } = useI18n();
+  // Cloud sync on or off (the bot's "where its chats live" choice only matters when it is on).
+  const [syncOn, setSyncOn] = useState<boolean | null>(null);
+  useEffect(() => {
+    api<{ enabled: boolean }>("/api/cloud")
+      .then((x) => setSyncOn(x.enabled))
+      .catch(() => setSyncOn(null));
+  }, []);
   // Computer control: on/off for all bots, and whether this computer supports it at all.
   const [desk, setDesk] = useState<{ available: boolean; enabled: boolean } | null>(null);
   useEffect(() => {
@@ -463,6 +470,29 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
             </div>
           )}
           <p className="note">{t("bot.skillsNote")}</p>
+        </section>
+
+        <section className="card">
+          <h2>{t("bot.where")}</h2>
+          <div className="cf-modes" role="radiogroup" aria-label={t("bot.where")}>
+            {(["cloud", "local"] as const).map((w) => {
+              const on = w === "local" ? d.local === true : d.local !== true;
+              return (
+                <label key={w} className={`cf-mode${on ? " on" : ""}`}>
+                  <input type="radio" name="bot-where" checked={on} onChange={() => set({ local: w === "local" ? true : undefined })} />
+                  <span>
+                    <b>{t(`bot.where.${w}`)}</b>
+                    <small>{t(`bot.where.${w}Hint`)}</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          {syncOn === false && (
+            <p className="hint">
+              {t("bot.where.syncOff")} <SettingsLink tab="sync">{t("settings.tab.sync")}</SettingsLink>
+            </p>
+          )}
         </section>
 
         <div className="savebar">
