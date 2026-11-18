@@ -126,6 +126,8 @@ async function run(A, B, C) {
   check("status lists the device that called (online)", r.body.devices?.some((d) => d.deviceId === "pcA" && d.kind === "desktop" && d.online));
   r = await req("PUT", "/api/v1/cloud/chats/c1", { token: A, body: { baseVersion: 0, chat: { id: "c1" } } });
   check("sync off: saving a chat is refused (sync_off)", r.status === 403 && r.body.code === "sync_off");
+  check("a write from another website is refused", (await req("PUT", "/api/v1/cloud/status", { token: A, headers: { origin: "https://evil.example" }, body: { enabled: true } })).status === 403);
+  check("a write from the site itself passes the origin check", (await req("PUT", "/api/v1/cloud/status", { token: A, headers: { origin: BASE }, body: { enabled: "x" } })).status === 400);
   check("PUT status needs a boolean", (await req("PUT", "/api/v1/cloud/status", { token: A, body: { enabled: "yes" } })).status === 400);
   r = await req("PUT", "/api/v1/cloud/status", { token: A, body: { enabled: true } });
   check("turn sync on", r.status === 200 && r.body.enabled === true);

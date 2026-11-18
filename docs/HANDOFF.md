@@ -1,5 +1,52 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Cloud W: website storage and API for cloud sync (branch `cloud-web`, 2026-11-18, NOT DEPLOYED, NOT RELEASED)
+Part W of `docs/CLOUD-BUILD.md` (the contract; what had to change is listed at its bottom). Nothing uses it until
+the desktop app (part A), the phone app (M) and the runner (R) are built. Deploying it alone changes nothing for
+users EXCEPT the privacy page and terms (see the last point): don't deploy before the owner decides when that text
+goes live.
+- Tables `cloud_sync`, `cloud_chat`, `cloud_vault`, `cloud_job`, `cloud_device`: `web/lib/cloud.ts:30` (made on first
+  use) and `web/scripts/migrate.mjs` (same text). Everything stored is gzip + `sealSecret` (`sealJson`, cloud.ts:98);
+  the key stays in the website's environment (AI_KEY_SECRET or BETTER_AUTH_SECRET). Deleted with the account (CASCADE).
+- Chats: versions, 409 with the server copy to merge (`putChat` cloud.ts:241), 100 MB compressed per account
+  (`quotaAfter` `web/lib/cloud-core.ts:100`; shrinking is always allowed), 4 MB per chat (Vercel's body limit),
+  delete = tombstone without content for 30 days (`deleteChat` cloud.ts:267, purged in `listChats` cloud.ts:205).
+- Jobs: atomic claim with `FOR UPDATE SKIP LOCKED`, 120 s leases, one claimer per chat (advisory lock per chat; Stop
+  still reaches the holder) (`claim` cloud.ts:360). Runner: only jobs older than 5 s with no desktop seen in 60 s,
+  never `needs_computer` (cloud.ts:427). Finished jobs lose their payload at once, rows go after a day.
+- Routes `web/app/api/v1/cloud/...`: status, chats, chats/[chatId], vault, vault/[connectorId], jobs, jobs/claim,
+  jobs/[jobId]/heartbeat, jobs/[jobId]/done, events (long-poll 25 s), runner/claim, runner/jobs/[jobId]/heartbeat|done,
+  runner/chats/[userId]/[chatId], runner/vault/[userId]/[connectorId], runner/ai/[userId]. Account id from the
+  session only (`signedIn` `web/lib/cloud-route.ts:32`: rate limits, blocked accounts, cross-site writes refused).
+  Runner routes: header `x-oovi-runner` vs env `RUNNER_SECRET` in constant time; unset or under 32 characters = the
+  runner API answers 404 (`runnerAuth` cloud-core.ts:117, `runnerOnly` cloud-route.ts:50). Logs carry only an error
+  code, never text (`logCode`).
+- theOovi for the runner: the request handling moved from `web/app/api/v1/ai/messages/route.ts` to
+  `web/lib/ai-messages.ts:238` (`aiMessages`, unchanged except who pays); the old route is now 10 lines and still
+  passes. The runner's calls skip the app-signal update and the welcome-credit network check; `/runner/ai` needs sync
+  on and an existing credit account (`POST /jobs` creates it from the person's own address).
+- Admin: Users list has a "Syncs" column ("Yes · 12 chats · 3.4 MB"), a user's page a "Cloud sync" section (chats,
+  size of limit, last sync, devices), Overview a "Cloud sync" count. Never content.
+- NEEDS A LAWYER'S READ: privacy page section "3. Optional cloud sync" (`web/app/privacy/page.tsx:85`; later sections
+  renumbered 4-15, summary and sections 2, 4, 8, 9, 10 adjusted) and terms section 7 "Optional cloud sync"
+  (`web/app/terms/page.tsx:117`). LEGAL_LAST_UPDATED set to 2026-11-18; TERMS_VERSION NOT changed (changing it asks
+  people to accept again: owner's call). The text describes the feature as built by the contract (phone, runner,
+  connector sign-ins used by the server, admin never reads chats as a rule, not a guarantee): publish it only with it.
+- Verified: `npx tsc --noEmit` (web and root) clean; unit tests 338 (337 pass, 1 skipped: the existing live YouTube
+  test), `tests/unit/cloud.test.mts` 10/10; `npm run build` in web OK; `web/scripts/test-cloud.cjs` 98/98 against a
+  throwaway PostgreSQL 16 on this machine and the BUILT site (`next start`) with a stand-in AI provider: sync off/on,
+  versions and 409, isolation between accounts, 100 MB and 4 MB limits, tombstones, vault, jobs and leases, 16
+  claimers at once (each job once), runner gating, needs_computer back to the desktop, runner AI billing, long-poll,
+  admin pages (no content), privacy page, turn off and account deletion wipe everything, no marker text in the
+  database or the server's logs. How to run it: top of `web/scripts/test-cloud.cjs` (it refuses non-local databases).
+- NOT verified: on Vercel or Neon (only local), under real load, real Azure runner, the desktop and phone clients
+  (not built yet), Safari/Firefox for the admin pages, the in-memory rate limits across several server instances (same
+  weakness as the rest of the site). The CI workflow doesn't run the PostgreSQL test (no Postgres there).
+- Open questions for the owner: when to publish the new privacy text and whether to bump TERMS_VERSION; whether
+  "cloud-only" chats need a flag (contract mentioned it, nothing marks them); the 100 MB limit; sealed rows are not
+  bound to their account (someone with database write access could copy one account's sealed row to another; a
+  per-account key would fix it); a long chat over 4 MB can't sync until the app trims or splits it.
+
 ## 0.12.3 (released 2026-11-18, owner said "build the version and publish it, minor update")
 - One answer per question (owner: 5 messages for "anything new in my email or calendar?", long waits, "correction: I told you before…"). Causes: the done-check's extra rounds each posted a new message and the bot thought the user had read its draft; optional offers ("shall I draft a reply?", "shall I check again?") counted as unfinished; the bot answered from snippets before checking. Now: an extra round continues IN the same reply (`pending.continueIn`, `BotEntry.held`; the draft stays in the steps for the model, the user sees only the final text; the bot is told the user never saw the draft, `UNSEEN_DRAFT`); offers of extras are "done" (`DONE_CHECK_SYSTEM`); ordinary requests get one extra round at most (big jobs keep 4); rule "look everything up first, then answer once" in FOR_THE_USER. bigjob scenario K (42/42). Cost job 169,901 (safety CAPTCHA bullet shortened to fit). NOT checked with a real model on a real inbox.
 

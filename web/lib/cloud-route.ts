@@ -3,7 +3,8 @@
 import { NextResponse } from "next/server";
 import { getRequestSession, rateLimit } from "./api";
 import { isBlocked } from "./credits";
-import { logCode, parseDeviceHeader, runnerAuth } from "./cloud-core";
+import { logCode, parseDeviceHeader, runnerAuth, sameOrigin } from "./cloud-core";
+import { siteUrl } from "./site";
 import { touchDevice } from "./cloud";
 import { DEVICE_HEADER, RUNNER_HEADER, type CloudError } from "./cloud-types";
 
@@ -29,6 +30,8 @@ export type Bucket = keyof typeof LIMITS;
 
 /** The signed-in account (id from the session only), or the answer to send instead. Marks the device seen. */
 export async function signedIn(req: Request, bucket: Bucket): Promise<{ userId: string } | NextResponse> {
+  const hosts = [new URL(req.url).host, new URL(siteUrl()).host];
+  if (!sameOrigin(req.method, req.headers.get("origin"), hosts)) return fail(403, "forbidden", "Not allowed from another website.");
   const session = await getRequestSession(req);
   if (!session) return fail(401, "signed_out", "Sign in first.");
   const userId = session.user.id;

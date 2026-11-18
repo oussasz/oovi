@@ -89,4 +89,25 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
 `infra/azure/` (create, delete). No data on the server, so nothing to copy.
 
 ## Changes to this file
-- (none yet)
+- 2026-11-18, part W (website), while building the API. Additions only; nothing above was removed. The exact shapes
+  are in `web/lib/cloud-types.ts`.
+  - Device header `x-oovi-device: desktop:<id>` or `phone:<id>` on any signed-in cloud request marks the device seen
+    (that is how `/status` lists devices and how the runner knows a desktop is online). Claims mark it too.
+  - Heartbeat and done carry who holds the job: `{deviceId}` (desktop) so another device or account can't extend or
+    end it (409 = lease lost). Claim answers `{job: {jobId, chatId, kind, payload, was, createdAt, leaseUntil}}`;
+    `was` = `needs_computer` tells the desktop the runner couldn't do it.
+  - The runner also needs `POST /runner/jobs/<id>/heartbeat` and `/runner/jobs/<id>/done` (`{runnerId}`), and
+    `PUT /runner/vault/<userId>/<connectorId>` to save a sign-in it refreshed (services that rotate tokens).
+    `/runner/claim` takes `{runnerId}` and answers the job with its `userId`.
+  - `DELETE /vault/<connectorId>`: a connector removed on a computer (no tombstone; the list shows it's gone).
+  - `cloud_chat.data` may be NULL: a deleted chat's tombstone keeps no content. A 409 on a chat also says `deleted`.
+  - Every chat, vault and job route answers 403 `sync_off` while sync is off. A job needs its chat synced (404).
+    At most 100 waiting jobs per account. One chat is at most 4 MB as sent (Vercel refuses bodies over 4.5 MB).
+  - `/events` also takes `jobsAfter=<iso>` and answers `{changed, version, deleted, updatedAt, jobs:[…], now}`: the
+    phone sees a job become `needs_computer` or `failed` without a new chat version.
+  - `GET /chats` answers `now` 5 s early on purpose: a save finishing during the read is listed again, never missed.
+  - Runner claims: "chats marked cloud-only" is NOT built (no field marks them); the runner takes a job when it
+    waited 5 s and no desktop of the account was seen in the last 60 s. Part A/R: say if a flag is needed.
+  - `/runner/ai/<userId>` only for accounts that sync and already have theOovi credits; `POST /jobs` sets up the
+    credits from the person's own address (welcome credits are limited per network, the runner's address isn't theirs).
+  - Signed-in writes coming from another website (an Origin header that isn't the site) are refused (403).

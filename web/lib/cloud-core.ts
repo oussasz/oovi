@@ -144,3 +144,16 @@ export function syncCell(s: { enabled: boolean; chats: number; bytes: number } |
   if (!s || !s.enabled) return "No";
   return `Yes · ${s.chats} ${s.chats === 1 ? "chat" : "chats"} · ${fmtBytes(s.bytes)}`;
 }
+
+/**
+ * Writes made with the website's cookie must come from the website itself (the phone app is same-origin). No
+ * Origin header (the desktop app, the runner, curl) passes: those use a token, which another site can't send.
+ */
+export function sameOrigin(method: string, origin: string | null, ownHosts: string[]): boolean {
+  if (method === "GET" || method === "HEAD" || !origin) return true;
+  try {
+    return ownHosts.includes(new URL(origin).host);
+  } catch {
+    return false;
+  }
+}

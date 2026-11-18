@@ -18,6 +18,7 @@ import {
   parseSince,
   quotaAfter,
   runnerAuth,
+  sameOrigin,
   syncCell,
 } from "../../web/lib/cloud-core.ts";
 
@@ -118,4 +119,13 @@ test("admin view: yes/no, chats and size only", () => {
   assert.equal(fmtBytes(500), "500 B");
   assert.equal(fmtBytes(100 * 1024 * 1024), "100 MB");
   assert.equal(fmtBytes(3 * 1024 ** 3), "3.0 GB");
+});
+
+test("writes with the site's cookie only from the site itself", () => {
+  const own = ["oovi.app", "localhost:3200"];
+  assert.equal(sameOrigin("PUT", "https://oovi.app", own), true);
+  assert.equal(sameOrigin("POST", "https://evil.example", own), false);
+  assert.equal(sameOrigin("DELETE", "null", own), false);
+  assert.equal(sameOrigin("GET", "https://evil.example", own), true, "reads can't be seen by another site anyway");
+  assert.equal(sameOrigin("POST", null, own), true, "the desktop app and the runner send no Origin");
 });
