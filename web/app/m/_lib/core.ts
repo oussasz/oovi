@@ -381,3 +381,25 @@ export function syncUse(status: CloudStatus | null | undefined): number {
 export function backoffMs(fails: number): number {
   return Math.min(30_000, 1000 * 2 ** Math.max(0, fails - 1));
 }
+
+// ---------- time stamps between messages ----------
+
+/** A time stamp goes above a message when it is the first, on a new day, or after an hour of silence. */
+export function needsStamp(prevAt: number | undefined, at: number, tzOffsetMin = 0): boolean {
+  if (prevAt === undefined) return true;
+  return startOfDay(prevAt, tzOffsetMin) !== startOfDay(at, tzOffsetMin) || at - prevAt > 3_600_000;
+}
+
+/** "Today 14:05", "Yesterday 09:12", "Monday 18:00", "3/10/26 18:00". */
+export function stampLabel(at: number, now: number, lang: Lang, today: string, tzOffsetMin = 0, timeZone = "UTC"): string {
+  const locale = lang === "ar" ? "ar-DZ" : lang === "fr" ? "fr-FR" : "en-US";
+  const time = new Date(at).toLocaleTimeString(locale, { hour: "numeric", minute: "2-digit", timeZone, numberingSystem: "latn" });
+  const sameDay = startOfDay(at, tzOffsetMin) === startOfDay(now, tzOffsetMin);
+  return `${sameDay ? today : listTime(at, now, lang, tzOffsetMin, timeZone)} ${time}`;
+}
+
+/** Where to go after signing in: only a page of the phone app (never another site, never back to sign-in). */
+export function safeMobileNext(raw: string | null | undefined): string {
+  if (!raw || raw.includes("..") || raw.includes("\\") || raw.startsWith("/m/login")) return "/m";
+  return /^\/m(\/[\w\-./%?=&]*)?$/.test(raw) ? raw : "/m";
+}

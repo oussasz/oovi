@@ -35,6 +35,15 @@ const nextConfig = {
         source: "/admin/email/preview",
         headers: [{ key: "X-Frame-Options", value: "SAMEORIGIN" }],
       },
+      // The phone app's offline worker (web/public/m/sw.js) serves the app's pages at /m and /m/…; it is never
+      // kept stale by the browser's cache.
+      {
+        source: "/m/sw.js",
+        headers: [
+          { key: "Service-Worker-Allowed", value: "/m" },
+          { key: "Cache-Control", value: "no-cache" },
+        ],
+      },
     ];
   },
 };

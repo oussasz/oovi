@@ -234,3 +234,14 @@ test("computer state, the needs-your-computer banner and sync use", () => {
 test("long-poll backoff grows to 30 s", () => {
   assert.deepEqual([0, 1, 2, 3, 6, 20].map(backoffMs), [1000, 1000, 2000, 4000, 30000, 30000]);
 });
+
+test("time stamps between messages: first, new day, or after an hour", async () => {
+  const { needsStamp, stampLabel } = await import("../../web/app/m/_lib/core.ts");
+  const t0 = Date.UTC(2026, 10, 18, 10, 0);
+  assert.equal(needsStamp(undefined, t0), true);
+  assert.equal(needsStamp(t0, t0 + 30 * 60_000), false);
+  assert.equal(needsStamp(t0, t0 + 61 * 60_000), true);
+  assert.equal(needsStamp(Date.UTC(2026, 10, 17, 23, 50), Date.UTC(2026, 10, 18, 0, 5)), true);
+  assert.match(stampLabel(t0, t0 + 1000, "en", "Today"), /^Today 10:00/);
+  assert.match(stampLabel(t0 - 86_400_000, t0, "fr", "Aujourd’hui"), /^Hier 10:00/);
+});
