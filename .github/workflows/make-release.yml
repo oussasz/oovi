@@ -1,0 +1,35 @@
+# Publishes a GitHub Release (tag, title, notes) from the Actions tab or the API, so a release can be made
+# without the release page. Then run "Build desktop apps" with the same tag: it builds the installers,
+# attaches them to the release and publishes the downloads.
+name: Make a release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Version tag, e.g. v0.12.1"
+        required: true
+      target:
+        description: "Commit or branch to release"
+        required: true
+        default: main
+      notes:
+        description: "Release notes (Markdown)"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          TARGET: ${{ inputs.target }}
+          NOTES: ${{ inputs.notes }}
+        run: |
+          printf '%s' "$NOTES" > notes.md
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$TARGET" --title "oovi ${TAG#v}" --notes-file notes.md
