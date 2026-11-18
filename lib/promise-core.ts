@@ -12,6 +12,8 @@ const FUTURE = [
   /(سأقوم|سأبدأ|سأبحث|سأرسل|سأعمل|سأجهز|سأكتب|سأتحقق|سوف أ|دعني|الآن أبدأ|سأعود)/,
   // Algerian Darija
   /(راني ن|درك ن|دركا ن|دروك ن|ضرك ن|خليني ن|توا ن|نبدا (درك|دركا|دروك)|نروح ن)/,
+  // Darija in Latin letters ("rani nhawes", "drok nb3at")
+  /\b(rani|drok|dork|dorka|derk|khalini|tawa|ghadi|rayeh)\s+n[a-z23579]/i,
 ];
 
 const WAITS_FOR_USER = [
@@ -20,6 +22,7 @@ const WAITS_FOR_USER = [
   /\b(dites[- ]moi|dis[- ]moi|si vous (voulez|souhaitez|préférez)|si tu veux|voulez-vous|veux-tu|j'attends|je reste (disponible|à votre))\b/i,
   /(إذا (أردت|تريد|كنت)|هل تريد|أخبرني|في انتظار|أنتظر)/,
   /(ايلا حبيت|إلا حبيت|قولي|نستنى|راني نستنى|كي تحب)/,
+  /\b(ila 7abit|ila habit|ida 7abit|golili|goulili|9olli|9oli|nestena|nstenna|ki t7eb|ki theb)\b/i,
 ];
 
 /** The last sentence of the reply (or its last line), trimmed. */

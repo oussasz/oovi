@@ -9,8 +9,10 @@ const CLAIMS = [
   /\b(has|have) been (sent|posted|published|booked|paid|submitted|scheduled|uploaded|deleted)\b/i,
   /\b(j'ai|nous avons|c'est)\s+(bien\s+)?(envoyé|publié|posté|réservé|payé|commandé|soumis|répondu|programmé|téléversé|partagé|supprimé|annulé)(?=[\s.,;:!]|$)/i,
   /\b(a été|ont été)\s+(envoyée?s?|publiée?s?|réservée?s?|payée?s?|supprimée?s?)(?=[\s.,;:!]|$)/i,
-  /(أرسلت|قمت بإرسال|نشرت|قمت بنشر|حجزت|دفعت|طلبت|قمت بالرد|رددت|جدولت|حذفت|ألغيت|تم الإرسال|تم النشر|تم الحجز|تم الدفع|تم الحذف)/,
+  /(أرسلت|قمت بإرسال|نشرت|قمت بنشر|حجزت|دفعت|طلبت|قمت بالرد|رددت|جدولت|حذفت|ألغيت|تم الإرسال|تم النشر|تم الحجز|تم الدفع|تم الحذف|تم إرسال|تم نشر|تم حجز|تم دفع|تم حذف|تمت عملية)/,
   /(بعثت|بعثتلك|بعثتها|نشرتها|حجزت|خلصت|سيفطت|صيفطت|بلوكيت|مسحت)/,
+  // Darija in Latin letters ("b3athtlek", "sayfatlek", "7jezt")
+  /\b(b3at(h)?t(lek|lk|ha|hom|o|ou)?|ba3at(h)?t(lek|lk|ha)?|sayfat(lek|lk|ha|hom)?|sifat(lek|lk|ha)?|7jezt|hjezt|khalast|khlast|nsharit|nchrit|msa7t|ms7t|annulit|postit|publiit)\b/i,
 ];
 
 /** The claim the reply makes, or null. Questions and plans ("shall I send", "I will send") are not claims. */

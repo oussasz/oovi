@@ -24,8 +24,12 @@ const exacts = (s: string) => s.match(/[\w.+-]+@[\w-]+\.[\w.]+|https?:\/\/\S+|\+
  * appear exactly in what the user wrote. The other words are not compared: bots often save a fact in another
  * language than the user spoke (Darija heard, English saved), so a word rule would refuse true facts.
  */
+/** Arabic-script digits (٠١٢ and ۰۱۲) as 0-9: a number typed either way is the same number. */
+const latinDigits = (s: string) => s.replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x660)).replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x6f0));
+
 export function unbackedFact(fact: string, userSaid: string): string | null {
-  const saidCompact = userSaid.toLowerCase().replace(/[\s.-]/g, "");
+  const saidCompact = latinDigits(userSaid).toLowerCase().replace(/[\s.-]/g, "");
+  fact = latinDigits(fact);
   for (const x of exacts(fact)) if (!saidCompact.includes(x.toLowerCase())) return `"${x}" isn't in anything the user wrote`;
   return null;
 }

@@ -19,6 +19,19 @@ export function localeOfText(text: string | undefined | null): "ar" | "fr" | nul
   return null;
 }
 
+/**
+ * Algerian Darija written in Latin letters ("3tini la liste ta3 les cafés", "wach t9der tb3tli"): common words,
+ * and words that use 2, 3, 5, 7, 9 for Arabic sounds. Two of them make a message Darija, even with French in it.
+ */
+const DARIJA_LATIN = new Set(
+  "wach wech wesh wsh rani rak raki rahi rahom ana nta nti ntouma 3tini a3tini ta3 t3 dyal diali dial kifach kifeh kifah kifash bghit nheb n7eb nhab khdem khdm liya lia lya bzaf bezaf bzzaf sahbi sa7bi khoya khouya kayen kayn makach makanch chhal ch7al 3la 3lah 3lach drok dork dorka derk daba chouf chof mlih mli7 ndir dir nhawes saha sahit sa7it yaatik ya3tik wahran dzayer mazal ghadi rayeh hadi hada hadou nkemmel kemmel zid golili goulili 9olli gotlek goultlek bach besah bessah".split(" "),
+);
+export function isLatinDarija(text: string | undefined | null): boolean {
+  const words = String(text ?? "").toLowerCase().match(/[a-z0-9'à-ÿ]+/g) ?? [];
+  const n = words.filter((w) => DARIJA_LATIN.has(w) || (/[a-z]/.test(w) && /[23579]/.test(w) && /^[a-z23579']+$/.test(w) && !/^\d+$/.test(w))).length;
+  return n >= 2;
+}
+
 const ENGLISH = new Set("the and you your i i'm it is are to of for in on with can please what how this that me my do does not but if".split(" "));
 
 /**
@@ -29,6 +42,7 @@ const ENGLISH = new Set("the and you your i i'm it is are to of for in on with c
 export function replyLanguage(text: string | undefined | null): string | null {
   const l = localeOfText(text);
   if (l === "ar") return "Arabic (if the user wrote in Algerian Darija, Darija is welcome)";
+  if (isLatinDarija(text)) return "Darija (Algerian), written in Latin letters like the user writes it (French words are fine where Algerians use them)";
   if (l === "fr") return "French";
   const words = String(text ?? "").toLowerCase().match(/[a-z']+/g) ?? [];
   if (words.filter((w) => ENGLISH.has(w)).length >= 2) return "English";
