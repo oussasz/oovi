@@ -19,5 +19,9 @@ export async function register() {
     // The user's setup (bots, groups, skills…, never chats) follows their account to their other computers.
     const { startSetupSync } = await import("./lib/setup-sync");
     startSetupSync();
+    // Optional cloud sync (Settings > Sync, off by default): chats and connectors follow the account, and the
+    // phone's messages are run here while oovi is open.
+    const { startCloudSync } = await import("./lib/cloud-sync");
+    startCloudSync();
   }
 }

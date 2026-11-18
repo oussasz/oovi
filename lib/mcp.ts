@@ -12,6 +12,7 @@ import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js";
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import type { ToolSpec } from "./llm";
+import type { VaultItem } from "./cloud-sync-core";
 import { OoviOAuthProvider, type OAuthData, type OAuthStore } from "./mcp-oauth";
 import { dataDir, decryptSecret, encryptSecret } from "./settings";
 
@@ -192,6 +193,55 @@ export function importServer(s: { id: string; name: string; transport: "stdio" |
     createdAt: s.createdAt ?? Date.now(),
   };
   writeRaw([...all, server]);
+}
+
+/**
+ * Cloud sync (lib/cloud-sync.ts): each connector with its keys and sign-in, decrypted, to be sent to the account's
+ * vault (encrypted there). The sign-in's one-time values (verifier, local return address) stay here.
+ */
+export function vaultConnectors(): (VaultItem & { id: string })[] {
+  return readRaw().map((s) => {
+    const o = readOAuth(s.oauth);
+    const oauth = o.tokens || o.clientInfo ? { ...(o.clientInfo ? { clientInfo: o.clientInfo } : {}), ...(o.tokens ? { tokens: o.tokens } : {}), ...(o.signedInAt ? { signedInAt: o.signedInAt } : {}) } : undefined;
+    return {
+      id: s.id,
+      name: s.name,
+      transport: s.transport,
+      ...(s.command ? { command: s.command } : {}),
+      ...(s.args?.length ? { args: s.args } : {}),
+      ...(s.url ? { url: s.url } : {}),
+      ...(s.auth ? { auth: s.auth } : {}),
+      ...(s.env ? { env: mapValues(s.env, safeDecrypt) } : {}),
+      ...(s.headers ? { headers: mapValues(s.headers, safeDecrypt) } : {}),
+      ...(oauth ? { oauth } : {}),
+      enabled: s.enabled,
+      trusted: s.trusted,
+      createdAt: s.createdAt,
+    };
+  });
+}
+
+/** A connector from the account's vault (made or signed in on another device): added, or replaced, here. */
+export async function applyVaultConnector(id: string, item: VaultItem): Promise<boolean> {
+  if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) return false;
+  const v = validateServer({ name: item.name, transport: item.transport, url: item.url, command: item.command, args: item.args, auth: item.auth, env: item.env, headers: item.headers, enabled: item.enabled, trusted: item.trusted });
+  if (typeof v === "string") return false;
+  const all = readRaw();
+  const cur = all.find((x) => x.id === id);
+  const keep = cur ? readOAuth(cur.oauth) : {};
+  const oauth = item.oauth?.tokens || item.oauth?.clientInfo ? { ...keep, ...item.oauth } : cur?.oauth ? keep : undefined;
+  const server: McpServer = {
+    ...v,
+    id,
+    env: mapValues(v.env, encryptSecret),
+    headers: mapValues(v.headers, encryptSecret),
+    ...(oauth ? { oauth: encryptSecret(JSON.stringify(oauth)) } : {}),
+    createdAt: cur?.createdAt ?? item.createdAt ?? Date.now(),
+    ...(cur?.known ? { known: cur.known } : {}),
+  };
+  writeRaw(cur ? all.map((x) => (x.id === id ? server : x)) : [...all, server]);
+  await disconnect(id);
+  return true;
 }
 
 export async function updateServer(id: string, patch: { enabled?: boolean; trusted?: boolean }): Promise<void> {

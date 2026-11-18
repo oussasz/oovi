@@ -103,6 +103,8 @@ export type Bot = {
   expert?: string;
   /** Kept out of the bots list (sidebar, Home). It still works in its groups and can be @mentioned. */
   hidden?: boolean;
+  /** "On this computer only": chats with this bot are never synced to the account (lib/cloud-sync.ts). */
+  local?: boolean;
   createdAt: number;
 };
 
