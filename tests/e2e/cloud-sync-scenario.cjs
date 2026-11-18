@@ -1,0 +1,379 @@
+// Cloud sync, desktop side (lib/cloud-sync.ts), against the built app and a stand-in oovi website that implements
+// the cloud API of docs/CLOUD-BUILD.md in memory (versions, 409 on a stale save, 413 over the limit, tombstones,
+// jobs with a claim) and theOovi model. Nothing leaves this machine.
+// Checked: sync is off until the user says yes; the old chats are uploaded; a local-only bot's chats (and a group
+// with it) never leave; model keys, search keys, website passwords and the session never appear in anything sent;
+// connectors go to the vault; a change made on another device is merged in; two devices saving at once merge
+// (409); a message sent from the phone is run by this computer and its answer reaches the account; a chat
+// deleted here or there is deleted on the other side; a full account keeps new chats here; turning sync off
+// deletes the account's copy and keeps this computer's.
+// Run: node tests/e2e/cloud-sync-scenario.cjs (after npm run build).
+const http = require("node:http");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { spawn } = require("node:child_process");
+const rules = require("./model-rules.cjs");
+
+const DATA = fs.mkdtempSync(path.join(os.tmpdir(), "oovi-cloud-sync-"));
+const PORT = 3341;
+const CLOUD_PORT = 3397;
+const BASE = `http://127.0.0.1:${PORT}`;
+const TOKEN = "fake-local-test-token";
+const OPENAI_KEY = "sk-test-NEVER-LEAVES-1234567890abcdef";
+const BRAVE_KEY = "BSA-test-NEVER-LEAVES-0987654321";
+const SITE_PASSWORD = "p4ss-NEVER-LEAVES-site";
+const CONNECTOR_SECRET = "conn-secret-TRAVELS-TO-VAULT-42";
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const results = [];
+const check = (name, ok, detail = "") => {
+  results.push(!!ok);
+  console.log(`${ok ? "PASS" : "FAIL"} ${name}${!ok && detail ? ` — ${String(detail).slice(0, 400)}` : ""}`);
+};
+
+// ---------- the stand-in website ----------
+const cloud = { enabled: false, limit: 100 * 1024 * 1024, chats: new Map(), vault: new Map(), jobs: [], devices: new Map(), lastSync: null };
+const sentBodies = []; // every request body the app sent to the website
+// What sync sent (the model's own requests carry the chat the user is having with theOovi: not sync).
+const synced = () => sentBodies.filter((x) => x.path.startsWith("/api/v1/cloud/") || x.path === "/api/v1/setup");
+const counts = { put409: 0, put413: 0, statusOff: 0, chatGets: 0 };
+const nowIso = () => new Date().toISOString();
+const bytes = () => [...cloud.chats.values()].filter((c) => !c.deleted).reduce((n, c) => n + c.bytes, 0);
+const bump = () => (cloud.lastSync = nowIso());
+const live = () => ({ balance: 999, dailyUsed: 1, dailyLimit: 500, resetsAt: new Date(Date.now() + 864e5).toISOString(), credits: 1 });
+const aiStatus = { state: "ok", message: null, displayName: "theOovi", balance: 999, dailyLimit: 500, dailyUsed: 1, resetsAt: new Date(Date.now() + 864e5).toISOString(), plan: { id: "free", name: "Free" }, planUntil: null, maxInputTokens: 100000, links: { subscribe: "", pricing: "", pilot: "", feedback: "" }, pilot: { open: false, eligible: false, status: null, credits: 0 }, desktop: false };
+const lastUserText = (body) => {
+  const m = [...(body.messages || [])].reverse().find((x) => x.role === "user" && (typeof x.content === "string" || (x.content || []).some((b) => b.type === "text")));
+  if (!m) return "";
+  return typeof m.content === "string" ? m.content : m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ");
+};
+// The phone's message (a job) is still running when we look: its answer comes after a short pause.
+const slowFor = /PHONE/;
+
+/** The phone (or another device) adds work: what POST /jobs would store. */
+const queueJob = (chatId, kind, payload) => {
+  const job = { id: `job-${cloud.jobs.length + 1}`, chatId, kind, payload, status: "queued", claimedBy: null, beats: 0 };
+  cloud.jobs.push(job);
+  return job;
+};
+/** Another device saved this chat (what PUT /chats/<id> from the phone or a second computer would do). */
+const otherDeviceSaves = (id, change) => {
+  const cur = cloud.chats.get(id);
+  const chat = change(JSON.parse(JSON.stringify(cur.chat)));
+  chat.updatedAt = Date.now();
+  cloud.chats.set(id, { ...cur, version: cur.version + 1, chat, updatedAt: nowIso(), bytes: JSON.stringify(chat).length });
+};
+
+const site = http.createServer(async (req, res) => {
+  let raw = "";
+  for await (const c of req) raw += c;
+  const send = (code, j) => {
+    res.writeHead(code, { "content-type": "application/json", "cache-control": "no-store" });
+    res.end(j === undefined ? "" : JSON.stringify(j));
+  };
+  const u = new URL(req.url, "http://x");
+  const p = u.pathname;
+  if (raw) sentBodies.push({ path: p, body: raw });
+  if (p === "/api/v1/ai/status") return send(200, aiStatus);
+  if (p === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null } });
+  if (p === "/api/v1/catalog") return send(200, { items: [] });
+  if (p === "/api/v1/setup") return req.method === "GET" ? send(200, { version: 0, items: null }) : send(200, { version: 1 });
+  if (p === "/api/v1/ai/messages" && req.method === "POST") {
+    const b = JSON.parse(raw);
+    const refused = rules.refusal(b);
+    if (refused) return send(400, { error: refused });
+    if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
+    const text = lastUserText(b);
+    if (slowFor.test(text)) await sleep(2500);
+    const said = (text.match(/(HELLO-\w+|PHONE-\w+|SCOUT-\w+|LOCAL-\w+|TEAM-\w+|GONE-\w+|BIG-\w+)/g) || []).at(-1) || "ok";
+    return send(200, { id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content: [{ type: "text", text: `REPLY ${said}` }], stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 10 }, oovi: live() });
+  }
+  if (!p.startsWith("/api/v1/cloud/")) return send(204);
+  if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "signed out" });
+  const dev = req.headers["x-oovi-device"];
+  const b = raw ? JSON.parse(raw) : {};
+  const r = p.slice("/api/v1/cloud".length);
+  let m;
+  if (r === "/status" && req.method === "GET") {
+    const devices = [...cloud.devices.values()].map((d) => ({ ...d, online: Date.now() - Date.parse(d.lastSeen) < 60_000 }));
+    return send(200, { enabled: cloud.enabled, bytes: bytes(), limit: cloud.limit, chats: [...cloud.chats.values()].filter((c) => !c.deleted).length, lastSync: cloud.lastSync, devices });
+  }
+  if (r === "/status" && req.method === "PUT") {
+    cloud.enabled = b.enabled === true;
+    if (!cloud.enabled) {
+      counts.statusOff++;
+      cloud.chats.clear();
+      cloud.vault.clear();
+      cloud.jobs.length = 0;
+    }
+    return send(200, { enabled: cloud.enabled });
+  }
+  if (!cloud.enabled) return send(409, { error: "sync is off" });
+  if (r === "/chats" && req.method === "GET") {
+    const since = u.searchParams.get("since");
+    const list = [...cloud.chats.entries()].filter(([, c]) => !since || c.updatedAt > since).map(([chatId, c]) => ({ chatId, version: c.version, updatedAt: c.updatedAt, deleted: !!c.deleted, bytes: c.bytes }));
+    return send(200, { chats: list, now: nowIso() });
+  }
+  if ((m = r.match(/^\/chats\/([\w-]+)$/))) {
+    const id = m[1];
+    const cur = cloud.chats.get(id);
+    if (req.method === "GET") {
+      counts.chatGets++;
+      return cur && !cur.deleted ? send(200, { chatId: id, version: cur.version, chat: cur.chat }) : send(404, { error: "no chat" });
+    }
+    if (req.method === "PUT") {
+      const curVersion = cur ? cur.version : 0;
+      if (b.baseVersion !== curVersion && !(cur?.deleted && b.baseVersion === 0)) {
+        counts.put409++;
+        return send(409, { version: curVersion, chat: cur && !cur.deleted ? cur.chat : { ...b.chat, entries: [] } });
+      }
+      const size = JSON.stringify(b.chat).length;
+      if (bytes() - (cur && !cur.deleted ? cur.bytes : 0) + size > cloud.limit) {
+        counts.put413++;
+        return send(413, { error: "full" });
+      }
+      cloud.chats.set(id, { version: curVersion + 1, chat: b.chat, updatedAt: nowIso(), bytes: size, deleted: false });
+      bump();
+      return send(200, { version: curVersion + 1 });
+    }
+    if (req.method === "DELETE") {
+      if (cur) cloud.chats.set(id, { ...cur, version: cur.version + 1, deleted: true, chat: null, updatedAt: nowIso(), bytes: 0 });
+      return send(204);
+    }
+  }
+  if (r === "/vault" && req.method === "GET") return send(200, { connectors: [...cloud.vault.entries()].map(([connectorId, v]) => ({ connectorId, version: v.version })) });
+  if ((m = r.match(/^\/vault\/([\w-]+)$/))) {
+    const cur = cloud.vault.get(m[1]);
+    if (req.method === "GET") return cur ? send(200, { connectorId: m[1], version: cur.version, connector: cur.connector }) : send(404, {});
+    if (req.method === "PUT") {
+      if ((cur?.version ?? 0) !== b.baseVersion) return send(409, { version: cur.version, connector: cur.connector });
+      cloud.vault.set(m[1], { version: (cur?.version ?? 0) + 1, connector: b.connector });
+      return send(200, { version: (cur?.version ?? 0) + 1 });
+    }
+    if (req.method === "DELETE") {
+      cloud.vault.delete(m[1]);
+      return send(204);
+    }
+  }
+  if (r === "/jobs/claim" && req.method === "POST") {
+    cloud.devices.set(b.deviceId, { deviceId: b.deviceId, kind: b.kind, lastSeen: nowIso() });
+    const job = cloud.jobs.find((j) => j.status === "queued");
+    if (!job) return send(200, { job: null });
+    job.status = "claimed";
+    job.claimedBy = `${b.kind}:${b.deviceId}`;
+    job.headerDevice = dev;
+    return send(200, { job: { id: job.id, chatId: job.chatId, kind: job.kind, payload: job.payload } });
+  }
+  if ((m = r.match(/^\/jobs\/([\w-]+)\/(heartbeat|done)$/))) {
+    const job = cloud.jobs.find((j) => j.id === m[1]);
+    if (!job) return send(404, {});
+    if (m[2] === "heartbeat") job.beats++;
+    else {
+      job.status = b.status;
+      job.error = b.error;
+    }
+    return send(200, { ok: true });
+  }
+  return send(404, { error: `no route ${req.method} ${r}` });
+});
+
+// ---------- the app ----------
+let server;
+const api = async (method, p, body) => {
+  const r = await fetch(BASE + p, { method, headers: { "content-type": "application/json" }, body: body ? JSON.stringify(body) : undefined });
+  const t = await r.text();
+  let j = null;
+  try {
+    j = JSON.parse(t);
+  } catch {
+    j = t;
+  }
+  return { status: r.status, j };
+};
+const idle = async (chat) => {
+  for (let i = 0; i < 400; i++) {
+    const c = (await api("GET", `/api/chats/${chat}`)).j;
+    if (c && !c.running) return c;
+    await sleep(250);
+  }
+  throw new Error("the run didn't end");
+};
+const say = async (chat, text) => {
+  const r = await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text }) });
+  await r.text();
+  return idle(chat);
+};
+const waitFor = async (what, fn, ms = 30_000) => {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    try {
+      if (await fn()) return true;
+    } catch {
+      /* not yet */
+    }
+    await sleep(300);
+  }
+  console.log(`  (gave up waiting for: ${what})`);
+  return false;
+};
+const syncNow = () => api("POST", "/api/cloud", { action: "sync" });
+const onServer = (id) => {
+  const c = cloud.chats.get(id);
+  return c && !c.deleted ? c.chat : null;
+};
+const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
+
+(async () => {
+  await new Promise((r) => site.listen(CLOUD_PORT, "127.0.0.1", r));
+  server = spawn(process.execPath, [path.join(__dirname, "server.cjs")], {
+    env: { ...process.env, OOVI_TEST_DATA: DATA, OOVI_TEST_CLOUD_ASK: "1", OOVI_CLOUD_URL: `http://127.0.0.1:${CLOUD_PORT}`, OOVI_TELEGRAM_API: "http://127.0.0.1:1", PORT: String(PORT) },
+    stdio: process.env.DEBUG ? "inherit" : "ignore",
+  });
+  try {
+    await waitFor("the app", async () => (await fetch(`${BASE}/api/account`)).ok, 60_000);
+
+    // ---- before: off, and the question waits for an answer ----
+    let st = (await api("GET", "/api/cloud")).j;
+    check("sync is off until the user says yes, and the question is asked once", st.enabled === false && st.asked === false && st.signedIn === true, JSON.stringify(st));
+
+    // ---- this computer's setup: keys, a password, a connector, a local-only bot, old chats ----
+    await api("POST", "/api/settings", { active: "oovi", providers: { openai: { apiKey: OPENAI_KEY } }, search: { provider: "brave", braveKey: BRAVE_KEY } });
+    await api("POST", "/api/logins", { site: "example.com", username: "me@example.com", password: SITE_PASSWORD });
+    const conn = await api("POST", "/api/mcp", { name: "Notes vault", transport: "http", url: "http://127.0.0.1:1/mcp", headers: { Authorization: `Bearer ${CONNECTOR_SECRET}` } });
+    const bots = (await api("GET", "/api/bots")).j;
+    const oovi = bots.find((b) => b.name === "Oovi");
+    const scout = bots.find((b) => b.name === "Scout");
+    const nova = bots.find((b) => b.name === "Nova");
+    const { id: _n, createdAt: _c, ...novaInput } = nova;
+    const novaSaved = await api("PUT", `/api/bots/${nova.id}`, { ...novaInput, local: true });
+    check("a bot can be set to “On this computer only”", novaSaved.status === 200 && novaSaved.j.local === true, JSON.stringify(novaSaved.j).slice(0, 200));
+    const studio = (await api("GET", "/api/chats")).j.find((c) => c.kind === "group" && c.name === "Studio");
+    const dmO = `dm-${oovi.id}`;
+    const dmS = `dm-${scout.id}`;
+    const dmN = `dm-${nova.id}`;
+    await say(dmO, `HELLO-one my key is ${OPENAI_KEY}`);
+    await say(dmS, "SCOUT-one find me a bakery");
+    await say(dmN, "LOCAL-secret talk that never leaves");
+    await say(studio.id, "LOCAL-group message for the whole team");
+    check("before the answer nothing went to the cloud", !sentBodies.some((x) => x.path.startsWith("/api/v1/cloud/")), sentBodies.map((x) => x.path).join(","));
+
+    // ---- the user says "Turn on" ----
+    const on = await api("POST", "/api/cloud", { action: "answer", choice: "cloud" });
+    check("turning sync on tells the account", on.status === 200 && on.j.ok === true && cloud.enabled === true, JSON.stringify(on.j).slice(0, 300));
+    await waitFor("old chats uploaded", () => onServer(dmO) && onServer(dmS) && cloud.vault.size > 0);
+    check("the old chats were uploaded (with their replies)", texts(onServer(dmO)).some((t) => t === "REPLY HELLO-one") && texts(onServer(dmS)).some((t) => /SCOUT-one/.test(t)), JSON.stringify(texts(onServer(dmO))));
+    check("a local-only bot's chat never left this computer", !onServer(dmN) && !synced().some((x) => /LOCAL-secret/.test(x.body)));
+    check("a group with a local-only bot stays on this computer", !onServer(studio.id) && !synced().some((x) => /LOCAL-group/.test(x.body)));
+    const everything = synced().map((x) => x.body).join("\n");
+    check("model keys, search keys, website passwords and the session never leave", ![OPENAI_KEY, BRAVE_KEY, SITE_PASSWORD, TOKEN].some((s) => everything.includes(s)));
+    check("a key typed into a chat is hidden in the uploaded copy", texts(onServer(dmO)).some((t) => /my key is \[hidden\]/.test(t)), JSON.stringify(texts(onServer(dmO))));
+    const v = cloud.vault.get(conn.j.id);
+    check("connectors go to the account's vault, with their sign-in", !!v && v.connector.url === "http://127.0.0.1:1/mcp" && v.connector.headers?.Authorization === `Bearer ${CONNECTOR_SECRET}`, JSON.stringify(v));
+    st = (await api("GET", "/api/cloud?fresh=1")).j;
+    check("Settings shows the status: on, synced chats, space, no problem", st.enabled && st.asked && st.chats.synced >= 2 && st.chats.localOnly >= 2 && st.remote && st.remote.bytes > 0 && st.lastSync && !st.problem, JSON.stringify(st).slice(0, 400));
+    // The app's copy of the chat must still be the same after the upload (nothing rewritten).
+    const localO = (await api("GET", `/api/chats/${dmO}`)).j;
+    check("this computer keeps its own copy, untouched (the key it typed stays here)", texts(localO).some((t) => t.includes(OPENAI_KEY)));
+
+    // ---- a change made on another device is merged in ----
+    otherDeviceSaves(dmO, (c) => {
+      c.entries.push({ id: "other-pc-1", kind: "user", text: "HELLO-from another computer", at: Date.now() });
+      return c;
+    });
+    await syncNow();
+    const afterPull = (await api("GET", `/api/chats/${dmO}`)).j;
+    check("a message added on another device shows here", texts(afterPull).includes("HELLO-from another computer"), JSON.stringify(texts(afterPull)));
+
+    // ---- two devices save at once: merged, nothing lost ----
+    otherDeviceSaves(dmS, (c) => {
+      c.entries.push({ id: "other-pc-2", kind: "user", text: "SCOUT-from the laptop", at: Date.now() });
+      return c;
+    });
+    const before409 = counts.put409;
+    await say(dmS, "SCOUT-two from this computer");
+    await waitFor("both edits on both sides", async () => {
+      const here = texts((await api("GET", `/api/chats/${dmS}`)).j);
+      const there = texts(onServer(dmS));
+      return ["SCOUT-from the laptop", "SCOUT-two from this computer", "REPLY SCOUT-two"].every((t) => here.includes(t) && there.includes(t));
+    });
+    const hereS = texts((await api("GET", `/api/chats/${dmS}`)).j);
+    const thereS = texts(onServer(dmS));
+    check("two devices saving the same chat: both changes kept on both sides", ["SCOUT-from the laptop", "SCOUT-two from this computer", "REPLY SCOUT-two"].every((t) => hereS.includes(t) && thereS.includes(t)), `here ${JSON.stringify(hereS)} there ${JSON.stringify(thereS)} (409s: ${counts.put409 - before409})`);
+
+    // ---- the phone sends a message: this computer runs it ----
+    const job = queueJob(dmO, "message", { text: "PHONE-one what's new?" });
+    const sawRunning = await waitFor("the phone's message running here, visible on the account", () => texts(onServer(dmO)).includes("PHONE-one what's new?") && job.status === "claimed", 20_000);
+    await waitFor("the phone's job done", () => job.status === "done", 30_000);
+    const phoneChat = onServer(dmO);
+    const i = texts(phoneChat).indexOf("PHONE-one what's new?");
+    check("a message from the phone is run by this computer", job.status === "done" && job.claimedBy?.startsWith("desktop:") && i >= 0 && texts(phoneChat).slice(i + 1).includes("REPLY PHONE-one"), `${job.status} ${job.claimedBy} ${JSON.stringify(texts(phoneChat).slice(-3))}`);
+    check("the phone sees it live (the chat is pushed while the bots work)", sawRunning);
+    const localAfterJob = (await api("GET", `/api/chats/${dmO}`)).j;
+    check("…and the answer is in the chat on this computer too", texts(localAfterJob).includes("REPLY PHONE-one"));
+    const devs = (await api("GET", "/api/cloud?fresh=1")).j.remote?.devices || [];
+    check("this computer is listed as an online device", devs.some((d) => d.kind === "desktop" && d.online && d.thisOne), JSON.stringify(devs));
+    // Stop from the phone; a bad job is refused, not run.
+    const stopJob = queueJob(dmO, "stop", {});
+    const badJob = queueJob(dmO, "shell", { text: "rm -rf /" });
+    await waitFor("stop and bad jobs handled", () => stopJob.status === "done" && badJob.status === "failed", 20_000);
+    check("Stop from the phone is handled; an unknown job is refused", stopJob.status === "done" && badJob.status === "failed", `${stopJob.status} ${badJob.status}`);
+    // A job for a local-only bot's chat is never run.
+    const localJob = queueJob(dmN, "message", { text: "LOCAL-should not run" });
+    await waitFor("local job refused", () => localJob.status === "failed", 20_000);
+    const localN = (await api("GET", `/api/chats/${dmN}`)).j;
+    check("a job for a local-only chat is refused", localJob.status === "failed" && !texts(localN).includes("LOCAL-should not run"), localJob.status);
+
+    // ---- moving a bot to "this computer only" takes its chat off the account ----
+    const { id: _s, createdAt: _sc, ...scoutInput } = (await api("GET", `/api/bots/${scout.id}`)).j;
+    await api("PUT", `/api/bots/${scout.id}`, { ...scoutInput, local: true });
+    await say(dmS, "SCOUT-three after going local");
+    await waitFor("Scout's chat gone from the account", () => cloud.chats.get(dmS)?.deleted === true);
+    check("a bot set to local: its chat is removed from the account", cloud.chats.get(dmS)?.deleted === true && !synced().some((x) => /SCOUT-three/.test(x.body)));
+
+    // ---- deletions travel both ways ----
+    const team = (await api("POST", "/api/chats", { kind: "group", name: "Team", memberIds: [oovi.id] })).j;
+    await say(team.id, "TEAM-hello");
+    await waitFor("Team uploaded", () => texts(onServer(team.id)).includes("REPLY TEAM-hello"));
+    await api("DELETE", `/api/chats/${team.id}`);
+    await waitFor("Team deleted on the account", () => cloud.chats.get(team.id)?.deleted === true);
+    check("a chat deleted here is deleted on the account (a tombstone for the other devices)", cloud.chats.get(team.id)?.deleted === true);
+    const gone = (await api("POST", "/api/chats", { kind: "group", name: "Gone", memberIds: [oovi.id] })).j;
+    await say(gone.id, "GONE-hello");
+    await waitFor("Gone uploaded", () => texts(onServer(gone.id)).includes("REPLY GONE-hello"));
+    const g = cloud.chats.get(gone.id);
+    cloud.chats.set(gone.id, { ...g, version: g.version + 1, deleted: true, chat: null, updatedAt: nowIso(), bytes: 0 });
+    await syncNow();
+    const stillThere = await api("GET", `/api/chats/${gone.id}`);
+    check("a chat deleted on another device is deleted here", stillThere.status === 404, String(stillThere.status));
+
+    // ---- the account is full: new chats stay here, Settings says so ----
+    cloud.limit = bytes() + 10;
+    const big = (await api("POST", "/api/chats", { kind: "group", name: "Big", memberIds: [oovi.id] })).j;
+    await say(big.id, "BIG-hello");
+    await syncNow();
+    st = (await api("GET", "/api/cloud")).j;
+    check("over the limit: the new chat stays here and Settings says the space is full", !onServer(big.id) && counts.put413 > 0 && st.problem === "tooBig" && st.tooBig === true, JSON.stringify({ problem: st.problem, tooBig: st.tooBig, n413: counts.put413 }));
+    cloud.limit = 100 * 1024 * 1024;
+
+    // ---- turning it off deletes the account's copy, keeps this computer's ----
+    const off = await api("POST", "/api/cloud", { action: "off" });
+    check("turning sync off deletes the account's copy at once", off.j.ok === true && counts.statusOff === 1 && cloud.chats.size === 0 && cloud.vault.size === 0 && off.j.status.enabled === false, JSON.stringify(off.j).slice(0, 200));
+    const keep = (await api("GET", `/api/chats/${dmO}`)).j;
+    check("…and this computer keeps all its chats", texts(keep).includes("REPLY PHONE-one") && texts(keep).includes("HELLO-from another computer"));
+    const n = sentBodies.length;
+    await say(dmO, "HELLO-after off");
+    queueJob(dmO, "message", { text: "PHONE-after off" });
+    await sleep(5000);
+    check("after turning off: nothing more is sent and no phone work is taken", !sentBodies.slice(n).some((x) => x.path.startsWith("/api/v1/cloud/")), sentBodies.slice(n).map((x) => x.path).join(","));
+  } catch (e) {
+    check("scenario ran to the end", false, e.stack || String(e));
+  } finally {
+    server?.kill();
+    site.close();
+    fs.rmSync(DATA, { recursive: true, force: true });
+  }
+  console.log(`(stand-in website: ${counts.put409} conflicts merged, ${counts.put413} refused as too big, ${counts.chatGets} chat reads)`);
+  const failed = results.filter((r) => !r).length;
+  console.log(`\n${results.length - failed}/${results.length} passed`);
+  process.exit(failed ? 1 : 0);
+})();
