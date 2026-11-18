@@ -207,6 +207,19 @@ async function run(): Promise<SyncResult> {
   }
 }
 
+/**
+ * Cloud runner (runner/): a fresh data folder takes the account's setup as it is, nothing of its own is added
+ * (the starter bots go). What a job changes later (memory, a routine, a lesson) goes back with syncSetup().
+ */
+export async function pullSetup(): Promise<void> {
+  const remote = await cloud<Remote>("/api/v1/setup", { auth: true });
+  const items = remote.items ?? {};
+  await applySetup(collectSetup(), items);
+  // The base is the setup as applied here: only what the job itself changes counts as a change later.
+  writeState({ version: remote.version, base: baseOf(collectSetup()), at: Date.now() });
+  fs.writeFileSync(onboardingFile(), JSON.stringify({ restored: true, at: Date.now() }));
+}
+
 /** Every few minutes while oovi runs (and once soon after start). */
 export function startSetupSync(): void {
   const s = (g.__ooviSetupSync ??= {});

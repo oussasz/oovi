@@ -14,6 +14,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import type { ToolSpec } from "./llm";
 import { OoviOAuthProvider, type OAuthData, type OAuthStore } from "./mcp-oauth";
 import { dataDir, decryptSecret, encryptSecret } from "./settings";
+import { cloudRunner } from "./cloud-flag";
+import { isPrivateHost } from "./browser";
 
 export type McpServer = {
   id: string;
@@ -194,6 +196,27 @@ export function importServer(s: { id: string; name: string; transport: "stdio" |
   writeRaw([...all, server]);
 }
 
+/**
+ * Cloud runner: a connector from the account's vault (its settings and sign-in, sent by the runner for one job),
+ * saved here like one made on this computer. Replaces the key-less copy setup sync made.
+ */
+export type VaultConnector = { id: string; name: string; transport: "http" | "stdio"; url?: string; headers?: Record<string, string>; auth?: "oauth"; oauth?: OAuthData; enabled?: boolean; trusted?: boolean; createdAt?: number };
+export function installVaultConnector(v: VaultConnector): boolean {
+  if (!v || !ID_RE.test(String(v.id)) || v.transport !== "http") return false;
+  const ok = validateServer({ name: v.name, transport: "http", url: v.url, auth: v.auth });
+  if (typeof ok === "string") return false;
+  const headers = Object.fromEntries(Object.entries(v.headers ?? {}).filter(([k, x]) => /^[\w.-]{1,80}$/.test(k) && typeof x === "string"));
+  const server: McpServer = { ...ok, id: v.id, headers: mapValues(headers, encryptSecret), ...(v.auth === "oauth" && v.oauth ? { oauth: encryptSecret(JSON.stringify(v.oauth)) } : {}), enabled: v.enabled !== false, trusted: v.trusted === true, createdAt: v.createdAt ?? Date.now() };
+  writeRaw([...readRaw().filter((x) => x.id !== v.id), server]);
+  return true;
+}
+
+/** Cloud runner: a connector's sign-in as it is now (tokens refresh during a job and go back to the vault). */
+export function vaultSignIn(id: string): OAuthData | null {
+  const s = readRaw().find((x) => x.id === id);
+  return s?.oauth ? readOAuth(s.oauth) : null;
+}
+
 export async function updateServer(id: string, patch: { enabled?: boolean; trusted?: boolean }): Promise<void> {
   const all = readRaw();
   const s = all.find((x) => x.id === id);
@@ -265,6 +288,9 @@ async function connect(s: McpServer): Promise<Conn> {
   if (existing && existing.key === key) return existing;
   if (existing) await disconnect(s.id);
 
+  // Cloud runner: only connectors with a web address on the internet (a program on the user's computer, or an
+  // address on the server's own network, never runs there).
+  if (cloudRunner() && (s.transport !== "http" || isPrivateHost(new URL(s.url ?? "http://localhost").hostname))) throw new Error(`${s.name} runs on the user's computer.`);
   let client = new Client({ name: "oovi", version: "0.4.0" });
   if (s.transport === "stdio") {
     const env: Record<string, string> = { ...getDefaultEnvironment(), ...(s.env ?? {}) };

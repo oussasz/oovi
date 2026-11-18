@@ -3,6 +3,12 @@
 // Node-only code is left out of the edge bundle.
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // The cloud runner (runner/) starts this server for one job: none of the desktop's background work runs.
+    if (process.env.OOVI_CLOUD_RUNNER === "1") {
+      const { startCloudRunner } = await import("./lib/cloud-runner");
+      startCloudRunner();
+      return;
+    }
     // Telegram: answer messages from the user's paired Telegram while oovi is open.
     const { startTelegram } = await import("./lib/telegram");
     startTelegram();

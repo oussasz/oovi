@@ -3,6 +3,7 @@
 // run's events; a stop request aborts it.
 
 import { addSteer, nextSteer } from "./steer";
+import { cloudRunner } from "./cloud-flag";
 import { setDesktopStop } from "./desktop-control";
 import { compactAfterRun, orchestrate, type RunInput } from "./orchestrator";
 import type { ChatEvent } from "./types";
@@ -63,7 +64,8 @@ export function startRun(chatId: string, input: RunInput): boolean {
         const next = nextSteer(chatId);
         if (next) startRun(chatId, next);
         // Nothing next: a long chat is summarized now, while nobody waits for it.
-        else if (!run.ctrl.signal.aborted) setTimeout(() => void compactAfterRun(chatId, () => runs.has(chatId)).catch(() => {}), 1500);
+        // (Not in the cloud runner: its server ends with the job; the computer summarizes later.)
+        else if (!run.ctrl.signal.aborted && !cloudRunner()) setTimeout(() => void compactAfterRun(chatId, () => runs.has(chatId)).catch(() => {}), 1500);
       }, 0);
       // After the listeners, and outside this run's stack: a hook may start another run.
       for (const h of endHooks) {
