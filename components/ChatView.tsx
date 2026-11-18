@@ -3,7 +3,9 @@
 import MicButton from "./MicButton";
 import { INTERRUPTED } from "@/lib/delegations-core";
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { findInChat, quoteOf } from "@/lib/chat-basics-core";
 import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
 import { FACE_COLORS } from "@/lib/faces";
 import { HOSTED_NAME, PROVIDERS, type ProviderId } from "@/lib/providers-meta";
@@ -431,7 +433,40 @@ function LearnedLine({ text, busy, onChange }: { text: string; busy: boolean; on
 }
 
 /** Thumbs up/down and what the bots learned from a reply (self-learning). */
-function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; onUpdate: (e: BotEntry) => void }) {
+/** Reply to, copy, or start a new chat from one message. */
+function MsgTools({ text, onReply, onFork }: { text: string; onReply?: () => void; onFork?: () => void }) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const copy = () =>
+    void navigator.clipboard
+      ?.writeText(text)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1500);
+      })
+      .catch(() => {});
+  return (
+    <>
+      {onReply && (
+        <button type="button" className="icon-btn" title={t("chat.reply")} aria-label={t("chat.reply")} onClick={onReply}>
+          <Icon name="reply" size={15} />
+        </button>
+      )}
+      {text && (
+        <button type="button" className="icon-btn" title={t(copied ? "chat.copied" : "chat.copy")} aria-label={t(copied ? "chat.copied" : "chat.copy")} onClick={copy}>
+          <Icon name={copied ? "check" : "copy"} size={15} />
+        </button>
+      )}
+      {onFork && (
+        <button type="button" className="icon-btn" title={t("chat.fork")} aria-label={t("chat.fork")} onClick={onFork}>
+          <Icon name="branch" size={15} />
+        </button>
+      )}
+    </>
+  );
+}
+
+function ReplyActions({ e, chatId, onUpdate, tools }: { e: BotEntry; chatId: string; onUpdate: (e: BotEntry) => void; tools?: ReactNode }) {
   const { t } = useI18n();
   const [asking, setAsking] = useState(false);
   const [note, setNote] = useState("");
@@ -498,6 +533,7 @@ function ReplyActions({ e, chatId, onUpdate }: { e: BotEntry; chatId: string; on
         </div>
       )}
       <div className="msg-actions">
+        {tools}
         <button type="button" className={`icon-btn${rating === "up" ? " on" : ""}`} aria-pressed={rating === "up"} title={t("chat.good")} aria-label={t("chat.good")} disabled={busy} onClick={() => void send({ rating: rating === "up" ? null : "up" })}>
           <Icon name="thumbUp" size={15} />
         </button>
@@ -557,8 +593,10 @@ function BotMessage(props: {
   queued?: boolean;
   /** Set only for the reply whose question cards wait for the user's answers. */
   onAnswer?: (answers: string[] | null) => void;
+  /** Reply, copy, new chat from here. */
+  tools?: ReactNode;
 }) {
-  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy, queued, onAnswer } = props;
+  const { e, bot, isLast, status, bots, allBots, onShot, isLeader, chatId, onUpdate, onPlanDecision, planBusy, queued, onAnswer, tools } = props;
   const rows = rowsOf(e);
   const running = e.status === "running";
   const [showAll, setShowAll] = useState(false);
@@ -583,7 +621,7 @@ function BotMessage(props: {
   };
 
   return (
-    <div className="msg bot">
+    <div className="msg bot" id={`m-${e.id}`}>
       <div className="msg-face">{bot && <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />}</div>
       <div className="msg-main">
         <div className="msg-meta">
@@ -717,7 +755,8 @@ function BotMessage(props: {
             {typeof e.credits === "number" && <span className="handoff-cost" title={t("chat.teamCostTitle")}>{t("chat.teamCost", { n: e.handoff.length * 4 })}</span>}
           </div>
         )}
-        {e.status === "done" && !!e.text && <ReplyActions e={e} chatId={chatId} onUpdate={onUpdate} />}
+        {e.status === "done" && !!e.text && <ReplyActions e={e} chatId={chatId} onUpdate={onUpdate} tools={tools} />}
+        {e.status !== "done" && e.status !== "running" && !!e.text && tools && <div className="msg-actions">{tools}</div>}
       </div>
     </div>
   );
@@ -843,6 +882,14 @@ export default function ChatView({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   // Messages sent while the bots work: shown here until the working bot reads them (lib/steer.ts).
   const [queued, setQueued] = useState<{ id: string; text: string }[]>([]);
+  const router = useRouter();
+  // Replying to one message: it is quoted above the new one, for the user and the bots.
+  const [replyTo, setReplyTo] = useState<{ id: string; who: string; text: string } | null>(null);
+  // Find in this chat (Ctrl+F): the matching messages and the one shown.
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQ, setFindQ] = useState("");
+  const [findAt, setFindAt] = useState(0);
+  const [pinned, setPinned] = useState(false);
   /** The group whose request is being answered from this chat (its card's buttons wait). */
   const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -931,6 +978,7 @@ export default function ChatView({ id }: { id: string }) {
         const [c, b, s] = await Promise.all([api<ChatWithState>(`/api/chats/${id}`), api<Bot[]>("/api/bots"), api<PublicSettings>("/api/settings")]);
         if (!alive) return;
         setChat(c);
+        setPinned(!!c.pinned);
         setBots(b);
         setSettings(s);
         try {
@@ -949,6 +997,55 @@ export default function ChatView({ id }: { id: string }) {
       ctrlRef.current?.abort();
     };
   }, [id, stream]);
+
+  // Find in this chat: the matching messages, and moving between them.
+  const findHits = useMemo(() => (chat && findOpen && findQ.trim() ? findInChat(chat, findQ) : []), [chat, findOpen, findQ]);
+  const findCur = findHits.length ? findHits[Math.min(findAt, findHits.length - 1)] : undefined;
+  useEffect(() => {
+    if (!findCur) return;
+    const el = document.getElementById(`m-${findCur}`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    el.classList.add("find-current");
+    return () => el.classList.remove("find-current");
+  }, [findCur]);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+        setTimeout(() => (document.getElementById("chat-find") as HTMLInputElement | null)?.select(), 0);
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, []);
+  // Opened from a search result (/c/<chat>#m-<message>): show that message once the chat is there.
+  const jumped = useRef("");
+  const hasChat = !!chat;
+  useEffect(() => {
+    if (!hasChat) return;
+    const jump = () => {
+      const h = location.hash.slice(1);
+      if (!h.startsWith("m-") || jumped.current === h) return;
+      jumped.current = h;
+      setTimeout(() => {
+        const el = document.getElementById(h);
+        if (!el) return;
+        stick.current = false;
+        el.scrollIntoView({ block: "center" });
+        el.classList.add("find-current");
+        setTimeout(() => el.classList.remove("find-current"), 2500);
+      }, 60);
+    };
+    jump();
+    const again = () => {
+      jumped.current = "";
+      jump();
+    };
+    window.addEventListener("hashchange", again);
+    return () => window.removeEventListener("hashchange", again);
+  }, [hasChat]);
 
   // Pick up work that starts elsewhere: the main bot giving this group a task,
   // a group's report arriving in the main bot's chat, or a Telegram message.
@@ -1215,7 +1312,9 @@ export default function ChatView({ id }: { id: string }) {
     for (const u of uploads) if (u.preview) URL.revokeObjectURL(u.preview);
     setUploads([]);
     setFileErr(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, plan: planMode, ...(attachments.length ? { attachments } : {}) }) });
+    const quoted = replyTo?.id;
+    setReplyTo(null);
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, effort, deep, plan: planMode, ...(attachments.length ? { attachments } : {}), ...(quoted ? { replyTo: quoted } : {}) }) });
   }
 
   /** A message written while the bots work: it waits for their next step, shown under the conversation meanwhile. */
@@ -1234,8 +1333,10 @@ export default function ChatView({ id }: { id: string }) {
     setUploads([]);
     setQueued((q) => [...q, { id: entryId, text: t || tr("chat.queuedFiles") }]);
     stick.current = true;
+    const quoted = replyTo?.id;
+    setReplyTo(null);
     try {
-      const r = await fetch(`/api/chats/${id}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, entryId, ...(attachments.length ? { attachments } : {}) }) });
+      const r = await fetch(`/api/chats/${id}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: t, entryId, ...(attachments.length ? { attachments } : {}), ...(quoted ? { replyTo: quoted } : {}) }) });
       if (r.status === 202) return;
       // The run ended meanwhile: this started a new one; follow it like any message.
       if (r.ok && r.body) {
@@ -1317,6 +1418,37 @@ export default function ChatView({ id }: { id: string }) {
       setError((e as Error).message);
     }
   }
+
+  /** A new chat with this conversation up to one message: the original stays as it is. */
+  async function forkAt(entryId: string) {
+    try {
+      const r = await api<{ id: string }>(`/api/chats/${id}/fork`, { method: "POST", body: JSON.stringify({ entryId }) });
+      refreshSidebar();
+      router.push(`/c/${r.id}`);
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }
+
+  async function togglePin() {
+    const next = !pinned;
+    setPinned(next);
+    try {
+      await api(`/api/chats/${id}`, { method: "PUT", body: JSON.stringify({ pinned: next }) });
+      refreshSidebar();
+    } catch (e) {
+      setPinned(!next);
+      setError((e as Error).message);
+    }
+  }
+
+  const replyHere = (en: ChatWithState["entries"][number]) => {
+    setReplyTo(quoteOf(en, (b) => bots.find((x) => x.id === b)?.name ?? tr("chat.aBot")));
+    taRef.current?.focus();
+  };
+  const toolsFor = (en: ChatWithState["entries"][number]) => (
+    <MsgTools text={en.text} onReply={chat?.routine ? undefined : () => replyHere(en)} onFork={chat?.routine || running ? undefined : () => void forkAt(en.id)} />
+  );
 
   function toggleCanvas() {
     const next = !showCanvas;
@@ -1465,7 +1597,7 @@ export default function ChatView({ id }: { id: string }) {
             solo && <Face face={solo.face} mood={botMood(chat, solo.id)} size={46} />
           )}
           <div className="chat-title">
-            <h1>{isGroup || chat.routine ? chat.name : (solo?.name ?? t("common.bot"))}</h1>
+            <h1>{isGroup || chat.routine || chat.forkOf ? chat.name : (solo?.name ?? t("common.bot"))}</h1>
             <p>
               {isGroup
                 ? lead
@@ -1475,6 +1607,17 @@ export default function ChatView({ id }: { id: string }) {
             </p>
           </div>
           <div className="head-actions">
+            <button className={`icon-btn${findOpen ? " on" : ""}`} onClick={() => (findOpen ? setFindOpen(false) : (setFindOpen(true), setTimeout(() => (document.getElementById("chat-find") as HTMLInputElement | null)?.focus(), 0)))} title={t("chat.find")} aria-label={t("chat.find")} aria-pressed={findOpen}>
+              <Icon name="search" />
+            </button>
+            <button className={`icon-btn${pinned ? " on" : ""}`} onClick={() => void togglePin()} title={t(pinned ? "chat.unpin" : "chat.pin")} aria-label={t(pinned ? "chat.unpin" : "chat.pin")} aria-pressed={pinned}>
+              <Icon name="pin" />
+            </button>
+            {chat.entries.length > 0 && (
+              <a className="icon-btn" href={`/api/chats/${id}/export`} download title={t("chat.export")} aria-label={t("chat.export")}>
+                <Icon name="download" />
+              </a>
+            )}
             <ProjectFolder chat={chat} running={running} onChange={(c) => setChat(c)} />
             <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : chat.routine ? "/routines" : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")} aria-label={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")}>
               <Icon name="edit" />
@@ -1490,6 +1633,40 @@ export default function ChatView({ id }: { id: string }) {
             </button>
           </div>
         </header>
+        {findOpen && (
+          <div className="find-bar" role="search">
+            <Icon name="search" size={15} />
+            <input
+              id="chat-find"
+              type="search"
+              dir="auto"
+              value={findQ}
+              placeholder={t("chat.findPh")}
+              aria-label={t("chat.find")}
+              onChange={(e) => {
+                setFindQ(e.target.value);
+                setFindAt(0);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") setFindOpen(false);
+                else if (e.key === "Enter" && findHits.length) {
+                  e.preventDefault();
+                  setFindAt((a) => (e.shiftKey ? (a - 1 + findHits.length) % findHits.length : (a + 1) % findHits.length));
+                }
+              }}
+            />
+            <span className="find-count" aria-live="polite">{findQ.trim() ? (findHits.length ? t("chat.findCount", { n: Math.min(findAt, findHits.length - 1) + 1, of: findHits.length }) : t("chat.findNone")) : ""}</span>
+            <button type="button" className="icon-btn" disabled={findHits.length < 2} onClick={() => setFindAt((a) => (a - 1 + findHits.length) % findHits.length)} title={t("chat.findPrev")} aria-label={t("chat.findPrev")}>
+              <Icon name="chevron" size={15} className="rot-up" />
+            </button>
+            <button type="button" className="icon-btn" disabled={findHits.length < 2} onClick={() => setFindAt((a) => (a + 1) % findHits.length)} title={t("chat.findNext")} aria-label={t("chat.findNext")}>
+              <Icon name="chevron" size={15} className="rot-down" />
+            </button>
+            <button type="button" className="icon-btn" onClick={() => setFindOpen(false)} title={t("common.close")} aria-label={t("common.close")}>
+              <Icon name="close" size={15} />
+            </button>
+          </div>
+        )}
 
         <div
           className="thread"
@@ -1539,7 +1716,12 @@ export default function ChatView({ id }: { id: string }) {
 
             {chat.entries.map((e, i) =>
               e.kind === "user" ? (
-                <div key={e.id} className={`msg user${e.via || e.deep || e.command || e.routine || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
+                <div key={e.id} id={`m-${e.id}`} className={`msg user${e.via || e.deep || e.command || e.routine || e.replyTo || (e.effort && e.effort !== "auto") ? " via" : ""}`}>
+                  {e.replyTo && (
+                    <button type="button" className="reply-quote" onClick={() => document.getElementById(`m-${e.replyTo!.id}`)?.scrollIntoView({ block: "center", behavior: "smooth" })} title={t("chat.replyGo")}>
+                      <Icon name="reply" size={12} /> <b>{e.replyTo.who === "You" ? t("chat.you") : e.replyTo.who}</b> <span dir="auto">{e.replyTo.text}</span>
+                    </button>
+                  )}
                   {e.via && <div className="via-label">{t("chat.viaMain", { name: bots.find((b) => b.id === e.via)?.name ?? t("chat.aBot") })}</div>}
                   {e.attachments && e.attachments.length > 0 && <SentFiles chatId={id} files={e.attachments} />}
                   {e.text && (
@@ -1570,10 +1752,11 @@ export default function ChatView({ id }: { id: string }) {
                       {e.effort && e.effort !== "auto" && !e.command?.startsWith("/effort") && <span>{t(`chat.effort.${e.effort}`)}</span>}
                     </div>
                   )}
+                  {!e.via && <div className="msg-actions user-tools">{toolsFor(e)}</div>}
                 </div>
               ) : (
                 <Fragment key={e.id}>
-                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} onAnswer={chat.pending?.questions?.entryId === e.id ? answerQuestions : undefined} planBusy={running} queued={chat.pending?.parked?.includes(e.id)} />
+                  <BotMessage e={e} bot={bots.find((b) => b.id === e.botId)} isLast={i === chat.entries.length - 1} status={status[e.id]} bots={members} allBots={bots} onShot={setPicked} isLeader={leaderMode && e.botId === lead?.id} chatId={id} onUpdate={(ne) => setChat((c) => c && { ...c, entries: c.entries.map((x) => (x.id === ne.id ? ne : x)) })} onPlanDecision={chat.pending?.planReview?.entryId === e.id ? decidePlan : undefined} onAnswer={chat.pending?.questions?.entryId === e.id ? answerQuestions : undefined} planBusy={running} queued={chat.pending?.parked?.includes(e.id)} tools={toolsFor(e)} />
                   {(() => {
                     // A team task: show what the whole task cost, under its last message.
                     const tot = taskCredits(chat.entries, i, running);
@@ -1687,6 +1870,17 @@ export default function ChatView({ id }: { id: string }) {
                 </li>
               ))}
             </ul>
+          )}
+          {replyTo && (
+            <div className="reply-chip" role="status">
+              <Icon name="reply" size={14} />
+              <span className="reply-chip-text">
+                <b>{t("chat.replyingTo", { name: replyTo.who === "You" ? t("chat.you") : replyTo.who })}</b> <span dir="auto">{replyTo.text}</span>
+              </span>
+              <button type="button" className="icon-btn" onClick={() => setReplyTo(null)} title={t("chat.replyCancel")} aria-label={t("chat.replyCancel")}>
+                <Icon name="close" size={14} />
+              </button>
+            </div>
           )}
           <form
             className="composer"

@@ -118,6 +118,8 @@ export type Usage = { input: number; output: number };
 /** userWords: with `via` (a task the main bot passed on), the user's own message, word for word.
  * workChat: with `via`, the chat whose work files this task is done in (the main bot's chat), so one job has one set of tables. */
 export type UserEntry = { id: string; kind: "user"; text: string; at: number; /** Sent while the bots were working: read at their next step (lib/steer.ts). */ steer?: boolean; via?: string; userWords?: string; workChat?: string; effort?: Effort; deep?: boolean; plan?: boolean; command?: string; attachments?: Attachment[]; routine?: string;
+  /** The message this one answers (quoted above it), as it read when the user replied. */
+  replyTo?: { id: string; who: string; text: string };
   /** What oovi added to this message for each bot (work files now, language, suggestions), as last shown: kept so
    * the message reads the same in later requests and the prompt cache keeps everything after it. */
   shown?: Record<string, string> };
@@ -253,6 +255,8 @@ export type Chat = {
   workspace?: Workspace;
   /** This chat belongs to a scheduled routine (its id): every run of the routine happens here. */
   routine?: string;
+  /** A copy of another chat up to one of its messages (lib/chat-basics-core.ts forkChat). */
+  forkOf?: { chatId: string; entryId: string };
 };
 
 /**
@@ -264,7 +268,7 @@ export type GroupAsk =
   | { kind: "plan"; groupId: string; groupName: string; botId: string; goal?: string; steps: string[] };
 
 /** groupAsks: only in the main bot's own chat. */
-export type ChatWithState = Chat & { running: boolean; groupAsks?: GroupAsk[] };
+export type ChatWithState = Chat & { running: boolean; groupAsks?: GroupAsk[]; pinned?: boolean };
 
 export type ChatSummary = {
   id: string;
@@ -278,6 +282,9 @@ export type ChatSummary = {
   waiting: boolean;
   /** What it waits for is the user's answers to a bot's questions (not an OK). */
   asking?: boolean;
+  pinned?: boolean;
+  /** A copy of another chat (shown with the copies, under its bot or group). */
+  fork?: boolean;
 };
 
 // ---------- routines (scheduled tasks) ----------

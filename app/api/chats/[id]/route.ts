@@ -3,7 +3,7 @@ import { guard } from "@/lib/guard";
 import { stopVm } from "@/lib/sandbox";
 import { isRunning, stopRun, whenIdle } from "@/lib/runner";
 import { groupAsksFor } from "@/lib/delegations";
-import { deleteChat, dmId, getChat, listBots, saveChat, validateGroup } from "@/lib/store";
+import { deleteChat, dmId, pinnedChats, setPinned, getChat, listBots, saveChat, validateGroup } from "@/lib/store";
 import { mainBot } from "@/lib/team";
 import type { ChatWithState } from "@/lib/types";
 import { validateWorkspace } from "@/lib/workspace";
@@ -19,27 +19,35 @@ export async function GET(req: Request, { params }: Ctx) {
   if (denied) return denied;
   const chat = getChat((await params).id);
   if (!chat) return notFound();
-  const out: ChatWithState = { ...chat, running: isRunning(chat.id) };
+  const out: ChatWithState = { ...chat, running: isRunning(chat.id), ...(pinnedChats().has(chat.id) ? { pinned: true } : {}) };
   // In the main bot's chat: what the groups it gave tasks to are waiting on the user for.
   const main = mainBot(listBots());
   if (main && chat.id === dmId(main.id)) out.groupAsks = groupAsksFor(main.id);
   return Response.json(out);
 }
 
-/** Edit a group ({name, memberIds, leadId}), set any chat's project folder ({workspace: {path, autoEdit} | null}) or clear any chat ({clear: true}). */
+/** Edit a group ({name, memberIds, leadId}), pin any chat ({pinned}), rename a copy ({name}), set any chat's project folder ({workspace: {path, autoEdit} | null}) or clear any chat ({clear: true}). */
 export async function PUT(req: Request, { params }: Ctx) {
   const denied = guard(req);
   if (denied) return denied;
   const chat = getChat((await params).id);
   if (!chat) return notFound();
-  if (isRunning(chat.id)) return Response.json({ error: "Wait for the bots to finish, or stop them first." }, { status: 409 });
   const body = (await req.json().catch(() => null)) as Record<string, unknown> | null;
+  if (body && typeof body.pinned === "boolean" && Object.keys(body).length === 1) {
+    setPinned(chat.id, body.pinned);
+    return Response.json({ ok: true, pinned: body.pinned });
+  }
+  if (isRunning(chat.id)) return Response.json({ error: "Wait for the bots to finish, or stop them first." }, { status: 409 });
 
   if (body?.clear === true) {
     chat.entries = [];
     chat.pending = undefined;
     await Promise.all(chat.memberIds.map((m) => closeSession(`${chat.id}_${m}`)));
     await stopVm(chat.id);
+  } else if (body && typeof body.name === "string" && chat.forkOf && Object.keys(body).length === 1) {
+    const name = body.name.trim().slice(0, 48);
+    if (!name) return Response.json({ error: "Give the chat a name." }, { status: 400 });
+    chat.name = name;
   } else if (body && "workspace" in body) {
     const ws = validateWorkspace(body.workspace);
     if (typeof ws === "string") return Response.json({ error: ws }, { status: 400 });

@@ -11,6 +11,9 @@ import { useT } from "./I18n";
 import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
 import { CreditsChip, FeedbackButton, OfflineBanner } from "./Credits";
+import CommandPalette from "./CommandPalette";
+
+type SearchHit = { chatId: string; entryId: string; who: string; snippet: string; at: number; chat: string };
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -21,6 +24,39 @@ export default function Sidebar() {
   const [open, setOpen] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const t = useT();
+  // Search across every chat (Ctrl+K in a chat opens it too): results replace the list while there's a query.
+  const [q, setQ] = useState("");
+  const [hits, setHits] = useState<SearchHit[] | null>(null);
+  useEffect(() => {
+    const query = q.trim();
+    if (query.length < 2) {
+      setHits(null);
+      return;
+    }
+    const timer = setTimeout(() => {
+      api<{ hits: SearchHit[] }>(`/api/search?q=${encodeURIComponent(query)}`)
+        .then((r) => setHits(r.hits))
+        .catch(() => setHits([]));
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [q]);
+  useEffect(() => {
+    const on = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setOpen(true);
+        (document.getElementById("side-search") as HTMLInputElement | null)?.focus();
+      }
+    };
+    window.addEventListener("keydown", on);
+    return () => window.removeEventListener("keydown", on);
+  }, []);
+  const openHit = (h: SearchHit) => {
+    const path = `/c/${h.chatId}`;
+    if (pathname === path) location.hash = `m-${h.entryId}`;
+    else router.push(`${path}#m-${h.entryId}`);
+    setOpen(false);
+  };
 
   // Whether hidden bots are listed: remembered on this computer (a convenience; fine if storage is off).
   useEffect(() => {
@@ -81,7 +117,30 @@ export default function Sidebar() {
   );
 
   const face = (id: string) => bots.find((b) => b.id === id)?.face;
-  const groups = chats.filter((c) => c.kind === "group");
+  const pinnedList = chats.filter((c) => c.pinned);
+  const groups = chats.filter((c) => c.kind === "group" && !c.pinned);
+  const copies = chats.filter((c) => c.kind === "direct" && c.fork && !c.pinned);
+  const chatRow = (c: ChatSummary) => (
+    <Link key={c.id} href={`/c/${c.id}`} className={`side-item${pathname === `/c/${c.id}` ? " active" : ""}`}>
+      {c.memberIds.length > 1 ? (
+        <FaceStack faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={38} moods={c.running ? ["thinking", "working", "thinking"] : undefined} />
+      ) : (
+        (() => {
+          const f = face(c.memberIds[0] ?? "");
+          return f ? <Face face={f} size={38} mood={c.running ? "thinking" : c.waiting ? "asking" : "idle"} /> : null;
+        })()
+      )}
+      <span className="side-text">
+        <span className="side-name">
+          {c.name}
+          {c.pinned && <Icon name="pin" size={12} className="side-pin" />}
+          {c.running && <span className="live-dot" title={t("side.working")} />}
+          {c.waiting && <span className="ask-pill">{t(c.asking ? "side.question" : "side.needsOk")}</span>}
+        </span>
+        <span className="side-preview" dir="auto">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
+      </span>
+    </Link>
+  );
   const dm = (botId: string) => chats.find((c) => c.id === `dm-${botId}`);
   const chief = bots.find((b) => b.id === chiefId);
   const ordered = chief ? [chief, ...bots.filter((b) => b !== chief)] : bots;
@@ -100,6 +159,17 @@ export default function Sidebar() {
       {open && <div className="scrim" onClick={() => setOpen(false)} />}
 
       <OfflineBanner />
+      <CommandPalette
+        bots={bots}
+        chats={chats}
+        go={(p) => router.push(p)}
+        settings={() => openSettings()}
+        searchMessages={(query) => {
+          setOpen(true);
+          setQ(query);
+          setTimeout(() => (document.getElementById("side-search") as HTMLInputElement | null)?.focus(), 0);
+        }}
+      />
       <aside className={`sidebar${open ? " open" : ""}`}>
         <Link href="/" className={`side-settings side-home${pathname === "/" ? " active" : ""}`}>
           <Icon name="home" /> {t("side.home")}
@@ -110,22 +180,41 @@ export default function Sidebar() {
           <Link className="btn sm" href="/bots/new"><Icon name="plus" size={16} /> {t("side.bot")}</Link>
         </div>
 
+        <div className="side-search">
+          <Icon name="search" size={15} />
+          <input id="side-search" type="search" dir="auto" value={q} onChange={(e) => setQ(e.target.value)} onKeyDown={(e) => e.key === "Escape" && setQ("")} placeholder={t("side.search")} aria-label={t("side.search")} />
+        </div>
+
+        {hits !== null ? (
+          <nav className="side-scroll side-results" aria-label={t("side.results")}>
+            <div className="side-label">{t("side.results")}</div>
+            {hits.length === 0 && <p className="side-empty">{t("side.noResults")}</p>}
+            {hits.map((h) => (
+              <button key={`${h.chatId}:${h.entryId}`} type="button" className="side-hit" onClick={() => openHit(h)}>
+                <span className="side-hit-head">
+                  <b>{h.chat}</b> · {h.who === "You" ? t("chat.you") : h.who}
+                </span>
+                <span className="side-hit-text" dir="auto">{h.snippet}</span>
+              </button>
+            ))}
+          </nav>
+        ) : (
         <nav className="side-scroll" aria-label={t("side.chats")}>
+          {pinnedList.length > 0 && (
+            <>
+              <div className="side-label">{t("side.pinned")}</div>
+              {pinnedList.map(chatRow)}
+            </>
+          )}
           <div className="side-label">{t("common.groups")}</div>
           {groups.length === 0 && <p className="side-empty">{t("side.noGroups")}</p>}
-          {groups.map((c) => (
-            <Link key={c.id} href={`/c/${c.id}`} className={`side-item${pathname === `/c/${c.id}` ? " active" : ""}`}>
-              <FaceStack faces={c.memberIds.map(face).filter((f): f is NonNullable<typeof f> => !!f)} size={38} moods={c.running ? ["thinking", "working", "thinking"] : undefined} />
-              <span className="side-text">
-                <span className="side-name">
-                  {c.name}
-                  {c.running && <span className="live-dot" title={t("side.working")} />}
-                  {c.waiting && <span className="ask-pill">{t(c.asking ? "side.question" : "side.needsOk")}</span>}
-                </span>
-                <span className="side-preview" dir="auto">{c.preview || t("side.botCount", { count: c.memberIds.length })}</span>
-              </span>
-            </Link>
-          ))}
+          {groups.map(chatRow)}
+          {copies.length > 0 && (
+            <>
+              <div className="side-label">{t("side.copies")}</div>
+              {copies.map(chatRow)}
+            </>
+          )}
 
           <div className="side-label">{t("common.bots")}</div>
           {botList.map((b) => {
@@ -151,6 +240,7 @@ export default function Sidebar() {
             </button>
           )}
         </nav>
+        )}
 
         <CreditsChip />
         <Link href="/routines" className={`side-settings side-lib${pathname === "/routines" ? " active" : ""}`}>

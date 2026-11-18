@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown; entryId?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown; entryId?: unknown; replyTo?: unknown } | null;
   let input: RunInput;
   // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
   const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
@@ -35,7 +35,7 @@ export async function POST(req: Request, { params }: Ctx) {
   if (typeof body?.text === "string" && (body.text.trim() || attachments.length)) {
     if (body.text.length > 20_000) return Response.json({ error: "Message is too long." }, { status: 400 });
     const effort = ["auto", "low", "medium", "high", "max"].includes(String(body.effort)) ? (body.effort as Effort) : undefined;
-    input = { text: body.text.trim(), effort, deep: body.deep === true, plan: body.plan === true, ...(attachments.length ? { attachments } : {}), ...(typeof body.entryId === "string" ? { entryId: body.entryId.slice(0, 40) } : {}) };
+    input = { text: body.text.trim(), effort, deep: body.deep === true, plan: body.plan === true, ...(attachments.length ? { attachments } : {}), ...(typeof body.entryId === "string" ? { entryId: body.entryId.slice(0, 40) } : {}), ...(typeof body.replyTo === "string" ? { replyTo: body.replyTo.slice(0, 40) } : {}) };
   } else if (body?.planDecision && typeof body.planDecision === "object") {
     const d = body.planDecision as { approve?: unknown; items?: unknown };
     const items = Array.isArray(d.items) ? d.items.filter((x): x is string => typeof x === "string").slice(0, 20) : [];

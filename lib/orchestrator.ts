@@ -60,6 +60,7 @@ import { VM_SPECS, describeVmCall, hasVm } from "./sandbox";
 import { countTools, countUsage } from "./usage";
 import { FILE_SPECS } from "./workspace";
 import { HELPERS_SPEC, runHelpers } from "./helpers";
+import { quoteOf, replyNote } from "./chat-basics-core";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workNow, workPrompt } from "./workfiles";
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
@@ -102,6 +103,8 @@ export type RunInput = {
   routine?: string;
   /** Set by the main bot only (never from the HTTP API): the id the new message gets, so it can follow that task. */
   entryId?: string;
+  /** The message (entry id) this one replies to: quoted to the bots. */
+  replyTo?: string;
 };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
@@ -422,6 +425,12 @@ export function leaderOf(chat: Chat, members: Bot[]): Bot | undefined {
 
 /** A scheduled routine sent the message being worked on: nobody is watching the chat. */
 const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Give the result itself, short and readable: the user gets it as a notification. Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills.`;
+
+/** A reply to an earlier message of this chat: the quote it carries (as the message read then). */
+function replyField(chat: Chat, replyTo: string | undefined, bots: Bot[]): { replyTo?: UserEntry["replyTo"] } {
+  const e = replyTo ? chat.entries.find((x) => x.id === replyTo) : undefined;
+  return e ? { replyTo: quoteOf(e, (id) => bots.find((b) => b.id === id)?.name ?? "Bot") } : {};
+}
 
 function lastUser(chat: Chat): UserEntry | undefined {
   for (let i = chat.entries.length - 1; i >= 0; i--) {
@@ -816,7 +825,8 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
       }
       // Written while the bots were working: it may change or add to the task under way.
       const during = e.steer ? `\n\n[oovi: the user wrote this while you were working. Take it into account from now on: it can change, correct or add to the task. Don't start over unless they ask.]` : "";
-      out.push({ role: "user", content: group || e.via ? `[${who}]: ${text}${own}${during}${lang}` : `${text}${own}${during}${lang}`, ...(attachments ? { attachments } : {}) });
+      const quoted = e.replyTo ? replyNote(e.replyTo) : "";
+      out.push({ role: "user", content: group || e.via ? `[${who}]: ${quoted}${text}${own}${during}${lang}` : `${quoted}${text}${own}${during}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
     // (a group's report posted later, a help answer). Without this the bot can't see what it "said".
@@ -1565,6 +1575,7 @@ async function* runBot(
         at: Date.now(),
         steer: true,
         ...(st.attachments?.length ? { attachments: st.attachments } : {}),
+        ...replyField(chat, st.replyTo, bots),
       };
       chat.entries.push(u);
       countUsage({ messages: 1 });
@@ -1756,6 +1767,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
       ...(plan ? { plan: true } : {}),
       ...(command ? { command } : {}),
       ...(input.attachments?.length ? { attachments: input.attachments } : {}),
+      ...replyField(chat, input.replyTo, bots),
     };
     chat.entries.push(user);
     countUsage({ messages: 1 });

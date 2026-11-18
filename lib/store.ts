@@ -254,7 +254,7 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
             ? `${who} stopped`
             : `${who} is working…`;
   }
-  const name = c.kind === "direct" ? (bots.find((b) => b.id === c.memberIds[0])?.name ?? "Bot") : c.name;
+  const name = c.kind === "direct" && !c.forkOf ? (bots.find((b) => b.id === c.memberIds[0])?.name ?? "Bot") : c.name || (bots.find((b) => b.id === c.memberIds[0])?.name ?? "Bot");
   return {
     id: c.id,
     kind: c.kind,
@@ -270,6 +270,8 @@ export function summarize(c: Chat, bots: Bot[], running: boolean): ChatSummary {
     running,
     waiting: !!(c.pending?.approval || c.pending?.planReview || c.pending?.questions),
     asking: !!c.pending?.questions && !c.pending?.approval,
+    ...(pinnedChats().has(c.id) ? { pinned: true } : {}),
+    ...(c.forkOf ? { fork: true } : {}),
   };
 }
 
@@ -293,7 +295,22 @@ export function createGroup(g: { name: string; memberIds: string[]; leadId?: str
   return chat;
 }
 
+// Pinned chats are kept apart from the chats themselves: pinning works while bots are at work in a chat
+// (a running chat is saved by its run, which would undo a pin written into the chat).
+const pinsFile = () => path.join(dataDir(), "pins.json");
+export function pinnedChats(): Set<string> {
+  const j = readJson<{ ids?: unknown }>(pinsFile());
+  return new Set(Array.isArray(j?.ids) ? j.ids.filter((x): x is string => typeof x === "string") : []);
+}
+export function setPinned(id: string, on: boolean): void {
+  const ids = pinnedChats();
+  if (on) ids.add(id);
+  else ids.delete(id);
+  writeJson(pinsFile(), { ids: [...ids].slice(-50) });
+}
+
 export function deleteChat(id: string): void {
+  setPinned(id, false);
   if (!ID_RE.test(id)) return;
   fs.rmSync(chatFile(id), { force: true });
   // The chat's shared work files (lib/workfiles.ts) go with it.
