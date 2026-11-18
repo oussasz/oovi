@@ -1828,6 +1828,7 @@ const de: Dict = {
   "st.groups": "Sieht sich deine Gruppen an",
   "st.routines": "Sieht sich deine Routinen an",
   "st.routine": "Richtet die Routine „{name}“ ein",
+  "st.reminder": "Stellt eine Erinnerung",
   "st.abilities": "Bittet, eine Fähigkeit einzuschalten",
   "st.team": "Schlägt das Team „{name}“ vor",
   "st.specialist": "Erstellt {name}, {role}",

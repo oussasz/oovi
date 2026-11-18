@@ -1843,6 +1843,7 @@ const ar: Dict = {
   "st.groups": "يطّلع على مجموعاتك",
   "st.routines": "يطّلع على مهامك الروتينية",
   "st.routine": "يجهّز المهمة الروتينية «{name}»",
+  "st.reminder": "يضبط تذكيرًا",
   "st.abilities": "يطلب تفعيل قدرة",
   "st.team": "يقترح الفريق «{name}»",
   "st.specialist": "ينشئ {name}، {role}",

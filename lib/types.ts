@@ -354,6 +354,12 @@ export type Routine = {
   runCosts?: { usd: number; credits: number }[];
   /** The web address that starts a "webhook" routine: https://<oovi site>/api/v1/hooks/<id>/<secret>. */
   hook?: { id: string; secret: string };
+  /** The chat the user asked for it in: a reminder, or each result, is also posted there (not only in the routine's own chat). */
+  postTo?: string;
+  /** A plain reminder: the instruction is the reminder's text, posted as it is, with no AI run (no cost). */
+  remind?: boolean;
+  /** Asked from Telegram: the reminder or result goes back to Telegram too ("here" is where the user asked). */
+  postTelegram?: boolean;
   /** Consecutive failed runs; 3 pauses the routine. */
   failures: number;
   /** Next scheduled time (ms), or null when paused. */

@@ -14,13 +14,13 @@ import { getRoutine, listRoutines, mutateRoutine, routineChat } from "./routines
 import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, type ChatState, type RunResult } from "./routines-schedule";
 import { checkUrl } from "./browser";
 import { spentSince } from "./orchestrator";
-import { isRunning, startRun, subscribe } from "./runner";
+import { isRunning, startRun, subscribe, whenIdle } from "./runner";
 import { collectHookEvents, hookCursor, hookNote, setHookCursor } from "./routine-hooks";
 import { hashText, isNoNews, pageText, QUIET_NOTE, significant, watchNote } from "./watch-core";
 import { loadSettings } from "./settings";
-import { getBot, getChat } from "./store";
+import { getBot, getChat, newId, saveChat } from "./store";
 import { sendFileToTelegram, sendToMainChat } from "./telegram";
-import type { Chat, Routine } from "./types";
+import type { BotEntry, Chat, Routine } from "./types";
 
 const TICK_MS = 30_000;
 /** Telegram gets the whole result (long text is sent in several messages); past this, the rest stays in oovi. */
@@ -233,6 +233,11 @@ function fire(r: Routine, manual: boolean, note?: string): FireResult {
     if (paused) notify(paused, "routines.n.botGone", { name: paused.name });
     return "bot";
   }
+  // A plain reminder: its text is posted as it is, no AI run, no cost.
+  if (r.remind) {
+    remind(r);
+    return "started";
+  }
   const chat = routineChat(r);
   const cs = chatState(r, chat);
   if (cs !== "free") return manual ? cs : "busy";
@@ -310,6 +315,7 @@ function finish(id: string, res: RunResult, entryId?: string) {
     return;
   }
   if (res.status === "ok") {
+    if (r.postTo && res.text) void postInChat(r.postTo, r.botId, `⏰ **${r.name}**\n\n${res.text}`);
     notifyResult(r, res.text);
     void telegramFiles(r);
   } else if (res.status === "error" && !toldBefore) notifyResult(r, translateFor("routines.n.failed", { name: r.name, error: res.text.slice(0, 600) }), true);
@@ -318,6 +324,34 @@ function finish(id: string, res: RunResult, entryId?: string) {
 }
 
 // ---------- telling the user ----------
+
+/**
+ * A message from the bot in a chat the user reads (the one they asked in), with no model call. A run holding that chat
+ * would overwrite it, so it waits for the run to end (up to 10 minutes, then writes anyway after a re-read).
+ */
+export async function postInChat(chatId: string, botId: string, text: string): Promise<boolean> {
+  if (isRunning(chatId)) await whenIdle(chatId, 10 * 60_000);
+  const chat = getChat(chatId);
+  if (!chat || isRunning(chatId)) return false;
+  const entry: BotEntry = { id: newId(), kind: "bot", botId: chat.memberIds.includes(botId) ? botId : (chat.leadId ?? chat.memberIds[0] ?? botId), at: Date.now(), steps: [], text, status: "done", usage: { input: 0, output: 0 } };
+  chat.entries.push(entry);
+  saveChat(chat);
+  return true;
+}
+
+/** A reminder is due: post it where it was asked, notify the desktop, and Telegram when asked from there. */
+function remind(r: Routine) {
+  const text = r.prompt.trim();
+  mutateRoutine(r.id, (x) => {
+    x.lastStartedAt = Date.now();
+    x.lastRun = { at: Date.now(), status: "ok" };
+    x.failures = 0;
+  });
+  const target = r.postTo && getChat(r.postTo) ? r.postTo : routineChat(r).id;
+  void postInChat(target, r.botId, `⏰ ${text}`);
+  desktop("⏰ oovi", text, target);
+  if (r.notifyTelegram) void sendToMainChat(`⏰ ${text}`).catch(() => false);
+}
 
 
 function desktop(title: string, body: string, chatId?: string) {

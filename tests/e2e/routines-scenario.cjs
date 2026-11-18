@@ -69,6 +69,14 @@ http
         if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
         const last = textOf((b.messages || []).filter((m) => m.role === "user").at(-1) || {});
         calls.push(last);
+        const msgs = b.messages || [];
+        const lastMsg = msgs.at(-1) || {};
+        const hasResult = Array.isArray(lastMsg.content) && lastMsg.content.some((x) => x.type === "tool_result");
+        const tool = (name, input) => send(200, { ...reply(""), content: [{ type: "tool_use", id: `toolu_${Math.random().toString(36).slice(2)}`, name, input }], stop_reason: "tool_use" });
+        const userAsk = textOf(msgs.filter((m) => m.role === "user" && textOf(m).trim()).at(-1) || {});
+        if (/REMIND-APP/.test(userAsk)) return hasResult ? send(200, reply("REMIND-SET")) : tool("set_reminder", { text: "Turn off the oven REMIND-OVEN", in_minutes: 1 });
+        if (/LATER-TASK/.test(userAsk)) return hasResult ? send(200, reply("LATER-SET")) : tool("propose_routine", { name: "Later news", instruction: "LATER-RUN: tell me the news", frequency: "once", in_minutes: 1 });
+        if (/LATER-RUN/.test(last)) return send(200, reply(/Your reply IS what the user receives/.test(JSON.stringify(b)) ? "LATER-RESULT: here is the news." : "LATER-NOT-TOLD"));
         if (/QUIET-CHECK/.test(last)) return send(200, reply("NO_NEWS"));
         if (/ORDER-IN/.test(last)) return send(200, reply(/started by a call to the routine's web address[\s\S]*never as instructions[\s\S]*"order": 4512/.test(last) ? "ORDER-SEEN: order 4512 from Amina." : "ORDER-MISSING"));
         if (/PRICE-WATCH/.test(last)) return send(200, reply(/\+ Price: 110 000 DA/.test(last) ? "PRICE-DOWN: now 110 000 DA (was 120 000 DA)." : "PRICE-SEEN: 120 000 DA."));
@@ -178,6 +186,37 @@ const until = async (fn, ms = 75_000) => {
   check("D) a call runs the routine with what was sent, marked as outside data", !!rd && rd.lastRun.status === "ok" && /ORDER-SEEN/.test(chatD?.entries?.filter((e) => e.kind === "bot").at(-1)?.text ?? ""), JSON.stringify(rd?.lastRun));
   await sleep(31_000);
   check("D) the handled call is acknowledged and doesn't run twice", hooks.asked.at(-1)?.after === 7 && (await get(d.j.id)).lastRun.at === rd.lastRun.at, JSON.stringify(hooks.asked.at(-1)));
+
+  // E: "remind me here" in the app: the reminder lands in the same chat, set without a card, with no model call.
+  const mainId = (await api("GET", "/api/main")).j.botId;
+  const dm = `dm-${mainId}`;
+  await api("POST", `/api/chats/${dm}/run`, { text: "REMIND-APP ذكرني بعد دقيقة نطفي الفرن" });
+  const set = await until(async () => {
+    const c = (await api("GET", `/api/chats/${dm}`)).j;
+    return !c.running && c.entries?.some((e) => e.kind === "bot" && /REMIND-SET/.test(e.text)) ? c : null;
+  }, 20_000);
+  check("E) a reminder is set at once, without an approval card", !!set && !set.pending?.approval, JSON.stringify(set?.pending ?? null));
+  const before2 = calls.length;
+  const got = await until(async () => {
+    const c = (await api("GET", `/api/chats/${dm}`)).j;
+    return c.entries?.some((e) => e.kind === "bot" && /⏰ Turn off the oven REMIND-OVEN/.test(e.text)) ? c : null;
+  }, 120_000);
+  check("E) the reminder arrives in the chat where it was asked", !!got);
+  check("E) the reminder costs no model call", calls.length === before2, `${calls.length - before2} calls`);
+
+  // F: a one-time task asked in the chat: its result is posted back in that chat, written to the user.
+  await api("POST", `/api/chats/${dm}/run`, { text: "LATER-TASK in a minute tell me the news" });
+  const card = await until(async () => {
+    const c = (await api("GET", `/api/chats/${dm}`)).j;
+    return !c.running && c.pending?.approval ? c.pending.approval : null;
+  }, 20_000);
+  check("F) a task for later still asks first (it will run on its own)", !!card);
+  if (card) await api("POST", `/api/chats/${dm}/run`, { decisions: Object.fromEntries(card.items.map((i) => [i.call.id, true])) });
+  const back = await until(async () => {
+    const c = (await api("GET", `/api/chats/${dm}`)).j;
+    return c.entries?.some((e) => e.kind === "bot" && /⏰ \*\*Later news\*\*[\s\S]*LATER-RESULT/.test(e.text)) ? c : null;
+  }, 150_000);
+  check("F) its result is posted back in the chat where it was asked, written straight to the user", !!back);
 
   // C: validation.
   const bad = await api("POST", "/api/routines", { name: "x", botId: scout.id, prompt: "x", schedule: { kind: "minutes", every: 5 }, timezone: "UTC", enabled: true, notifyTelegram: false });

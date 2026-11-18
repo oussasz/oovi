@@ -34,7 +34,7 @@ export const PROPOSE_ROUTINE_SPEC: ToolSpec = {
     type: "object",
     properties: {
       name: { type: "string", description: "Short name, e.g. 'Morning email'" },
-      instruction: { type: "string", description: "What the bot does on each run, written as a complete request." },
+      instruction: { type: "string", description: "What the bot does on each run, written as a complete request. The run's reply is delivered to the user by itself, so ask for the message itself (e.g. \"Tell me in Darija the 3 main news of the day\"), in the user's language." },
       frequency: {
         type: "string",
         enum: ["once", "minutes", "hourly", "daily", "weekly"],
@@ -56,7 +56,24 @@ export const PROPOSE_ROUTINE_SPEC: ToolSpec = {
   },
 };
 
-export const ROUTINE_SPECS: ToolSpec[] = [LIST_ROUTINES_SPEC, PROPOSE_ROUTINE_SPEC];
+export const SET_REMINDER_SPEC: ToolSpec = {
+  name: "set_reminder",
+  description:
+    "Remind the user of something later, one time (\"remind me in 10 minutes to turn off the oven\", \"فكرني على الخمسة\", \"ذكرني بعد عشر دقايق\", \"rappelle-moi demain à 9h\"). The reminder text is posted as it is, with no AI run: in this chat with a desktop notification, and on Telegram when the user asked from Telegram or asks for it there. No card: it is set at once. For a task the bot must DO later (look something up, send an email), use propose_routine with frequency once.",
+  parameters: {
+    type: "object",
+    properties: {
+      text: { type: "string", description: "What the user is told, in their language and words, short and clear, e.g. \"⏰ طفي الفرن! البيض راهو واجد\"" },
+      in_minutes: { type: "integer", minimum: 1, maximum: 10080, description: "In this many minutes from now" },
+      time: { type: "string", description: "Or at this 24-hour HH:MM, the user's local time" },
+      date: { type: "string", description: "With time: YYYY-MM-DD (default: today, or tomorrow if the time has passed)" },
+      telegram: { type: "boolean", description: "Also send it to Telegram (set it when the user asks for Telegram; a request made from Telegram goes back there anyway)" },
+    },
+    required: ["text"],
+  },
+};
+
+export const ROUTINE_SPECS: ToolSpec[] = [LIST_ROUTINES_SPEC, PROPOSE_ROUTINE_SPEC, SET_REMINDER_SPEC];
 export const ROUTINE_TOOLS: ReadonlySet<string> = new Set(ROUTINE_SPECS.map((s) => s.name));
 
 /** propose_routine's arguments as a routine, or an error message for the bot. */
@@ -123,7 +140,22 @@ const when = (ms: number | null | undefined, tz: string) => {
   }
 };
 
-export function runRoutineTool(call: ToolCall, self: Bot): ToolResult {
+/** Where the request came from: the chat (results and reminders are posted back there) and whether it came from Telegram. */
+export type RoutineOrigin = { chatId?: string; fromTelegram?: boolean };
+
+/** set_reminder's arguments as a one-time reminder, or an error message for the bot. */
+export function reminderOf(call: ToolCall, self: Bot, origin: RoutineOrigin = {}): RoutineInput | string {
+  const i = call.input;
+  const text = String(i.text ?? "").trim();
+  if (!text) return "Write the reminder's text.";
+  if (!(Number(i.in_minutes) > 0) && !String(i.time ?? "").trim()) return "Say when: in_minutes, or time (HH:MM) with an optional date.";
+  const p = proposalOf({ ...call, input: { name: text.replace(/\s+/g, " ").slice(0, 40), instruction: text, frequency: "once", in_minutes: i.in_minutes, time: i.time, date: i.date } }, self);
+  if (typeof p === "string") return p;
+  const tg = i.telegram === true || origin.fromTelegram === true;
+  return { ...p, remind: true, notifyTelegram: tg, ...(tg ? { postTelegram: true } : {}), ...(origin.chatId ? { postTo: origin.chatId } : {}) };
+}
+
+export function runRoutineTool(call: ToolCall, self: Bot, origin: RoutineOrigin = {}): ToolResult {
   const ok = (content: string): ToolResult => ({ id: call.id, name: call.name, content });
   const bad = (content: string): ToolResult => ({ id: call.id, name: call.name, content, isError: true });
 
@@ -142,10 +174,25 @@ export function runRoutineTool(call: ToolCall, self: Bot): ToolResult {
     );
   }
 
+  if (call.name === "set_reminder") {
+    const p = reminderOf(call, self, origin);
+    if (typeof p === "string") return bad(p);
+    const r = createRoutine(p);
+    if (typeof r === "string") return bad(r);
+    const where = p.postTelegram
+      ? telegramConnected()
+        ? "on Telegram and in this chat in oovi"
+        : "in this chat in oovi (Telegram isn't connected: tell the user in one line, with [Connect Telegram](oovi://settings/telegram))"
+      : "in this chat, with a desktop notification";
+    return ok(`Reminder set for ${when(r.nextRunAt, r.timezone)} (${r.timezone}). It will be posted ${where}. Tell the user the time in one short line. oovi must stay open on the computer for it to arrive (it can be minimized): say so briefly.`);
+  }
+
   if (call.name === "propose_routine") {
     // Reached only after the user clicked Allow on the approval card.
-    const p = proposalOf(call, self);
-    if (typeof p === "string") return bad(p);
+    const p0 = proposalOf(call, self);
+    if (typeof p0 === "string") return bad(p0);
+    // A one-time task reports back where it was asked; a recurring one too when asked from Telegram.
+    const p = { ...p0, ...(origin.chatId && p0.schedule.kind === "once" ? { postTo: origin.chatId } : {}), ...(origin.fromTelegram ? { notifyTelegram: true, postTelegram: true } : {}) };
     const r = createRoutine(p);
     if (typeof r === "string") return bad(r);
     const phone = r.notifyTelegram
@@ -153,7 +200,8 @@ export function runRoutineTool(call: ToolCall, self: Bot): ToolResult {
         ? " Results are also sent to the user's Telegram."
         : " Telegram isn't connected yet, so results stay in oovi until the user connects it: tell them so in one line with the link [Connect Telegram](oovi://settings/telegram)."
       : "";
-    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule, r.timezone)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result.${phone} They can change, pause or run it on the Routines page: [Open Routines](oovi://routines). Routines only run while oovi is open on this computer.`);
+    const back = r.postTo ? " The result is also posted in this chat." : "";
+    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule, r.timezone)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result.${back}${phone} They can change, pause or run it on the Routines page: [Open Routines](oovi://routines). Routines only run while oovi is open on this computer.`);
   }
 
   return bad(`Unknown tool: ${call.name}`);

@@ -1847,6 +1847,7 @@ const en = {
   "st.groups": "Checking your groups",
   "st.routines": "Checking your routines",
   "st.routine": "Setting up the routine “{name}”",
+  "st.reminder": "Setting a reminder",
   "st.abilities": "Asking to turn on an ability",
   "st.team": "Proposing the team “{name}”",
   "st.specialist": "Creating {name}, {role}",

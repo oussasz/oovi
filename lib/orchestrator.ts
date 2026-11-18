@@ -431,7 +431,7 @@ export function leaderOf(chat: Chat, members: Bot[]): Bot | undefined {
 }
 
 /** A scheduled routine sent the message being worked on: nobody is watching the chat. */
-const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Give the result itself, short and readable: the user gets it as a notification. Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills.`;
+const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Your reply IS what the user receives: oovi delivers it to them by itself (a notification, the chat where they asked for it, and Telegram when set). So write the message itself, straight to the user (\"you\"), in the language the instruction asks for (otherwise the user's usual language), short and readable: never \"here is the reminder\", never a copy for them to send themselves, never \"I can't send it to you\". Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills.`;
 
 /** A reply to an earlier message of this chat: the quote it carries (as the message read then). */
 function replyField(chat: Chat, replyTo: string | undefined, bots: Bot[]): { replyTo?: UserEntry["replyTo"] } {
@@ -667,7 +667,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   lines.push("", "When you work out a reliable way to do a multi-step task the user is likely to ask for again, save it with save_skill.");
   if (tools.some((t) => t.name === "propose_routine")) {
     lines.push(
-      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when. A one-time reminder or task later (\"remind me at 5\", \"in 20 minutes\", \"demain à 9h\", \"فكرني على الخمسة\") is propose_routine with frequency once. Watching something (a price, a listing, a page for news): add watch_url and only_when_new, so nothing is spent or sent while nothing changes.",
+      "When the user wants something done again and again at a time (\"every day at 10 tell me good morning\", \"each Monday send me…\", \"كل يوم على 10 تاع الصباح قلي صباح الخير\", \"كل صباح ابعثلي…\", \"chaque matin à 8h…\", \"tous les lundis…\"), set it up with propose_routine. Don't just do it once now. Read past typos and spoken forms (\"مل يوم\" is \"كل يوم\", \"على عشرة تاع الصباح\" is 10:00). Then say in one short line what will happen and when. A one-time reminder (\"remind me at 5\", \"in 20 minutes\", \"demain à 9h\", \"فكرني على الخمسة\", \"ذكرني بعد عشر دقايق\") is set_reminder: it is posted where the user asked (this chat, or Telegram when they wrote from Telegram), at no cost. A task to DO later (look up, write, send) is propose_routine with frequency once. Watching something (a price, a listing, a page for news): add watch_url and only_when_new, so nothing is spent or sent while nothing changes.",
     );
   }
   const answersUser = lead ? lead.id === bot.id : true;
@@ -1133,6 +1133,7 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
     case "list_groups": return tr("st.groups");
     case "list_routines": return tr("st.routines");
     case "propose_routine": return tr("st.routine", { name: v(i.name) });
+    case "set_reminder": return tr("st.reminder");
     case "request_abilities": return tr("st.abilities");
     case "use_project_folder": return tr("st.folder");
     case "propose_team": return tr("st.team", { name: v(i.name) });
@@ -1538,7 +1539,7 @@ async function* runBot(
             if (decisions[c.id] === true && taskId) grantFolderNames(`${chat.id}|${taskId}`, c);
             results.push(await runComputerTool(c, chat, s));
           } else if (ROUTINE_TOOLS.has(c.name)) {
-            results.push(runRoutineTool(c, bot));
+            results.push(runRoutineTool(c, bot, { chatId: chat.id, fromTelegram: chat.pending?.channel === "telegram" }));
           } else if (SPECIALIST_TOOLS.has(c.name)) {
             results.push(runSpecialistTool(c, chat, bot, members, bots, answered?.items.find((it) => it.call.id === c.id)));
           } else if (c.name === USE_FOLDER_SPEC.name) {

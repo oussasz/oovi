@@ -58,6 +58,11 @@ async function answerAsync(body) {
     if (hasResult) return reply([{ type: "text", text: "TGSEND-DONE" }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_tg_${Date.now()}`, name: "send_telegram", input: { text: "TG-HELLO from your bot" } }], "tool_use");
   }
+  if (/REMIND-TG/.test(u)) {
+    seen.remindTools = (body.tools || []).map((t) => t.name);
+    if (hasResult) return reply([{ type: "text", text: "REMIND-SET" }], "end_turn");
+    return reply([{ type: "tool_use", id: `toolu_rem_${Date.now()}`, name: "set_reminder", input: { text: "طفي الفرن REMIND-OVEN", in_minutes: 1 } }], "tool_use");
+  }
   if (/VOICE-NOTE/.test(u)) return reply([{ type: "text", text: /^🎤 VOICE-NOTE/.test(u) ? "VOICE-HEARD" : "VOICE-WRONG" }], "end_turn");
   if (/LONG/.test(u)) {
     await sleep(8000);
@@ -105,6 +110,7 @@ http
         return send(200, { text: "VOICE-NOTE شحال الساعة دركا؟", seconds: 3, credits: 0.1 });
       }
       if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST") seen.model = (seen.model || 0) + 1;
       if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       return send(204);
@@ -284,6 +290,16 @@ const check = (name, ok, detail = "") => {
   await fetch(`${BASE}/api/chats/dm-${mainId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "TGSEND send me hello on my Telegram now" }) }).then((r) => r.text());
   await waitFor((m) => sent.indexOf(m) >= n8 && /TG-HELLO/.test(m.text), 30_000, "telegram message from the app");
   check("a bot asked in the app sends the message to the user's Telegram (built-in, no connector)", (seen.tgTools || []).includes("send_telegram") && sent.slice(n8).some((m) => /TG-HELLO from your bot/.test(m.text)));
+
+  // "Remind me here" from Telegram: the reminder comes back to Telegram (and to the chat in the app), with no model call.
+  const n9 = sent.length;
+  userSays("REMIND-TG ذكرني بعد دقيقة نطفي الفرن");
+  await waitFor((m) => sent.indexOf(m) >= n9 && /REMIND-SET/.test(m.text), 30_000, "reminder set");
+  const callsBefore = seen.model || 0;
+  const rem = await waitFor((m) => sent.indexOf(m) >= n9 && /⏰ طفي الفرن REMIND-OVEN/.test(m.text), 120_000, "reminder on Telegram");
+  const dmRem = await (await fetch(`${BASE}/api/chats/dm-${mainId}`)).json();
+  check("a reminder asked from Telegram comes back on Telegram, set without a card", (seen.remindTools || []).includes("set_reminder") && !!rem);
+  check("the reminder is also in the chat in the app, and cost no model call", dmRem.entries.some((e) => e.kind === "bot" && /⏰ طفي الفرن REMIND-OVEN/.test(e.text)) && (seen.model || 0) === callsBefore, `${(seen.model || 0) - callsBefore} calls`);
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

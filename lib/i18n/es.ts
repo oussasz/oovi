@@ -1828,6 +1828,7 @@ const es: Dict = {
   "st.groups": "Revisando tus grupos",
   "st.routines": "Revisando tus rutinas",
   "st.routine": "Preparando la rutina «{name}»",
+  "st.reminder": "Programando un recordatorio",
   "st.abilities": "Pidiendo activar una capacidad",
   "st.team": "Proponiendo el equipo «{name}»",
   "st.specialist": "Creando {name}, {role}",

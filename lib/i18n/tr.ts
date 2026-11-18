@@ -1828,6 +1828,7 @@ const tr: Dict = {
   "st.groups": "Grupların kontrol ediliyor",
   "st.routines": "Rutinlerin kontrol ediliyor",
   "st.routine": "“{name}” rutini hazırlanıyor",
+  "st.reminder": "Hatırlatıcı kuruluyor",
   "st.abilities": "Bir yeteneğin açılması isteniyor",
   "st.team": "“{name}” ekibi öneriliyor",
   "st.specialist": "{name} oluşturuluyor, {role}",
