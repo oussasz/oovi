@@ -25,7 +25,7 @@ const live = () => ({ balance: 999, dailyUsed: 1, dailyLimit: 500, resetsAt: new
 const status = { state: "ok", message: null, displayName: "theOovi", balance: 999, dailyLimit: 500, dailyUsed: 1, resetsAt: new Date(Date.now() + 864e5).toISOString(), plan: { id: "free", name: "Free" }, planUntil: null, maxInputTokens: 100000, links: {} };
 const reply = (content, stop) => ({ id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content, stop_reason: stop, usage: { input_tokens: 100, output_tokens: 40 }, oovi: live() });
 const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
-const MCP_PORT = 3389;
+const MCP_PORT = 3341;
 const seen = { bodies: [], sent: [], deleted: [] };
 const lastTool = (msgs) => {
   const prev = msgs[msgs.length - 2];
