@@ -195,6 +195,36 @@ const check = (name, ok, detail = "") => {
   await api("POST", "/api/settings", { browser: { allowPrivateNetwork: true } });
   const bots = await api("GET", "/api/bots");
   const scout = bots.find((b) => b.name === "Scout");
+  // OOVI_COST_MCP=60: Scout also has a connector with that many tools (realistic sizes), to measure what a long
+  // connector list costs in a whole job.
+  const nTools = Number(process.env.OOVI_COST_MCP || 0);
+  if (nTools > 0) {
+    const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+    const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+    const { z } = require("zod");
+    const apps = ["gmail", "calendar", "drive", "sheets", "slack", "notion", "trello", "hubspot", "outlook", "teams"];
+    const verbs = ["find", "create", "update", "send", "list", "delete"];
+    http
+      .createServer((req, res) => {
+        let raw = "";
+        req.on("data", (c) => (raw += c));
+        req.on("end", async () => {
+          const server = new McpServer({ name: "many", version: "1.0.0" });
+          for (let i = 0; i < nTools; i++) {
+            const app = apps[i % apps.length], verb = verbs[Math.floor(i / apps.length) % verbs.length];
+            server.registerTool(`${app}_${verb}_${i}`, { description: `${verb[0].toUpperCase() + verb.slice(1)} items in ${app}. Use it when the user asks to ${verb} something in their ${app} account; it returns the matching items with their ids, titles, dates and links. Results can be long: ask for a few at a time.`, inputSchema: { query: z.string().describe("What to look for, in plain words"), limit: z.number().optional().describe("How many results, 1 to 50"), folder: z.string().optional().describe("Where to look (a folder, label or channel)") } }, async () => ({ content: [{ type: "text", text: "ok" }] }));
+          }
+          const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+          res.on("close", () => { transport.close(); server.close(); });
+          await server.connect(transport);
+          await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+        });
+      })
+      .listen(3386, "127.0.0.1");
+    const add = await api("POST", "/api/mcp", { name: "Many tools", transport: "http", url: "http://127.0.0.1:3386/mcp" });
+    await api("PUT", `/api/mcp/${add.id}`, { bots: (await api("GET", "/api/bots")).map((b) => b.id) });
+    await sleep(1500);
+  }
   const dm = `dm-${scout.id}`;
   const run = async (text) => {
     await api("POST", `/api/chats/${dm}/run`, { text });

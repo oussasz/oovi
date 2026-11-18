@@ -69,3 +69,17 @@ test("the conversation is sent with on-demand calls shown through use_tool, the 
   assert.equal(history[1]!.toolCalls[0]!.name, "create_image", "the saved conversation keeps the real names");
   assert.equal(wrapHistory(history, deferTools([spec("read_url")])), history);
 });
+
+test("many connector tools are sent on demand too; a few stay in full", async () => {
+  const { deferTools, onDemand, MANY_CONNECTOR_TOOLS } = await import("../../lib/tool-defer.ts");
+  const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `mcp_x_tool_${i}`, description: `Does thing ${i}. More words here.`, parameters: { type: "object", properties: {} } }));
+  const few = [...mk(MANY_CONNECTOR_TOOLS), { name: "create_image", description: "x", parameters: {} }, { name: "create_presentation", description: "y", parameters: {} }];
+  assert.ok(deferTools(few as never).sent.some((t) => t.name === "mcp_x_tool_0"));
+  const many = [...mk(MANY_CONNECTOR_TOOLS + 1), { name: "read_url", description: "r", parameters: {} }];
+  const d = deferTools(many as never);
+  assert.ok(!d.sent.some((t) => t.name.startsWith("mcp_")));
+  assert.ok(d.sent.some((t) => t.name === "read_url"));
+  const use = d.sent.find((t) => t.name === "use_tool")!;
+  assert.match(use.description, /- mcp_x_tool_3: Does thing 3\./);
+  assert.ok(onDemand(many as never, "mcp_x_tool_0") && !onDemand(many as never, "read_url"));
+});

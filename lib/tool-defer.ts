@@ -27,8 +27,21 @@ const guideOpen = (name: string) => `[guide:${name}]`;
 export type Deferral = { sent: ToolSpec[]; deferred: ToolSpec[] };
 
 /** The tools to send: the everyday ones as they are, the on-demand ones folded into `use_tool`. */
+/** Above this many connector tools, they are sent on demand too (measured: 60 of them made a 34-step job cost
+ * 35% more, tests/e2e/cost-scenario.cjs with OOVI_COST_MCP=60). */
+export const MANY_CONNECTOR_TOOLS = 15;
+
+/** One line that says when to reach for a connector tool: the first sentence of its description. */
+const lineOf = (t: ToolSpec) => (DEFERRED[t.name] ?? (t.description || t.name).split(/(?<=[.!?])\s/)[0]!.replace(/\s+/g, " ").slice(0, 110));
+
+/** Whether this tool is sent on demand, among these tools. */
+export function onDemand(tools: ToolSpec[], name: string): boolean {
+  if (name in DEFERRED) return true;
+  return name.startsWith("mcp_") && tools.filter((t) => t.name.startsWith("mcp_")).length > MANY_CONNECTOR_TOOLS;
+}
+
 export function deferTools(tools: ToolSpec[]): Deferral {
-  const deferred = tools.filter((t) => t.name in DEFERRED);
+  const deferred = tools.filter((t) => onDemand(tools, t.name));
   // Not worth a detour for one small tool, and never twice.
   if (deferred.length < 2 || tools.some((t) => t.name === USE_TOOL)) return { sent: tools, deferred: [] };
   const spec: ToolSpec = {
@@ -36,7 +49,7 @@ export function deferTools(tools: ToolSpec[]): Deferral {
     description:
       "More tools, loaded when needed. They are yours like the others: when a task calls for one (or your instructions name one that is not in your tool list), use it through this tool. " +
       "First call use_tool with only `name`: you get that tool's guide (what it does, its parameters). Then call use_tool with `name` and `input` filled as the guide says. The guide stays in the conversation: read it once, not before every use.\n" +
-      deferred.map((t) => `- ${t.name}: ${DEFERRED[t.name]}`).join("\n"),
+      deferred.map((t) => `- ${t.name}: ${lineOf(t)}`).join("\n"),
     parameters: {
       type: "object",
       properties: {
@@ -46,7 +59,7 @@ export function deferTools(tools: ToolSpec[]): Deferral {
       required: ["name"],
     },
   };
-  return { sent: [...tools.filter((t) => !(t.name in DEFERRED)), spec], deferred };
+  return { sent: [...tools.filter((t) => !onDemand(tools, t.name)), spec], deferred };
 }
 
 /** The guide a bot gets the first time it reaches for an on-demand tool. */
@@ -109,8 +122,8 @@ export function wrapHistory(messages: Msg[], d: Deferral): Msg[] {
 export function useToolResult(c: ToolCall, tools: ToolSpec[]): ToolResult {
   const target = String(c.input.name ?? "").trim();
   const spec = tools.find((t) => t.name === target);
-  const onDemand = tools.filter((t) => t.name in DEFERRED).map((t) => t.name);
-  if (!spec) return { id: c.id, name: c.name, content: `There is no tool named "${target}". use_tool gives: ${onDemand.join(", ") || "nothing here"}.`, isError: true };
-  if (!(target in DEFERRED)) return { id: c.id, name: c.name, content: `${target} is in your tool list: call it directly, not through use_tool.`, isError: true };
+  const listed = tools.filter((t) => onDemand(tools, t.name)).map((t) => t.name);
+  if (!spec) return { id: c.id, name: c.name, content: `There is no tool named "${target}". use_tool gives: ${listed.join(", ") || "nothing here"}.`, isError: true };
+  if (!onDemand(tools, target)) return { id: c.id, name: c.name, content: `${target} is in your tool list: call it directly, not through use_tool.`, isError: true };
   return { id: c.id, name: c.name, content: guideText(spec) };
 }
