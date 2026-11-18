@@ -1824,6 +1824,7 @@ const en = {
   "st.extracting": "Pulling the list from the page",
   "st.scraping": "Collecting the list into “{name}”",
   "st.places": "Looking for places in {area}",
+  "st.telegram": "Sending to your Telegram",
   "st.replay": "Replaying “{name}”",
   "st.helpers": "{n} helpers working at the same time",
   "st.papers": "Looking for publications on “{q}”",

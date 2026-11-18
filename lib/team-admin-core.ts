@@ -81,7 +81,7 @@ export function teamPlan(input: Record<string, unknown>, bots: BotLike[], groupN
   }
 
   const total = existing.length + created.length;
-  if (total < 2) return "A team needs at least 2 bots.";
+  if (total < 2) return created.length ? `A team needs at least 2 bots. For just one new bot, use propose_specialist (name, role, instructions, why) instead.` : `A team needs at least 2 bots. To give the job to ${existing[0]?.name ?? "one bot"} alone, ask it directly instead of making a team.`;
   if (total > TEAM_MAX) return `A team has at most ${TEAM_MAX} bots.`;
   const all = [...existing.map((e) => e.name), ...created.map((c) => c.name)];
   const leadName = str(input.leader, 40).replace(/^@/, "");

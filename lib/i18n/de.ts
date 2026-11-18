@@ -1805,6 +1805,7 @@ const de: Dict = {
   "st.extracting": "Holt die Liste von der Seite",
   "st.scraping": "Sammelt die Liste in „{name}“",
   "st.places": "Sucht Orte in {area}",
+  "st.telegram": "Sendet an dein Telegram",
   "st.replay": "Wiederholt „{name}“",
   "st.helpers": "{n} Helfer arbeiten gleichzeitig",
   "st.papers": "Sucht Publikationen zu „{q}“",

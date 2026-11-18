@@ -25,7 +25,7 @@ export const REQUEST_ABILITIES_SPEC: ToolSpec = {
 
 export const PROPOSE_TEAM_SPEC: ToolSpec = {
   name: "propose_team",
-  description: `Create a new group (a team) for a job, with the user's OK: pick fitting bots from the user's bots (members) and add new ones the job needs (new_bots, at most ${NEW_BOTS_MAX}). ${TEAM_MAX} bots at most. The user sees a card and decides. After they agree, give the team the job with message_group. Use an existing group instead when one already fits.`,
+  description: `Create a new group (a team) for a job, with the user's OK: pick fitting bots from the user's bots (members) and add new ones the job needs (new_bots, at most ${NEW_BOTS_MAX}). At least 2 and at most ${TEAM_MAX} bots (for one new bot, use propose_specialist). The user sees a card and decides. After they agree, give the team the job with message_group. Use an existing group instead when one already fits.`,
   parameters: {
     type: "object",
     properties: {

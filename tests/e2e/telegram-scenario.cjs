@@ -53,6 +53,11 @@ async function answerAsync(body) {
     if (hasResult) return reply([{ type: "text", text: "Voilà ton rapport." }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_doc_${Date.now()}`, name: "create_document", input: { filename: "rapport.md", content: "# Rapport\nTout va bien." } }], "tool_use");
   }
+  if (/TGSEND/.test(u)) {
+    seen.tgTools = (body.tools || []).map((t) => t.name);
+    if (hasResult) return reply([{ type: "text", text: "TGSEND-DONE" }], "end_turn");
+    return reply([{ type: "tool_use", id: `toolu_tg_${Date.now()}`, name: "send_telegram", input: { text: "TG-HELLO from your bot" } }], "tool_use");
+  }
   if (/VOICE-NOTE/.test(u)) return reply([{ type: "text", text: /^🎤 VOICE-NOTE/.test(u) ? "VOICE-HEARD" : "VOICE-WRONG" }], "end_turn");
   if (/LONG/.test(u)) {
     await sleep(8000);
@@ -272,6 +277,13 @@ const check = (name, ok, detail = "") => {
   updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, voice: { file_id: "v1", duration: 3, mime_type: "audio/ogg", file_size: 4000 } } });
   await waitFor((m) => sent.indexOf(m) >= n7 && /VOICE-/.test(m.text), 30_000, "voice reply");
   check("a Telegram voice message is turned into text and answered", sent.slice(n7).some((m) => /VOICE-HEARD/.test(m.text)) && seen.transcribed?.mime === "audio/ogg" && seen.transcribed.bytes === 4000, JSON.stringify(seen.transcribed));
+
+  // From the app: "send it to my Telegram" uses oovi's own Telegram, not a connector.
+  const n8 = sent.length;
+  const mainId = (await (await fetch(`${BASE}/api/main`)).json()).botId;
+  await fetch(`${BASE}/api/chats/dm-${mainId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "TGSEND send me hello on my Telegram now" }) }).then((r) => r.text());
+  await waitFor((m) => sent.indexOf(m) >= n8 && /TG-HELLO/.test(m.text), 30_000, "telegram message from the app");
+  check("a bot asked in the app sends the message to the user's Telegram (built-in, no connector)", (seen.tgTools || []).includes("send_telegram") && sent.slice(n8).some((m) => /TG-HELLO from your bot/.test(m.text)));
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

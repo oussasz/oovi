@@ -1805,6 +1805,7 @@ const tr: Dict = {
   "st.extracting": "Sayfadaki liste alınıyor",
   "st.scraping": "Liste “{name}” tablosuna toplanıyor",
   "st.places": "{area} içinde yerler aranıyor",
+  "st.telegram": "Telegram'ına gönderiliyor",
   "st.replay": "“{name}” tekrarlanıyor",
   "st.helpers": "{n} yardımcı aynı anda çalışıyor",
   "st.papers": "“{q}” hakkında yayınlar aranıyor",

@@ -1805,6 +1805,7 @@ const es: Dict = {
   "st.extracting": "Extrayendo la lista de la página",
   "st.scraping": "Reuniendo la lista en «{name}»",
   "st.places": "Buscando lugares en {area}",
+  "st.telegram": "Enviando a tu Telegram",
   "st.replay": "Repitiendo «{name}»",
   "st.helpers": "{n} ayudantes trabajando a la vez",
   "st.papers": "Buscando publicaciones sobre «{q}»",
