@@ -1275,19 +1275,30 @@ export default function ChatView({ id }: { id: string }) {
     if (browsers.some((b) => b.request)) setShowLive(true);
   }, [askKey]); // only when a request appears or changes
 
-  // A bot starts writing a plan, a table or a chart: the Canvas opens by itself, once per chat, unless the
-  // user closed it here before.
-  const wrote = !!chat && running && chat.entries.some((e) => e.kind === "bot" && e.status === "running" && e.steps.some((st) => st.role === "assistant" && st.toolCalls.some((c) => (c.name === "work_table" || c.name === "work_notes") && c.input.action !== "read")));
-  useEffect(() => {
-    if (!wrote) return;
-    try {
-      if (localStorage.getItem(`oovi.canvas.${id}`) !== null) return;
-      localStorage.setItem(`oovi.canvas.${id}`, "1");
-    } catch {
-      /* storage unavailable: it opens */
+  // A bot writes a table or a page: the Canvas opens at that page, even among many pages (unless the user
+  // closed the Canvas during this same run).
+  const lastWrite = useMemo(() => {
+    if (!chat || !running) return null;
+    for (const e of [...chat.entries].reverse()) {
+      if (e.kind !== "bot" || e.status !== "running") continue;
+      for (const st of [...e.steps].reverse()) {
+        if (st.role !== "assistant") continue;
+        const c = [...st.toolCalls].reverse().find((x) => (x.name === "work_table" || x.name === "work_notes") && x.input.action !== "read");
+        if (c) return { id: c.id, kind: c.name === "work_table" ? ("table" as const) : ("note" as const), name: String(c.input.table ?? c.input.file ?? "") };
+      }
     }
+    return null;
+  }, [chat, running]);
+  const [canvasFocus, setCanvasFocus] = useState<{ kind: "table" | "note"; name: string; at: number } | null>(null);
+  const closedThisRun = useRef(false);
+  useEffect(() => {
+    if (!running) closedThisRun.current = false;
+  }, [running]);
+  useEffect(() => {
+    if (!lastWrite?.name || closedThisRun.current) return;
     setShowCanvas(true);
-  }, [wrote, id]);
+    setCanvasFocus({ kind: lastWrite.kind, name: lastWrite.name, at: Date.now() });
+  }, [lastWrite?.id, lastWrite?.kind, lastWrite?.name]);
 
   if (missing) {
     return (
@@ -1513,6 +1524,8 @@ export default function ChatView({ id }: { id: string }) {
   function toggleCanvas() {
     const next = !showCanvas;
     setShowCanvas(next);
+    // Closed while the bots work: it doesn't pop open again during this run.
+    if (!next && running) closedThisRun.current = true;
     try {
       localStorage.setItem(`oovi.canvas.${id}`, next ? "1" : "0");
     } catch {
@@ -2034,7 +2047,7 @@ export default function ChatView({ id }: { id: string }) {
         </div>
       </section>
 
-      {showCanvas && <Canvas chatId={id} running={running} onClose={toggleCanvas} />}
+      {showCanvas && <Canvas chatId={id} running={running} onClose={toggleCanvas} focus={canvasFocus} />}
       {showLive && !showCanvas && (
         <aside className={`live${browsers.length ? " has-browser" : ""}${browsers.some((b) => b.request || b.controlled) ? " urgent" : ""}`} aria-label={t("chat.live")}>
           <div className="live-head">

@@ -29,7 +29,8 @@ const CHART_TYPES: ChartType[] = ["column", "bar", "line", "area", "pie", "dough
 const key = (s: Sel) => `${s.kind}:${s.name}`;
 const enc = encodeURIComponent;
 
-export function Canvas({ chatId, running, onClose }: { chatId: string; running: boolean; onClose: () => void }) {
+/** focus: the page a bot is writing right now (shown at once, even among many pages). */
+export function Canvas({ chatId, running, onClose, focus }: { chatId: string; running: boolean; onClose: () => void; focus?: { kind: "table" | "note"; name: string; at: number } | null }) {
   const { t } = useI18n();
   const base = `/api/chats/${chatId}/canvas`;
   const [index, setIndex] = useState<Index | null>(null);
@@ -88,12 +89,23 @@ export function Canvas({ chatId, running, onClose }: { chatId: string; running: 
     }
   }
 
+  // The page a bot is writing: chosen as soon as it exists (names compared loosely: the bot may write "Prospects alger").
+  const wanted = useRef<{ kind: "table" | "note"; name: string } | null>(null);
   const loadIndex = useCallback(async () => {
     try {
       const i = await api<Index>(base);
       setIndex(i);
       setSel((cur) => {
         const all: Sel[] = [...i.notes.map((n) => ({ kind: "note" as const, name: n.name })), ...i.tables.map((x) => ({ kind: "table" as const, name: x.name })), ...i.charts.map((c) => ({ kind: "chart" as const, name: c.name }))];
+        const w = wanted.current;
+        if (w) {
+          const fold = (s: string) => s.toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, "");
+          const hit = all.find((a) => a.kind === w.kind && fold(a.name) === fold(w.name));
+          if (hit) {
+            wanted.current = null;
+            return hit;
+          }
+        }
         if (cur && all.some((a) => key(a) === key(cur))) return cur;
         // Nothing chosen (or it was deleted): the page changed last.
         const stamp = (a: Sel) => (a.kind === "note" ? i.notes : a.kind === "table" ? i.tables : i.charts).find((x) => x.name === a.name)?.updatedAt ?? 0;
@@ -107,6 +119,12 @@ export function Canvas({ chatId, running, onClose }: { chatId: string; running: 
   useEffect(() => {
     void loadIndex();
   }, [loadIndex]);
+  useEffect(() => {
+    if (!focus?.name) return;
+    wanted.current = { kind: focus.kind, name: focus.name };
+    setMenu("");
+    void loadIndex();
+  }, [focus?.at, focus?.kind, focus?.name, loadIndex]);
   // Bots at work: the pages fill in while the user watches.
   useEffect(() => {
     const every = setInterval(
