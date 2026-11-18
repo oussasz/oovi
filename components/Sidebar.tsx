@@ -12,6 +12,7 @@ import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
 import { CreditsChip, FeedbackButton, OfflineBanner } from "./Credits";
 import CommandPalette from "./CommandPalette";
+import { openEditor } from "./EditorModal";
 
 type SearchHit = { chatId: string; entryId: string; who: string; snippet: string; at: number; chat: string };
 
@@ -176,8 +177,8 @@ export default function Sidebar() {
         </Link>
 
         <div className="side-actions">
-          <Link className="btn primary sm" href="/groups/new"><Icon name="plus" size={16} /> {t("side.group")}</Link>
-          <Link className="btn sm" href="/bots/new"><Icon name="plus" size={16} /> {t("side.bot")}</Link>
+          <Link className="btn primary sm" href="/groups/new" onClick={(e) => (e.preventDefault(), openEditor("group", "new"))}><Icon name="plus" size={16} /> {t("side.group")}</Link>
+          <Link className="btn sm" href="/bots/new" onClick={(e) => (e.preventDefault(), openEditor("bot", "new"))}><Icon name="plus" size={16} /> {t("side.bot")}</Link>
         </div>
 
         <div className="side-search">

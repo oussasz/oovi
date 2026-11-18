@@ -27,6 +27,7 @@ import ProjectFolder from "./ProjectFolder";
 import Rich from "./Rich";
 import { Canvas } from "./Canvas";
 import { ChartView, type ChartType } from "./ChartView";
+import { openEditor } from "./EditorModal";
 import { EFFORT_LEVELS } from "@/lib/slash";
 import SettingsLink from "./SettingsLink";
 
@@ -1692,7 +1693,7 @@ export default function ChatView({ id }: { id: string }) {
               </a>
             )}
             <ProjectFolder chat={chat} running={running} onChange={(c) => setChat(c)} />
-            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : chat.routine ? "/routines" : `/bots/${solo?.id ?? ""}`} title={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")} aria-label={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")}>
+            <Link className="icon-btn" href={isGroup ? `/groups/${chat.id}` : chat.routine ? "/routines" : `/bots/${solo?.id ?? ""}`} onClick={(e) => { if (chat.routine) return; e.preventDefault(); openEditor(isGroup ? "group" : "bot", isGroup ? chat.id : (solo?.id ?? "")); }} title={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")} aria-label={isGroup ? t("chat.editGroup") : chat.routine ? t("chat.editRoutine") : t("chat.editBot")}>
               <Icon name="edit" />
             </Link>
             <button className="icon-btn" onClick={clear} disabled={running || !chat.entries.length} title={t("chat.clear")} aria-label={t("chat.clear")}>

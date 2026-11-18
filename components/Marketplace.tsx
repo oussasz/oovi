@@ -2,6 +2,7 @@
 
 // Marketplace: connectors (MCP), skills and plugins (ready-made bot teams),
 // each with "Yours" and "Discover". (The bots' memory lives in Settings > Memory & soul.)
+import { openEditor } from "./EditorModal";
 import { setupText } from "@/lib/i18n";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
@@ -465,7 +466,7 @@ export default function Marketplace() {
             { label: t("mk.importSkill"), onClick: () => setImportUrl("") },
           ]
         : tab === "plugins"
-          ? [{ label: t("mk.newBot"), href: "/bots/new" }]
+          ? [{ label: t("mk.newBot"), onClick: () => openEditor("bot", "new") }]
           : [];
 
   // ---------- views ----------

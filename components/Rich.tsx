@@ -5,6 +5,7 @@
 // that open a place in the app, and maths ($…$, $$…$$, \(…\), \[…\]) drawn by KaTeX.
 // Never injects HTML from the text itself (KaTeX builds the maths markup, with links and HTML turned off).
 
+import { openEditor } from "./EditorModal";
 import "katex/dist/katex.min.css";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -53,7 +54,12 @@ function OoviLink({ label, target }: { label: string; target: OoviTarget }) {
       className="oovi-link"
       onClick={() => {
         if (target.kind === "settings") openSettings(target.tab);
-        else router.push(target.href);
+        else if (/^\/bots\/[^/#]+/.test(target.href)) {
+          // A bot's settings open in the editor window, at the part the link names (e.g. its abilities).
+          const [p, hash] = target.href.split("#");
+          openEditor("bot", decodeURIComponent(p!.slice(6)));
+          if (hash) setTimeout(() => document.getElementById(hash)?.scrollIntoView({ block: "start" }), 600);
+        } else router.push(target.href);
       }}
     >
       {label}

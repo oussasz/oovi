@@ -4,6 +4,7 @@
 //   splash → sign in / create account → onboarding (first time) → the app.
 // It also reports unexpected UI errors (crash reports) and hosts the Settings window.
 
+import EditorModal from "./EditorModal";
 import { isRealCrash } from "@/lib/crash-filter";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/client";
@@ -524,6 +525,7 @@ export default function AccountGate({ children }: { children: React.ReactNode })
     <>
       {children}
       <SettingsModal />
+      <EditorModal />
     </>
   );
 }

@@ -1239,3 +1239,9 @@ a.tag { text-decoration: none; }
 .zap-ready { margin: 0; color: var(--ok); font-weight: 600; font-size: 13.5px; }
 .zap-other { display: flex; gap: 6px; }
 .zap-other input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
+.editor-window .page { padding-top: 26px; }
+.editor-back { margin-bottom: 12px; }
+.look-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.look-panel { min-height: 64px; }
+.look-panel .opt-group { margin: 0; }
+.look-picture { display: flex; flex-direction: column; gap: 8px; }

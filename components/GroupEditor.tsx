@@ -1,5 +1,6 @@
 "use client";
 
+import { openEditor } from "./EditorModal";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -9,7 +10,7 @@ import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 
-export default function GroupEditor({ id }: { id: string }) {
+export default function GroupEditor({ id, onClose }: { id: string; onClose?: () => void }) {
   const router = useRouter();
   const isNew = id === "new";
   const [bots, setBots] = useState<Bot[] | null>(null);
@@ -52,6 +53,7 @@ export default function GroupEditor({ id }: { id: string }) {
       const body = JSON.stringify({ name, memberIds, leadId: lead?.id, orchestrate });
       const chat = isNew ? await api<Chat>("/api/chats", { method: "POST", body }) : await api<Chat>(`/api/chats/${id}`, { method: "PUT", body });
       refreshSidebar();
+      onClose?.();
       router.push(`/c/${chat.id}`);
     } catch (e) {
       setError((e as Error).message);
@@ -64,6 +66,7 @@ export default function GroupEditor({ id }: { id: string }) {
     try {
       await api(`/api/chats/${id}`, { method: "DELETE" });
       refreshSidebar();
+      onClose?.();
       router.push("/");
     } catch (e) {
       setError((e as Error).message);
@@ -72,6 +75,11 @@ export default function GroupEditor({ id }: { id: string }) {
 
   return (
     <div className="page narrow">
+      {!onClose && (
+        <button type="button" className="btn sm editor-back" onClick={() => (history.length > 1 ? router.back() : router.push("/"))}>
+          <Icon name="back" size={15} /> {t("common.back")}
+        </button>
+      )}
       <div className="group-hero">
         <FaceStack faces={members.map((m) => m.face)} size={92} />
         <div className="group-hero-text">
@@ -99,7 +107,7 @@ export default function GroupEditor({ id }: { id: string }) {
               </button>
             );
           })}
-          <Link href="/bots/new" className="member add">
+          <Link href="/bots/new" className="member add" onClick={(e) => (e.preventDefault(), openEditor("bot", "new"))}>
             <span className="add-circle">
               <Icon name="plus" />
             </span>

@@ -13,6 +13,7 @@ import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import SettingsLink from "./SettingsLink";
 import FirstHour from "./FirstHour";
+import { openEditor } from "./EditorModal";
 
 /** Example tasks for a first message: what people actually start with (posts, slides, budgets, daily digests). */
 const IDEAS = ["home.idea.post", "home.idea.slides", "home.idea.budget", "home.idea.digest"] as const;
@@ -163,7 +164,7 @@ export default function Home() {
               <span dir="auto">{g.preview || g.memberIds.map((id) => bots.find((b) => b.id === id)?.name).filter(Boolean).join(", ")}</span>
             </Link>
           ))}
-          <Link href="/groups/new" className="tile add">
+          <Link href="/groups/new" className="tile add" onClick={(e) => (e.preventDefault(), openEditor("group", "new"))}>
             <span className="add-circle">
               <Icon name="plus" />
             </span>
@@ -202,7 +203,7 @@ export default function Home() {
               </span>
             </Link>
           ))}
-          <Link href="/bots/new" className="tile add">
+          <Link href="/bots/new" className="tile add" onClick={(e) => (e.preventDefault(), openEditor("bot", "new"))}>
             <span className="add-circle">
               <Icon name="plus" />
             </span>

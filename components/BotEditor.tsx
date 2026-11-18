@@ -31,7 +31,13 @@ const PRESETS: { id: "assistant" | "researcher" | "writer" | "critic" | "social"
 // Labels: bot.mood.<mood>.
 const MOODS = ["online", "thinking", "reading", "computer", "working", "asking", "happy", "sad", "sleeping"] as const satisfies readonly Mood[];
 
-export default function BotEditor({ id }: { id: string }) {
+/** onClose: shown in the editor window (components/EditorModal.tsx): it closes after creating or deleting. */
+type LookTab = "color" | "shape" | "hair" | "eyes" | "cheeks" | "mouth" | "nose" | "top" | "wear" | "picture";
+const LOOK_TABS: LookTab[] = ["color", "shape", "hair", "eyes", "cheeks", "mouth", "nose", "top", "wear", "picture"];
+const LOOK_LABEL = { color: "bot.color", shape: "bot.part.body", hair: "bot.part.hair", eyes: "bot.part.eyes", cheeks: "bot.part.cheeks", mouth: "bot.part.mouth", nose: "bot.part.nose", top: "bot.part.top", wear: "bot.part.wear", picture: "bot.ownPicture" } as const;
+const LOOK_LIST = { shape: SHAPES, hair: HAIR, eyes: EYES, cheeks: CHEEKS, mouth: MOUTHS, nose: NOSES, top: TOPS, wear: WEAR } as const;
+
+export default function BotEditor({ id, onClose }: { id: string; onClose?: () => void }) {
   const router = useRouter();
   const isNew = id === "new";
   const [d, setD] = useState<BotInput | null>(null);
@@ -43,6 +49,8 @@ export default function BotEditor({ id }: { id: string }) {
   const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[]; auth?: "oauth"; signedIn?: boolean }[]>([]);
   const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
   const [isMain, setIsMain] = useState(false);
+  const [lookTab, setLookTab] = useState<LookTab>("color");
+  const [pictureErr, setPictureErr] = useState<string | null>(null);
   const [wasMain, setWasMain] = useState(false);
   const { t, rich } = useI18n();
   // Computer control: on/off for all bots, and whether this computer supports it at all.
@@ -101,6 +109,21 @@ export default function BotEditor({ id }: { id: string }) {
     setD({ ...d, ...p });
     setSaved(false);
   };
+  /** The user's own picture: cut to a 256×256 square in the browser, kept on this computer as the bot's face. */
+  async function usePicture(file: File) {
+    setPictureErr(null);
+    try {
+      const img = await createImageBitmap(file);
+      const side = Math.min(img.width, img.height);
+      const c = document.createElement("canvas");
+      c.width = c.height = 256;
+      c.getContext("2d")!.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, 256, 256);
+      const r = await api<{ id: string }>("/api/avatars/upload", { method: "POST", body: JSON.stringify({ png: c.toDataURL("image/png") }) });
+      if (d) set({ face: { ...d.face, image: r.id } });
+    } catch (e) {
+      setPictureErr((e as Error).message || t("bot.ownPictureFailed"));
+    }
+  }
   // Any slime choice replaces a marketplace picture: the bot becomes the slime the user is making.
   const setFace = (p: Partial<FaceT>) => set({ face: { ...slimeOf(d.face), ...p } });
 
@@ -115,8 +138,10 @@ export default function BotEditor({ id }: { id: string }) {
         setWasMain(true);
       }
       refreshSidebar();
-      if (isNew) router.push(`/c/dm-${bot.id}`);
-      else setSaved(true);
+      if (isNew) {
+        onClose?.();
+        router.push(`/c/dm-${bot.id}`);
+      } else setSaved(true);
     } catch (e) {
       setError((e as Error).message);
     } finally {
@@ -129,6 +154,7 @@ export default function BotEditor({ id }: { id: string }) {
     try {
       await api(`/api/bots/${id}`, { method: "DELETE" });
       refreshSidebar();
+      onClose?.();
       router.push("/");
     } catch (e) {
       setError((e as Error).message);
@@ -142,9 +168,9 @@ export default function BotEditor({ id }: { id: string }) {
   const reveal = (key: keyof FaceT): Partial<FaceT> =>
     key === "hair" && (topName === "hat" || topName === "beret" || topName === "cap") ? { top: 0 } : key === "eyes" && (wearName === "shades" || wearName === "patch") ? { wear: 0 } : {};
 
-  const options = (label: string, list: readonly string[], key: keyof FaceT) => (
+  const options = (label: string, list: readonly string[], key: keyof FaceT, bare = false) => (
     <div className="opt-group">
-      <div className="opt-label">{label}</div>
+      {!bare && <div className="opt-label">{label}</div>}
       <div className="opt-grid">
         {list.map((name, i) => (
           <button type="button" key={name} className={`opt${(d.face[key] ?? 0) === i ? " on" : ""}`} onClick={() => setFace({ [key]: i, ...reveal(key) })} title={name} aria-label={`${label}: ${name}`} aria-pressed={(d.face[key] ?? 0) === i}>
@@ -168,6 +194,11 @@ export default function BotEditor({ id }: { id: string }) {
 
   return (
     <div className="page editor">
+      {!onClose && (
+        <button type="button" className="btn sm editor-back" onClick={() => (history.length > 1 ? router.back() : router.push("/"))}>
+          <Icon name="back" size={15} /> {t("common.back")}
+        </button>
+      )}
       <aside className="editor-preview">
         <div className="preview-card">
           <Face face={d.face} mood={mood} size={176} interactive title={t("bot.squishTitle", { name: d.name || t("common.newBot") })} />
@@ -259,22 +290,41 @@ export default function BotEditor({ id }: { id: string }) {
 
         <section className="card">
           <h2>{t("bot.look")}</h2>
-          <div className="opt-group">
-            <div className="opt-label">{t("bot.color")}</div>
-            <div className="swatches">
-              {FACE_COLORS.map((c, i) => (
-                <button key={c} type="button" className={`swatch${d.face.color === i ? " on" : ""}`} style={{ background: c }} onClick={() => setFace({ color: i })} aria-label={t("bot.colorN", { n: i + 1 })} aria-pressed={d.face.color === i} />
-              ))}
-            </div>
+          {/* One part at a time: a row of tabs, then that part's choices (the preview on the side shows the result). */}
+          <div className="look-tabs" role="tablist" aria-label={t("bot.look")}>
+            {LOOK_TABS.map((k) => (
+              <button key={k} type="button" role="tab" aria-selected={lookTab === k} className={`chip${lookTab === k ? " on" : ""}`} onClick={() => setLookTab(k)}>
+                {k === "picture" && <Icon name="user" size={13} />} {t(LOOK_LABEL[k])}
+              </button>
+            ))}
           </div>
-          {options(t("bot.part.body"), SHAPES, "shape")}
-          {options(t("bot.part.hair"), HAIR, "hair")}
-          {options(t("bot.part.eyes"), EYES, "eyes")}
-          {options(t("bot.part.cheeks"), CHEEKS, "cheeks")}
-          {options(t("bot.part.mouth"), MOUTHS, "mouth")}
-          {options(t("bot.part.nose"), NOSES, "nose")}
-          {options(t("bot.part.top"), TOPS, "top")}
-          {options(t("bot.part.wear"), WEAR, "wear")}
+          <div className="look-panel" role="tabpanel">
+            {lookTab === "color" ? (
+              <div className="swatches">
+                {FACE_COLORS.map((c, i) => (
+                  <button key={c} type="button" className={`swatch${d.face.color === i ? " on" : ""}`} style={{ background: c }} onClick={() => setFace({ color: i })} aria-label={t("bot.colorN", { n: i + 1 })} aria-pressed={d.face.color === i} />
+                ))}
+              </div>
+            ) : lookTab === "picture" ? (
+              <div className="look-picture">
+                <p className="hint">{t("bot.ownPictureHint")}</p>
+                <div className="row wrap">
+                  <label className="btn sm">
+                    <Icon name="plus" size={14} /> {t(d.face.image ? "bot.ownPictureChange" : "bot.ownPictureAdd")}
+                    <input type="file" accept="image/png,image/jpeg,image/webp" hidden onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void usePicture(f); }} />
+                  </label>
+                  {d.face.image && (
+                    <button type="button" className="btn sm" onClick={() => setFace({})}>
+                      {t("bot.ownPictureRemove")}
+                    </button>
+                  )}
+                </div>
+                {pictureErr && <p className="notice error small">{pictureErr}</p>}
+              </div>
+            ) : (
+              options(t(LOOK_LABEL[lookTab]), LOOK_LIST[lookTab], lookTab, true)
+            )}
+          </div>
         </section>
 
         <section className="card">

@@ -7,6 +7,7 @@ import type { Bot, ChatSummary } from "@/lib/types";
 import Face from "./Face";
 import { useT } from "./I18n";
 import Icon, { type IconName } from "./Icon";
+import { openEditor } from "./EditorModal";
 
 type Item = { key: string; label: string; hint?: string; icon?: IconName; bot?: Bot; run: () => void };
 
@@ -49,8 +50,8 @@ export default function CommandPalette(props: { bots: Bot[]; chats: ChatSummary[
       ...bots.filter((b) => !b.hidden || chats.some((c) => c.id === `dm-${b.id}` && c.preview)).map((b) => ({ key: `b:${b.id}`, label: b.name, hint: b.role, bot: b, run: () => go(`/c/dm-${b.id}`) })),
       ...chats.filter((c) => c.kind === "group" || c.fork).map((c) => ({ key: `c:${c.id}`, label: c.name, hint: t(c.fork ? "pal.copy" : "pal.group"), icon: "user" as IconName, run: () => go(`/c/${c.id}`) })),
       { key: "p:home", label: t("side.home"), icon: "home", run: () => go("/") },
-      { key: "p:group", label: t("pal.newGroup"), icon: "plus", run: () => go("/groups/new") },
-      { key: "p:bot", label: t("pal.newBot"), icon: "plus", run: () => go("/bots/new") },
+      { key: "p:group", label: t("pal.newGroup"), icon: "plus", run: () => openEditor("group", "new") },
+      { key: "p:bot", label: t("pal.newBot"), icon: "plus", run: () => openEditor("bot", "new") },
       { key: "p:routines", label: t("side.routines"), icon: "clock", run: () => go("/routines") },
       { key: "p:market", label: t("common.skillsTools"), icon: "library", run: () => go("/library") },
       { key: "p:settings", label: t("common.settings"), icon: "gear", run: () => props.settings() },
