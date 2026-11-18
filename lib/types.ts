@@ -144,6 +144,8 @@ export type BotEntry = {
   unconfirmed?: string;
   /** Final reply text. */
   text: string;
+  /** The done-check sent this reply back to work: its last words are a held-back draft, not the end of the turn. */
+  held?: boolean;
   status: "running" | "waiting" | "done" | "error" | "stopped";
   error?: string;
   usage: Usage;
@@ -208,6 +210,8 @@ export type Pending = {
   planApproved?: boolean;
   /** Rounds the done-check continued by itself since the user's message (MAX_AUTO_ROUNDS). */
   autoRounds?: number;
+  /** The reply the done-check sent back to work: the next round continues IN it (one message for the user, not one per round). */
+  continueIn?: string;
   /** The user message whose reply was already sent back once for ending on a promise (lib/promise-core.ts). */
   promised?: string;
   /** A slash command used in the message being worked on. */

@@ -411,7 +411,8 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF: write a report in 3 sections" });
   const h1 = await idle(`dm-${half.id}`, 120000);
   const hb = h1.entries.filter((e) => e.kind === "bot");
-  check("K) a bot that stops halfway and offers to continue is sent back by the done-check, told what is missing", seen.halfMissingSeen === true && /BIG JOB MODE/.test(seen.halfSys || "") && hb.length === 2 && /^HALF-DONE/.test(hb.at(-1)?.text ?? ""), `${hb.length} turns; last: ${(hb.at(-1)?.text ?? "").slice(0, 60)}`);
+  check("K) a bot that stops halfway and offers to continue is sent back by the done-check, told what is missing", seen.halfMissingSeen === true && /BIG JOB MODE/.test(seen.halfSys || "") && /^HALF-DONE/.test(hb.at(-1)?.text ?? ""), `${hb.length} messages; last: ${(hb.at(-1)?.text ?? "").slice(0, 60)}`);
+  check("K) the user gets ONE message: the held-back draft isn't shown, the bot is told the user never saw it", hb.length === 1 && !/I can continue with sections 2 and 3/.test(hb[0]?.text ?? "") && /has NOT seen your reply above/.test(seen.halfSys || ""), `${hb.length} messages`);
   check("K) the check read the user's request and the bot's reply", checks.some((t) => /HALF: write a report in 3 sections/.test(t) && /I can continue with sections 2 and 3/.test(t)));
   const checksBefore = checks.length;
   await api("POST", `/api/chats/dm-${half.id}/run`, { text: "HALF-ASK: write the city report" });
@@ -421,12 +422,14 @@ const newBot = (name, role) => api("POST", "/api/bots", { name, role, instructio
   await idle(`dm-${half.id}`, 60000);
   check("K) small talk without any action costs no check", checks.length === checksBefore + 1, `${checks.length - checksBefore} checks`);
   // The same failure reported again stops the rounds at once (the check always says "unfinished" here).
-  rules.doneCheck.verdict = () => ({ status: "unfinished", missing: "send the message", goal: "message sent" });
+  let loopChecks = 0;
+  const checksLoop = () => loopChecks;
+  rules.doneCheck.verdict = () => (loopChecks++, { status: "unfinished", missing: "send the message", goal: "message sent" });
   const loop = await newBot("Loop", "");
   await api("POST", `/api/chats/dm-${loop.id}/run`, { text: "LOOP: send my message" });
   const lc2 = await idle(`dm-${loop.id}`, 120000);
   const lb2 = lc2.entries.filter((e) => e.kind === "bot");
-  check("K) a round that repeats the previous reply ends the work: 2 turns, not one per automatic round", lb2.length === 2, `${lb2.length} turns`);
+  check("K) a round that repeats the previous reply ends the work, in one message (not one per automatic round)", lb2.length === 1 && checksLoop() <= 2, `${lb2.length} messages`);
   rules.doneCheck.verdict = () => ({ status: "done", missing: "", goal: "" });
 
   // L: a message with no clear language (a name) is answered in the language of the one before it.
