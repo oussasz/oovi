@@ -1889,6 +1889,7 @@ const tr: Dict = {
   "sync.turnedOn": "Eşitleme açık. Sohbetlerin yükleniyor.",
   "sync.turnedOff": "Eşitleme kapalı. oovi sunucusundaki kopya silindi.",
   "sync.offElsewhere": "Eşitleme başka bir cihazda kapatıldı. Sohbetlerin hâlâ bu bilgisayarda.",
+  "sync.removedConnectors": "Başka bir cihazda kaldırıldı, bu yüzden burada da kaldırıldı: {names}.",
   "sync.status.title": "Durum",
   "sync.lastSync": "Son eşitleme: {when}",
   "sync.notYet": "Henüz eşitlenmedi.",

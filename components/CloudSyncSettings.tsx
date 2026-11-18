@@ -73,6 +73,7 @@ export default function CloudSyncSettings() {
           </span>
         </label>
         {st.offElsewhere && !st.enabled && <p className="notice small">{t("sync.offElsewhere")}</p>}
+        {st.enabled && st.removedConnectors.length > 0 && <p className="notice small">{t("sync.removedConnectors", { names: st.removedConnectors.join(", ") })}</p>}
         {msg && <p className={msg.ok ? "msg-ok" : "msg-err"} role="status">{msg.text}</p>}
       </div>
 

@@ -1889,6 +1889,7 @@ const de: Dict = {
   "sync.turnedOn": "Synchronisierung ist an. Deine Chats werden hochgeladen.",
   "sync.turnedOff": "Synchronisierung ist aus. Die Kopie auf dem oovi-Server wurde gelöscht.",
   "sync.offElsewhere": "Die Synchronisierung wurde auf einem anderen Gerät ausgeschaltet. Deine Chats sind noch auf diesem Computer.",
+  "sync.removedConnectors": "Auf einem anderen Gerät entfernt, daher auch hier entfernt: {names}.",
   "sync.status.title": "Status",
   "sync.lastSync": "Zuletzt synchronisiert: {when}",
   "sync.notYet": "Noch nicht synchronisiert.",

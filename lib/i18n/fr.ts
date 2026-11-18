@@ -1889,6 +1889,7 @@ const fr: Dict = {
   "sync.turnedOn": "La synchronisation est activée. Tes discussions sont en cours d'envoi.",
   "sync.turnedOff": "La synchronisation est désactivée. La copie sur le serveur d'oovi a été supprimée.",
   "sync.offElsewhere": "La synchronisation a été désactivée sur un autre appareil. Tes discussions sont toujours sur cet ordinateur.",
+  "sync.removedConnectors": "Supprimé sur un autre appareil, donc supprimé ici aussi : {names}.",
   "sync.status.title": "État",
   "sync.lastSync": "Dernière synchronisation : {when}",
   "sync.notYet": "Pas encore synchronisé.",

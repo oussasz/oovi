@@ -1904,6 +1904,7 @@ const ar: Dict = {
   "sync.turnedOn": "المزامنة مفعّلة. يجري رفع محادثاتك.",
   "sync.turnedOff": "المزامنة متوقفة. حُذفت النسخة الموجودة على خادم oovi.",
   "sync.offElsewhere": "أُوقفت المزامنة من جهاز آخر. محادثاتك ما زالت على هذا الجهاز.",
+  "sync.removedConnectors": "حُذف من جهاز آخر، لذا حُذف هنا أيضًا: {names}.",
   "sync.status.title": "الحالة",
   "sync.lastSync": "آخر مزامنة: {when}",
   "sync.notYet": "لم تتم المزامنة بعد.",

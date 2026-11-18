@@ -126,7 +126,9 @@ test("connectors: push what changed here, pull what changed there, nothing when 
   assert.equal(vaultAction("h2", { version: 3, hash: "h1" }, 4), "push"); // both changed: push, the 409 merges
   assert.equal(vaultAction(null, undefined, 2), "pull"); // made on another computer
   assert.equal(vaultAction(null, { version: 2, hash: "h" }, 2), "none"); // removed here
-  assert.equal(vaultAction("h1", { version: 3, hash: "h1" }, null), "push"); // the account lost it
+  assert.equal(vaultAction("h1", { version: 3, hash: "h1" }, null), "remove"); // removed on the phone
+  assert.equal(vaultAction("h2", { version: 3, hash: "h1" }, null), "push"); // removed there, changed here: kept
+  assert.equal(vaultAction("h1", undefined, null), "push"); // new here
 });
 
 test("connector merge keeps this computer's settings, the freshest sign-in, and no key is lost", () => {

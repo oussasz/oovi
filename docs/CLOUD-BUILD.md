@@ -89,7 +89,16 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
 `infra/azure/` (create, delete). No data on the server, so nothing to copy.
 
 ## Changes to this file
-- (none yet)
+- 2026-11-18 (owner): connectors are managed from the phone too, like on the computer: add one from the catalog,
+  sign in (OAuth), turn on/off, choose which bots use it, disconnect, remove. Sign-ins started on the phone finish
+  on the website: `POST /api/v1/cloud/connectors/<id>/oauth/start` → `{authUrl}`; the service redirects to
+  `/api/v1/cloud/connectors/oauth/callback`, which stores the tokens in `cloud_vault` (sealed) and returns to the
+  phone. `PUT /vault/<id>` from the phone for on/off/bots; `DELETE /vault/<id>` disconnects (the desktop removes it
+  at its next pull). Keys typed for a connector (an API-key connector) are allowed: they belong to the connector,
+  not to an AI model. AI model keys stay forbidden on the phone.
+- 2026-11-18 (owner): the phone app must feel like WhatsApp / Messenger: a chat list first, bubbles, the usual
+  composer (text, voice, attach), long-press menu on a message (reply, copy), swipe to reply, ticks/typing-like
+  status while the bot works, unread counts, archive/pin by swipe. Familiar, never strange; Apple-style polish.
 - 2026-11-18, part A (desktop, branch `cloud-app`): notes on how the desktop uses the API. Nothing in the API's
   shape changed; part W please check these match:
   1. Devices: there is no separate call. The desktop is registered and marked online by `POST /jobs/claim

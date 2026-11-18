@@ -40,7 +40,8 @@ import {
   type VaultMark,
 } from "./cloud-sync-core";
 import { secretsToHide } from "./logins";
-import { applyVaultConnector, vaultConnectors } from "./mcp";
+import { connectorBots, setConnectorBots, turnOnForMain } from "./connectors";
+import { applyVaultConnector, removeServer, vaultConnectors } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { isRunning, onRunEnd, startRun, steerRun, stopRun, whenIdle } from "./runner";
 import { dataDir, loadSettings } from "./settings";
@@ -72,6 +73,8 @@ type State = {
   problem?: SyncProblem;
   /** Over the account's size limit: new chats stay here. */
   tooBig?: boolean;
+  /** Connectors removed on another device (the phone) and so removed here: one line in Settings > Sync. */
+  removed?: { names: string[]; at: number };
   /** Chats from the account whose bots this computer doesn't have yet: tried again at each sync. */
   waiting?: string[];
   vault?: Record<string, VaultMark>;
@@ -486,12 +489,27 @@ type VaultListItem = { connectorId: string; version: number; deleted?: boolean }
 /** A connector as sent: model keys can never be in it (scrubbed again in call()). */
 const vaultHash = (item: VaultItem) => hashOf(item);
 
+/** This computer's connectors, each with the bots that use it. */
+function localVault(): Map<string, VaultItem> {
+  return new Map(vaultConnectors().map(({ id, ...item }) => [id, { ...item, bots: connectorBots(id) } as VaultItem]));
+}
+
+/** A connector from the vault, applied here: its settings and sign-in, on/off, and which bots use it. */
+async function applyFromVault(id: string, got: VaultItem, isNew: boolean): Promise<boolean> {
+  if (!(await applyVaultConnector(id, got))) return false;
+  const known = new Set(listBots().map((b) => b.id));
+  if (Array.isArray(got.bots)) setConnectorBots(id, got.bots.filter((b) => typeof b === "string" && known.has(b)));
+  else if (isNew) turnOnForMain(id);
+  return true;
+}
+
 async function syncVault(): Promise<void> {
   const listed = await call<{ connectors?: VaultListItem[]; items?: VaultListItem[] }>("GET", "/vault");
   const remote = new Map<string, number>();
   for (const x of listed.connectors ?? listed.items ?? []) if (x && typeof x.connectorId === "string" && !x.deleted) remote.set(x.connectorId, Number(x.version) || 0);
   const marks = { ...(readState().vault ?? {}) };
-  const local = new Map(vaultConnectors().map(({ id, ...item }) => [id, item as VaultItem]));
+  const local = localVault();
+  const removedNames: string[] = [];
   const ids = new Set([...local.keys(), ...remote.keys(), ...Object.keys(marks)]);
   for (const id of ids) {
     if (!/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) continue;
@@ -502,12 +520,9 @@ async function syncVault(): Promise<void> {
       if (action === "pull") {
         const r = await call<{ version: number; connector?: VaultItem; data?: VaultItem }>("GET", `/vault/${encodeURIComponent(id)}`);
         const got = r.connector ?? r.data;
-        if (got && (await applyVaultConnector(id, got))) {
-          const now = vaultConnectors().find((x) => x.id === id);
-          if (now) {
-            const { id: _i, ...it } = now;
-            marks[id] = { version: r.version, hash: vaultHash(it) };
-          }
+        if (got && (await applyFromVault(id, got, !item))) {
+          const now = localVault().get(id);
+          if (now) marks[id] = { version: r.version, hash: vaultHash(now) };
         }
       } else if (action === "push" && item) {
         let send = item;
@@ -515,10 +530,8 @@ async function syncVault(): Promise<void> {
         for (let attempt = 0; ; attempt++) {
           try {
             const r = await call<{ version: number }>("PUT", `/vault/${encodeURIComponent(id)}`, { baseVersion: base, connector: send });
-            if (send !== item) await applyVaultConnector(id, send);
-            const now = vaultConnectors().find((x) => x.id === id);
-            const { id: _i, ...it } = now ?? { id, ...send };
-            marks[id] = { version: r.version, hash: vaultHash(it as VaultItem) };
+            if (send !== item) await applyFromVault(id, send, false);
+            marks[id] = { version: r.version, hash: vaultHash(localVault().get(id) ?? send) };
             break;
           } catch (e) {
             const theirs = (e as SyncError).body as { version?: number; connector?: VaultItem; data?: VaultItem } | null;
@@ -528,6 +541,12 @@ async function syncVault(): Promise<void> {
             base = theirs.version;
           }
         }
+      } else if (action === "remove" && item) {
+        // Removed on another device (the phone): removed here too, without asking; Settings > Sync says so.
+        setConnectorBots(id, []);
+        await removeServer(id);
+        delete marks[id];
+        removedNames.push(item.name);
       } else if (!item && marks[id] && action === "none") {
         // Removed here (setup sync removes it on the other computers): the account's copy goes too.
         await call("DELETE", `/vault/${encodeURIComponent(id)}`).catch((e) => {
@@ -540,7 +559,7 @@ async function syncVault(): Promise<void> {
       // One connector the account refused: the others still sync.
     }
   }
-  writeState({ vault: marks });
+  writeState({ vault: marks, ...(removedNames.length ? { removed: { names: removedNames.slice(0, 10), at: Date.now() } } : {}) });
 }
 
 // ---------- the desktop worker (jobs from the phone) ----------
@@ -639,6 +658,8 @@ export type CloudStatus = {
   problem: SyncProblem | null;
   tooBig: boolean;
   offElsewhere: boolean;
+  /** Connectors removed on another device in the last week (and so here). */
+  removedConnectors: string[];
   /** Old chats being uploaded after turning sync on. */
   upload: { done: number; total: number } | null;
   /** Chats on this computer: synced, and kept here (their bots are "On this computer only"). */
@@ -676,6 +697,7 @@ export async function cloudStatus(fresh = false): Promise<CloudStatus> {
     problem: (st as State).problem ?? null,
     tooBig: !!(st as State).tooBig,
     offElsewhere: !!(st as State).offElsewhere,
+    removedConnectors: (st as State).removed && Date.now() - (st as State).removed!.at < 7 * 864e5 ? (st as State).removed!.names : [],
     upload: rt.upload ? { ...rt.upload } : null,
     chats: counts,
     remote: st.enabled && remote ? { bytes: remote.bytes, limit: remote.limit, chats: remote.chats, lastSync: remote.lastSync, devices: (remote.devices ?? []).map((d) => ({ ...d, thisOne: d.deviceId === me })) } : null,
@@ -713,7 +735,7 @@ export async function setCloudSync(on: boolean): Promise<{ ok: boolean; problem?
     for (const t of rt.pushTimers.values()) clearTimeout(t);
     rt.pushTimers.clear();
     forgetMarks();
-    writeState({ enabled: false, asked: true, seenOn: undefined, offElsewhere: undefined, since: undefined, vault: undefined, waiting: undefined, problem: undefined, tooBig: undefined, lastSync: undefined });
+    writeState({ enabled: false, asked: true, seenOn: undefined, offElsewhere: undefined, since: undefined, vault: undefined, waiting: undefined, problem: undefined, tooBig: undefined, lastSync: undefined, removed: undefined });
   }
   return { ok: true };
 }

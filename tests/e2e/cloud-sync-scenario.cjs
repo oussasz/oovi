@@ -366,6 +366,28 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     check("over the limit: the new chat stays here and Settings says the space is full", !onServer(big.id) && counts.put413 > 0 && st.problem === "tooBig" && st.tooBig === true, JSON.stringify({ problem: st.problem, tooBig: st.tooBig, n413: counts.put413 }));
     cloud.limit = 100 * 1024 * 1024;
 
+    // ---- connectors managed on the phone: added and signed in, switched off, bots chosen, removed ----
+    const quill = bots.find((b) => b.name === "Quill");
+    cloud.vault.set("phone-notion", { version: 1, connector: { name: "Phone Notion", transport: "http", url: "http://127.0.0.1:1/phone-mcp", auth: "oauth", oauth: { tokens: { access_token: "phone-token-123", token_type: "Bearer" }, signedInAt: Date.now() }, enabled: true, trusted: false, bots: [oovi.id] } });
+    await syncNow();
+    let mine = (await api("GET", "/api/mcp")).j.find((x) => x.id === "phone-notion");
+    let botsNow = (await api("GET", "/api/bots")).j;
+    check("a connector added and signed in on the phone appears here, ready, for the bots chosen there", mine && mine.signedIn === true && mine.enabled === true && botsNow.find((b) => b.id === oovi.id).tools.mcp.includes("phone-notion"), JSON.stringify(mine));
+    const pv = cloud.vault.get("phone-notion");
+    cloud.vault.set("phone-notion", { version: pv.version + 1, connector: { ...pv.connector, enabled: false, bots: [quill.id] } });
+    await syncNow();
+    mine = (await api("GET", "/api/mcp")).j.find((x) => x.id === "phone-notion");
+    botsNow = (await api("GET", "/api/bots")).j;
+    check("switched off and given to another bot on the phone: the same here", mine && mine.enabled === false && botsNow.find((b) => b.id === quill.id).tools.mcp.includes("phone-notion") && !botsNow.find((b) => b.id === oovi.id).tools.mcp.includes("phone-notion"), JSON.stringify({ mine, q: botsNow.find((b) => b.id === quill.id).tools }));
+    check("the phone's sign-in is stored here encrypted (never as plain text on disk)", !fs.readFileSync(path.join(DATA, "accounts", "p1test", "mcp.json"), "utf8").includes("phone-token-123"));
+    cloud.vault.delete("phone-notion");
+    await syncNow();
+    mine = (await api("GET", "/api/mcp")).j.find((x) => x.id === "phone-notion");
+    botsNow = (await api("GET", "/api/bots")).j;
+    st = (await api("GET", "/api/cloud")).j;
+    check("removed on the phone: removed here, no question, and Settings > Sync says so", !mine && !botsNow.some((b) => (b.tools.mcp || []).includes("phone-notion")) && st.removedConnectors.includes("Phone Notion"), JSON.stringify(st.removedConnectors));
+    check("…while the connector made here stays", (await api("GET", "/api/mcp")).j.some((x) => x.id === conn.j.id) && cloud.vault.has(conn.j.id));
+
     // ---- turning it off deletes the account's copy, keeps this computer's ----
     const off = await api("POST", "/api/cloud", { action: "off" });
     check("turning sync off deletes the account's copy at once", off.j.ok === true && counts.statusOff === 1 && cloud.chats.size === 0 && cloud.vault.size === 0 && off.j.status.enabled === false, JSON.stringify(off.j).slice(0, 200));

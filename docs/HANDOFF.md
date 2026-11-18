@@ -29,19 +29,24 @@ it, "Turn on" says "Sync isn't available on oovi's server yet" and nothing else 
   rules are never uploaded and never taken from another device (no device can grant itself rights here). From
   the phone the desktop takes only: message, approval yes/no (+ "allow in this chat"), plan answer, question
   answers, Stop; never "always allow folders/edits". No chat content in logs.
+- **Connectors managed on the phone** (owner's decision of 2026-11-18, contract change merged from `next-version`):
+  on each sync, a connector added or signed in elsewhere is saved here (tokens encrypted with this computer's
+  key), its on/off and its bots (`bots` in the vault item) follow, and one removed from the vault is removed here
+  without a question (Settings > Sync shows "Removed on another device…" for a week). A connector changed here
+  since the last sync is kept and sent back instead of being removed.
 - **Desktop worker.** While oovi runs, signed in and sync on: `POST /jobs/claim` every 3 s (this is also what
   registers the device as online: the contract has no other device call, noted at the bottom of
   `docs/CLOUD-BUILD.md`), pulls the chat first, runs the job with the normal runner (`startRun`, `steerRun` if the
   bots are already working, `stopRun` for Stop), heartbeats every 30 s, pushes the chat at the end, then `done`.
   Up to 3 jobs at once (different chats).
-- **Verified** (on this branch's final build): `npx tsc --noEmit` clean; unit tests __UNIT__;
-  `npm run build` OK; `node tests/e2e/cloud-sync-scenario.cjs` 29/29 against a stand-in website (off until yes;
+- **Verified** (on this branch's final build): `npx tsc --noEmit` clean; unit tests 343 pass, 0 fail (1 skipped: the existing test that needs a real YouTube page);
+  `npm run build` OK; `node tests/e2e/cloud-sync-scenario.cjs` 34/34 against a stand-in website (off until yes;
   old chats uploaded; local-only bot and its group never sent; keys/passwords/session never in any sync request;
   a key typed in a chat is "[hidden]" in the uploaded copy; connector with its key in the vault; a change from
   another device merged and shown; another device can't set the project folder or allowed actions here; two
   devices at once (409) keep both; a phone message run here and pushed while running; Stop; unknown and
   local-only jobs refused; tombstones both ways; full account; turning off deletes the server copy, keeps local,
-  and stops all calls). Existing scenarios on the same build: __E2E__. Screens looked at in a browser
+  and stops all calls; a connector added and signed in on the phone appears here ready for the bots chosen there, its on/off and bots follow, its sign-in is stored encrypted, and removed on the phone it is removed here with a line in Settings > Sync). Existing scenarios on the same build, all passing: group, spec, phase1, bigjob, parallel, telegram, cost (169,901 weighted tokens, limit 170,000; no bot instructions or tool descriptions changed), onboarding, sync (setup sync), upload, list. Screens looked at in a browser
   (question, Settings > Sync in English and Arabic, bot editor).
 - **Not verified.** The real website API (part W wasn't pushed when this was built: the stand-in follows the
   contract, see the notes at the bottom of `docs/CLOUD-BUILD.md`); the phone app; Windows/Mac (run "Tests on

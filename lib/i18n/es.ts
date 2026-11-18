@@ -1889,6 +1889,7 @@ const es: Dict = {
   "sync.turnedOn": "La sincronización está activada. Se están subiendo tus chats.",
   "sync.turnedOff": "La sincronización está apagada. Se borró la copia del servidor de oovi.",
   "sync.offElsewhere": "La sincronización se apagó en otro dispositivo. Tus chats siguen en este ordenador.",
+  "sync.removedConnectors": "Se quitó en otro dispositivo, así que también se quitó aquí: {names}.",
   "sync.status.title": "Estado",
   "sync.lastSync": "Última sincronización: {when}",
   "sync.notYet": "Aún no se ha sincronizado.",

@@ -256,13 +256,15 @@ export type VaultMark = { version: number; hash: string };
  * What to do with one connector. local: its fingerprint here (null: not here). mark: as at the last sync.
  * remoteVersion: the account's version (null: not in the account).
  */
-export function vaultAction(local: string | null, mark: VaultMark | undefined, remoteVersion: number | null): "push" | "pull" | "none" {
+export function vaultAction(local: string | null, mark: VaultMark | undefined, remoteVersion: number | null): "push" | "pull" | "remove" | "none" {
   if (local === null) return remoteVersion !== null && (!mark || remoteVersion > mark.version) ? "pull" : "none";
   const changedHere = !mark || mark.hash !== local;
-  const changedThere = remoteVersion !== null && (!mark || remoteVersion > mark.version);
+  // Synced before and gone from the account: removed on another device (the phone). Unless changed here since.
+  if (remoteVersion === null) return changedHere ? "push" : "remove";
+  const changedThere = !mark || remoteVersion > mark.version;
   if (changedHere) return "push"; // a 409 then brings the account's copy, merged by vaultMerge
   if (changedThere) return "pull";
-  return remoteVersion === null ? "push" : "none";
+  return "none";
 }
 
 export type VaultItem = {
@@ -278,6 +280,8 @@ export type VaultItem = {
   enabled: boolean;
   trusted: boolean;
   createdAt?: number;
+  /** The bots that use it (their ids): chosen on the computer or on the phone. */
+  bots?: string[];
 };
 
 /** Two copies of one connector changed on two computers: this one's settings, the freshest sign-in, no key lost. */

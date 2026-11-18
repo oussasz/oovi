@@ -1908,6 +1908,7 @@ const en = {
   "sync.turnedOn": "Sync is on. Your chats are being uploaded.",
   "sync.turnedOff": "Sync is off. The copy on oovi's server was deleted.",
   "sync.offElsewhere": "Sync was turned off on another device. Your chats are still on this computer.",
+  "sync.removedConnectors": "Removed on another device, so removed here too: {names}.",
   "sync.status.title": "Status",
   "sync.lastSync": "Last sync: {when}",
   "sync.notYet": "Not synced yet.",
