@@ -263,6 +263,8 @@ async function runJob(job, ctl) {
     ctl.onStop = (why) => {
       ctl.stopped = why;
       void srv.ask({ type: "stop", chatId: job.chatId }, 10_000).catch(() => {});
+      // A run that doesn't stop within 30 s: its server is ended (the job then ends as failed, or is released).
+      setTimeout(() => void srv.kill().catch(() => {}), 30_000).unref();
     };
     if (ctl.stopped) ctl.onStop(ctl.stopped);
     const timeout = setTimeout(() => ctl.stop("timeout"), cfg.jobTimeoutMs);

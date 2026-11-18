@@ -35,4 +35,10 @@ jobs:
             if node tests/e2e/$t-scenario.cjs; then echo "PASSED $t"; else echo "FAILED $t"; fail=1; fi
             echo "::endgroup::"
           done
+          # The cloud runner runs on Linux servers only (its SIGTERM check needs real signals).
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            echo "::group::runner"
+            if node tests/e2e/runner-scenario.cjs; then echo "PASSED runner"; else echo "FAILED runner"; fail=1; fi
+            echo "::endgroup::"
+          fi
           exit $fail
