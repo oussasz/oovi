@@ -106,10 +106,29 @@ export function mergeChat<T extends SyncChat>(local: T, remote: SyncChat, base: 
 
   const meta = newerLocal ? local : (remote as unknown as T);
   const merged = { ...meta, id: local.id, entries: out, updatedAt: Math.max(local.updatedAt, remote.updatedAt) } as T;
+  // What this computer allows in this chat stays this computer's (never taken from another device).
+  for (const k of HERE_ONLY) {
+    if (local[k] === undefined) delete (merged as Record<string, unknown>)[k];
+    else (merged as Record<string, unknown>)[k] = local[k];
+  }
   // A summary that points at an entry that is gone no longer describes this chat.
   const sum = merged.summary as { upTo?: string } | undefined;
   if (sum && typeof sum.upTo === "string" && !out.some((e) => e.id === sum.upTo)) delete (merged as Record<string, unknown>).summary;
   return merged;
+}
+
+/**
+ * Chat fields that belong to this computer and never travel: the project folder (a path here, with "edit without
+ * asking") and the actions allowed for the rest of the chat. Taking them from another device would let it grant
+ * itself permissions on this computer.
+ */
+export const HERE_ONLY = ["workspace", "allow"] as const;
+
+/** The chat as sent to the account: without this computer's own fields. */
+export function forUpload<T extends Record<string, unknown>>(chat: T): T {
+  const out = { ...chat };
+  for (const k of HERE_ONLY) delete out[k];
+  return out;
 }
 
 function firstAfter(list: SyncEntry[], at: number): number {

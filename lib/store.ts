@@ -152,6 +152,8 @@ export function updateBot(id: string, input: BotInput): Bot | null {
     : { ...cur, ...input, id, createdAt: cur.createdAt };
   bots[i] = next;
   writeJson(botsFile(), { bots });
+  // Moved between "in the cloud" and "on this computer only": its chats are synced again (or taken off the account).
+  if (!!cur.local !== !!next.local) for (const c of listChats()) if (c.memberIds.includes(id)) changed(c.id, false);
   return next;
 }
 

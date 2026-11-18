@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { agreedBase, chatHash, chatTravels, entryBase, hasSecret, jobInput, mergeChat, problemOf, retryAfter, scrubSecrets, vaultAction, vaultMerge, type SyncChat } from "../../lib/cloud-sync-core.ts";
+import { agreedBase, chatHash, chatTravels, entryBase, forUpload, hasSecret, jobInput, mergeChat, problemOf, retryAfter, scrubSecrets, vaultAction, vaultMerge, type SyncChat } from "../../lib/cloud-sync-core.ts";
 
 const u = (id: string, text: string, at: number) => ({ id, kind: "user", text, at });
 const b = (id: string, text: string, at: number, status = "done") => ({ id, kind: "bot", botId: "b1", text, at, status, steps: [] });
@@ -136,4 +136,20 @@ test("connector merge keeps this computer's settings, the freshest sign-in, and 
   assert.equal(m.name, "Notion");
   assert.deepEqual(m.headers, { A: "a-there", B: "b-here" });
   assert.deepEqual(m.oauth?.tokens, { access_token: "new" });
+});
+
+test("this computer's permissions never travel: not sent, and never taken from another device", () => {
+  const here = chat([u("u1", "a", 1)], 10, { workspace: { path: "/home/me/project", autoEdit: false }, allow: ["site:example.com"] });
+  const up = forUpload(here);
+  assert.equal(up.workspace, undefined);
+  assert.equal(up.allow, undefined);
+  assert.ok(here.workspace, "the local copy keeps it");
+  // A newer copy from elsewhere that tries to grant itself rights here: ignored.
+  const evil = chat([u("u1", "a", 1)], 99, { workspace: { path: "/", autoEdit: true }, allow: ["tool:mcp_mail_send"] });
+  const m = mergeChat(here, evil, entryBase(here));
+  assert.deepEqual(m.workspace, { path: "/home/me/project", autoEdit: false });
+  assert.deepEqual(m.allow, ["site:example.com"]);
+  const bare = mergeChat(chat([], 1), evil, null);
+  assert.equal(bare.workspace, undefined);
+  assert.equal(bare.allow, undefined);
 });

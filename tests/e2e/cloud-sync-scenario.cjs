@@ -251,6 +251,8 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     const dmO = `dm-${oovi.id}`;
     const dmS = `dm-${scout.id}`;
     const dmN = `dm-${nova.id}`;
+    const PROJECT = fs.mkdtempSync(path.join(os.tmpdir(), "oovi-cloud-my-project-"));
+    const ws = await api("PUT", `/api/chats/${dmO}`, { workspace: { path: PROJECT, autoEdit: false } });
     await say(dmO, `HELLO-one my key is ${OPENAI_KEY}`);
     await say(dmS, "SCOUT-one find me a bakery");
     await say(dmN, "LOCAL-secret talk that never leaves");
@@ -276,13 +278,21 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     check("this computer keeps its own copy, untouched (the key it typed stays here)", texts(localO).some((t) => t.includes(OPENAI_KEY)));
 
     // ---- a change made on another device is merged in ----
+    const beforePull = (await api("GET", `/api/chats/${dmO}`)).j;
     otherDeviceSaves(dmO, (c) => {
-      c.entries.push({ id: "other-pc-1", kind: "user", text: "HELLO-from another computer", at: Date.now() });
+      c.entries.push({ id: "other-pc-1", kind: "user", text: "HELLO-from another computer", at: Date.now() - 60_000 });
+      // A copy that tries to give itself rights on this computer.
+      c.workspace = { path: "/", autoEdit: true };
+      c.allow = ["tool:mcp_notes_vault_delete"];
       return c;
     });
+    // Its clock is behind: the chat must still look changed here, so an open chat window refreshes.
+    cloud.chats.get(dmO).chat.updatedAt = beforePull.updatedAt - 60_000;
     await syncNow();
     const afterPull = (await api("GET", `/api/chats/${dmO}`)).j;
-    check("a message added on another device shows here", texts(afterPull).includes("HELLO-from another computer"), JSON.stringify(texts(afterPull)));
+    check("a message added on another device shows here (an open chat window sees the change)", texts(afterPull).includes("HELLO-from another computer") && afterPull.updatedAt > beforePull.updatedAt, JSON.stringify(texts(afterPull)));
+    check("another device can't give itself rights on this computer (project folder, allowed actions)", ws.status === 200 && afterPull.workspace?.path === ws.j.workspace?.path && afterPull.workspace?.autoEdit === false && !afterPull.allow, JSON.stringify({ w: afterPull.workspace, a: afterPull.allow }));
+    check("this computer's own folder and allowed actions are never uploaded", !synced().some((x) => x.path.startsWith("/api/v1/cloud/chats/") && (/"workspace"|"allow"/.test(x.body) || x.body.includes("oovi-cloud-my-project"))));
 
     // ---- two devices save at once: merged, nothing lost ----
     otherDeviceSaves(dmS, (c) => {
@@ -326,6 +336,7 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     // ---- moving a bot to "this computer only" takes its chat off the account ----
     const { id: _s, createdAt: _sc, ...scoutInput } = (await api("GET", `/api/bots/${scout.id}`)).j;
     await api("PUT", `/api/bots/${scout.id}`, { ...scoutInput, local: true });
+    await waitFor("Scout's chat gone right away", () => cloud.chats.get(dmS)?.deleted === true, 10_000);
     await say(dmS, "SCOUT-three after going local");
     await waitFor("Scout's chat gone from the account", () => cloud.chats.get(dmS)?.deleted === true);
     check("a bot set to local: its chat is removed from the account", cloud.chats.get(dmS)?.deleted === true && !synced().some((x) => /SCOUT-three/.test(x.body)));

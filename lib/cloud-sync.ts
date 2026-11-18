@@ -25,6 +25,7 @@ import {
   chatHash,
   chatTravels,
   entryBase,
+  forUpload,
   hashOf,
   jobInput,
   mergeChat,
@@ -152,9 +153,13 @@ type Runtime = {
   deferred: Set<string>;
   jobs: Set<string>;
   claiming?: boolean;
+  /** Chats saved here since their last push (a full look at every chat only every few minutes). */
+  dirty: Set<string>;
+  fullAt: number;
 };
 const g = globalThis as typeof globalThis & { __ooviCloudSync?: Runtime };
-const rt: Runtime = (g.__ooviCloudSync ??= { failures: 0, nextAt: 0, statusAt: 0, locks: new Map(), pushTimers: new Map(), deferred: new Set(), jobs: new Set() });
+const rt: Runtime = (g.__ooviCloudSync ??= { failures: 0, nextAt: 0, statusAt: 0, locks: new Map(), pushTimers: new Map(), deferred: new Set(), jobs: new Set(), dirty: new Set(), fullAt: 0 });
+const FULL_SCAN_MS = 5 * 60_000;
 
 /** A different account signed in: forget what was learned about the last one. */
 function sameUser(): boolean {
@@ -167,6 +172,8 @@ function sameUser(): boolean {
     rt.nextAt = 0;
     rt.statusAt = 0;
     rt.deferred.clear();
+    rt.dirty.clear();
+    rt.fullAt = 0;
   }
   return !!u;
 }
@@ -282,7 +289,7 @@ async function pushLocked(id: string): Promise<void> {
   let version = 0;
   for (let attempt = 0; ; attempt++) {
     try {
-      version = (await call<{ version: number }>("PUT", `/chats/${encodeURIComponent(id)}`, { baseVersion, chat: send })).version;
+      version = (await call<{ version: number }>("PUT", `/chats/${encodeURIComponent(id)}`, { baseVersion, chat: forUpload(send) })).version;
       break;
     } catch (e) {
       const st = statusOf(e);
@@ -299,7 +306,7 @@ async function pushLocked(id: string): Promise<void> {
   }
   let here = chatHere(id) ?? chat;
   if (send !== chat && !isRunning(id) && chatHash(send) !== chatHash(here)) {
-    saveChat(send, { quiet: true });
+    saveMerged(send, here);
     here = send;
   }
   const stale = chatHash(here) !== chatHash(send);
@@ -309,6 +316,7 @@ async function pushLocked(id: string): Promise<void> {
 /** A chat changed here: pushed a moment later (sooner while its bots work, so the phone sees them live). */
 function schedulePush(id: string) {
   if (!active()) return;
+  rt.dirty.add(id);
   const t = rt.pushTimers.get(id);
   // While the bots work the chat is saved often: one push every moment, not one after they stop.
   if (t && isRunning(id)) return;
@@ -318,11 +326,20 @@ function schedulePush(id: string) {
     setTimeout(
       () => {
         rt.pushTimers.delete(id);
-        void withChat(id, () => pushLocked(id)).then(ok, fail);
+        void withChat(id, () => pushLocked(id)).then(() => {
+          rt.dirty.delete(id);
+          ok();
+        }, fail);
       },
       isRunning(id) ? PUSH_DELAY_RUNNING : PUSH_DELAY,
     ),
   );
+}
+
+/** A merged copy saved here: never older than what was here, so an open chat window shows the change. */
+function saveMerged(merged: Chat, here: Chat) {
+  merged.updatedAt = Math.max(merged.updatedAt, here.updatedAt + 1);
+  saveChat(merged, { quiet: true });
 }
 
 // ---------- pulling one chat ----------
@@ -338,7 +355,7 @@ async function pullLocked(id: string, remoteVersion?: number): Promise<"ok" | "l
   }
   const r = await call<RemoteChat>("GET", `/chats/${encodeURIComponent(id)}`).catch((e) => (statusOf(e) === 404 ? null : Promise.reject(e)));
   if (!r?.chat || !Array.isArray(r.chat.entries)) return "skip";
-  const remote: Chat = { ...r.chat, id };
+  const remote = forUpload({ ...r.chat, id }) as Chat;
   const bots = listBots();
   const local = chatHere(id);
   if (local && !travels(local, bots)) return "skip";
@@ -351,7 +368,7 @@ async function pullLocked(id: string, remoteVersion?: number): Promise<"ok" | "l
     return "ok";
   }
   const merged = mergeChat(local, remote, mark?.base ?? null);
-  if (chatHash(merged) !== chatHash(local)) saveChat(merged, { quiet: true });
+  if (chatHash(merged) !== chatHash(local)) saveMerged(merged, local);
   if (chatHash(merged) === chatHash(remote)) {
     writeMark(id, { v: r.version, h: chatHash(merged), base: entryBase(merged) });
   } else {
@@ -421,25 +438,37 @@ async function syncOnce(): Promise<void> {
   }
   writeState({ since: list.now || st.since, waiting: [...waiting].slice(-500) });
 
-  // 2. What changed here (the old chats, the first time): most recent first.
-  const bots = listBots();
-  const chats = listChats().filter((c) => travels(c, bots)).sort((a, b) => b.updatedAt - a.updatedAt);
-  const todo = chats.filter((c) => {
-    const m = readMark(c.id);
-    return !m || m.stale || m.h !== chatHash(c);
-  });
-  const gone = markedIds().filter((id) => !chats.some((c) => c.id === id));
-  if (todo.length > 5) rt.upload = { done: 0, total: todo.length };
-  try {
-    for (const c of todo) {
-      await withChat(c.id, () => pushLocked(c.id));
-      if (rt.upload) rt.upload.done++;
-      if (readState().tooBig && !readMark(c.id)) break;
+  // 2. What changed here: every chat the first time (the old chats, most recent first) and every few minutes
+  // (a bot moved to "this computer only", a chat restored from a backup); otherwise only the chats saved since.
+  if (!rt.fullAt || Date.now() - rt.fullAt > FULL_SCAN_MS) {
+    const scanAt = Date.now();
+    const bots = listBots();
+    const chats = listChats().filter((c) => travels(c, bots)).sort((a, b) => b.updatedAt - a.updatedAt);
+    const todo = chats.filter((c) => {
+      const m = readMark(c.id);
+      return !m || m.stale || m.h !== chatHash(c);
+    });
+    const ids = new Set(chats.map((c) => c.id));
+    const gone = markedIds().filter((id) => !ids.has(id));
+    if (todo.length > 5) rt.upload = { done: 0, total: todo.length };
+    try {
+      for (const c of todo) {
+        await withChat(c.id, () => pushLocked(c.id));
+        rt.dirty.delete(c.id);
+        if (rt.upload) rt.upload.done++;
+        if (readState().tooBig && !readMark(c.id)) break;
+      }
+    } finally {
+      rt.upload = undefined;
     }
-  } finally {
-    rt.upload = undefined;
+    for (const id of gone) await withChat(id, () => pushLocked(id));
+    rt.fullAt = scanAt;
+  } else {
+    for (const id of [...rt.dirty]) {
+      await withChat(id, () => pushLocked(id));
+      rt.dirty.delete(id);
+    }
   }
-  for (const id of gone) await withChat(id, () => pushLocked(id));
 
   // 3. Connectors.
   await syncVault();
@@ -619,15 +648,24 @@ export type CloudStatus = {
   jobs: number;
 };
 
+/** How many chats travel and how many stay here (read from every chat: cached for half a minute). */
+let countsCache: { at: number; user?: string; v: { synced: number; localOnly: number } } | null = null;
+function chatCounts() {
+  if (countsCache && countsCache.user === rt.user && Date.now() - countsCache.at < 30_000) return countsCache.v;
+  const bots = listBots();
+  const chats = listChats().filter((c) => c.memberIds.length);
+  const synced = chats.filter((c) => travels(c, bots)).length;
+  countsCache = { at: Date.now(), user: rt.user, v: { synced, localOnly: chats.length - synced } };
+  return countsCache.v;
+}
+
 export async function cloudStatus(fresh = false): Promise<CloudStatus> {
   sameUser();
   const signedIn = !!sessionToken();
   const st = signedIn ? readState() : { enabled: false, asked: true };
   let remote = rt.remote;
   if (signedIn && st.enabled && fresh) remote = await refreshStatus(true).catch(() => rt.remote);
-  const bots = signedIn ? listBots() : [];
-  const chats = signedIn ? listChats().filter((c) => c.memberIds.length) : [];
-  const synced = chats.filter((c) => travels(c, bots)).length;
+  const counts = signedIn ? chatCounts() : { synced: 0, localOnly: 0 };
   const me = deviceId();
   return {
     signedIn,
@@ -639,7 +677,7 @@ export async function cloudStatus(fresh = false): Promise<CloudStatus> {
     tooBig: !!(st as State).tooBig,
     offElsewhere: !!(st as State).offElsewhere,
     upload: rt.upload ? { ...rt.upload } : null,
-    chats: { synced, localOnly: chats.length - synced },
+    chats: counts,
     remote: st.enabled && remote ? { bytes: remote.bytes, limit: remote.limit, chats: remote.chats, lastSync: remote.lastSync, devices: (remote.devices ?? []).map((d) => ({ ...d, thisOne: d.deviceId === me })) } : null,
     jobs: rt.jobs.size,
   };
@@ -664,6 +702,8 @@ export async function setCloudSync(on: boolean): Promise<{ ok: boolean; problem?
   }
   rt.statusAt = 0;
   rt.remote = undefined;
+  rt.fullAt = 0;
+  countsCache = null;
   ok();
   if (on) {
     writeState({ enabled: true, asked: true, seenOn: true, offElsewhere: undefined, problem: undefined, tooBig: undefined });
@@ -684,7 +724,10 @@ export async function setCloudSync(on: boolean): Promise<{ ok: boolean; problem?
 export function startCloudSync(): void {
   if (rt.started) return;
   rt.started = true;
-  onChatChange((id) => schedulePush(id));
+  onChatChange((id) => {
+    countsCache = null;
+    schedulePush(id);
+  });
   onRunEnd((id) => {
     // The account's changes that waited for this run.
     if (!rt.deferred.delete(id) && !readMarkSafe(id)?.stale) return;
