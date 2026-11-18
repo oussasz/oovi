@@ -30,7 +30,7 @@ jobs:
         shell: bash
         run: |
           fail=0
-          for t in group spec bigjob parallel telegram upload list phase1 cost onboarding steer routines form helpers chatbasics; do
+          for t in group spec bigjob parallel telegram upload list phase1 cost onboarding steer routines form helpers chatbasics approvals; do
             echo "::group::$t"
             if node tests/e2e/$t-scenario.cjs; then echo "PASSED $t"; else echo "FAILED $t"; fail=1; fi
             echo "::endgroup::"

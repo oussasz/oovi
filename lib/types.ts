@@ -59,6 +59,8 @@ export type ApprovalItem = {
   folder?: string;
   /** Desktop control: "grant" = the first action of a task (allows the mouse and keyboard for the task); "action" = one more action ("Ask before every action"). */
   desktop?: "grant" | "action";
+  /** What an OK for this action can cover beyond this once (lib/approval-scope-core.ts): a site or a connector action. */
+  scope?: { key: string; kind: "site" | "tool"; label: string };
   /** Desktop control: the window the action will reach (its title comes from that window: untrusted). Checked again when it runs. */
   window?: { handle: number; title: string };
   /** Desktop control: the full text a "type" action will type. */
@@ -255,6 +257,8 @@ export type Chat = {
   workspace?: Workspace;
   /** This chat belongs to a scheduled routine (its id): every run of the routine happens here. */
   routine?: string;
+  /** Actions the user allowed for the rest of this chat (approval scopes: "site:<host>", "tool:<name>"). */
+  allow?: string[];
   /** A copy of another chat up to one of its messages (lib/chat-basics-core.ts forkChat). */
   forkOf?: { chatId: string; entryId: string };
 };
@@ -365,5 +369,7 @@ export type ChatEvent =
   | { type: "entry"; entry: Entry }
   | { type: "status"; entryId: string; text: string }
   | { type: "approval"; approval: Approval }
+  /** A send that runs without a fresh card waits a few seconds, with Cancel (null: the wait is over). */
+  | { type: "hold"; hold: { entryId: string; callId: string; summary: string; until: number } | null }
   | { type: "error"; error: string }
   | { type: "done" };

@@ -24,18 +24,20 @@ import { CORRECTION, lessonsPrompt, mergeLearned, rateLessons, reflect } from ".
 import { capabilitiesPrompt } from "./capabilities";
 import { catalogCached } from "./catalog-remote";
 import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
-import { listServers, mcpServerOf, mcpToolsFor } from "./mcp";
+import { listServers, mcpDestructive, mcpServerOf, mcpToolsFor } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
 import { USE_FOLDER_SPEC, folderTarget, runUseFolder, useFolderItem } from "./project-folder";
 import { ADMIN_TOOLS, PROPOSE_TEAM_SPEC, REQUEST_ABILITIES_SPEC, adminItem, adminValid, runAdminTool } from "./team-admin";
 import { translateFor, translatorFor, type Tr } from "./i18n-server";
-import { loadSettings, usesHosted, type Settings } from "./settings";
+import { loadSettings, updateSettings, usesHosted, type Settings } from "./settings";
 import { getSkill, listSkills, markUsed, recordCommand, relevantSkills } from "./skills";
 import { parseSlash } from "./slash";
 import { addTelegramFollowUp } from "./telegram-followups";
 import { getChat, groupsRevision, listBots, listChats, newId, saveChat } from "./store";
-import { checkUrl, saveFolderLabel } from "./browser";
+import { checkUrl, peekSession, saveFolderLabel } from "./browser";
+import { addGrants, granted, HOLD_MS, reachesOthers, scopeOf } from "./approval-scope-core";
+import { waitHold } from "./hold";
 import { healInterrupted } from "./delegations-core";
 import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply, type Verdict } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
@@ -105,6 +107,10 @@ export type RunInput = {
   entryId?: string;
   /** The message (entry id) this one replies to: quoted to the bots. */
   replyTo?: string;
+  /** With decisions: the approved actions' kind is allowed for the rest of this chat (no more cards for it). */
+  allowChat?: boolean;
+  /** With decisions: clicks and typing on the approved actions' site never ask again (Settings > Safety). */
+  allowSite?: boolean;
 };
 
 /** Deep work: a checklist the bot keeps, shown live in the chat. */
@@ -430,6 +436,14 @@ const ROUTINE_RUN = `This message comes from one of the user's scheduled routine
 function replyField(chat: Chat, replyTo: string | undefined, bots: Bot[]): { replyTo?: UserEntry["replyTo"] } {
   const e = replyTo ? chat.entries.find((x) => x.id === replyTo) : undefined;
   return e ? { replyTo: quoteOf(e, (id) => bots.find((b) => b.id === id)?.name ?? "Bot") } : {};
+}
+
+/** The short wait before a send that had no card: true when the user pressed Cancel. */
+async function* holdFor(chatId: string, entryId: string, c: ToolCall, summary: string, signal: AbortSignal): AsyncGenerator<ChatEvent, boolean> {
+  yield { type: "hold", hold: { entryId, callId: c.id, summary, until: Date.now() + HOLD_MS } };
+  const cancelled = await waitHold(chatId, c.id, HOLD_MS, signal);
+  yield { type: "hold", hold: null };
+  return cancelled || signal.aborted;
 }
 
 function lastUser(chat: Chat): UserEntry | undefined {
@@ -1318,6 +1332,9 @@ async function* runBot(
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
       // Auto mode: only what can't be undone or changes the team asks (AUTO_STILL_ASKS).
       const asks = (c: ToolCall) => (auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c));
+      // What one OK can cover beyond this once (the bots' browser on a site, one connector action); already
+      // allowed for this chat, or the site always, means no card (lib/approval-scope-core.ts).
+      const scopeFor = (c: ToolCall) => scopeOf(c.name, peekSession(sessionId)?.page.url(), { destructive: c.name.startsWith("mcp_") && mcpDestructive(c.name) });
       const asksNormally = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
@@ -1351,6 +1368,7 @@ async function* runBot(
                   // the bots' browser are covered by an approved plan (files outside the allowed folders still ask).
                   !(COMPUTER_TOOLS.has(c.name) && taskId && folderNamesGranted(`${chat.id}|${taskId}`, c)) &&
                   !(planCovers && PLAN_COVERED.has(c.name) && !(c.name === "upload_file" && !uploadAllowed(c, s))) &&
+                  !granted(scopeFor(c), chat.allow, s.approvals.sites) &&
                   needsApproval(c, s, sessionId, usesAccounts, chat.workspace);
       // A call the loop guard will refuse isn't asked about: there is nothing to approve.
       const guardDone = callsSoFar(entry.steps.slice(0, -1));
@@ -1376,7 +1394,10 @@ async function* runBot(
             const item = desktopApprovalItem(c, kind, bot.name, last.toolCalls, askEvery);
             return expired.has(c.id) ? { ...item, detail: `${translatorFor(lastUserText(chat))("ok.expired")}${item.detail ? `\n${item.detail}` : ""}` } : item;
           }
-          return approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
+          const scope = scopeFor(c);
+          const item = approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
+          // A connector action's button says what it is in plain words ("Send an email in Gmail"), not its tool name.
+          return { ...item, ...(scope ? { scope: scope.kind === "tool" ? { ...scope, label: item.summary.split("\n")[0]!.slice(0, 60) } : scope } : {}) };
         };
         const approval: Approval = { entryId: entry.id, botId: bot.id, items: ask.map(itemOf), at: Date.now() };
         entry.status = "waiting";
@@ -1444,6 +1465,17 @@ async function* runBot(
           results.push({ id: c.id, name: c.name, content: DESK_TOOLS.has(c.name) ? deskToolMissing(c.name, s, bot) : `The ${c.name} tool isn't enabled for ${bot.name}.`, isError: true });
         } else if (decisions[c.id] === false) {
           results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
+        } else if (
+          // A connector action that reaches other people and runs without a card just now (allowed for this chat,
+          // or a trusted connector): it waits a few seconds first, with Cancel. Not in routines or on Telegram
+          // (nobody is watching the app there).
+          reachesOthers(c.name) &&
+          decisions[c.id] !== true &&
+          !chat.routine &&
+          chat.pending?.channel !== "telegram" &&
+          (yield* holdFor(chat.id, entry.id, c, approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat))).summary, signal))
+        ) {
+          results.push({ id: c.id, name: c.name, content: "The user cancelled this at the last moment: it was NOT done. Don't retry it unless they ask again.", isError: true });
         } else {
           yield { type: "status", entryId: entry.id, text: statusText(c, translatorFor(lastUserText(chat))) };
           if (c.name === "update_plan") {
@@ -1879,6 +1911,13 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     if (input.channel && input.telegramChatId !== undefined) chat.pending.telegramChatId = input.telegramChatId;
     else delete chat.pending.telegramChatId;
     if (input.alwaysEdit && chat.workspace) chat.workspace.autoEdit = true;
+    // "Allow for this chat" / "Always on this site": the approved actions' kind needs no card any more.
+    if (input.allowChat || input.allowSite) {
+      const ok = answered.items.filter((it) => it.scope && input.decisions?.[it.call.id] === true);
+      chat.allow = addGrants(chat.allow, ok.map((it) => it.scope!.key));
+      const sites = ok.filter((it) => it.scope!.kind === "site").map((it) => it.scope!.label);
+      if (input.allowSite && sites.length) updateSettings({ approvals: { sites: [...(loadSettings().approvals.sites ?? []), ...sites] } });
+    }
     if (e?.kind === "bot") resume = { entry: e, decisions: input.decisions, answered };
   } else {
     return;

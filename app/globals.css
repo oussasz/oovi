@@ -479,7 +479,7 @@ a.tag { text-decoration: none; }
 .approval ul { margin: 6px 0 12px; padding-left: 18px; }
 .approval .row { display: flex; gap: 8px; }
 .approval .row.wrap { flex-wrap: wrap; }
-.approval li { overflow-wrap: anywhere; }
+.approval li { overflow-wrap: anywhere; white-space: pre-line; }
 .approval-detail { margin: 6px 0 4px; }
 .approval-detail summary { cursor: pointer; font-size: 12.5px; font-weight: 700; color: var(--muted); }
 .approval-detail pre { margin: 6px 0 0; max-height: 260px; overflow: auto; padding: 10px 12px; border-radius: 10px; background: var(--panel); border: 1px solid var(--border); font: 12.5px/1.5 ui-monospace, "Cascadia Code", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -1230,3 +1230,8 @@ a.tag { text-decoration: none; }
 .first-hour li.done .fh-n { background: var(--ok); color: #fff; }
 .fh-hint { font-size: 13px; color: var(--muted); }
 .fh-close { position: absolute; top: 10px; inset-inline-end: 10px; }
+.hold-bar { display: flex; align-items: center; gap: 10px; justify-content: space-between; margin: 0 0 8px; padding: 8px 12px; border: 1px solid var(--warn-border); border-radius: 10px; background: var(--warn-bg); font-size: 13.5px; }
+.hold-bar span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.allowed-sites { display: flex; flex-direction: column; gap: 4px; margin: 10px 0; }
+.allowed-sites ul { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.allowed-sites li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 8px; }

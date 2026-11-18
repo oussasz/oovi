@@ -161,7 +161,8 @@ export default function SettingsForm() {
       const next = await post({
         search: { provider: s.search.provider, searxngUrl: s.search.searxngUrl, braveKey: searchKeys.brave || undefined, tavilyKey: searchKeys.tavily || undefined },
         browser: s.browser,
-        approvals: s.approvals,
+        // Sites are changed one by one (below), so a site allowed from a card meanwhile isn't lost.
+        approvals: { clicksAndTyping: s.approvals.clicksAndTyping, ...(s.approvals.auto !== undefined ? { auto: s.approvals.auto } : {}) },
         maxSteps: s.maxSteps,
         maxTurns: s.maxTurns,
         spend: { dayCredits: s.spend?.dayCredits ?? null, monthCredits: s.spend?.monthCredits ?? null, dayUsd: s.spend?.dayUsd ?? null, monthUsd: s.spend?.monthUsd ?? null },
@@ -392,6 +393,34 @@ export default function SettingsForm() {
           <input type="checkbox" checked={s.approvals.clicksAndTyping} onChange={(e) => setS({ ...s, approvals: { ...s.approvals, clicksAndTyping: e.target.checked } })} />
           <span>{t("settings.safety.ask")}</span>
         </label>
+        {(s.approvals.sites ?? []).length > 0 && (
+          <div className="allowed-sites">
+            <b>{t("settings.safety.sites")}</b>
+            <span className="hint">{t("settings.safety.sitesHint")}</span>
+            <ul>
+              {(s.approvals.sites ?? []).map((site) => (
+                <li key={site}>
+                  <span dir="ltr">{site}</span>
+                  <button
+                    type="button"
+                    className="btn sm"
+                    onClick={async () => {
+                      const sites = (s.approvals.sites ?? []).filter((x) => x !== site);
+                      try {
+                        const next = await post({ approvals: { sites } });
+                        setS({ ...s, approvals: { ...s.approvals, sites: next.approvals.sites ?? sites } });
+                      } catch (e) {
+                        setMsg({ ok: false, text: (e as Error).message });
+                      }
+                    }}
+                  >
+                    {t("settings.safety.siteRemove")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
         <div className="grid">
           <label className="field">
             {t("settings.safety.maxSteps")}

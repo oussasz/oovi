@@ -1,3 +1,4 @@
+import { cleanSite } from "./approval-scope-core";
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
@@ -37,7 +38,7 @@ export type Settings = {
   search: SearchConfig;
   browser: BrowserConfig;
   /** auto: Auto mode, bots don't stop to ask (except for what AUTO_STILL_ASKS lists in lib/orchestrator.ts). */
-  approvals: { clicksAndTyping: boolean; auto?: boolean };
+  approvals: { clicksAndTyping: boolean; auto?: boolean; /** Sites where clicks and typing in the bots' browser never ask. */ sites?: string[] };
   computerFiles: ComputerFiles;
   desktopControl: DesktopControl;
   maxSteps: number;
@@ -343,6 +344,7 @@ export function updateSettings(patch: SettingsPatch): void {
   }
   if (typeof patch.approvals?.clicksAndTyping === "boolean") raw.approvals.clicksAndTyping = patch.approvals.clicksAndTyping;
   if (typeof patch.approvals?.auto === "boolean") raw.approvals.auto = patch.approvals.auto;
+  if (Array.isArray(patch.approvals?.sites)) raw.approvals.sites = [...new Set(patch.approvals.sites.map(cleanSite).filter((x): x is string => !!x))].slice(0, 200);
   if (typeof patch.maxSteps === "number" && Number.isFinite(patch.maxSteps)) raw.maxSteps = Math.min(100, Math.max(1, Math.round(patch.maxSteps)));
   if (typeof patch.maxTurns === "number" && Number.isFinite(patch.maxTurns)) raw.maxTurns = Math.min(30, Math.max(0, Math.round(patch.maxTurns)));
   if (typeof patch.language === "string" && /^(auto|[a-z]{2}(-[A-Z]{2})?)$/.test(patch.language)) raw.language = patch.language;

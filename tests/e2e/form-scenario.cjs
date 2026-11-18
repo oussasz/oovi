@@ -61,6 +61,16 @@ function answer(body) {
     seen.loginOut = out;
     return text(`LOGIN-RESULT: ${out.replace(/\s+/g, " ").slice(0, 300)}`);
   }
+  if (/SITE:/.test(JSON.stringify(msgs))) {
+    // Two clicks on the same site: the first may ask, the second must not once the site is allowed.
+    const from = msgs.map((m) => /SITE:/.test(JSON.stringify(m)) && m.role === "user").lastIndexOf(true);
+    const n = msgs.slice(from).filter((m) => Array.isArray(m.content) && m.content.some((b) => b.type === "tool_use" && b.name === "click")).length;
+    const pick = (label) => Number((JSON.stringify(msgs).match(new RegExp(`\\[(\\d+)\\][^\\[]*${label}`)) || [])[1]);
+    if (!lastTool && n === 0 && !msgs.slice(from).some((m) => m.role === "assistant")) return call("open_url", { url: `${SITE}/contact` });
+    if (n === 0) return call("click", { element: pick("Nom") });
+    if (n === 1) return call("click", { element: pick("Email") });
+    return text(`SITE-DONE ${/declined/.test(out) ? "declined" : "ok"}`);
+  }
   if (!/FORM:/.test(JSON.stringify(msgs))) return text("ok");
   seen.calls++;
   seen.tools = (body.tools || []).map((t) => t.name);
@@ -194,6 +204,42 @@ const check = (name, ok, detail = "") => {
   const made = await fetch(`${BASE}/api/skills`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...stop.draft, name: "Contact form" }) });
   check("E) the user saves it as a skill", made.status === 201 && (await api("GET", "/api/skills")).some((k) => k.name === "Contact form"));
   await ctl("release");
+
+  // F: fewer approval cards. Clicks ask; "Allow for this chat" covers the site in that chat only;
+  // "Always on this site" covers every chat; Settings lists the site.
+  await api("POST", "/api/settings", { approvals: { clicksAndTyping: true } });
+  const runTo = async (chat, body) => {
+    await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.text());
+    for (let i = 0; i < 240; i++) {
+      const c = await api("GET", `/api/chats/${chat}`);
+      if (!c.running) return c;
+      await sleep(250);
+    }
+  };
+  const nova = bots.find((b) => b.name === "Nova");
+  await api("PUT", `/api/bots/${nova.id}`, { ...nova, tools: { ...nova.tools, browser: true, web: true } });
+  const dmN = `dm-${nova.id}`;
+  let cn = await runTo(dmN, { text: "SITE: click the fields" });
+  const card1 = cn.pending?.approval;
+  check("F) a click asks, and the card offers this chat and this site", !!card1 && card1.items[0].scope?.key === "site:127.0.0.1", JSON.stringify(card1?.items?.[0]?.scope));
+  cn = await runTo(dmN, { decisions: Object.fromEntries(card1.items.map((i) => [i.call.id, true])), allowChat: true });
+  check("F) after Allow for this chat, the next click on that site doesn't ask", !cn.pending?.approval && /SITE-DONE ok/.test(cn.entries.filter((e) => e.kind === "bot").at(-1)?.text || "") && (cn.allow || []).includes("site:127.0.0.1"), JSON.stringify(cn.pending?.approval?.items?.map((i) => i.summary)));
+  const chief = bots.find((b) => b.name === "Oovi") || bots.find((b) => ![scout.id, nova.id, quill.id].includes(b.id));
+  await api("PUT", `/api/bots/${chief.id}`, { ...chief, tools: { ...chief.tools, browser: true, web: true } });
+  const dmC = `dm-${chief.id}`;
+  let cq = await runTo(dmC, { text: "SITE: click the fields" });
+  const card2 = cq.pending?.approval;
+  check("F) another chat still asks (that OK was for one chat)", !!card2);
+  cq = await runTo(dmC, { decisions: Object.fromEntries(card2.items.map((i) => [i.call.id, true])), allowSite: true });
+  const st = await api("GET", "/api/settings");
+  check("F) Always on this site is saved in Settings", (st.approvals.sites || []).includes("127.0.0.1"), JSON.stringify(st.approvals) + " card2=" + JSON.stringify(card2.items.map((i) => i.scope)) + " allow=" + JSON.stringify(cq.allow));
+  const dmS = dm; // Scout: a third chat, no card at all now
+  const cs = await runTo(dmS, { text: "SITE: click the fields" });
+  check("F) every chat now clicks on that site without a card", !cs.pending?.approval && /SITE-DONE ok/.test(cs.entries.filter((e) => e.kind === "bot").at(-1)?.text || ""));
+  await api("POST", "/api/settings", { approvals: { sites: [] } });
+  const cs2 = await runTo(dmS, { text: "SITE: click again" });
+  check("F) removing the site in Settings brings the card back", !!cs2.pending?.approval);
+  if (cs2.pending?.approval) await runTo(dmS, { decisions: Object.fromEntries(cs2.pending.approval.items.map((i) => [i.call.id, false])) });
 
   log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
   server.kill();

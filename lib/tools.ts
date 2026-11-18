@@ -1,3 +1,4 @@
+import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
 import { hideSecrets, loginFor, loginSites, secretsToHide } from "./logins";
 import type { Page } from "playwright-core";
@@ -6,7 +7,7 @@ import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
 import { cleanText, consumeUserUse, isControlled, MAX_REASON, requestTakeover, waitWhileControlled } from "./browser-live";
 import type { ToolSpec } from "./llm";
-import { callMcpTool, mcpServerOf, mcpToolKind } from "./mcp";
+import { callMcpTool, mcpServerOf, mcpToolKind, mcpToolOf } from "./mcp";
 import { applyMemory } from "./memory";
 import { searchWithNote } from "./search";
 import { getSkill, listSkills, markUsed, saveSkill } from "./skills";
@@ -863,7 +864,17 @@ export function approvalItem(call: ToolCall, sessionId: string, workspace?: Work
   if (COMPUTER_TOOLS.has(call.name)) return { call, ...describeComputerCall(call, tr) };
   if (DOC_TOOLS.has(call.name)) return { call, ...describeDocCall(call, workspace, tr), always: true };
   if (VM_TOOLS.has(call.name)) return { call, summary: tr("ok.vmSave", { file: String(call.input.filename ?? call.input.path ?? "") }), always: true };
+  // Connector actions: what it is in plain words; the tool's name and raw data only under Details.
+  if (call.name.startsWith("mcp_")) return { call, summary: describeCall(call, sessionId, tr), detail: technicalDetail(call.name, call.input) };
   return { call, summary: describeCall(call, sessionId, tr) };
+}
+
+/** A page element as the card says it: "the button “Envoyer”", in the user's language (never "element 12"). */
+function targetWords(el: { kind: string; label: string } | undefined, tr: Tr): string {
+  if (!el?.label?.trim()) return tr("ok.anElement");
+  const k = el.kind;
+  const kind = k === "link" ? "ok.k.link" : k === "button" || k === "input:submit" || k === "input:button" ? "ok.k.button" : k === "input:checkbox" || k === "input:radio" || k === "checkbox" || k === "radio" ? "ok.k.box" : k === "select" || k === "combobox" || k === "listbox" ? "ok.k.list" : k.startsWith("input:") || k === "textarea" || k === "textbox" || k === "searchbox" ? "ok.k.field" : "ok.k.item";
+  return tr("ok.target", { kind: tr(kind), label: el.label.replace(/\s+/g, " ").trim().slice(0, 80) });
 }
 
 export function describeCall(call: ToolCall, sessionId: string, tr: Tr = translateFor): string {
@@ -875,7 +886,7 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
     where = "";
   }
   const el = sess?.elements.get(Number(call.input.element));
-  const target = el ? `${el.kind} "${el.label}"` : `element ${String(call.input.element)}`;
+  const target = targetWords(el, tr);
   if (call.name === "click") return tr("ok.click", { target, where });
   if (call.name === "type") return `${tr("ok.type", { text: String(call.input.text ?? ""), target, where })}${call.input.submit ? tr("ok.typeEnter") : ""}`;
   if (call.name === "fill_login") {
@@ -895,7 +906,7 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
     return steps
       .map((st) => {
         const e = sess?.elements.get(Number(st?.element));
-        const tg = e ? `${e.kind} "${e.label}"` : `element ${String(st?.element)}`;
+        const tg = targetWords(e, tr);
         return st?.action === "type" ? `${tr("ok.type", { text: String(st.text ?? ""), target: tg, where })}${st.submit ? tr("ok.typeEnter") : ""}` : tr("ok.click", { target: tg, where });
       })
       .join("\n");
@@ -904,9 +915,17 @@ export function describeCall(call: ToolCall, sessionId: string, tr: Tr = transla
   if (call.name === "download_file") return tr("ok.download", { url: String(call.input.url ?? "") });
   if (call.name === "save_skill") return tr("ok.saveSkill", { name: String(call.input.name ?? ""), description: String(call.input.description ?? "") });
   if (call.name.startsWith("mcp_")) {
-    const server = mcpServerOf(call.name);
-    const args = JSON.stringify(call.input);
-    return tr("ok.mcp", { tool: call.name.replace(/^mcp_[a-z0-9_]*?_/i, ""), server: server?.name ?? "MCP", args: args.length > 160 ? `${args.slice(0, 160)}…` : args });
+    const server = mcpServerOf(call.name)?.name ?? "connector";
+    const own = mcpToolOf(call.name) ?? call.name.replace(/^mcp_[a-z0-9_]*?_/i, "");
+    const w = describeConnector(own, call.input, server);
+    const head =
+      w.verb === "turnOn"
+        ? tr("act.turnOn", { app: w.app, server })
+        : w.object
+          ? tr("act.full", { verb: tr(`act.v.${w.verb}` as "act.v.send"), object: tr(`act.o.${w.object}` as "act.o.email"), app: w.app })
+          : tr("act.noObj", { verb: tr(`act.v.${w.verb}` as "act.v.send"), app: w.app });
+    const facts = w.facts.map((f) => `${tr(`act.f.${f.label}` as "act.f.to")}: ${f.value}`);
+    return [head.charAt(0).toUpperCase() + head.slice(1), ...facts].join("\n");
   }
   return call.name;
 }

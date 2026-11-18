@@ -921,6 +921,9 @@ export default function ChatView({ id }: { id: string }) {
   const [findQ, setFindQ] = useState("");
   const [findAt, setFindAt] = useState(0);
   const [pinned, setPinned] = useState(false);
+  // A send waiting its few seconds before it goes (no card was shown for it): Cancel stops it.
+  const [hold, setHold] = useState<{ entryId: string; callId: string; summary: string; until: number } | null>(null);
+  const [holdLeft, setHoldLeft] = useState(0);
   /** The group whose request is being answered from this chat (its card's buttons wait). */
   const [groupBusy, setGroupBusy] = useState<string | null>(null);
   const [input, setInput] = useState("");
@@ -969,6 +972,7 @@ export default function ChatView({ id }: { id: string }) {
       });
       setQueued((q) => (q.some((x) => x.id === ev.entry.id) ? q.filter((x) => x.id !== ev.entry.id) : q));
     } else if (ev.type === "status") setStatus((s) => ({ ...s, [ev.entryId]: ev.text }));
+    else if (ev.type === "hold") setHold(ev.hold);
     else if (ev.type === "approval") setChat((c) => c && { ...c, pending: { ...(c.pending ?? { queue: [], turnsLeft: 0 }), approval: ev.approval } });
     else if (ev.type === "error") setError(ev.error);
   }, []);
@@ -1028,6 +1032,17 @@ export default function ChatView({ id }: { id: string }) {
       ctrlRef.current?.abort();
     };
   }, [id, stream]);
+
+  useEffect(() => {
+    if (!hold) return;
+    const tick = () => setHoldLeft(Math.max(0, Math.ceil((hold.until - Date.now()) / 1000)));
+    tick();
+    const t = setInterval(tick, 250);
+    return () => clearInterval(t);
+  }, [hold]);
+  useEffect(() => {
+    if (!running) setHold(null);
+  }, [running]);
 
   // "Open in Canvas" under a chart in the chat.
   useEffect(() => {
@@ -1416,10 +1431,10 @@ export default function ChatView({ id }: { id: string }) {
   }
 
   /** always: "edits" also allows file edits in this chat's project folder from now on; "folders" lets bots read and send from these files' folders without asking. */
-  function decide(ok: boolean, always?: "edits" | "folders") {
+  function decide(ok: boolean, always?: "edits" | "folders" | "chat" | "site") {
     if (!approval) return;
     setError(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders" }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site" }) });
   }
 
   /**
@@ -1822,7 +1837,7 @@ export default function ChatView({ id }: { id: string }) {
                     bot={bots.find((b) => b.id === ask.approval.botId)}
                     group={ask.groupName}
                     busy={groupBusy === ask.groupId}
-                    onDecide={(ok, always) => void answerGroup(ask.groupId, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders" })}
+                    onDecide={(ok, always) => void answerGroup(ask.groupId, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site" })}
                   />
                 ) : (
                   <div key={`${ask.groupId}:plan:${ask.steps.join("|")}`} className="approval group-plan" role="alert">
@@ -1915,6 +1930,24 @@ export default function ChatView({ id }: { id: string }) {
                 </li>
               ))}
             </ul>
+          )}
+          {hold && (
+            <div className="hold-bar" role="alert">
+              <span>
+                {t("ok.holding", { n: holdLeft })} <b dir="auto">{hold.summary}</b>
+              </span>
+              <button
+                type="button"
+                className="btn sm danger"
+                onClick={() => {
+                  const h = hold;
+                  setHold(null);
+                  void fetch(`/api/chats/${id}/hold`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ callId: h.callId }) }).catch(() => {});
+                }}
+              >
+                {t("ok.holdCancel")}
+              </button>
+            </div>
           )}
           {replyTo && (
             <div className="reply-chip" role="status">

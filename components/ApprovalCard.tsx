@@ -16,8 +16,12 @@ type Props = {
   group?: string;
   /** The answer is being sent: the buttons wait. */
   busy?: boolean;
-  /** always: "edits" also allows file edits in the project folder from now on; "folders" lets bots read and send from these folders without asking. */
-  onDecide: (ok: boolean, always?: "edits" | "folders") => void;
+  /**
+   * always: "edits" also allows file edits in the project folder from now on; "folders" lets bots read and send
+   * from these folders without asking; "chat" allows this kind of action for the rest of the chat; "site" allows
+   * clicks and typing on this site from now on.
+   */
+  onDecide: (ok: boolean, always?: "edits" | "folders" | "chat" | "site") => void;
 };
 
 export default function ApprovalCard({ approval, bot, group, busy = false, onDecide }: Props) {
@@ -78,7 +82,7 @@ export default function ApprovalCard({ approval, bot, group, busy = false, onDec
         <strong>{grant ? t("desk.grantQ", { name }) : t("chat.wantsTo", { name })}</strong>
         <ul>
           {approval.items.map((it) => (
-            <li key={it.call.id}>
+            <li key={it.call.id} dir="auto">
               {it.summary}
               {it.desktop === "grant" && <span className="dc-grant-note">{t(it.askEvery ? "desk.grant.asks" : "desk.grant.noAsk")}</span>}
               {it.desktop && it.window && (
@@ -92,7 +96,7 @@ export default function ApprovalCard({ approval, bot, group, busy = false, onDec
                 </pre>
               )}
               {!it.desktop && it.detail && (
-                <details className="approval-detail" open={it.call.name === "run_command" || it.detail.length < 600}>
+                <details className="approval-detail" open={it.call.name === "run_command"}>
                   <summary>{t("chat.details")}</summary>
                   <pre>{it.detail}</pre>
                 </details>
@@ -109,6 +113,25 @@ export default function ApprovalCard({ approval, bot, group, busy = false, onDec
               {folders.length > 1 ? t("files.alwaysFolders") : t("files.alwaysFolder")}
             </button>
           )}
+          {(() => {
+            // One OK for more than this once: only when every action asked here can be covered (lib/approval-scope-core.ts).
+            const scopes = approval.items.map((i) => i.scope);
+            if (!scopes.length || scopes.some((s) => !s)) return null;
+            const keys = [...new Set(scopes.map((s) => s!.key))];
+            const site = keys.length === 1 && scopes[0]!.kind === "site" ? scopes[0]!.label : null;
+            return (
+              <>
+                <button className="btn" disabled={busy} onClick={() => onDecide(true, "chat")} title={t("ok.scopeChatHint")}>
+                  {site ? t("ok.scopeChatSite", { site }) : keys.length === 1 ? t("ok.scopeChatTool", { action: scopes[0]!.label }) : t("ok.scopeChat")}
+                </button>
+                {site && (
+                  <button className="btn" disabled={busy} onClick={() => onDecide(true, "site")} title={t("ok.scopeSiteHint")}>
+                    {t("ok.scopeSite", { site })}
+                  </button>
+                )}
+              </>
+            );
+          })()}
           {approval.items.some((i) => i.always) && (
             <button className="btn" disabled={busy} onClick={() => onDecide(true, "edits")}>
               {t("chat.alwaysEdits")}

@@ -21,7 +21,7 @@ export async function POST(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (!getChat(id)) return Response.json({ error: "Chat not found." }, { status: 404 });
 
-  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown; entryId?: unknown; replyTo?: unknown } | null;
+  const body = (await req.json().catch(() => null)) as { text?: unknown; decisions?: unknown; alwaysEdit?: unknown; alwaysFolders?: unknown; effort?: unknown; deep?: unknown; plan?: unknown; planDecision?: unknown; attachments?: unknown; answers?: unknown; entryId?: unknown; replyTo?: unknown; allowChat?: unknown; allowSite?: unknown } | null;
   let input: RunInput;
   // Files uploaded to this chat beforehand (POST /api/chats/<id>/attachments), by id.
   const ids = Array.isArray(body?.attachments) ? [...new Set(body.attachments.filter((x): x is string => typeof x === "string"))] : [];
@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: Ctx) {
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;
-    input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true };
+    input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true, allowChat: body.allowChat === true, allowSite: body.allowSite === true };
   } else {
     return Response.json({ error: "Send {text}, {decisions}, {planDecision} or {answers}." }, { status: 400 });
   }
