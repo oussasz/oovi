@@ -330,10 +330,23 @@ export function needsComputerAction(it: ApprovalItem): boolean {
 
 export type Outgoing = { entryId: string; chatId: string; text: string; at: number; jobId?: string; state: "sending" | "sent" | "failed" };
 
-/** Messages sent from the phone that the chat does not show yet (the computer or the runner adds them). */
+/**
+ * Messages sent from the phone that the chat does not show yet (the computer or the runner adds them). Matched by
+ * entry id; when the computer kept its own id, by the same text sent around the same time, each chat message
+ * matching one phone message only (two "ok" in a row stay two).
+ */
 export function pendingOutgoing(chat: Chat | undefined, outbox: Outgoing[]): Outgoing[] {
   const users = (chat?.entries ?? []).filter((e): e is UserEntry => e.kind === "user");
-  return outbox.filter((o) => !users.some((u) => u.id === o.entryId || (u.text.trim() === o.text.trim() && u.at >= o.at - 120_000)));
+  const used = new Set<string>();
+  for (const o of outbox) if (users.some((u) => u.id === o.entryId)) used.add(o.entryId);
+  const left: Outgoing[] = [];
+  for (const o of outbox) {
+    if (used.has(o.entryId)) continue;
+    const u = users.find((x) => !used.has(x.id) && !outbox.some((y) => y.entryId === x.id) && x.text.trim() === o.text.trim() && x.at >= o.at - 120_000);
+    if (u) used.add(u.id);
+    else left.push(o);
+  }
+  return left;
 }
 
 /** A short random id, like the desktop's entry ids. */

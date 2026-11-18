@@ -87,8 +87,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const setupAt = useRef(0);
   const busy = useRef(false);
   const seenBase = useRef<Record<string, number> | null>(null);
-  const meRef = useRef<Me | null>(null);
-  meRef.current = me;
+  const meChecked = useRef(false);
 
   const lang = pickLang(navLangs, prefs.lang === "auto" ? null : prefs.lang);
   const dir = lang === "ar" ? "rtl" : "ltr";
@@ -150,6 +149,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
     setPins([]);
     setSeen({});
     seenBase.current = null;
+    meChecked.current = false;
+    setupAt.current = 0;
     if (!window.location.pathname.startsWith("/m/login")) {
       const next = window.location.pathname + window.location.search;
       router.replace(`/m/login?next=${encodeURIComponent(next)}`);
@@ -236,9 +237,26 @@ export function MobileApp({ children }: { children: ReactNode }) {
       busy.current = true;
       setRefreshing(true);
       try {
-        if (!meRef.current) {
-          const m = await getMe().catch(() => null);
+        // Once per start: if another account signed in on this phone (the website's session changed), what was
+        // kept for the previous one goes before anything new is shown or merged.
+        if (!meChecked.current) {
+          const m = await getMe().catch(() => undefined);
           if (m) {
+            meChecked.current = true;
+            const before = L.loadMe();
+            if (before && before.id !== m.id) {
+              await L.clearLocal();
+              cache.current = { since: null, chats: {} };
+              setChats({});
+              setSetup(null);
+              setupAt.current = 0;
+              setStatus(null);
+              setCredits(null);
+              setOutbox([]);
+              setPins([]);
+              setSeen({});
+              seenBase.current = null;
+            }
             setMe(m);
             L.saveMe(m);
           }

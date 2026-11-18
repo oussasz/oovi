@@ -265,7 +265,17 @@ async function main() {
     check("M offline: a chat seen before opens", await until(() => page.locator(".m-md table").isVisible(), 8000));
     await ctx.setOffline(false);
 
-    // ---------- N) sign out ----------
+    // ---------- N) another account on the same phone, then sign out ----------
+    await page.goto(`${BASE}/m`);
+    await page.evaluate(() => {
+      localStorage.setItem("oovi.m.me", JSON.stringify({ id: "someone-else", name: "Other", email: "other@example.test", image: null }));
+      const c = JSON.parse(localStorage.getItem("oovi.m.chats"));
+      c.chats["old-account-chat"] = { version: 1, chat: { id: "old-account-chat", kind: "group", name: "Previous account's chat", memberIds: [], createdAt: 1, updatedAt: Date.now(), entries: [{ id: "x", kind: "user", text: "private", at: Date.now() }] } };
+      localStorage.setItem("oovi.m.chats", JSON.stringify(c));
+    });
+    await page.reload();
+    check("N another account signed in: the previous account's chats are wiped", await until(async () => (await page.getByText("Previous account's chat").count()) === 0 && (await page.locator(".m-chats > li").count()) === 5 && !(await page.evaluate(() => localStorage.getItem("oovi.m.chats") || "")).includes("old-account-chat")));
+
     await page.goto(`${BASE}/m/settings`);
     await page.getByRole("button", { name: "Sign out" }).click();
     check("N sign out asks first", await page.getByRole("dialog").getByText(/Sign out of oovi on this phone\?/).isVisible());

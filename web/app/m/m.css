@@ -1883,3 +1883,18 @@ html.m-kb-open .m-composer {
     grid-template-columns: 48px minmax(0, 1fr) 48px;
   }
 }
+
+/* Text fields: no ring around the text itself; the field shows focus (keyboard users still see where they are). */
+.mapp :is(.m-composer__field textarea, .m-search input, .m-field input):focus-visible {
+  outline: none;
+}
+.m-composer__field:focus-within {
+  border-color: var(--m-tint);
+  box-shadow: 0 0 0 1px var(--m-tint);
+}
+.m-search:focus-within {
+  box-shadow: 0 0 0 2px var(--m-tint-soft);
+}
+.m-field:focus-within span {
+  color: var(--m-tint);
+}

@@ -1,5 +1,39 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Cloud M: the phone app (branch `cloud-mobile`, built 2026-11-18, NOT MERGED, NOT DEPLOYED)
+Part M of `docs/CLOUD-BUILD.md`. An app people add to their Home Screen from the website (no store), Apple style,
+English, French and Arabic (right to left). It only works once part W (the cloud API, branch `cloud-web`) is
+deployed and part A (the desktop's sync) uploads chats: until then it shows "Not synced yet".
+- Where: `web/app/m/` (screens in `_ui/`, pure helpers in `_lib/`, look in `m.css`), `web/public/m/` (manifest,
+  icons, 22 iPhone launch screens, offline worker `sw.js`), one header in `web/next.config.mjs` (lets the worker
+  serve `/m`). Icons and launch screens are made from the logo by `node web/scripts/mobile-icons.cjs`.
+- Screens: Chats (faces, last message, time, unread dot and tab badge, pinned on top, search inside messages,
+  swipe or long-press to pin and mark read, pull to refresh, "Not synced yet" with the 3 steps); Chat (Markdown
+  with tables and safe links, the bot's live status from `GET /events`, message box, voice note to text through
+  the existing `/api/v1/ai/transcribe` (the text lands in the box to check), Allow / Not now cards, question and
+  plan cards, Stop, "This needs your computer" with the computer's state, "your message waits" while it is off);
+  Bots (main bot, bots, groups; opens or starts a chat; "on your computer only" bots have no message box);
+  Settings (account, theOovi credits from `/api/v1/ai/status`, devices online or not, sync on/off, space used,
+  language, light/dark, Add to Home Screen help, sign out that asks first and clears the phone's copy);
+  Connectors (read-only: name and on/off; addresses, commands and key names are dropped before anything is
+  stored). Its own sign-in page (`/m/login`) uses the website's sign-in, so the session is the website's.
+- The phone never asks for or keeps an API key; on the phone the bots use theOovi only (said in Settings).
+  It keeps chats without tool results in the browser's storage (opens at once, works offline); sign-out, or
+  another account signing in, removes them.
+- What the phone sends and reads beyond the contract's words (job payloads, `/events` answer, optional
+  `GET /jobs`, `errorCode: "needs_computer"`, `local: true` bots): written in `docs/CLOUD-BUILD.md`, "Changes to
+  this file", for parts W, A and R.
+- Screenshots (iPhone 15 size, stand-in data, `docs/mobile/`): `en-light-*`, `en-dark-*`, `ar-light-*`, `ar-dark-*`
+  for chats, chat-approval, chat-live, needs-computer, group, bots, settings, connectors; plus chat-composer-voice,
+  not-synced and sign-in in light. Made with `node tests/e2e/mobile-scenario.cjs --shots-only`.
+- Checked here (Linux, Chrome emulating an iPhone 15, the built website behind a stand-in for the cloud API,
+  `tests/e2e/mobile-standin.cjs`): RESULTS_PLACEHOLDER
+- NOT checked: a real iPhone or Android phone (Safari, Add to Home Screen, the keyboard, the microphone, Dynamic
+  Type, safe areas: the emulation has none), the real cloud API (part W is not built yet: the phone follows the
+  contract), the real desktop sync (part A), Firefox, a real Groq/OpenAI voice key.
+- For the owner, after W is deployed: on the iPhone, open `https://oovi.conuron.com/m` in Safari, sign in, tap
+  Share, then "Add to Home Screen", then "Add". On Android (Chrome): open the same address, menu ⋮, "Install app".
+
 ## 0.12.3 (released 2026-11-18, owner said "build the version and publish it, minor update")
 - One answer per question (owner: 5 messages for "anything new in my email or calendar?", long waits, "correction: I told you before…"). Causes: the done-check's extra rounds each posted a new message and the bot thought the user had read its draft; optional offers ("shall I draft a reply?", "shall I check again?") counted as unfinished; the bot answered from snippets before checking. Now: an extra round continues IN the same reply (`pending.continueIn`, `BotEntry.held`; the draft stays in the steps for the model, the user sees only the final text; the bot is told the user never saw the draft, `UNSEEN_DRAFT`); offers of extras are "done" (`DONE_CHECK_SYSTEM`); ordinary requests get one extra round at most (big jobs keep 4); rule "look everything up first, then answer once" in FOR_THE_USER. bigjob scenario K (42/42). Cost job 169,901 (safety CAPTCHA bullet shortened to fit). NOT checked with a real model on a real inbox.
 

@@ -245,3 +245,23 @@ test("time stamps between messages: first, new day, or after an hour", async () 
   assert.match(stampLabel(t0, t0 + 1000, "en", "Today"), /^Today 10:00/);
   assert.match(stampLabel(t0 - 86_400_000, t0, "fr", "Aujourd’hui"), /^Hier 10:00/);
 });
+
+test("two identical messages sent quickly stay two until the chat shows both", () => {
+  const out = [
+    { entryId: "m1", chatId: "c1", text: "ok", at: 1000, state: "sent" as const },
+    { entryId: "m2", chatId: "c1", text: "ok", at: 2000, state: "sent" as const },
+  ];
+  const one = chat({ entries: [{ id: "desk-1", kind: "user", text: "ok", at: 1500 }] });
+  assert.deepEqual(pendingOutgoing(one, out).map((o) => o.entryId), ["m2"]);
+  const both = chat({ entries: [{ id: "desk-1", kind: "user", text: "ok", at: 1500 }, { id: "desk-2", kind: "user", text: "ok", at: 2500 }] });
+  assert.deepEqual(pendingOutgoing(both, out), []);
+  const byId = chat({ entries: [{ id: "m2", kind: "user", text: "ok", at: 2500 }] });
+  assert.deepEqual(pendingOutgoing(byId, out).map((o) => o.entryId), ["m1"], "the id match is not reused by text");
+});
+
+test("after sign-in, only pages of the phone app (never another site)", async () => {
+  const { safeMobileNext } = await import("../../web/app/m/_lib/core.ts");
+  assert.equal(safeMobileNext("/m/c/dm-oovi"), "/m/c/dm-oovi");
+  assert.equal(safeMobileNext("/m/settings?x=1"), "/m/settings?x=1");
+  for (const bad of ["https://evil.example", "//evil.example", "/m/../admin", "/admin", "/mark.png", "/m/login?next=/m", "/m\\evil", null, ""]) assert.equal(safeMobileNext(bad), "/m", String(bad));
+});
