@@ -28,10 +28,11 @@ export async function GET(req: Request) {
     for (;;) {
       const e = await chatEvent(who.userId, chatId, jobsAfter);
       const changed = e.version > after || e.jobsChanged;
-      if (changed || Date.now() + STEP_MS > end || req.signal.aborted) {
+      const left = end - Date.now();
+      if (changed || left <= 50 || req.signal.aborted) {
         return ok({ chatId, changed, version: e.version, deleted: e.deleted, updatedAt: e.updatedAt, jobs: e.jobs, now: new Date().toISOString() });
       }
-      await new Promise((r) => setTimeout(r, STEP_MS));
+      await new Promise((r) => setTimeout(r, Math.min(STEP_MS, left)));
     }
   });
 }
