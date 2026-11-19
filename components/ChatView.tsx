@@ -3,7 +3,7 @@
 import MicButton from "./MicButton";
 import { INTERRUPTED } from "@/lib/delegations-core";
 import Link from "next/link";
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { findInChat, quoteOf } from "@/lib/chat-basics-core";
 import { api, botMood, entryMood, fmtCost, fmtTokens, readEvents, refreshSidebar, timeLabel } from "@/lib/client";
@@ -650,7 +650,8 @@ function BotMessage(props: {
   };
 
   return (
-    <div className="msg bot" id={`m-${e.id}`}>
+    // --bot: the bubble is washed in the bot's own face color (globals.css .bot-bubble), like the phone app.
+    <div className="msg bot" id={`m-${e.id}`} style={bot ? ({ "--bot": FACE_COLORS[bot.face.color] ?? FACE_COLORS[0] } as CSSProperties) : undefined}>
       <div className="msg-face">{bot && <Face face={bot.face} mood={entryMood(e, isLast)} size={38} title={name} />}</div>
       <div className="msg-main">
         <div className="msg-meta">

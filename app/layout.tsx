@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Noto_Sans_Arabic, Nunito } from "next/font/google";
+import { Nunito, Tajawal } from "next/font/google";
 import AccountGate from "@/components/AccountGate";
 import { I18nProvider } from "@/components/I18n";
 import Sidebar from "@/components/Sidebar";
@@ -16,10 +16,10 @@ import "./styles/live-browser.css";
 import "./styles/routines.css";
 
 const nunito = Nunito({ subsets: ["latin"], display: "swap", variable: "--font-nunito" });
-// Nunito has no Arabic glyphs. This face only covers the Arabic range (unicode-range), so it
-// sits first in the font stack and Latin text still renders in Nunito. No metric fallback:
-// that local font would cover Latin too and override Nunito.
-const arabic = Noto_Sans_Arabic({ subsets: ["arabic"], display: "swap", variable: "--font-arabic", adjustFontFallback: false });
+// Nunito has no Arabic glyphs: Tajawal is its rounded match for Arabic (the same pair as the phone and web app).
+// next/font's `subsets` only chooses what is preloaded: the CSS still declares every subset of a face, so the
+// order in the font stack decides (globals.css): Nunito first, Tajawal first only when the app is in Arabic.
+const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800", "900"], display: "swap", variable: "--font-arabic" });
 
 export const metadata: Metadata = {
   title: "oovi",
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   themeColor: [
     { media: "(prefers-color-scheme: light)", color: "#FBFAF7" },
-    { media: "(prefers-color-scheme: dark)", color: "#131312" },
+    { media: "(prefers-color-scheme: dark)", color: "#151513" },
   ],
 };
 

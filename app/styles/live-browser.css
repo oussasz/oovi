@@ -31,7 +31,7 @@
 .lb-screen img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
 .lb-screen img.lb-hidden { visibility: hidden; }
 .lb-screen.ctl { cursor: default; touch-action: none; }
-.lb-screen:focus-within { outline: 3px solid var(--blue); outline-offset: -3px; }
+.lb-screen:focus-within { outline: 3px solid var(--focus); outline-offset: -3px; }
 .lb-overlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 12px; text-align: center; color: #f2f2ee; font-size: 13px; font-weight: 700; background: rgba(14, 14, 13, 0.55); }
 .lb-overlay:empty { display: none; }
 /* Receives keys and IME input; invisible but focusable, near the screen so IME popups appear there. */
