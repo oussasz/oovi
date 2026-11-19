@@ -14,6 +14,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { chosenSaveFolder, dataDir, type BrowserConfig } from "./settings";
+import { pickLaunchError } from "./platform-errors-core";
 
 export type ElementInfo = { kind: string; label: string };
 export type Session = {
@@ -122,14 +123,21 @@ const LINUX_BROWSERS = [
 ];
 export const linuxBrowser = (): string | undefined => (process.platform === "linux" ? LINUX_BROWSERS.find((p) => fs.existsSync(p)) : undefined);
 
-/** "auto" tries installed Chrome, then Edge, then Playwright's own Chromium. */
+const browserName = (ch: string | undefined, exe?: string): string =>
+  exe ? `The browser at ${exe}` : ch === "chrome" ? "Google Chrome" : ch === "msedge" ? "Microsoft Edge" : ch ? `Browser "${ch}"` : "Playwright's Chromium";
+
+/**
+ * "auto" tries installed Chrome, then Edge, then Playwright's own Chromium. When none starts, the error
+ * says why the first real candidate failed (profile in use, a policy, snap…), not just that the last
+ * one isn't installed.
+ */
 export async function launchLocal(channel: BrowserConfig["channel"]): Promise<Browser> {
-  let lastErr: unknown;
+  const attempts: { who: string; err: unknown }[] = [];
   for (const ch of channelsFor(channel)) {
     try {
       return await chromium.launch({ headless: true, ...(ch ? { channel: ch } : {}) });
     } catch (e) {
-      lastErr = e;
+      attempts.push({ who: browserName(ch), err: e });
     }
   }
   const exe = linuxBrowser();
@@ -137,15 +145,15 @@ export async function launchLocal(channel: BrowserConfig["channel"]): Promise<Br
     try {
       return await chromium.launch({ headless: true, executablePath: exe });
     } catch (e) {
-      lastErr = e;
+      attempts.push({ who: browserName(undefined, exe), err: e });
     }
   }
-  throw lastErr;
+  throw pickLaunchError(attempts);
 }
 
 async function launchProfile(channel: BrowserConfig["channel"], headless: boolean): Promise<BrowserContext> {
   fs.mkdirSync(profileDir(), { recursive: true });
-  let lastErr: unknown;
+  const attempts: { who: string; err: unknown }[] = [];
   for (const ch of channelsFor(channel)) {
     try {
       return await chromium.launchPersistentContext(profileDir(), {
@@ -156,7 +164,7 @@ async function launchProfile(channel: BrowserConfig["channel"], headless: boolea
         locale: "en-US",
       });
     } catch (e) {
-      lastErr = e;
+      attempts.push({ who: browserName(ch), err: e });
     }
   }
   const exe = linuxBrowser();
@@ -164,10 +172,10 @@ async function launchProfile(channel: BrowserConfig["channel"], headless: boolea
     try {
       return await chromium.launchPersistentContext(profileDir(), { headless, executablePath: exe, acceptDownloads: true, viewport: headless ? { width: 1280, height: 800 } : null, locale: "en-US" });
     } catch (e) {
-      lastErr = e;
+      attempts.push({ who: browserName(undefined, exe), err: e });
     }
   }
-  throw lastErr;
+  throw pickLaunchError(attempts);
 }
 
 // ---------- downloads & tabs ----------

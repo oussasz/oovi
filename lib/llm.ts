@@ -19,6 +19,7 @@ import { currentModel, markRetired, usesHosted, type ModelRef, type Settings } f
 import { readShot, replaceBotModel } from "./store";
 import { DESKTOP_MARKER, DESKTOP_TOOLSET_NAME, DESKTOP_TOOLSET_TYPE, desktopName, isDesktopName, memberOf, supportsDesktopModel } from "./desktop-core";
 import type { Msg, ToolCall } from "./types";
+import { hostedCode, netCode, netKind, netReason } from "./platform-errors-core";
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
 type RawCompletion = {
@@ -138,8 +139,10 @@ export function modelChain(s: Settings): ModelRef[] {
 const MODEL_GONE = /not found|does not exist|no longer (available|supported)|unknown model|invalid model|model .*(deprecated|retired|decommissioned)|is not supported/i;
 
 /** Plain-language reason for a failed call. */
-function explain(ref: ModelRef, status: number, raw: string): string {
+function explain(ref: ModelRef, status: number, raw: string, code?: string): string {
   const who = providerName(ref.provider);
+  // A blocked secure connection is not the provider being down: the message already says why.
+  if (code === "tls") return raw;
   if (status === 401 || status === 403) return `${who} didn't accept the API key. Check it in Settings > AI models.`;
   if (status === 402) return `${who}: not enough credit on your account. ${raw}`;
   if (status === 404 || MODEL_GONE.test(raw)) return `${ref.model} isn't available at ${who} anymore.`;
@@ -182,6 +185,7 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
         if (signal?.aborted) throw e;
         const status = e instanceof ProviderError ? e.status : 0;
         const retryAfter = e instanceof ProviderError ? e.retryAfter : undefined;
+        const errCode = e instanceof ProviderError ? e.code : undefined;
         const raw = (e as Error).message || String(e);
         // This model can't take images/PDFs, or the request got too big with them: send the files as text notes instead.
         if (!noMedia && hasMedia(messages) && (status === 413 || (status === 400 && MEDIA_REJECTED.test(raw)))) {
@@ -237,7 +241,7 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
                 ? 30
                 : 0;
         if (coolSeconds) cooldown.set(keyOf(ref), Date.now() + coolSeconds * 1000);
-        errors.push(`${modelLabel(ref)}: ${explain(ref, status, raw)}`);
+        errors.push(`${modelLabel(ref)}: ${explain(ref, status, raw, errCode)}`);
         break;
       }
     }
@@ -251,7 +255,6 @@ export async function complete(s: Settings, system: string, messages: Msg[], too
 
 const HOSTED_STATES = new Set<string>(["verify_email", "no_credits", "daily_limit", "suspended", "paused", "off", "blocked"]);
 
-/** Turns a failed theOovi call into a HostedError with a clear message and code. */
 /** A failure worth one quick retry: the connection dropped, or the server was briefly busy or down. */
 export function isBlip(e: unknown, status: number): boolean {
   const name = (e as Error)?.name ?? "";
@@ -264,10 +267,16 @@ export function isBlip(e: unknown, status: number): boolean {
   return status === 0 || status === 408 || status === 429 || status === 502 || status === 503 || status === 504 || status === 529;
 }
 
-function hostedFailure(e: unknown): HostedError {
+/**
+ * Turns a failed theOovi call into a HostedError with a clear message and code. A failure with no account or
+ * passing reason (a 400 from a request oovi built wrong, a 500, a bug before the call) stays a plain Error:
+ * it has no errorCode, so the run reports count it instead of skipping it as "busy".
+ */
+function hostedFailure(e: unknown): Error {
   if (e instanceof HostedError) return e;
-  const status = e instanceof ProviderError ? e.status : 0;
-  const code = (e instanceof ProviderError && e.code) || (status === 0 ? "offline" : status === 401 ? "signed_out" : "busy");
+  if (!(e instanceof ProviderError)) return e instanceof Error ? e : new Error(String(e));
+  const code = hostedCode(e.status, e.code);
+  if (!code) return new Error(e.message || `theOovi couldn't answer (${e.status}).`);
   if (HOSTED_STATES.has(code)) noteHostedState(code as HostedState, (e as Error).message);
   if (code === "offline") noteHostedState("offline", null);
   const message =
@@ -403,7 +412,14 @@ async function post(label: string, url: string, headers: Record<string, string>,
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     if ((e as Error).name === "TimeoutError") throw new ProviderError(`${label} took too long to answer.`, 504);
-    throw new ProviderError(`Could not reach ${label} at ${new URL(url).origin}: ${(e as Error).message}`, 0);
+    // Node's fetch only says "fetch failed": the reason (no internet, a certificate blocked by an antivirus…) is in e.cause.
+    const kind = netKind(e);
+    throw new ProviderError(
+      kind === "tls" ? `${label} can't be reached securely at ${new URL(url).origin}: ${netReason(e)}.` : `Could not reach ${label} at ${new URL(url).origin}: ${netReason(e)}`,
+      0,
+      undefined,
+      kind === "tls" ? "tls" : undefined,
+    );
   }
   if (!res.ok) {
     const retry = Number(res.headers.get("retry-after"));
@@ -553,7 +569,11 @@ async function hostedCall(r: Req): Promise<RawCompletion> {
   } catch (e) {
     if ((e as Error).name === "AbortError") throw e;
     if ((e as Error).name === "TimeoutError") throw new ProviderError("theOovi took too long to answer. Try again.", 504, undefined, "busy");
-    throw new ProviderError("Can't reach the oovi service.", 0, undefined, "offline");
+    // A certificate error isn't "offline": an antivirus scanning HTTPS or a company network is in the way.
+    // Retrying won't help, and "check your internet" would send the user the wrong way.
+    if (netKind(e) === "tls")
+      throw new ProviderError(`A security program (antivirus) or your company network is blocking oovi's secure connection, or this computer's date and time are wrong. Allow oovi in that program (or ask your IT team), check the date and time, then try again. (${netCode(e) ?? "certificate error"})`, 0, undefined, "tls");
+    throw new ProviderError(`Can't reach the oovi service (${netReason(e)}).`, 0, undefined, "offline");
   }
   const text = await res.text();
   let j: (AnthropicReply & { error?: string; code?: string }) | null = null;

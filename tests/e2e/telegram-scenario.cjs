@@ -11,6 +11,7 @@ const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+require("./server-guard.cjs"); // fail fast if the test server exits on its own (port taken, crash)
 const { spawn } = require("node:child_process");
 
 const DATA = path.join(os.tmpdir(), "oovi-tg-test");

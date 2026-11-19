@@ -11,6 +11,7 @@
 //   TEST_DATABASE_URL=postgres://postgres@127.0.0.1:55432/oovi_test node tests/e2e/cloud-integration-scenario.cjs
 // Needs: npm run build (root) and the website built (cd web && BETTER_AUTH_SECRET=local-test-secret-0123456789abcdef
 // npm run build). Refuses any database that isn't on this machine.
+require("./server-guard.cjs"); // fail fast if the test server exits on its own (port taken, crash)
 const { spawn, spawnSync } = require("node:child_process");
 const crypto = require("node:crypto");
 const fs = require("node:fs");

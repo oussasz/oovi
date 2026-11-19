@@ -172,8 +172,27 @@ globalThis.__ooviDesktop = {
   },
 };
 
+/**
+ * The server's own connections (theOovi, model providers, MCP, Telegram) also trust the certificates installed on
+ * this computer, as the browser window already does. Without this, an antivirus that scans HTTPS or a company
+ * network that inspects it makes every call fail with a certificate error. Node 24 (Electron 44) has
+ * tls.getCACertificates("system") and tls.setDefaultCACertificates; anything older keeps Node's own list.
+ */
+function trustSystemCertificates() {
+  try {
+    const tls = require("node:tls");
+    if (typeof tls.getCACertificates !== "function" || typeof tls.setDefaultCACertificates !== "function") return;
+    const system = tls.getCACertificates("system");
+    if (!system.length) return;
+    tls.setDefaultCACertificates([...new Set([...tls.getCACertificates("default"), ...system])]);
+  } catch (e) {
+    console.warn("[oovi] couldn't add the computer's certificates:", e && e.message);
+  }
+}
+
 /** Start the Next.js production server in this process. Returns its URL. */
 async function startServer() {
+  trustSystemCertificates();
   // Keys, bots and chats live in the OS app-data folder, e.g. %APPDATA%\oovi\data
   process.env.OOVI_DATA ||= path.join(app.getPath("userData"), "data");
   // Files the bots download land in the user's normal Downloads folder.

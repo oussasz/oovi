@@ -26,6 +26,7 @@ import type { Chat, ToolCall, ToolResult } from "./types";
 import { systemDirs, within } from "./workspace";
 import { homeDir } from "./home";
 import { translateFor, type Tr } from "./i18n-server";
+import { parseUserDirs } from "./platform-errors-core";
 
 const isWin = process.platform === "win32";
 const isMac = process.platform === "darwin";
@@ -265,6 +266,16 @@ export function allowFolder(dir: string, current: ComputerFiles): string | null 
 export function usualFolders(): string[] {
   const home = homeDir();
   const cands = ["Desktop", "Documents", "Downloads", "Pictures", "Videos", "Music", ...(isMac ? ["Movies"] : [])].map((n) => path.join(home, n));
+  // Linux names these folders in the user's language ("Bureau", "Téléchargements"…): ~/.config/user-dirs.dirs says where.
+  // (Windows keeps the English names on disk; a Desktop or Documents moved to OneDrive is covered by the OneDrive folder below.)
+  if (process.platform === "linux") {
+    try {
+      const conf = process.env.XDG_CONFIG_HOME && path.isAbsolute(process.env.XDG_CONFIG_HOME) ? process.env.XDG_CONFIG_HOME : path.join(home, ".config");
+      cands.push(...parseUserDirs(fs.readFileSync(path.join(conf, "user-dirs.dirs"), "utf8"), home));
+    } catch {
+      /* no user-dirs.dirs: the English names above */
+    }
+  }
   for (const k of ["OneDrive", "OneDriveConsumer", "OneDriveCommercial"]) if (process.env[k]) cands.push(process.env[k]!);
   try {
     for (const d of fs.readdirSync(home)) if (/^OneDrive\b/i.test(d)) cands.push(path.join(home, d));
@@ -545,8 +556,8 @@ function listFolder(call: ToolCall): ToolResult {
 function fsError(e: unknown, shown: string): string {
   const code = (e as NodeJS.ErrnoException).code;
   if (code === "ENOENT") return `${shown} doesn't exist. Use find_files to find the right path.`;
+  if (code === "EBUSY" || (isWin && code === "EPERM")) return `${shown} is open in another program (or in use), or the computer didn't allow access to it. If it's open, ask the user to close it there, then try again.`;
   if (code === "EACCES" || code === "EPERM") return `The computer didn't allow access to ${shown}.`;
-  if (code === "EBUSY") return `${shown} is in use by another program.`;
   return (e as Error).message || String(e);
 }
 

@@ -35,4 +35,18 @@ if (process.env.OOVI_TEST_CLOUD_ASK !== "1") {
 
 const dir = process.env.OOVI_STANDALONE || path.resolve(__dirname, "../../.next/standalone");
 process.chdir(dir);
-require(path.join(dir, "server.js"));
+
+// A server left over from an earlier run may still hold the port: then this one couldn't listen and the scenario
+// would quietly test the old server (old build, other data folder). Check first and stop with a clear error;
+// the scenario sees this process exit (server-guard.cjs) and fails at once.
+const port = Number(process.env.PORT) || 3000;
+const probe = require("node:net").createServer();
+probe.once("error", (e) => {
+  console.error(
+    e.code === "EADDRINUSE"
+      ? `[server.cjs] EADDRINUSE: port ${port} is already in use, probably by a server from an earlier run. Stop it (or wait for it to exit) and run again.`
+      : `[server.cjs] can't use port ${port}: ${e.message}`,
+  );
+  process.exit(1);
+});
+probe.listen(port, process.env.HOSTNAME, () => probe.close(() => require(path.join(dir, "server.js"))));

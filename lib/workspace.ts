@@ -16,6 +16,7 @@ import { dataDir } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { homeDir } from "./home";
 import { translateFor, type Tr } from "./i18n-server";
+import { applyEdit, isGitPath, shellCommand } from "./platform-errors-core";
 
 export const FILE_SPECS: ToolSpec[] = [
   {
@@ -252,12 +253,8 @@ export async function runFileTool(call: ToolCall, ws: Workspace | undefined): Pr
         if (!fs.existsSync(abs)) return bad(call, `${rel} doesn't exist.`);
         const dest = path.join(dataDir(), "trash", new Date().toISOString().replace(/[:.]/g, "-"), path.basename(root), rel);
         fs.mkdirSync(path.dirname(dest), { recursive: true });
-        try {
-          fs.renameSync(abs, dest);
-        } catch {
-          fs.cpSync(abs, dest, { recursive: true });
-          fs.rmSync(abs, { recursive: true, force: true });
-        }
+        const problem = moveToTrash(abs, dest, rel);
+        if (problem) return bad(call, problem);
         return ok(call, `Deleted ${rel}. It's in oovi's trash at ${dest} if the user wants it back.`);
       }
       case "run_command":
@@ -282,8 +279,41 @@ export function resolveInWorkspace(ws: Workspace, p: string): { abs: string; rel
   return r;
 }
 
+/**
+ * Moves a file or folder to oovi's trash. Returns an error message, or null when done.
+ * Only a move across drives (EXDEV) copies then deletes; a file open in another program (Windows: EBUSY/EPERM)
+ * is left exactly as it was, with no stray copy in the trash.
+ */
+function moveToTrash(abs: string, dest: string, rel: string): string | null {
+  const inUse = `${rel} is open in another program (or in use), so it can't be deleted now. Ask the user to close it there, then try again.`;
+  try {
+    fs.renameSync(abs, dest);
+    return null;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    if (code === "EBUSY" || (isWin && code === "EPERM")) return inUse;
+    if (code !== "EXDEV") throw e;
+  }
+  const isDir = fs.statSync(abs).isDirectory();
+  fs.cpSync(abs, dest, { recursive: true });
+  try {
+    fs.rmSync(abs, { recursive: true, force: true });
+    return null;
+  } catch (e) {
+    const code = (e as NodeJS.ErrnoException).code;
+    const busy = code === "EBUSY" || (isWin && code === "EPERM");
+    // A file is untouched: drop the copy. A folder may be partly deleted: keep the full copy in the trash.
+    if (!isDir) {
+      fs.rmSync(dest, { force: true });
+      if (busy) return inUse;
+      throw e;
+    }
+    return `${busy ? `Some files in ${rel} are open in another program, so the folder was only partly deleted` : `${rel} was only partly deleted (${(e as Error).message})`}. A full copy is in oovi's trash at ${dest}.`;
+  }
+}
+
 function guardWrite(rel: string) {
-  if (rel === ".git" || rel.startsWith(".git/")) throw new FolderError("Bots don't change files inside .git. Use git commands with run_command instead.");
+  if (isGitPath(rel)) throw new FolderError("Bots don't change files inside .git. Use git commands with run_command instead.");
 }
 
 function listFiles(root: string, sub: unknown, depth: number): string {
@@ -396,20 +426,14 @@ function editFile(call: ToolCall, root: string): ToolResult {
   const i = call.input;
   const { abs, rel } = resolveIn(root, i.path);
   guardWrite(rel);
-  let oldText = typeof i.old_text === "string" ? i.old_text : "";
-  let newText = typeof i.new_text === "string" ? i.new_text : "";
+  const oldText = typeof i.old_text === "string" ? i.old_text : "";
+  const newText = typeof i.new_text === "string" ? i.new_text : "";
   if (!oldText) return bad(call, "old_text is required. To create a file, use write_file.");
   const text = fs.readFileSync(abs, "utf8");
-  let count = text.split(oldText).length - 1;
-  // Windows line endings: bots usually send \n.
-  if (count === 0 && text.includes("\r\n") && !oldText.includes("\r\n")) {
-    oldText = oldText.replace(/\n/g, "\r\n");
-    newText = newText.replace(/\r?\n/g, "\r\n");
-    count = text.split(oldText).length - 1;
-  }
+  // Windows line endings: bots usually send \n. The file keeps its own line endings (no mixed ones).
+  const { count, next } = applyEdit(text, oldText, newText, i.replace_all === true);
   if (count === 0) return bad(call, `old_text wasn't found in ${rel}. Read the file again and copy the text exactly (without line numbers).`);
-  if (count > 1 && i.replace_all !== true) return bad(call, `old_text appears ${count} times in ${rel}. Include more surrounding lines so it's unique, or set replace_all.`);
-  const next = i.replace_all === true ? text.split(oldText).join(newText) : text.replace(oldText, () => newText);
+  if (next === undefined) return bad(call, `old_text appears ${count} times in ${rel}. Include more surrounding lines so it's unique, or set replace_all.`);
   fs.writeFileSync(abs, next);
   return ok(call, `Edited ${rel}${count > 1 ? ` (${count} places)` : ""}.`);
 }
@@ -434,7 +458,8 @@ function runCommand(call: ToolCall, root: string, command: string, timeoutS: num
     let timedOut = false;
     let done = false;
     const started = Date.now();
-    const child = spawn(command, { cwd: root, shell: true, env: commandEnv(), windowsHide: true, detached: !isWin, stdio: ["ignore", "pipe", "pipe"] });
+    // Windows: cmd.exe is switched to UTF-8 first, so French and Arabic output isn't garbled.
+    const child = spawn(shellCommand(command, process.platform, process.env.ComSpec), { cwd: root, shell: true, env: commandEnv(), windowsHide: true, detached: !isWin, stdio: ["ignore", "pipe", "pipe"] });
     const add = (d: Buffer) => {
       out += d.toString("utf8");
       if (out.length > MAX_OUTPUT * 4) out = out.slice(-MAX_OUTPUT * 2);
