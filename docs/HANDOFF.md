@@ -13,6 +13,18 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   professional), the sparkle doodle on titles, the slimes in empty states and sign-in, each bot's replies washed in its
   own face color, three hopping pebbles while loading. Kept from good platform practice: 44 pt targets, safe areas,
   springy motion, Dynamic Type sizes, light/dark.
+- WEB VERSION (owner, 2026-11-19, contract 9e27545): the same app in any browser at `/app` (`web/app/app/`: its
+  own layout, the pages re-export /m's; links go through `web/app/m/_lib/route.ts` so each version stays itself).
+  Signed-in only: every API call checks the session; a signed-out visitor is sent to the website's sign-in page
+  and back (`/login?next=/app/...`). Not installable (no manifest or offline worker: installing is the phone's /m).
+  On wide screens (900 px and up, /app or /m on a tablet) two columns like WhatsApp Web (`_ui/WideFrame.tsx`): a
+  rail (Chats, Bots, Settings), the section's list on the left, the open chat or connector on the right, a quiet
+  welcome otherwise; the open chat's row is marked. Keyboard: Enter sends, Shift+Enter is a new line, Esc closes a
+  menu, then a reply, then the chat. On the web, Settings says "This browser".
+- The desktop app, suggested gently (same decision; `_ui/Desktop.tsx`, ar/fr/en): a small card in the chat list
+  that can be hidden for good, a card in Settings, and under "This needs your computer" the owner's line ("The
+  desktop app does more: it works on your files, uses your computer and its browser, runs local connectors, and
+  lets you use your own AI keys.") with a Download button to the website's `/download`.
 - Where: `web/app/m/` (screens in `_ui/`, pure helpers in `_lib/`, look in `m.css`), `web/public/m/` (manifest,
   icons, 22 iPhone launch screens, offline worker `sw.js`), one header in `web/next.config.mjs` (lets the worker
   serve `/m`). Icons and launch screens: `node web/scripts/mobile-icons.cjs`.
@@ -40,18 +52,21 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   `docs/CLOUD-BUILD.md`, "Changes to this file" (job payloads incl. `replyTo`).
 - Screenshots (iPhone 15 size, stand-in data, `docs/mobile/*.jpg`): `en-light-*`, `en-dark-*`, `ar-light-*`,
   `ar-dark-*` for chats, chat-approval, chat-live, needs-computer, group, bots, settings, connectors, connector,
-  connector-add; plus chat-composer-voice, not-synced and sign-in in light. Made with
+  connector-add; plus chat-composer-voice, not-synced and sign-in in light; the web version at 1440×900:
+  `web-{en,ar}-{light,dark}-{chat,chats,needs-computer,settings,connectors}.jpg`. Made with
   `node tests/e2e/mobile-scenario.cjs --shots-only` (website built first).
 - Checked here (Linux, Chrome emulating an iPhone 15, the BUILT website behind a stand-in for W's API,
-  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 362 (361 pass, 1 skipped:
+  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 366 (365 pass, 1 skipped:
   the existing live YouTube test), of which the phone's `tests/unit/mobile-*.test.mts`; `npm run build` in web OK;
-  `node tests/e2e/mobile-scenario.cjs` 98/98 (sign-in, sync off and API missing, list and counts, archive, pin,
+  `node tests/e2e/mobile-scenario.cjs` 112/112 (sign-in, sync off and API missing, list and counts, archive, pin,
   search, Markdown and safe links, approval → decision job, send → live status by long-poll → answer, ticks,
   reply, Stop, needs-computer, queued while off, voice note with a fake microphone and with the service off, bots,
   every connector flow incl. the other-browser sign-in, AI key refused, no secret on the page or in storage,
   no sideways scroll at 320 px on 11 screens, Arabic right to left, offline from the worker, account switch
-  wipes the old copy, sign-out asks then wipes); `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1):
-  accessibility 100, PWA 100, best practices 100 on all 8 screens tested.
+  wipes the old copy, sign-out asks then wipes; the web version: two columns, the open row, Shift+Enter / Enter /
+  Esc, the desktop suggestions and hiding the card, connectors beside settings, signed out → the website's sign-in);
+  `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100 and best practices 100 on all 11
+  screens tested (8 phone, 3 web), PWA 100 on the phone's 8 (the web version is not installable on purpose).
 - NOT checked: a real iPhone or Android phone (Safari, Add to Home Screen, the keyboard, the microphone, Dynamic
   Type, safe areas: the emulation has none), the real cloud API on Vercel (W is not deployed), the real desktop
   sync (A), a real OAuth service, Firefox, a real Groq/OpenAI voice key.

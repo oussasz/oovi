@@ -5,6 +5,7 @@ import { dmId } from "../_lib/core";
 import { Icon } from "./Icon";
 import { BotFace, ChatFace, Empty, SlimeTrio, LargeTitle, NavBar, OfflineBar, Section, Spinner, TabBar, usePullToRefresh } from "./kit";
 import { useM } from "./MobileApp";
+import { to } from "../_lib/route";
 
 export function BotsScreen() {
   const { t, setup, refresh, bot } = useM();
@@ -16,7 +17,7 @@ export function BotsScreen() {
   const groups = (setup?.groups ?? []).filter((g) => g.memberIds.length);
 
   const botRow = (b: (typeof bots)[number]) => (
-    <Link key={b.id} href={`/m/c/${encodeURIComponent(dmId(b.id))}`} className="m-row is-tap m-row--tall">
+    <Link key={b.id} href={`${to()}/c/${encodeURIComponent(dmId(b.id))}`} className="m-row is-tap m-row--tall">
       <span className="m-row__icon" aria-hidden>
         <BotFace face={b.face} size={44} />
       </span>
@@ -52,7 +53,7 @@ export function BotsScreen() {
             {groups.length > 0 && (
               <Section header={t("bots.groups")}>
                 {groups.map((g) => (
-                  <Link key={g.id} href={`/m/c/${encodeURIComponent(g.id)}`} className="m-row is-tap m-row--tall">
+                  <Link key={g.id} href={`${to()}/c/${encodeURIComponent(g.id)}`} className="m-row is-tap m-row--tall">
                     <span className="m-row__icon" aria-hidden>
                       <ChatFace faces={g.memberIds.slice(0, 3).map((id) => bot(id)?.face ?? {})} size={44} />
                     </span>

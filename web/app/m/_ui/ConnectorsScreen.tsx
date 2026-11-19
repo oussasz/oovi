@@ -12,6 +12,7 @@ import { Icon } from "./Icon";
 import { ConnectorLogo, Empty, LargeTitle, NavBar, Section, Spinner, Switch, usePullToRefresh } from "./kit";
 import { useM } from "./MobileApp";
 import { useCatalog } from "./useCatalog";
+import { to } from "../_lib/route";
 
 export function statusLine(c: ConnectorView, t: ReturnType<typeof useM>["t"]): string {
   if (!c.inCloud) return t("conn.onlyComputer");
@@ -41,7 +42,7 @@ export function ConnectorsScreen() {
     const name = (id?: string) => (id && (connectors[id]?.name ?? setup?.connectors.find((c) => c.id === id)?.name)) || "";
     if (back.kind === "connected") toast(t("conn.connected", { name: name(back.id) || "✓" }).replace(/^ /, ""));
     else toast(t(`conn.err.${back.code}`));
-    router.replace("/m/connectors");
+    router.replace(to("/connectors"));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -72,10 +73,10 @@ export function ConnectorsScreen() {
       <NavBar
         title={t("connectors.title")}
         large
-        back={{ href: "/m/settings", label: t("settings.title") }}
+        back={{ href: to("/settings"), label: t("settings.title") }}
         right={
           canAdd ? (
-            <Link href="/m/connectors/add" className="m-nav__btn" aria-label={t("conn.addTitle")}>
+            <Link href={to("/connectors/add")} className="m-nav__btn" aria-label={t("conn.addTitle")}>
               <Icon name="plus" size={26} stroke={2.2} />
             </Link>
           ) : null
@@ -91,7 +92,7 @@ export function ConnectorsScreen() {
         ) : !list.length ? (
           <Empty icon={<Icon name="plug" size={44} stroke={1.6} />} title={t("connectors.empty")} body={t("conn.empty")}>
             {canAdd && (
-              <Link href="/m/connectors/add" className="m-btn m-btn--tinted">
+              <Link href={to("/connectors/add")} className="m-btn m-btn--tinted">
                 {t("conn.addTitle")}
               </Link>
             )}
@@ -115,7 +116,7 @@ export function ConnectorsScreen() {
               );
               return c.inCloud ? (
                 <div className="m-row m-row--conn" key={c.id}>
-                  <Link href={`/m/connectors/${encodeURIComponent(c.id)}`} className="m-row__link">
+                  <Link href={`${to()}/connectors/${encodeURIComponent(c.id)}`} className="m-row__link">
                     {row}
                     <Icon name="chevron" size={18} stroke={2.4} className="m-row__chev m-flip" />
                   </Link>

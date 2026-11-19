@@ -5,7 +5,7 @@
 // text size on iPhone, see m.css) and every touch target is at least 44 pt.
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import FaceView, { FaceStack } from "@/components/Face";
 import { Sparkle } from "@/components/Doodles";
 import type { Mood } from "@/lib/faces";
@@ -13,25 +13,49 @@ import { isUnread } from "../_lib/core";
 import { tap } from "../_lib/haptics";
 import { Icon, type IconName } from "./Icon";
 import { canGoBack, useM } from "./MobileApp";
+import { inApp, to } from "../_lib/route";
 
 // ---------- scrolling ----------
 
-/** True once the page scrolled past `px` (the large title is then shown small in the bar). */
+/**
+ * On wide screens (the web version, a tablet) each column scrolls on its own: the column's element. On a phone,
+ * null: the page itself scrolls.
+ */
+export const PaneCtx = createContext<HTMLElement | null>(null);
+export const usePane = () => useContext(PaneCtx);
+
+/** Wide enough for two columns (chat list + chat), like WhatsApp Web. */
+export const WIDE = "(min-width: 900px)";
+export function useWide(): boolean {
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia(WIDE).matches);
+  useEffect(() => {
+    const q = window.matchMedia(WIDE);
+    const on = () => setWide(q.matches);
+    on();
+    q.addEventListener("change", on);
+    return () => q.removeEventListener("change", on);
+  }, []);
+  return wide;
+}
+
+/** True once the page (or its column) scrolled past `px` (the large title is then shown small in the bar). */
 export function useScrolledPast(px: number): boolean {
   const [past, setPast] = useState(false);
+  const pane = usePane();
   useEffect(() => {
     let raf = 0;
+    const target: HTMLElement | Window = pane ?? window;
     const on = () => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(() => setPast(window.scrollY > px));
+      raf = requestAnimationFrame(() => setPast((pane ? pane.scrollTop : window.scrollY) > px));
     };
     on();
-    window.addEventListener("scroll", on, { passive: true });
+    target.addEventListener("scroll", on, { passive: true });
     return () => {
       cancelAnimationFrame(raf);
-      window.removeEventListener("scroll", on);
+      target.removeEventListener("scroll", on);
     };
-  }, [px]);
+  }, [px, pane]);
   return past;
 }
 
@@ -118,17 +142,25 @@ export function SlimeTrio({ mood = "idle", size = 120 }: { mood?: Mood; size?: n
   );
 }
 
-export function TabBar() {
+export function TabBar({ rail = false }: { rail?: boolean }) {
+  const pane = usePane();
   const { t, chats, seen, archived } = useM();
-  const path = usePathname() ?? "/m";
+  const path = inApp(usePathname() ?? "/m");
   const unread = Object.values(chats).filter(({ chat }) => !chat.routine && !archived.includes(chat.id) && isUnread(chat, seen[chat.id])).length;
   const tabs: { href: string; label: string; icon: IconName; on: boolean; badge?: number; color: string }[] = [
-    { href: "/m", label: t("tab.chats"), icon: "chats", on: path === "/m" || path.startsWith("/m/c/") || path.startsWith("/m/archived"), badge: unread, color: "var(--m-blob-blue)" },
-    { href: "/m/bots", label: t("tab.bots"), icon: "bots", on: path.startsWith("/m/bots"), color: "var(--m-blob-yellow)" },
-    { href: "/m/settings", label: t("tab.settings"), icon: "settings", on: path.startsWith("/m/settings") || path.startsWith("/m/connectors"), color: "var(--m-blob-coral)" },
+    { href: to(), label: t("tab.chats"), icon: "chats", on: path === "" || path.startsWith("/c/") || path.startsWith("/archived"), badge: unread, color: "var(--m-blob-blue)" },
+    { href: to("/bots"), label: t("tab.bots"), icon: "bots", on: path.startsWith("/bots"), color: "var(--m-blob-yellow)" },
+    { href: to("/settings"), label: t("tab.settings"), icon: "settings", on: path.startsWith("/settings") || path.startsWith("/connectors"), color: "var(--m-blob-coral)" },
   ];
+  // In the wide layout the rail replaces the phone's tab bar.
+  if (pane && !rail) return null;
   return (
-    <nav className="m-tabs" aria-label="oovi">
+    <nav className={rail ? "m-tabs m-rail" : "m-tabs"} aria-label="oovi">
+      {rail && (
+        <span className="m-rail__logo" aria-hidden>
+          <SlimeTrio size={40} />
+        </span>
+      )}
       {tabs.map((tb) => (
         <Link key={tb.href} href={tb.href} className={`m-tab${tb.on ? " is-on" : ""}`} aria-current={tb.on ? "page" : undefined} onClick={() => tap()}>
           <span className="m-tab__icon">
@@ -362,11 +394,14 @@ export function useToast(): [ReactNode, (msg: string) => void] {
 // ---------- pull to refresh ----------
 
 export function usePullToRefresh(onRefresh: () => Promise<void> | void): ReactNode {
+  const pane = usePane();
   const [pull, setPull] = useState(0);
   const [busy, setBusy] = useState(false);
   const start = useRef<number | null>(null);
   const pullRef = useRef(0);
   useEffect(() => {
+    // In a column of the wide layout (a computer or a tablet) there is no pull to refresh: the app refreshes by itself.
+    if (pane) return;
     const down = (e: TouchEvent) => {
       start.current = window.scrollY <= 0 && !busy ? e.touches[0]!.clientY : null;
     };
@@ -407,7 +442,8 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): ReactNo
       window.removeEventListener("touchend", up);
       window.removeEventListener("touchcancel", up);
     };
-  }, [onRefresh, busy]);
+  }, [onRefresh, busy, pane]);
+  if (pane) return null;
   const h = busy ? 52 : pull;
   return (
     <div className="m-ptr" style={{ height: h }} aria-hidden={!busy}>

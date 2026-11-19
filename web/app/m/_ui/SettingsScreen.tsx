@@ -5,7 +5,9 @@ import { authClient } from "@/lib/auth-client";
 import { agoShort, bytesLabel, computerState, syncUse } from "../_lib/core";
 import { Icon } from "./Icon";
 import { ActionSheet, IconTile, LargeTitle, NavBar, OfflineBar, Row, Section, Sheet, Spinner, TabBar, usePullToRefresh } from "./kit";
+import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
+import { base, to } from "../_lib/route";
 
 type BeforeInstall = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
@@ -105,7 +107,7 @@ export function SettingsScreen() {
           ) : (
             <Row icon={<IconTile name="laptop" color="var(--m-blob-grey)" />} title={t("settings.noComputer")} />
           )}
-          <Row icon={<IconTile name="phone" color="var(--m-blob-mint)" />} title={t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
+          <Row icon={<IconTile name={base() === "/app" ? "globe" : "phone"} color="var(--m-blob-mint)" />} title={base() === "/app" ? t("settings.thisBrowser") : t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
         </Section>
 
         <Section header={t("settings.sync")} footer={t("settings.syncNote")}>
@@ -129,7 +131,7 @@ export function SettingsScreen() {
               <Row title={t("settings.lastSync")} value={status.lastSync ? agoShort(Date.parse(status.lastSync), now, lang) : t("settings.never")} />
             </>
           )}
-          <Row icon={<IconTile name="plug" color="var(--m-blob-yellow)" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href="/m/connectors" />
+          <Row icon={<IconTile name="plug" color="var(--m-blob-yellow)" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href={to("/connectors")} />
         </Section>
 
         <Section header={t("settings.prefs")}>
@@ -137,6 +139,10 @@ export function SettingsScreen() {
           <Row icon={<IconTile name="contrast" color="var(--m-blob-yellow)" />} title={t("settings.appearance")} value={lookName} onClick={() => setSheet("look")} chevron />
           {!standalone && <Row icon={<IconTile name="plusSquare" color="var(--m-blob-blue)" />} title={t("settings.install")} onClick={() => setInstall(true)} chevron />}
         </Section>
+
+        <div className="m-section">
+          <DesktopSuggestion variant="card" />
+        </div>
 
         <Section>
           <Row title={<span className="m-row__center">{leaving ? <Spinner size={18} /> : t("settings.signOut")}</span>} danger onClick={() => setSheet("signout")} />

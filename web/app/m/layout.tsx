@@ -1,15 +1,13 @@
-// The phone app (installable web app): its own look (iOS style, m.css), manifest, icons, launch screens and
+// The phone app (installable web app): oovi's look (m.css), manifest, icons, launch screens and
 // offline service worker (web/public/m/). It uses the website's sign-in and API; it never asks for or keeps an
 // API key. Pages are client screens: data comes only from the signed-in API calls, never from the HTML.
 import type { Metadata, Viewport } from "next";
-import { Tajawal } from "next/font/google";
 import { MobileApp } from "./_ui/MobileApp";
 import { ServiceWorker } from "./_ui/ServiceWorker";
 import { splashLinks } from "./_lib/splash";
 import "./m.css";
-
-// Nunito (the website's font) has no Arabic letters: Tajawal is its rounded, friendly match for Arabic.
-const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800"], variable: "--font-ar", display: "swap" });
+import { arabic, PREPAINT } from "./_ui/shell";
+import { WideFrame } from "./_ui/WideFrame";
 
 // Title and the like only: Next streams metadata into <body> on pages rendered per request (the chat page), and
 // browsers look for the install tags in <head>. Those are rendered below (InstallTags): React puts them in <head>.
@@ -34,8 +32,7 @@ export const viewport: Viewport = {
   ],
 };
 
-// Before the first paint: the phone's saved language and look, so Arabic opens right-to-left at once.
-const PREPAINT = `try{var p=JSON.parse(localStorage.getItem("oovi.m.prefs")||"{}");var l=p.lang&&p.lang!=="auto"?p.lang:null;if(!l){var n=(navigator.languages||[navigator.language]);for(var i=0;i<n.length;i++){var c=String(n[i]).slice(0,2).toLowerCase();if(c==="ar"||c==="fr"||c==="en"){l=c;break}}}l=l||"en";var h=document.documentElement;h.lang=l;h.dir=l==="ar"?"rtl":"ltr";h.dataset.mtheme=p.theme||"auto";h.classList.add("m-root")}catch(e){}`;
+
 
 /** Manifest, icons and iPhone launch screens: "Add to Home Screen" on iPhone and Android, on every page of the app. */
 function InstallTags() {
@@ -61,7 +58,9 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
       <InstallTags />
       <script dangerouslySetInnerHTML={{ __html: PREPAINT }} />
       <div className={arabic.variable}>
-        <MobileApp>{children}</MobileApp>
+        <MobileApp>
+          <WideFrame>{children}</WideFrame>
+        </MobileApp>
       </div>
       <ServiceWorker />
     </>

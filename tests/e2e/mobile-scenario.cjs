@@ -240,7 +240,7 @@ async function main() {
     check("J credits", await until(() => page.getByText("1,840.5").isVisible()));
     check("J the computer and its state", await page.getByText("Home PC").isVisible() && (await page.getByText(/Offline · 2 h ago/).isVisible()));
     check("J sync on, with the space used", await page.getByText(/3\.2 MB of 100 MB/).isVisible());
-    check("J the phone uses theOovi only, said plainly", await page.getByText("On the phone, your bots use theOovi only. Your own API keys stay on your computer.").isVisible());
+    check("J the phone uses theOovi only, said plainly", await page.getByText("On your phone and on the web, your bots use theOovi only. Your own API keys stay on your computer.").isVisible());
     await page.click('a[href="/m/connectors"]');
     const crow = (name) => page.locator(".m-row--conn", { hasText: name });
     check("J connectors: the account's four", await until(async () => (await page.locator(".m-row--conn").count()) === 4));
@@ -353,6 +353,54 @@ async function main() {
     check("M offline: a chat seen before opens", await until(() => page.locator(".m-md table").isVisible(), 8000));
     await ctx.setOffline(false);
 
+    // ---------- W) the web version (/app): same app, two columns, keyboard, desktop suggestion ----------
+    {
+      const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-US" });
+      await wctx.addCookies([{ name: "standin", value: "1", url: BASE }]);
+      const w = await wctx.newPage();
+      const werr = [];
+      w.on("pageerror", (e) => werr.push(e.message));
+      await w.goto(`${BASE}/app`);
+      check("W web: list on the left, a welcome on the right, the rail", await until(async () => (await w.locator(".m-pane--list .m-chats > li").count()) >= 4 && (await w.getByText("Pick a chat").isVisible()) && (await w.locator(".m-rail").isVisible())));
+      const card = w.locator(".m-desk--list");
+      check("W the desktop app suggested gently in the list, with the download page", (await card.isVisible()) && (await card.locator("a").getAttribute("href")) === "/download");
+      await card.getByRole("button", { name: "Hide this" }).click();
+      await w.reload();
+      await until(() => w.locator(".m-pane--list .m-chats").first().isVisible());
+      check("W hidden for good once hidden", (await w.locator(".m-desk--list").count()) === 0);
+      await w.locator('.m-pane--list a[href="/app/c/dm-oovi"]').click();
+      check("W a chat opens beside the list", await until(async () => w.url().endsWith("/app/c/dm-oovi") && (await w.locator(".m-pane--main .m-md table").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
+      check("W its row is marked open", (await w.locator('.m-pane--list a[aria-current="page"]').getAttribute("href")) === "/app/c/dm-oovi");
+      const wbox = w.locator(".m-pane--main .m-composer textarea");
+      await wbox.click();
+      await wbox.type("Line one");
+      await w.keyboard.press("Shift+Enter");
+      await wbox.type("line two");
+      check("W Shift+Enter: a new line", (await wbox.inputValue()) === "Line one\nline two");
+      const before = jobsOf("message").length;
+      await w.keyboard.press("Enter");
+      check("W Enter sends", await until(() => jobsOf("message").length === before + 1 && jobsOf("message").at(-1).payload.text === "Line one\nline two"));
+      await until(() => jobsOf("message").at(-1).status === "done", 10_000);
+      await w.locator(".m-pane--main").click({ position: { x: 300, y: 120 } });
+      await w.keyboard.press("Escape");
+      check("W Esc closes the chat", await until(() => w.url().endsWith("/app") && w.getByText("Pick a chat").isVisible()));
+      await w.goto(`${BASE}/app/c/dm-rex`);
+      const line = w.locator(".m-card--computer .m-desk--line");
+      check("W 'needs your computer' says what the desktop app does, with Download", await until(() => line.isVisible()) && (await line.textContent()).includes("it works on your files") && (await line.locator("a").getAttribute("href")) === "/download");
+      await w.goto(`${BASE}/app/settings`);
+      check("W settings: this browser, and the desktop app section", await until(() => w.getByText("This browser").isVisible()) && (await w.locator(".m-pane--list .m-desk--card").isVisible()));
+      await w.locator('.m-pane--list a[href="/app/connectors"]').click();
+      check("W connectors open beside the settings", await until(async () => (await w.locator(".m-pane--main .m-row--conn").count()) === 4 && (await w.locator(".m-pane--list").getByText("Sam Tester").isVisible())));
+      check("W no sideways scroll at 1440 px", (await w.evaluate(() => document.documentElement.scrollWidth)) <= 1440);
+      check("W no page errors", werr.length === 0, werr.join(" | "));
+      await wctx.close();
+      const octx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const o = await octx.newPage();
+      await o.goto(`${BASE}/app/settings`);
+      check("W signed out: the website's sign-in page, then back here", await until(() => o.url().includes("/login?next=%2Fapp%2Fsettings"), 10_000), o.url());
+      await octx.close();
+    }
+
     // ---------- N) another account on the same phone, then sign out ----------
     await page.goto(`${BASE}/m`);
     await page.evaluate(() => {
@@ -435,6 +483,23 @@ async function screenshots(browser, sb) {
         S.signedIn = true;
       }
       await ctx.close();
+      // The web version, 1440 × 900.
+      const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: lang === "ar" ? "ar-DZ" : "en-US", colorScheme: scheme });
+      await wctx.addCookies([{ name: "standin", value: "1", url: BASE }]);
+      await wctx.addInitScript(([l]) => {
+        if (!localStorage.getItem("oovi.m.prefs")) localStorage.setItem("oovi.m.prefs", JSON.stringify({ lang: l, theme: "auto" }));
+        if (!localStorage.getItem("oovi.m.seen")) localStorage.setItem("oovi.m.seen", JSON.stringify({ "dm-oovi": Date.now(), "dm-nova": Date.now(), "dm-rex": Date.now(), "dm-lina": Date.now(), studio: 0 }));
+      }, [lang]);
+      const wp = await wctx.newPage();
+      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["connectors", "/app/connectors"]]) {
+        await wp.goto(BASE + url);
+        await wp.locator(".m-wide").first().waitFor({ timeout: 8000 }).catch(() => {});
+        await sleep(1300);
+        const file = path.join(SHOT_DIR, `web-${lang}-${scheme}-${name}.jpg`);
+        await wp.screenshot({ path: file, type: "jpeg", quality: 82 });
+        written.push(path.relative(ROOT, file));
+      }
+      await wctx.close();
     }
   }
   console.log(`screenshots: ${written.length} written in docs/mobile/`);

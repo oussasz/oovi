@@ -4,11 +4,14 @@
 // the last message, the time, an unread count; swipe for Read/Pin and Archive, long press for the same; search
 // inside messages; "Archived" at the top. `archivedView` shows the archived chats (/m/archived).
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import { chatPreview, chatTitle, isRunning, isWaiting, listTime, liveActivity, matchesQuery, runningEntry, sortChats, splitArchived, unreadCount, type ListRow } from "../_lib/core";
 import { Icon } from "./Icon";
 import { ActionSheet, ChatFace, Empty, LargeTitle, NavBar, OfflineBar, SlimeTrio, Spinner, SwipeRow, TabBar, usePullToRefresh } from "./kit";
+import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
+import { inApp, to } from "../_lib/route";
 
 const tz = () => {
   try {
@@ -23,6 +26,16 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
   const { t, lang, chats, sync, refresh, pins, seen, bot, refreshing, archived } = m;
   const [q, setQ] = useState("");
   const [more, setMore] = useState<ListRow | null>(null);
+  // On a wide screen the open chat is beside the list: its row is marked.
+  const here = inApp(usePathname() ?? "");
+  const openId = (() => {
+    if (!here.startsWith("/c/")) return null;
+    try {
+      return decodeURIComponent(here.slice(3));
+    } catch {
+      return here.slice(3);
+    }
+  })();
   const ptr = usePullToRefresh(() => refresh({ setup: true }));
 
   const names = useMemo(
@@ -68,7 +81,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
           ]}
           trail={[{ label: isArch ? t("chats.unarchive") : t("chats.archive"), icon: "archive", color: "var(--m-blob-grey)", onPress: () => m.toggleArchive(c.id) }]}
         >
-          <Link href={`/m/c/${encodeURIComponent(c.id)}`} className="m-chat">
+          <Link href={`${to()}/c/${encodeURIComponent(c.id)}`} className={`m-chat${openId === c.id ? " is-open" : ""}`} aria-current={openId === c.id ? "page" : undefined}>
             <span className="m-chat__face" aria-hidden>
               <ChatFace faces={faces} size={54} mood={running ? "working" : undefined} />
             </span>
@@ -107,7 +120,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
     body = (
       <>
         {!archivedView && split.archived.length > 0 && !q.trim() && (
-          <Link href="/m/archived" className="m-archrow">
+          <Link href={to("/archived")} className="m-archrow">
             <Icon name="archive" size={22} />
             <span>{t("chats.archived")}</span>
             <span className={`m-archrow__n${archivedUnread ? " is-unread" : ""}`}>{archivedUnread || split.archived.length}</span>
@@ -166,7 +179,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
   } else {
     body = (
       <Empty art={<SlimeTrio mood="happy" />} title={t("chats.empty.title")} body={t("chats.empty.body")}>
-        <Link href="/m/bots" className="m-btn m-btn--tinted">
+        <Link href={to("/bots")} className="m-btn m-btn--tinted">
           {t("chats.empty.cta")}
         </Link>
       </Empty>
@@ -180,10 +193,10 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
       <NavBar
         title={title}
         large
-        back={archivedView ? { href: "/m", label: t("tab.chats") } : undefined}
+        back={archivedView ? { href: to(), label: t("tab.chats") } : undefined}
         right={
           !archivedView ? (
-            <Link href="/m/bots" className="m-nav__btn" aria-label={t("chats.new")}>
+            <Link href={to("/bots")} className="m-nav__btn" aria-label={t("chats.new")}>
               <Icon name="compose" size={24} stroke={2} />
             </Link>
           ) : null
@@ -199,6 +212,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
           </div>
         )}
         <OfflineBar />
+        {!archivedView && all.length > 0 && <DesktopSuggestion variant="list" />}
         {body}
       </main>
       <TabBar />

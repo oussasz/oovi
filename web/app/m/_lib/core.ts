@@ -414,7 +414,7 @@ export function stampLabel(at: number, now: number, lang: Lang, today: string, t
 /** Where to go after signing in: only a page of the phone app (never another site, never back to sign-in). */
 export function safeMobileNext(raw: string | null | undefined): string {
   if (!raw || raw.includes("..") || raw.includes("\\") || raw.startsWith("/m/login")) return "/m";
-  return /^\/m(\/[\w\-./%?=&]*)?$/.test(raw) ? raw : "/m";
+  return /^\/(m|app)(\/[\w\-./%?=&]*)?$/.test(raw) && !/^\/(m|app)[^/?]/.test(raw) ? raw : "/m";
 }
 
 // ---------- messenger habits (WhatsApp / Messenger): counts, archive, ticks ----------

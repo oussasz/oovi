@@ -184,10 +184,10 @@ export function MobileApp({ children }: { children: ReactNode }) {
     seenBase.current = null;
     meChecked.current = false;
     setupAt.current = 0;
-    if (!window.location.pathname.startsWith("/m/login")) {
-      const next = window.location.pathname + window.location.search;
-      router.replace(`/m/login?next=${encodeURIComponent(next)}`);
-    }
+    const next = window.location.pathname + window.location.search;
+    // The web version (/app) uses the website's own sign-in page, which comes back here; the phone has its own.
+    if (window.location.pathname.startsWith("/app")) window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+    else if (!window.location.pathname.startsWith("/m/login")) router.replace(`/m/login?next=${encodeURIComponent(next)}`);
   }, [router]);
 
   useEffect(() => {

@@ -2,6 +2,7 @@
 
 // One chat: messages (Markdown, tables, links), what the bot is doing right now (long-poll GET /events), the
 // composer (text, voice note to text), approval, question and plan cards, Stop, and "This needs your computer".
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { waitForChat, ApiError, getChat } from "../_lib/api";
 import {
@@ -37,9 +38,11 @@ const botColor = (face: unknown): string => {
 };
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
-import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner } from "./kit";
+import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner, usePane, useWide } from "./kit";
 import { Markdown } from "./Markdown";
+import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
+import { to } from "../_lib/route";
 
 const zone = () => {
   try {
@@ -140,6 +143,20 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const [stopping, setStopping] = useState(false);
   const [menu, setMenu] = useState<Entry | null>(null);
   const [reply, setReply] = useState<Reply | null>(null);
+  const pane = usePane();
+  const wide = useWide();
+  const router = useRouter();
+
+  // Esc: cancels a reply; on a wide screen (web) then closes the chat, like WhatsApp Web. Open menus close first.
+  useEffect(() => {
+    const key = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"]')) return;
+      if (reply) setReply(null);
+      else if (wide) router.push(to());
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [reply, wide, router]);
   const showToast = m.toast;
   const endRef = useRef<HTMLDivElement>(null);
   const firstScroll = useRef(true);
@@ -239,7 +256,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const count = entries.length + mine.length;
   const running = view ? runningEntry(view) : undefined;
   useEffect(() => {
-    const near = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
+    const near = pane ? pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 160 : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
     if (firstScroll.current && count) {
       firstScroll.current = false;
       endRef.current?.scrollIntoView({ block: "end" });
@@ -462,6 +479,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
           <i aria-hidden />
           {computer.state === "online" ? t("chat.computerOn") : t("chat.computerOff", { ago: computer.lastSeen ? agoShort(computer.lastSeen, now, lang) : "–" })}
         </p>
+        <DesktopSuggestion variant="line" />
       </section>
     ) : blocker === "queued_offline" ? (
       <p className="m-queued" role="status">
@@ -542,7 +560,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   return (
     <div className="m-screen m-screen--chat">
-      <NavBar title={title} back={{ href: "/m", label: t("tab.chats") }} center={center} solid />
+      <NavBar title={title} back={{ href: to(), label: t("tab.chats") }} center={center} solid />
       <main className="m-main m-main--chat">
         {main}
         <div ref={endRef} className="m-end" />

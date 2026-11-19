@@ -14,7 +14,7 @@ const WEB = path.join(ROOT, "web");
 const NEXT_PORT = 3482;
 const PORT = 3481;
 const BAR = { pwa: 0.9, accessibility: 0.95, "best-practices": 0.9 };
-const PAGES = ["/m", "/m/c/dm-oovi", "/m/bots", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login"];
+const PAGES = ["/m", "/m/c/dm-oovi", "/m/bots", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login", "/app", "/app/c/dm-oovi", "/app/settings"];
 const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : require("playwright").chromium.executablePath());
 
 (async () => {
@@ -57,7 +57,8 @@ const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chrom
     }
     const r = JSON.parse(fs.readFileSync(file, "utf8"));
     const scores = Object.fromEntries(Object.entries(r.categories).map(([k, c]) => [k, c.score]));
-    const low = Object.entries(BAR).filter(([k, min]) => scores[k] !== undefined && scores[k] < min);
+    // The web version (/app) is not installable on purpose (installing is the phone's /m): no PWA bar there.
+    const low = Object.entries(BAR).filter(([k, min]) => scores[k] !== undefined && scores[k] < min && !(k === "pwa" && p.startsWith("/app")));
     const failed = Object.values(r.audits).filter((a) => a.score !== null && a.score < 1 && a.scoreDisplayMode === "binary").map((a) => a.id);
     console.log(`${low.length ? "FAIL" : "PASS"} ${p} ${Object.entries(scores).map(([k, v]) => `${k} ${Math.round(v * 100)}`).join(", ")}${failed.length ? ` | not passed: ${failed.join(", ")}` : ""}`);
     if (low.length) bad++;

@@ -14,6 +14,7 @@ import { ActionSheet, BotFace, ConnectorLogo, Empty, NavBar, Row, Section, Spinn
 import { useM } from "./MobileApp";
 import { beginSignIn } from "./signin";
 import { useCatalog } from "./useCatalog";
+import { to } from "../_lib/route";
 
 export function ConnectorScreen({ id }: { id: string }) {
   const m = useM();
@@ -47,7 +48,7 @@ export function ConnectorScreen({ id }: { id: string }) {
   if (!c) {
     return (
       <div className="m-screen m-screen--grouped">
-        <NavBar title={t("connectors.title")} back={{ href: "/m/connectors", label: t("connectors.title") }} solid />
+        <NavBar title={t("connectors.title")} back={{ href: to("/connectors"), label: t("connectors.title") }} solid />
         <main className="m-main">
           <Empty icon={<Icon name="plug" size={44} stroke={1.6} />} title={t("connectors.empty")} body={t("connectors.note")} />
         </main>
@@ -98,7 +99,7 @@ export function ConnectorScreen({ id }: { id: string }) {
       putConnector(id, null);
       tap("success");
       toast(t("conn.removed", { name: c.name }));
-      router.replace("/m/connectors");
+      router.replace(to("/connectors"));
     } catch {
       toast(t("conn.err.save"));
       setBusy(null);
@@ -107,7 +108,7 @@ export function ConnectorScreen({ id }: { id: string }) {
 
   return (
     <div className="m-screen m-screen--grouped">
-      <NavBar title={c.name} back={{ href: "/m/connectors", label: t("connectors.title") }} solid />
+      <NavBar title={c.name} back={{ href: to("/connectors"), label: t("connectors.title") }} solid />
       <main className="m-main">
         <div className="m-conn-head">
           <ConnectorLogo name={c.name} logo={cat?.logo} size={64} />

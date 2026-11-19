@@ -14,6 +14,7 @@ import { BotFace, ConnectorLogo, Empty, LargeTitle, NavBar, Section, Sheet, Spin
 import { useM } from "./MobileApp";
 import { beginSignIn } from "./signin";
 import { useCatalog } from "./useCatalog";
+import { to } from "../_lib/route";
 
 export function AddConnectorScreen() {
   const m = useM();
@@ -61,12 +62,12 @@ export function AddConnectorScreen() {
         const p = await beginSignIn(id);
         if (p) {
           toast(t(p));
-          router.replace(`/m/connectors/${encodeURIComponent(id)}`);
+          router.replace(`${to()}/connectors/${encodeURIComponent(id)}`);
         }
         return;
       }
       toast(t("conn.added", { name: pick.name }));
-      router.replace(`/m/connectors/${encodeURIComponent(id)}`);
+      router.replace(`${to()}/connectors/${encodeURIComponent(id)}`);
     } catch (err) {
       setProblem(err instanceof ApiError && err.code === "sync_off" ? t("conn.err.sync_off") : err instanceof ApiError && err.status === 400 ? t("conn.err.aikey") : t("conn.err.save"));
     } finally {
@@ -76,7 +77,7 @@ export function AddConnectorScreen() {
 
   return (
     <div className="m-screen m-screen--grouped">
-      <NavBar title={t("conn.addTitle")} large back={{ href: "/m/connectors", label: t("connectors.title") }} />
+      <NavBar title={t("conn.addTitle")} large back={{ href: to("/connectors"), label: t("connectors.title") }} />
       <main className="m-main">
         <LargeTitle>{t("conn.addTitle")}</LargeTitle>
         <div className="m-search">

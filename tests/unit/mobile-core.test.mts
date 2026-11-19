@@ -287,3 +287,11 @@ test("messenger habits: unread counts, archive, ticks, quotes", async () => {
   assert.equal(userTick(c, "u2"), "delivered");
   assert.equal(quoteOf("**Bold** reply with [a link](https://x)"), "Bold reply with a link");
 });
+
+test("the web version's pages are allowed after sign-in too", async () => {
+  const { safeMobileNext } = await import("../../web/app/m/_lib/core.ts");
+  assert.equal(safeMobileNext("/app"), "/app");
+  assert.equal(safeMobileNext("/app/c/dm-oovi"), "/app/c/dm-oovi");
+  assert.equal(safeMobileNext("/apple"), "/m");
+  assert.equal(safeMobileNext("/mx"), "/m");
+});
