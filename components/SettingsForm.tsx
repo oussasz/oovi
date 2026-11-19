@@ -14,6 +14,7 @@ import SavedLogins from "./SavedLogins";
 import ModelsSettings from "./ModelsSettings";
 import TelegramSettings from "./TelegramSettings";
 import { UpdateCard } from "./Updates";
+import { PayButton, useHosted } from "./Credits";
 
 type Accounts = { signInOpen: boolean; sites: string[]; updatedAt?: number };
 type Tab = "profile" | "models" | "memory" | "telegram" | "sync" | "accounts" | "search" | "browser" | "computer" | "logins" | "safety" | "language" | "data" | "about";
@@ -50,6 +51,8 @@ const TABS: { id: Tab; icon: IconName }[] = [
 ];
 
 export default function SettingsForm() {
+  // The plan, for "Manage subscription" (only subscribers see it).
+  const { status: hosted } = useHosted();
   const [s, setS] = useState<PublicSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -466,6 +469,14 @@ export default function SettingsForm() {
           <button className="btn danger" onClick={() => void signOutAccount()}>{t("settings.profile.signOut")}</button>
         </div>
       </div>
+      {hosted?.billing?.subscriber && (
+        <div className="card">
+          <p className="note">{hosted.plan.name}</p>
+          <div className="row-btns">
+            <PayButton kind="portal" status={hosted} />
+          </div>
+        </div>
+      )}
     </>
   );
 
