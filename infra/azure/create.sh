@@ -13,6 +13,12 @@
 #   ≈ $23.50/month in all. On the student credit (about $43): delete it after each trial (infra/azure/delete.sh).
 # Other sizes: SIZE=Standard_B2als_v2 (2 vCPU, 4 GiB, $0.0425/h ≈ $31/month VM) for four jobs at a time.
 #
+# Azure for Students allows only some regions and sizes (read 2026-11-19 from the subscription's policy and
+# `az vm list-skus`): regions norwayeast, germanywestcentral, swedencentral, polandcentral, italynorth; no
+# B-series v1 there. Used for oovi's first server: LOCATION=swedencentral SIZE=Standard_B2ats_v2 (2 vCPU, 1 GiB,
+# $0.00972/h ≈ $7.10/month; with disk and IP ≈ $13.40/month; setup.sh adds 2 GB of swap on servers under 2 GB).
+# Without SSH (e.g. from a machine that can't reach port 22), give 127.0.0.1/32 and configure with
+# `az vm run-command invoke … --command-id RunShellScript`.
 # Settings (environment): RG (oovi-runner-rg), LOCATION (francecentral), VM (oovi-runner-1), SIZE, ADMIN (oovi),
 # SSH_KEY (a public key file, e.g. ~/.ssh/id_ed25519.pub from your own computer; default: this shell's own key,
 # made if missing). In Cloud Shell, the simplest is to allow Cloud Shell itself and SSH from there:

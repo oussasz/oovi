@@ -59,8 +59,15 @@ if ! command -v docker >/dev/null || ! docker compose version >/dev/null 2>&1; t
 fi
 systemctl enable --now docker >/dev/null
 
+# A small server (under 2 GB of memory) gets 2 GB of swap, so a busy moment slows down instead of stopping.
+if [ "$(awk '/MemTotal/{print $2}' /proc/meminfo)" -lt 2000000 ] && ! swapon --show | grep -q .; then
+  if [ ! -f /swapfile ]; then fallocate -l 2G /swapfile && chmod 600 /swapfile && mkswap /swapfile >/dev/null; fi
+  swapon /swapfile && { grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab; }
+fi
 say "3/7 Firewall: only SSH comes in (the runner only calls out)"
-SSH_PORT="$(sshd -T 2>/dev/null | awk '/^port /{print $2; exit}')"
+# Ubuntu 24.04 starts SSH on the first connection: until then `sshd -T` fails (no /run/sshd). Never stop the setup for it.
+mkdir -p /run/sshd
+SSH_PORT="$( (sshd -T 2>/dev/null || true) | awk '/^port /{print $2; exit}')"
 SSH_PORT="${SSH_PORT:-22}"
 ufw default deny incoming >/dev/null
 ufw default allow outgoing >/dev/null
