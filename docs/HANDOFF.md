@@ -1,3 +1,6 @@
+## 0.13.1 (released 2026-11-19, owner: "yes, deploy the website and release 0.13.1")
+Bot pictures made with "Your picture" go to the account (POST /api/v1/avatars) so the phone, web and other computers show them. Website deployed: sign-in lands in /app, the account page is in /app Settings (real-auth check 12/12 on a throwaway database).
+
 ## 0.13.0 (released 2026-11-19, owner: "yes, deploy the website and release 0.13")
 Website deployed with the phone app (/m) and the web app (/app); desktop 0.13 = cloud sync (off by default), desktop visual refresh, Markdown tables in chat, phone jobs for new or never-opened bots. See the Cloud sections below.
 
