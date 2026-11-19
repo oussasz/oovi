@@ -335,6 +335,25 @@ async function stopRunner() {
     await app("POST", "/api/cloud", { action: "sync" });
     check("…the routine ran once: one result, and no new model call from the computer", texts(localR).filter((t) => t === "REPLY PHONE-morning").length <= 1 && calls.slice(modelCalls).every((x) => !/PHONE-morning/.test(x.ask)), JSON.stringify({ texts: texts(localR), newCalls: calls.length - modelCalls }));
     check("…and its next run is tomorrow", back && back.nextRunAt > Date.now(), JSON.stringify(back && back.nextRunAt));
+    // A routine that needs the computer (it watches a page): never run in the cloud; the user is told at its time, in
+    // their language, and the Routines page says so in advance.
+    const watched = await app("POST", "/api/routines", { name: "Price watch", botId: oovi.id, prompt: "PHONE-watch tell me if the price changed", schedule: { kind: "daily", time: "09:00" }, timezone: "Africa/Algiers", enabled: true, watch: { url: "https://example.com/" } });
+    check("a routine that watches a page is made", watched.status === 201, JSON.stringify(watched.j));
+    const page = (await app("GET", "/api/routines")).j.routines;
+    const wv = page.find((x) => x.id === watched.j.id);
+    const mv = page.find((x) => x.id === rid);
+    check("the Routines page says where each runs when the computer is off (cloud / needs this computer, and why)", mv?.whenOff?.where === "cloud" && wv?.whenOff?.where === "computer" && wv.whenOff.why === "watch", JSON.stringify({ m: mv?.whenOff, w: wv?.whenOff }));
+    const wRow = await waitFor("the computer lists it as waiting for the computer", async () => (await db.query("SELECT cloud, why FROM cloud_routine WHERE user_id = $1 AND routine_id = $2", [USER, watched.j.id])).rows[0], 60_000);
+    check("…and tells the website it waits for the computer, with why", wRow?.cloud === false && wRow.why === "watch", JSON.stringify(wRow));
+    await stopApp();
+    await db.query("UPDATE cloud_routine SET due_at = now() - interval '1 minute' WHERE user_id = $1 AND routine_id = $2", [USER, watched.j.id]);
+    const tg2 = tgSent.length;
+    startRunner();
+    const notice = await waitFor("the user is told it waits for the computer", async () => tgSent.slice(tg2).find((m) => /Price watch/.test(m.text || "")), 60_000);
+    check("computer off at its time: the user is told on Telegram, in their language (French here, as they last wrote), why and when it will run", !!notice && /computer is off|ordinateur est éteint|حاسوبك مطفأ/.test(notice.text) && /compares a web page|compare une page web|يقارن صفحة ويب/.test(notice.text) && /as soon as you open oovi|dès que vous ouvrirez oovi|فور فتحك oovi/.test(notice.text), notice?.text);
+    check("…and it is not run in the cloud", !(await db.query("SELECT 1 FROM cloud_job WHERE user_id = $1 AND kind = 'routine' AND payload::text <> '{}' AND status = 'queued'", [USER])).rowCount && !calls.some((x) => /PHONE-watch/.test(x.ask)));
+    await stopRunner();
+    await startApp();
 
     // ---- logs ----
     const leaks = ["PHONE-two", "PHONE-morning", "NEEDPC", "MCP-RESULT", CONNECTOR_KEY, RUNNER_SECRET, TOKEN].filter((w) => out.includes(w));

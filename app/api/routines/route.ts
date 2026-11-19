@@ -1,3 +1,4 @@
+import { routineWhenOff } from "@/lib/cloud-sync";
 import { guard } from "@/lib/guard";
 import { syncHook } from "@/lib/routine-hooks";
 import { createRoutine, deleteRoutine, getRoutine, listRoutines, validateRoutine, viewOf } from "@/lib/routines";
@@ -12,7 +13,8 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const denied = guard(req);
   if (denied) return denied;
-  return Response.json({ routines: listRoutines().map(viewOf), telegram: telegramConnected(), max: MAX_ROUTINES });
+  // Each says where it runs while the computer is off (the cloud server, or it waits for the computer, and why).
+  return Response.json({ routines: listRoutines().map((r) => ({ ...viewOf(r), whenOff: routineWhenOff(r) })), telegram: telegramConnected(), max: MAX_ROUTINES });
 }
 
 /** Create a routine: {name, botId, prompt, schedule, timezone, enabled?, notifyTelegram?}. */

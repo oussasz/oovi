@@ -291,6 +291,9 @@ export function runRoutineNow(id: string): FireResult {
 export async function runRoutineInCloud(id: string): Promise<{ status: string; ranAt: number; next: number | null } | null> {
   const r = getRoutine(id);
   if (!r) return null;
+  // Second guard (the website already keeps these for the computer): a watched page is compared with the copy kept
+  // on the computer, and a web-address routine is started by the computer; neither runs here.
+  if (r.watch || r.schedule.kind === "webhook") return { status: "needs_computer", ranAt: Date.now(), next: null };
   const ranAt = Date.now();
   const nextOf = () => (r.schedule.kind === "once" || r.schedule.kind === "webhook" ? null : nextRun(r.schedule, r.timezone, Date.now()));
   const started = fire(r, false);

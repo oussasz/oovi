@@ -115,6 +115,13 @@ export async function sendToOwner(userId: string, text: string): Promise<boolean
   }
 }
 
+/** The language oovi speaks to this user on Telegram ("ar", "fr", "en"…), as their computer registered it. */
+export async function ownerLanguage(userId: string): Promise<string> {
+  await ensureTables().catch(() => {});
+  const { rows } = await pool.query("SELECT language FROM telegram_relays WHERE user_id = $1", [userId]).catch(() => ({ rows: [] as { language?: string }[] }));
+  return String(rows[0]?.language || "en").slice(0, 2).toLowerCase();
+}
+
 /** The account's Telegram connection, for a computer that hasn't got it yet (or "gone" after a disconnect). */
 export async function getConnection(userId: string): Promise<{ token: string; config: Record<string, unknown>; connectedAt: number } | { disconnectedAt: number } | null> {
   await ensureTables();

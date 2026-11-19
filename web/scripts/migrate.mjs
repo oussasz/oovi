@@ -404,6 +404,9 @@ await pool.query(`
     PRIMARY KEY (user_id, routine_id)
   );
   CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS cloud BOOLEAN NOT NULL DEFAULT true;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS why TEXT NULL;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS name JSONB NULL;
   DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cloud_job_kind_check' AND pg_get_constraintdef(oid) LIKE '%routine%') THEN
       ALTER TABLE cloud_job DROP CONSTRAINT IF EXISTS cloud_job_kind_check;

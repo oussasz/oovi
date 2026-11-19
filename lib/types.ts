@@ -375,7 +375,7 @@ export type Routine = {
 };
 
 /** A routine as the Routines page sees it. */
-export type RoutineView = Omit<Routine, "hook"> & { running: boolean; /** A "webhook" routine's address (the secret is part of it). */ hookUrl?: string };
+export type RoutineView = Omit<Routine, "hook"> & { running: boolean; /** A "webhook" routine's address (the secret is part of it). */ hookUrl?: string; /** Where it runs while the computer is off (lib/cloud-sync.ts routineWhenOff). */ whenOff?: { where: "cloud" } | { where: "computer"; why: "sync" | "watch" | "webhook" | "local" } };
 
 export type ChatEvent =
   | { type: "entry"; entry: Entry }

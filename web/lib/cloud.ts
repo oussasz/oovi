@@ -105,6 +105,9 @@ export const CLOUD_DDL = `
     PRIMARY KEY (user_id, routine_id)
   );
   CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS cloud BOOLEAN NOT NULL DEFAULT true;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS why TEXT NULL;
+  ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS name JSONB NULL;
   -- Tables made before routines ran in the cloud: their job kinds gain 'routine' (once).
   DO $$ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cloud_job_kind_check' AND pg_get_constraintdef(oid) LIKE '%routine%') THEN
@@ -542,7 +545,8 @@ export async function finishJob(jobId: string, by: string, userId: string | null
 const ROUTINE_LATE_HOURS = 3;
 const MAX_ROUTINES = 200;
 
-export type RoutineItem = { routineId: string; chatId: string; dueAt: string | null; timeZone: string | null };
+/** cloud false: it waits for the computer (why: watch, local…); the user is told at its time instead. name: sealed here. */
+export type RoutineItem = { routineId: string; chatId: string; dueAt: string | null; timeZone: string | null; cloud: boolean; why: string | null; name: string };
 export type RoutineRan = { routineId: string; ranAt: string | null; ranStatus: string | null };
 
 /**
@@ -560,9 +564,10 @@ export async function putRoutines(userId: string, deviceId: string, items: Routi
     await c.query("DELETE FROM cloud_routine WHERE user_id = $1 AND NOT (routine_id = ANY($2::text[]))", [userId, ids]);
     for (const x of list) {
       await c.query(
-        `INSERT INTO cloud_routine (user_id, routine_id, chat_id, due_at, time_zone) VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (user_id, routine_id) DO UPDATE SET chat_id = EXCLUDED.chat_id, due_at = EXCLUDED.due_at, time_zone = EXCLUDED.time_zone, updated_at = now()`,
-        [userId, x.routineId, x.chatId, x.dueAt, x.timeZone],
+        `INSERT INTO cloud_routine (user_id, routine_id, chat_id, due_at, time_zone, cloud, why, name) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         ON CONFLICT (user_id, routine_id) DO UPDATE SET chat_id = EXCLUDED.chat_id, due_at = EXCLUDED.due_at, time_zone = EXCLUDED.time_zone,
+           cloud = EXCLUDED.cloud, why = EXCLUDED.why, name = EXCLUDED.name, updated_at = now()`,
+        [userId, x.routineId, x.chatId, x.dueAt, x.timeZone, x.cloud, x.why, x.name ? JSON.stringify(sealSecret(x.name)) : null],
       );
     }
     const { rows } = await c.query("SELECT routine_id, ran_at, ran_status FROM cloud_routine WHERE user_id = $1 AND ran_at IS NOT NULL", [userId]);
@@ -577,17 +582,22 @@ export async function putRoutines(userId: string, deviceId: string, items: Routi
 export async function queueDueRoutines(): Promise<number> {
   return tx(async (c) => {
     const { rows } = await c.query(
-      `SELECT r.user_id, r.routine_id, r.chat_id, r.due_at, r.time_zone FROM cloud_routine r
+      `SELECT r.user_id, r.routine_id, r.chat_id, r.due_at, r.time_zone, r.cloud, r.why, r.name FROM cloud_routine r
         WHERE r.due_at IS NOT NULL AND r.due_at <= now()
           AND EXISTS (SELECT 1 FROM cloud_sync s WHERE s.user_id = r.user_id AND s.enabled)
           AND NOT EXISTS (SELECT 1 FROM cloud_device d WHERE d.user_id = r.user_id AND d.kind = 'desktop' AND d.last_seen > now() - make_interval(secs => ${ONLINE_SECONDS}))
         ORDER BY r.due_at LIMIT 20 FOR UPDATE OF r SKIP LOCKED`,
     );
     let queued = 0;
+    const notices: { userId: string; name: string; why: string }[] = [];
     for (const r of rows) {
       const at = new Date(r.due_at as Date);
-      // Too late to still be useful (the computer was off for long, or the runner was down): the computer decides.
-      if (Date.now() - at.getTime() <= ROUTINE_LATE_HOURS * 3600_000) {
+      const late = Date.now() - at.getTime() > ROUTINE_LATE_HOURS * 3600_000;
+      if (!r.cloud || late) {
+        // It waits for the computer: the user is told now, in their language, instead of hearing nothing.
+        const name = r.name ? (() => { try { return unsealSecret(r.name as Sealed); } catch { return ""; } })() : "";
+        notices.push({ userId: r.user_id as string, name, why: late ? "late" : String(r.why || "computer") });
+      } else {
         const { sealed } = sealJson({ routineId: r.routine_id, at: at.toISOString(), ...(r.time_zone ? { timeZone: r.time_zone } : {}) });
         // Ready for the runner at once: it already waited for the computer.
         await c.query(
@@ -598,8 +608,34 @@ export async function queueDueRoutines(): Promise<number> {
       }
       await c.query("UPDATE cloud_routine SET due_at = NULL, updated_at = now() WHERE user_id = $1 AND routine_id = $2", [r.user_id, r.routine_id]);
     }
+    // After the transaction's work: Telegram is outside it (a slow Telegram never holds the rows).
+    if (notices.length) setTimeout(() => void sendRoutineNotices(notices), 0);
     return queued;
   });
+}
+
+/** "This routine waits for your computer", on the user's Telegram, in their language (the computer runs it later). */
+async function sendRoutineNotices(list: { userId: string; name: string; why: string }[]): Promise<void> {
+  const { ownerLanguage, sendToOwner } = await import("./telegram-relay");
+  for (const n of list) {
+    const lang = await ownerLanguage(n.userId).catch(() => "en");
+    await sendToOwner(n.userId, routineWaitNotice(lang, n.name, n.why)).catch(() => false);
+  }
+}
+
+/** The words of that notice (pure: web/scripts/test-cloud.cjs checks them). */
+export function routineWaitNotice(lang: string, name: string, why: string): string {
+  const q = name ? name.slice(0, 120) : "";
+  if (lang === "ar") {
+    const r = why === "watch" ? "لأنه يقارن صفحة ويب بالنسخة المحفوظة على حاسوبك" : why === "local" ? "لأن البوت الخاص به مضبوط ليعمل على حاسوبك فقط" : "";
+    return why === "late" ? `⏰ «${q}» لم يعمل في وقته لأن حاسوبك كان مطفأ. سيعمل فور فتحك oovi على حاسوبك.` : `⏰ حان وقت «${q}»، لكن حاسوبك مطفأ وهذا الروتين يحتاجه${r ? ` ${r}` : ""}. سيعمل فور فتحك oovi على حاسوبك.`;
+  }
+  if (lang === "fr") {
+    const r = why === "watch" ? "car elle compare une page web avec la copie gardée sur votre ordinateur" : why === "local" ? "car son bot est réglé pour travailler seulement sur votre ordinateur" : "";
+    return why === "late" ? `⏰ « ${q} » n'a pas pu se lancer à l'heure : votre ordinateur était éteint. Elle se lancera dès que vous ouvrirez oovi sur votre ordinateur.` : `⏰ C'est l'heure de « ${q} », mais votre ordinateur est éteint et cette routine en a besoin${r ? `, ${r}` : ""}. Elle se lancera dès que vous ouvrirez oovi sur votre ordinateur.`;
+  }
+  const r = why === "watch" ? "it compares a web page with the copy kept on your computer" : why === "local" ? "its bot is set to work only on your computer" : "";
+  return why === "late" ? `⏰ "${q}" couldn't run on time: your computer was off. It will run as soon as you open oovi on your computer.` : `⏰ "${q}" is due now, but your computer is off and this routine needs it${r ? ` (${r})` : ""}. It will run as soon as you open oovi on your computer.`;
 }
 
 /** After a routine ran in the cloud: when, how it went, and the next time (null: none, e.g. a "once" routine). */

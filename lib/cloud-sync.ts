@@ -628,12 +628,23 @@ const ROUTINES_EVERY_MS = 5 * 60_000;
 const rtRoutines = { key: "", at: 0, sent: new Set<string>() };
 
 /**
- * A routine the cloud server can run while this computer is off: on, started by the clock (not a web address), not
- * watching a page (its last copy stays here), its bot known, and its chat one that travels to the account.
+ * Where a routine runs when this computer is off, and why not in the cloud: shown on the Routines page and used to
+ * tell the user at its time (Telegram) instead of skipping it silently. "sync": cloud sync is off; "watch": it compares
+ * a page with the copy kept here; "webhook": it starts from its web address, which this computer listens to; "local":
+ * its bot is set to stay on this computer.
  */
+export type WhenOff = { where: "cloud" } | { where: "computer"; why: "sync" | "watch" | "webhook" | "local" };
+export function routineWhenOff(r: Routine, bots = listBots()): WhenOff {
+  if (!active()) return { where: "computer", why: "sync" };
+  if (r.schedule.kind === "webhook") return { where: "computer", why: "webhook" };
+  if (r.watch) return { where: "computer", why: "watch" };
+  if (!chatTravels({ memberIds: [r.botId] }, bots)) return { where: "computer", why: "local" };
+  return { where: "cloud" };
+}
+
+/** A routine the cloud server can run while this computer is off. */
 function cloudable(r: Routine, bots = listBots()): boolean {
-  if (!r.enabled || r.schedule.kind === "webhook" || r.watch || !getBot(r.botId)) return false;
-  return chatTravels({ memberIds: [r.botId] }, bots);
+  return r.enabled && !!getBot(r.botId) && routineWhenOff(r, bots).where === "cloud";
 }
 
 /**
@@ -644,13 +655,18 @@ function cloudable(r: Routine, bots = listBots()): boolean {
 export async function syncCloudRoutines(force = false): Promise<void> {
   if (!active()) return;
   const bots = listBots();
+  // Every routine that is on goes: the ones the cloud runs, and the others with why (the website tells the user at their
+  // time that they wait for this computer, instead of saying nothing).
   const items = listRoutines()
-    .filter((r) => cloudable(r, bots))
-    .map((r) => ({ routineId: r.id, chatId: r.chatId, dueAt: typeof r.nextRunAt === "number" ? new Date(r.nextRunAt).toISOString() : null, timeZone: r.timezone ?? null }));
+    .filter((r) => r.enabled && !!getBot(r.botId) && r.schedule.kind !== "webhook")
+    .map((r) => {
+      const off = routineWhenOff(r, bots);
+      return { routineId: r.id, chatId: r.chatId, name: r.name.slice(0, 120), dueAt: typeof r.nextRunAt === "number" ? new Date(r.nextRunAt).toISOString() : null, timeZone: r.timezone ?? null, cloud: cloudable(r, bots), ...(off.where === "computer" ? { why: off.why } : {}) };
+    });
   const key = hashOf(items);
   if (!force && key === rtRoutines.key && Date.now() - rtRoutines.at < ROUTINES_EVERY_MS) return;
   // A routine the account hasn't been told about yet: its setup goes first, so the cloud server finds it.
-  if (items.some((x) => !rtRoutines.sent.has(x.routineId))) await syncSetup().catch(() => null);
+  if (items.some((x) => x.cloud && !rtRoutines.sent.has(x.routineId))) await syncSetup().catch(() => null);
   const r = await call<{ items?: { routineId: string; ranAt: string | null; ranStatus: string | null }[] }>("PUT", "/routines", { deviceId: deviceId(), items });
   rtRoutines.key = key;
   rtRoutines.at = Date.now();
@@ -662,7 +678,7 @@ export async function syncCloudRoutines(force = false): Promise<void> {
     if (!here || !Number.isFinite(ran) || ran <= (here.lastStartedAt ?? 0) || x.ranStatus === "needs_computer") continue;
     mutateRoutine(here.id, (y) => {
       y.lastStartedAt = ran;
-      y.lastRun = { at: ran, status: x.ranStatus === "error" ? "error" : "ok", note: "Ran on oovi's cloud server while this computer was off." };
+      y.lastRun = { at: ran, status: x.ranStatus === "error" ? "error" : "ok", note: "cloud" }; // shown translated (components/Routines.tsx)
       if (y.schedule.kind === "once") {
         y.enabled = false;
         y.nextRunAt = null;

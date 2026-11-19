@@ -355,7 +355,7 @@ export default function Routines() {
   const lastRunText = (r: RoutineView): string => {
     const l = r.lastRun;
     if (!l) return t("routines.last.never");
-    const note = l.status === "skipped" ? (l.note === "busy" ? t("routines.note.busy") : l.note === "waiting" ? t("routines.note.waiting") : l.note === "stopped" ? t("routines.note.stopped") : l.note === "no change" ? t("routines.note.noChange") : "") : l.status === "ok" && l.note === "nothing new" ? t("routines.note.nothingNew") : l.status === "missed" ? t("routines.note.missed") : l.status === "error" ? (l.note ?? "") : "";
+    const note = l.note === "cloud" ? t("routines.note.cloud") : l.status === "skipped" ? (l.note === "busy" ? t("routines.note.busy") : l.note === "waiting" ? t("routines.note.waiting") : l.note === "stopped" ? t("routines.note.stopped") : l.note === "no change" ? t("routines.note.noChange") : "") : l.status === "ok" && l.note === "nothing new" ? t("routines.note.nothingNew") : l.status === "missed" ? t("routines.note.missed") : l.status === "error" ? (l.note ?? "") : "";
     const head = t(`routines.last.${l.status}`, { when: fmtWhen(l.at) });
     return note ? `${head} · ${note}` : head;
   };
@@ -628,6 +628,17 @@ export default function Routines() {
                     </dd>
                   </div>
                 </dl>
+                {r.enabled && r.whenOff && (
+                  <p className={`routine-off ${r.whenOff.where}`}>
+                    {r.whenOff.where === "cloud" ? t("routines.off.cloud") : t(`routines.off.${r.whenOff.why}`)}
+                    {r.whenOff.where === "computer" && r.whenOff.why === "sync" && (
+                      <>
+                        {" "}
+                        <a href="/settings?tab=sync" className="link">{t("routines.off.syncLink")}</a>
+                      </>
+                    )}
+                  </p>
+                )}
                 {r.hookUrl && (
                   <div className="routine-hook">
                     <span className="hint">{t("routines.hookUrl")}</span>

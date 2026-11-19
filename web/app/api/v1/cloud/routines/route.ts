@@ -21,7 +21,9 @@ export async function PUT(req: Request) {
     const due = o.dueAt === null ? null : typeof o.dueAt === "string" && !Number.isNaN(Date.parse(o.dueAt)) ? new Date(o.dueAt).toISOString() : undefined;
     if (typeof o.routineId !== "string" || !ROUTINE_ID.test(o.routineId) || !isId(o.chatId) || due === undefined) return fail(400, "bad_request", "Each item needs routineId, chatId and dueAt.");
     const tz = typeof o.timeZone === "string" && /^[A-Za-z_+\-/0-9]{1,64}$/.test(o.timeZone) ? o.timeZone : null;
-    items.push({ routineId: o.routineId, chatId: o.chatId, dueAt: due, timeZone: tz });
+    const why = typeof o.why === "string" && /^[a-z]{1,16}$/.test(o.why) ? o.why : null;
+    const name = typeof o.name === "string" ? o.name.slice(0, 120) : "";
+    items.push({ routineId: o.routineId, chatId: o.chatId, dueAt: due, timeZone: tz, cloud: o.cloud !== false, why, name });
   }
   const deviceId = b.deviceId;
   return guarded("routines.put", async () => {
