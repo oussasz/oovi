@@ -289,6 +289,48 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   /api/v1/account` (signed in, own account only; billing status only, never Paddle ids; news on/off; same-host
   check on PATCH). Wording on refund, privacy, terms, pricing, welcome, verified, pilot and unsubscribe pages now
   points to Settings in the web app. The old account page's components were removed.
+- TAP A FACE TO EDIT, AND THE COMPUTER'S CHAT TOOLS (owner, 2026-11-19: "on the web and the mobile, tapping a bot's
+  picture should open editing it; other buttons are missing; add what's missing"). A bot's face (list row, chat
+  header, beside its messages) opens its editor (`/m/bot/<id>`, `/app/bot/<id>`, `_ui/Editors.tsx`), a group's face
+  or header opens the group editor (`/group/<id>`). Bot: name (one word, unique), role, role description,
+  instructions (an expert's stay private, as on the computer), look (color, body, hair, eyes, cheeks, mouth, nose,
+  on the head, on the face, "Your picture": cut to 256 px PNG, `POST /api/v1/avatars`, `face.image` = its id),
+  Make Chief (`main`), hide, web search, browser, signed-in accounts, where its chats live, delete (asks; it leaves
+  its groups like `lib/store.ts` deleteBot, its 1:1 chat is deleted everywhere). "Control this computer" and "Files
+  on this computer" are shown as "On your computer". No model or key choice. Group: name, members, leader, leader
+  mode, delete. Saves change only the edited fields of the account's setup items (`GET`/`PUT /api/v1/setup`, 409 →
+  read again and apply again; model, connectors, expert id and the rest kept), in the computer's item shapes.
+  Audit of the computer's chat UI (components/ChatView.tsx, Sidebar.tsx, CommandPalette.tsx, Canvas.tsx,
+  Routines.tsx) against the phone and web app:
+
+  | On the computer | Phone and web |
+  |---|---|
+  | Find in this chat | Added (chat menu ⋯; Enter / Shift+Enter next and previous, Esc closes) |
+  | Pin / Unpin | Added in the chat menu (already in the list's swipe and long press) |
+  | Download this chat (Markdown) | Added, made on the device from the synced chat like `chatMarkdown` |
+  | Edit bot / Edit group (header) | Added: the header, the faces, and the chat menu |
+  | Delete group | Added (group editor and chat menu); any chat can be deleted from the list |
+  | Rename group | Added (group editor) |
+  | Clear conversation | On your computer (shown disabled: it changes the computer's copy and closes its browser) |
+  | Canvas (work tables, notes, charts) | On your computer (shown disabled: kept in `work/<id>.json`, not synced) |
+  | Live view (the bots' browser) | On your computer (shown disabled) |
+  | Project folder | On your computer (shown disabled) |
+  | Message: Reply, Copy | Already there |
+  | Message: New chat from here | On your computer (shown disabled: only the computer creates chats) |
+  | Message: Good reply / Not good | On your computer (shown disabled: rating teaches the bots on the computer) |
+  | Learned card (correct / forget), Save as skill | Not applicable here (the computer's learning) |
+  | Files a bot made: Open / Show in folder | On your computer |
+  | Composer: effort, Plan, Deep work | Added ("+" menu, per chat, sent with the message: the computer's job runner accepts them) |
+  | Composer: attach files | Coming soon (files are not synced yet) |
+  | Composer: @mention, / commands, idea chips | Not added (type @Name; commands run on the computer) |
+  | Approval, plan and question cards, Stop | Already there |
+  | Sidebar: + Group, + Bot, search all chats, Pinned / Groups / Bots | Already there |
+  | Sidebar: show hidden bots | Added: "New chat" lists hidden bots under "Hidden bots" |
+  | Routines | Added, read-only in Settings (name, when, which bot); pause, resume, run now and edit stay on the computer (`enabled` is not in the setup item: a routine from another computer arrives paused) |
+  | Marketplace | Added: a Settings link to the website's `/experts` |
+  | Command palette (Ctrl+K) | Not applicable (navigation only; the list and search cover it) |
+  | Notifications | Not applicable yet (no push on the phone app) |
+
 - WEB VERSION (owner, 2026-11-19, contract 9e27545): the same app in any browser at `/app` (`web/app/app/`: its
   own layout, the pages re-export /m's; links go through `web/app/m/_lib/route.ts` so each version stays itself).
   Signed-in only: every API call checks the session; a signed-out visitor is sent to the website's sign-in page
@@ -337,9 +379,11 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   `web-{en,ar}-{light,dark}-{chat,group,chats,needs-computer,settings,connectors}.jpg`. Made with
   `node tests/e2e/mobile-scenario.cjs --shots-only` (website built first).
 - Checked here (Linux, Chrome emulating an iPhone 15, the BUILT website behind a stand-in for W's API,
-  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 417 (416 pass, 1 skipped:
+  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 425 (424 pass, 1 skipped:
   the existing live YouTube test), of which the phone's `tests/unit/mobile-*.test.mts`; `npm run build` in web OK;
-  `node tests/e2e/mobile-scenario.cjs` 127/127, twice in a row (sign-in, sync off and API missing, list and counts, archive, pin,
+  `node tests/e2e/mobile-scenario.cjs` 174/174, twice in a row (the website after sign-in and every account action;
+  tap a face: bot and group editors saved after a 409, picture, hide, delete; find, download, pin, the computer-only
+  tools shown as such, effort and plan sent; routines; sign-in, sync off and API missing, list and counts, archive, pin,
   search, Markdown and safe links, approval → decision job, send → live status by long-poll → answer, ticks,
   reply, Stop, needs-computer, queued while off, voice note with a fake microphone and with the service off, the
   one list with a bot to start, profile picture → Settings and back, + Bot (one-word and unique name, saved after a
@@ -350,8 +394,8 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   wipes the old copy, sign-out asks then wipes; the web version: the sidebar with Groups and Bots and + Group / + Bot,
   the open row, name/role/time above a bot's message, profile picture → Settings beside the list, Shift+Enter / Enter /
   Esc, the desktop suggestions and hiding the card, connectors beside the list, signed out → the website's sign-in);
-  `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100 and best practices 100 on all 11
-  screens tested (8 phone, 3 web), PWA 100 on the phone's 8 (the web version is not installable on purpose).
+  `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100 and best practices 100 on all 14
+  screens tested (9 phone incl. the bot editor, 5 web incl. account and group editor), PWA 100 on the phone's 9 (the web version is not installable on purpose).
 - NOT checked: a real iPhone or Android phone (Safari, Add to Home Screen, the keyboard, the microphone, Dynamic
   Type, safe areas: the emulation has none), the real cloud API on Vercel (W is not deployed), the real desktop
   sync (A), a real OAuth service, Firefox, a real Groq/OpenAI voice key.

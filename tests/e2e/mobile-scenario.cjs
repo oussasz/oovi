@@ -20,7 +20,10 @@
 //   N) sign out asks first, then clears the phone's copy,
 //   X) the website: sign-in lands on /app, "Open oovi", /account → /app/settings (Paddle's ?billing kept), and every
 //      account action from Settings (confirm email, Manage billing, free plan, name, photo, password, news emails,
-//      delete account with its password); /app on a narrow window is one column with the web app's look.
+//      delete account with its password); /app on a narrow window is one column with the web app's look,
+//   Y) tap a face: bot editor (name rule, role, abilities, "Your picture", hide, delete; saved with a 409 merged
+//      again) and group editor (name, members, leader); the chat's tools (find, download Markdown, pin, the
+//      computer-only ones shown as such), message actions, effort and plan sent with a message, routines.
 // With --shots, also writes the screenshots in docs/mobile/ (English and Arabic, light and dark).
 const fs = require("node:fs");
 const path = require("node:path");
@@ -179,7 +182,7 @@ async function main() {
     check("E answered: double ticks marked read", await page.locator(".m-bubble--me", { hasText: "Book it for Friday" }).locator(".m-sr-only", { hasText: "Answered" }).count() === 1);
     // Long press (right click here) → Reply → the reply goes with the message.
     await page.locator(".m-bubble--bot", { hasText: "I asked for" }).click({ button: "right" });
-    await page.getByRole("dialog").getByRole("button", { name: "Reply" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Reply", exact: true }).click();
     check("E reply: the bar above the box", await until(() => page.locator(".m-replybar", { hasText: "Replying to Oovi" }).isVisible()));
     await box.fill("For two people");
     await page.getByRole("button", { name: "Send", exact: true }).click();
@@ -232,14 +235,14 @@ async function main() {
     check("I the old Bots page lands on the list", await until(() => page.url().endsWith("/m") && page.locator(".m-chats").first().isVisible()));
     await page.getByRole("button", { name: "Bot", exact: true }).click();
     const sheet = page.getByRole("dialog");
-    await sheet.getByLabel("Name").fill("Two words");
+    await sheet.getByLabel("Name", { exact: true }).fill("Two words");
     await sheet.getByRole("button", { name: "Create" }).click();
     check("I a bot's name is one word", await until(() => sheet.getByRole("alert").filter({ hasText: "One word only" }).isVisible()));
-    await sheet.getByLabel("Name").fill("nova");
+    await sheet.getByLabel("Name", { exact: true }).fill("nova");
     await sheet.getByRole("button", { name: "Create" }).click();
     check("I …and not another bot's name", await until(() => sheet.getByRole("alert").filter({ hasText: "already has this name" }).isVisible()));
-    await sheet.getByLabel("Name").fill("Mira");
-    await sheet.getByLabel("Role").fill("Accountant");
+    await sheet.getByLabel("Name", { exact: true }).fill("Mira");
+    await sheet.getByLabel("Role", { exact: true }).fill("Accountant");
     await sheet.getByRole("button", { name: "Another face" }).click();
     S.setupConflicts = 1; // a computer saves in between: read again, add again
     await sheet.getByRole("button", { name: "Create" }).click();
@@ -249,7 +252,7 @@ async function main() {
     await page.goto(`${BASE}/m`);
     check("I + Bot: in the list, under 'Start a chat'", await until(async () => (await page.locator("#list-start + ul .m-chat__name").allTextContents()).includes("Mira")));
     await page.getByRole("button", { name: "Group", exact: true }).click();
-    await sheet.getByLabel("Name").fill("Finance");
+    await sheet.getByLabel("Name", { exact: true }).fill("Finance");
     await sheet.getByRole("checkbox", { name: /Mira/ }).click();
     await sheet.getByRole("checkbox", { name: /Nova/ }).click();
     await sheet.getByRole("button", { name: "Create" }).click();
@@ -401,6 +404,90 @@ async function main() {
     check("M offline: a chat seen before opens", await until(() => page.locator(".m-md table").isVisible(), 8000));
     await ctx.setOffline(false);
 
+    // ---------- Y) tap a face to edit the bot or group; the computer's chat tools (owner, 2026-11-19) ----------
+    await page.goto(`${BASE}/m`);
+    await until(() => page.locator(".m-chats").first().isVisible());
+    await page.getByRole("link", { name: "Edit Rex" }).click();
+    check("Y a bot's face in the list opens its editor", await until(() => page.url().endsWith("/m/bot/rex") && page.getByLabel("Role", { exact: true }).isVisible()));
+    check("Y no model or key choice on the phone", (await page.getByText(/model|API key/i).count()) === 0);
+    check("Y computer-wide abilities shown as 'On your computer'", (await page.getByText("Control this computer").isVisible()) && (await page.locator(".m-row.is-off", { hasText: "On your computer" }).count()) === 2);
+    await page.getByLabel("Name", { exact: true }).fill("nova");
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    check("Y a name another bot has is refused", await until(() => page.getByRole("alert").filter({ hasText: "not used by another bot" }).isVisible()) && S.items["bot:rex"].name === "Rex");
+    await page.getByLabel("Name", { exact: true }).fill("Rex");
+    await page.getByLabel("Role", { exact: true }).fill("Editor");
+    await page.getByRole("switch", { name: "Web search" }).click();
+    S.setupConflicts = 1;
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    check("Y saved in the account's setup after a conflict: role, web search off, the rest kept", await until(() => S.items["bot:rex"].role === "Editor" && S.setupConflicts === 0) && S.items["bot:rex"].tools.web === false && S.items["bot:rex"].instructions === "SECRET-INSTRUCTIONS" && (await until(() => page.getByText(/Saved\. Your computer applies it/).isVisible())));
+    await page.getByRole("tab", { name: "Your picture" }).click();
+    const ypng = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC", "base64");
+    await page.locator('.m-pickpic input[type="file"]').setInputFiles({ name: "logo.png", mimeType: "image/png", buffer: ypng });
+    check("Y 'Your picture' goes to the account (POST /api/v1/avatars)", await until(() => Object.keys(S.avatars).length === 1));
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    check("Y …and the bot's face uses it", await until(() => S.items["bot:rex"].face.image === Object.keys(S.avatars)[0]));
+    await page.goto(`${BASE}/m/c/studio`);
+    await page.getByRole("link", { name: "Edit Studio" }).click();
+    check("Y a group's header opens the group editor", await until(() => page.url().endsWith("/m/group/studio") && page.getByLabel("Name", { exact: true }).isVisible()));
+    await page.getByLabel("Name", { exact: true }).fill("Studio Team");
+    await page.getByRole("checkbox", { name: /Rex/ }).click();
+    await page.getByRole("radio", { name: /Nova/ }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    check("Y group saved: name, members, leader", await until(() => S.items["group:studio"].name === "Studio Team") && S.items["group:studio"].memberIds.join() === "oovi,nova" && S.items["group:studio"].leadId === "nova");
+    const miraId = miraKey().slice(4);
+    await page.goto(`${BASE}/m/bot/${miraId}`);
+    await until(() => page.getByLabel("Role", { exact: true }).isVisible());
+    await page.getByRole("switch", { name: "Hide from the bots list" }).click();
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    check("Y hide a bot", await until(() => S.items[`bot:${miraId}`]?.hidden === true));
+    await page.goto(`${BASE}/m`);
+    await until(() => page.locator(".m-chats").first().isVisible());
+    check("Y …it leaves the list", (await page.locator(".m-chat__name", { hasText: "Mira" }).count()) === 0);
+    await page.getByRole("button", { name: "New chat" }).click();
+    check("Y …and New chat still reaches it, under Hidden bots", await until(() => page.getByRole("dialog").getByText("Hidden bots").isVisible()) && (await page.getByRole("dialog").locator(".m-chat__name", { hasText: "Mira" }).count()) === 1);
+    await page.keyboard.press("Escape");
+    await page.goto(`${BASE}/m/bot/${miraId}`);
+    await until(() => page.getByLabel("Role", { exact: true }).isVisible());
+    await page.locator(".m-edbar").getByRole("button", { name: "Delete" }).click();
+    check("Y delete a bot asks first", await until(() => page.getByRole("dialog").getByText(/Delete Mira\?/).isVisible()));
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    check("Y deleted from the account's setup, as the computer does", await until(() => !S.items[`bot:${miraId}`] && page.url().endsWith("/m")));
+
+    await page.goto(`${BASE}/m/c/dm-oovi`);
+    await until(() => page.locator(".m-bubble").first().isVisible());
+    await page.getByRole("button", { name: "Chat options" }).click();
+    const clearBtn = page.getByRole("dialog").getByRole("button", { name: /Clear conversation/ });
+    check("Y the computer-only tools are shown, not hidden: clear, Canvas, live view, project folder", (await clearBtn.getAttribute("aria-disabled")) === "true" && (await page.getByRole("dialog").getByText("Canvas").isVisible()) && (await page.getByRole("dialog").getByText("Project folder").isVisible()));
+    await page.getByRole("dialog").getByRole("button", { name: "Find in this chat" }).click();
+    await page.getByRole("searchbox", { name: "Find in this chat" }).fill("friday");
+    check("Y find in this chat", await until(async () => (await page.locator(".m-msg.is-found").count()) === 1 && (await page.locator(".m-find__n").textContent()).startsWith("1 of")));
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Chat options" }).click();
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("dialog").getByRole("button", { name: "Download this chat (Markdown)" }).click()]);
+    const md = fs.readFileSync(await dl.path(), "utf8");
+    check("Y download this chat (Markdown), like the computer's", dl.suggestedFilename() === "Oovi.md" && md.startsWith("# Oovi\n") && md.includes("## You · ") && md.includes("Book it for Friday") && !md.includes("BIG TOOL RESULT"));
+    await page.getByRole("button", { name: "Chat options" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Pin to the top of the list" }).click();
+    check("Y pin from the chat", await until(async () => (await page.evaluate(() => localStorage.getItem("oovi.m.pins") || "")).includes("dm-oovi")));
+    await page.locator(".m-bubble--bot").last().click({ button: "right" });
+    check("Y message: 'New chat from here', thumbs up/down shown as on your computer", await until(async () => (await page.getByRole("dialog").getByRole("button", { name: /New chat from here/ }).getAttribute("aria-disabled")) === "true" && (await page.getByRole("dialog").getByRole("button", { name: /Good reply/ }).count()) === 1));
+    await page.keyboard.press("Escape");
+    await page.getByRole("button", { name: "Attach" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^Plan/ }).click();
+    await page.getByRole("button", { name: "Attach" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /How hard the bots think/ }).click();
+    await page.getByRole("dialog").getByRole("button", { name: /^High/ }).click();
+    check("Y effort and plan shown above the box", await until(() => page.locator(".m-optsbar").getByText("Plan").isVisible()));
+    const beforeY = jobsOf("message").length;
+    await page.locator(".m-composer textarea").fill("Plan the trip");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    check("Y …and sent with the message (the computer runs it that way)", await until(() => jobsOf("message").length === beforeY + 1) && jobsOf("message").at(-1).payload.plan === true && jobsOf("message").at(-1).payload.effort === "high");
+    await until(() => jobsOf("message").at(-1).status === "done", 10_000);
+    await page.goto(`${BASE}/m/settings`);
+    check("Y routines listed (read-only), when they run, 'On your computer'", await until(() => page.getByText("Morning digest").isVisible()) && (await page.getByText(/Mon, Wed, Fri at 08:30 · By Nova/).isVisible()));
+    check("Y …the routine's prompt never reaches the phone", !(await page.content()).includes("SECRET-ROUTINE-PROMPT") && !(await page.evaluate(() => Object.values(localStorage).join("\n"))).includes("SECRET-ROUTINE-PROMPT"));
+    check("Y Marketplace link", (await page.locator('a[href="/experts"]').count()) === 1);
+
     // ---------- W) the web version (/app): same app, two columns, keyboard, desktop suggestion ----------
     {
       const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-US" });
@@ -420,6 +507,10 @@ async function main() {
       await w.locator('.m-pane--list a[href="/app/c/dm-oovi"]').click();
       check("W a chat opens beside the list", await until(async () => w.url().endsWith("/app/c/dm-oovi") && (await w.locator(".m-pane--main .m-md table").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
       check("W its row is marked open", (await w.locator('.m-pane--list a[aria-current="page"]').getAttribute("href")) === "/app/c/dm-oovi");
+      await w.locator(".m-pane--list").getByRole("link", { name: "Edit Nova" }).click();
+      check("W a face in the sidebar opens the bot's editor beside the list", await until(() => w.url().endsWith("/app/bot/nova") && w.locator(".m-pane--main").getByLabel("Role", { exact: true }).isVisible()));
+      await w.goto(`${BASE}/app/c/dm-oovi`);
+      await until(() => w.locator(".m-pane--main .m-md table").isVisible());
       check("W a bot's message: name, role and time above it, like on the computer", await w.locator(".m-pane--main .m-msg__who").first().textContent().then((x) => x.includes("Oovi")));
       const wbox = w.locator(".m-pane--main .m-composer textarea");
       await wbox.click();
@@ -497,7 +588,7 @@ async function main() {
       check("X no subscription: the free plan and See plans", await until(() => x.getByText("You’re on the free plan.", { exact: false }).isVisible()) && (await x.locator('.m-pane--main a[href="/pricing"]').isVisible()));
       await x.locator('.m-pane--main a[href="/app/settings/account"]').first().click();
       check("X Account opens beside the list", await until(() => x.url().endsWith("/app/settings/account") && x.locator(".m-pane--main").getByText("Delete account").first().isVisible()));
-      const nameBox = x.getByLabel("Name");
+      const nameBox = x.getByLabel("Name", { exact: true });
       await nameBox.fill("Sam Writer");
       await x.getByRole("button", { name: "Save", exact: true }).click();
       check("X name saved (the website's PATCH /api/v1/me)", await until(() => sb.state && x.getByText("Saved.").isVisible()) && (await x.evaluate(() => JSON.parse(localStorage.getItem("oovi.m.me") || "{}").name)) === "Sam Writer");
@@ -598,6 +689,17 @@ async function screenshots(browser, sb) {
       });
       await shot("settings", "/m/settings");
       await shot("account", "/m/settings/account");
+      await shot("bot-editor", "/m/bot/nova");
+      await shot("bot-editor-look", "/m/bot/nova", async (p) => {
+        await p.getByRole("tab").nth(3).click();
+        await p.locator(".m-lookpanel").scrollIntoViewIfNeeded();
+        await sleep(300);
+      });
+      await shot("group-editor", "/m/group/studio");
+      await shot("chat-menu", "/m/c/dm-oovi", async (p) => {
+        await p.locator(".m-nav__more").click();
+        await sleep(500);
+      });
       await shot("connectors", "/m/connectors");
       await shot("connector", "/m/connectors/gmail");
       await shot("connector-add", "/m/connectors/add");
@@ -623,7 +725,7 @@ async function screenshots(browser, sb) {
         if (!localStorage.getItem("oovi.m.seen")) localStorage.setItem("oovi.m.seen", JSON.stringify({ "dm-oovi": Date.now(), "dm-nova": Date.now(), "dm-rex": Date.now(), "dm-lina": Date.now(), studio: 0 }));
       }, [lang]);
       const wp = await wctx.newPage();
-      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["account", "/app/settings/account"], ["connectors", "/app/connectors"]]) {
+      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["account", "/app/settings/account"], ["bot-editor", "/app/bot/nova"], ["group-editor", "/app/group/studio"], ["connectors", "/app/connectors"]]) {
         await wp.goto(BASE + url);
         await wp.locator(".m-wide").first().waitFor({ timeout: 8000 }).catch(() => {});
         await sleep(1300);

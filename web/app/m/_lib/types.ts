@@ -109,7 +109,7 @@ export type JobInfo = { jobId: string; kind: JobKind; status: JobStatus; error?:
 
 /** What the phone sends with POST /jobs (mirrors the desktop's POST /api/chats/<id>/run body). */
 export type JobPayload =
-  | { kind: "message"; payload: { text: string; entryId: string; replyTo?: string } }
+  | { kind: "message"; payload: { text: string; entryId: string; replyTo?: string; effort?: string; plan?: boolean; deep?: boolean } }
   | { kind: "decision"; payload: { decisions: Record<string, boolean> } | { answers: string[] | null } | { planDecision: { approve: boolean; items: string[] } } }
   | { kind: "stop"; payload: Record<string, never> };
 
@@ -119,7 +119,9 @@ export type SetupBot = { id: string; name: string; role: string; face: Face | Re
 export type SetupGroup = { id: string; name: string; memberIds: string[]; leadId?: string };
 /** A connector as the phone shows it: name and on/off only (never its address, command or keys). */
 export type SetupConnector = { id: string; name: string; enabled: boolean; kind: "remote" | "local" };
-export type PhoneSetup = { bots: SetupBot[]; groups: SetupGroup[]; connectors: SetupConnector[]; mainId: string | null };
+/** A routine as the account's setup keeps it (read-only here: it runs, pauses and resumes on the computer). */
+export type SetupRoutine = { id: string; name: string; botId: string; schedule: { kind: string; time?: string; days?: number[]; every?: number; at?: number }; timezone?: string };
+export type PhoneSetup = { bots: SetupBot[]; groups: SetupGroup[]; connectors: SetupConnector[]; mainId: string | null; routines?: SetupRoutine[] };
 
 /** GET /api/v1/ai/status (web/lib/credits.ts CreditStatus), the parts the phone shows. */
 export type Credits = {

@@ -2,6 +2,7 @@
 
 // One chat: messages (Markdown, tables, links), what the bot is doing right now (long-poll GET /events), the
 // composer (text, voice note to text), approval, question and plan cards, Stop, and "This needs your computer".
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { waitForChat, ApiError, getChat } from "../_lib/api";
@@ -23,7 +24,12 @@ import {
   bubbleTime,
   quoteOf,
   userTick,
+  chatMarkdown,
+  exportName,
+  findInChat,
+  isPinned,
   type Lang,
+  type SendOptions,
 } from "../_lib/core";
 import { FACE_COLORS } from "@/lib/faces";
 import { tap } from "../_lib/haptics";
@@ -143,6 +149,27 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const [stopping, setStopping] = useState(false);
   const [menu, setMenu] = useState<Entry | null>(null);
   const [reply, setReply] = useState<Reply | null>(null);
+  // The computer's chat header and composer (owner, 2026-11-19: add what's missing).
+  const [chatMenu, setChatMenu] = useState(false);
+  const [askDelete, setAskDelete] = useState(false);
+  const [find, setFind] = useState<string | null>(null);
+  const [findAt, setFindAt] = useState(0);
+  const [opts, setOptsState] = useState<SendOptions>({});
+  useEffect(() => {
+    try {
+      setOptsState(JSON.parse(localStorage.getItem(`oovi.m.opts.${chatId}`) || "{}") as SendOptions);
+    } catch {
+      /* none */
+    }
+  }, [chatId]);
+  const setOpts = (o: SendOptions) => {
+    setOptsState(o);
+    try {
+      localStorage.setItem(`oovi.m.opts.${chatId}`, JSON.stringify(o));
+    } catch {
+      /* private mode */
+    }
+  };
   const pane = usePane();
   const wide = useWide();
   const router = useRouter();
@@ -151,12 +178,13 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
       if (e.key !== "Escape" || e.defaultPrevented || document.querySelector('[role="dialog"]')) return;
-      if (reply) setReply(null);
+      if (find !== null) setFind(null);
+      else if (reply) setReply(null);
       else if (wide) router.push(to());
     };
     document.addEventListener("keydown", key);
     return () => document.removeEventListener("keydown", key);
-  }, [reply, wide, router]);
+  }, [reply, wide, router, find]);
   const showToast = m.toast;
   const endRef = useRef<HTMLDivElement>(null);
   const firstScroll = useRef(true);
@@ -262,6 +290,11 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   }, [chat, chatId, markSeen, lastAt]);
 
   const count = entries.length + mine.length;
+  const matches = useMemo(() => (find ? findInChat(entries, find) : []), [entries, find]);
+  const found = matches.length ? matches[Math.min(findAt, matches.length - 1)] : null;
+  useEffect(() => {
+    if (found) document.getElementById(`m-${found}`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+  }, [found]);
   const running = view ? runningEntry(view) : undefined;
   useEffect(() => {
     const near = pane ? pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 160 : window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 160;
@@ -311,13 +344,38 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     }
   };
 
+  // "Download this chat (Markdown)", made here from the synced chat like the computer makes it.
+  const download = () => {
+    if (!view) return;
+    const md = chatMarkdown(view, title, (id) => bot(id)?.name ?? "oovi");
+    const url = URL.createObjectURL(new Blob([md], { type: "text/markdown;charset=utf-8" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = exportName(title);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 2000);
+    showToast(t("dk.downloaded"));
+  };
+
   // ---------- header ----------
   const activity = running ? liveActivity(running, lang) : null;
   // The web version's header reads like the computer's: who is in the chat (a bot's role, a group's members).
   const who = view?.kind === "group" ? members.map((b) => b?.name).filter(Boolean).join(", ") : members[0]?.role || "";
   const sub = activity ? activity.label : wide && who ? who : computer.state === "online" ? t("chat.computerOn") : null;
-  const center = view ? (
-    <span className="m-chathead">
+  // Tapping the header (the face and name) edits the bot or the group (owner, 2026-11-19).
+  const editHref = !view
+    ? null
+    : view.kind === "group"
+      ? m.setup?.groups.some((g) => g.id === view.id)
+        ? to(`/group/${encodeURIComponent(view.id)}`)
+        : null
+      : view.memberIds[0] && m.setup?.bots.some((b) => b.id === view.memberIds[0])
+        ? to(`/bot/${encodeURIComponent(view.memberIds[0])}`)
+        : null;
+  const headInner = view ? (
+    <>
       <span className="m-chathead__face" aria-hidden>
         <ChatFace faces={members.map((b) => b?.face ?? {})} size={40} mood={activity?.mood} />
       </span>
@@ -327,7 +385,16 @@ export function ChatScreen({ chatId }: { chatId: string }) {
         </span>
         {sub && <span className={`m-chathead__sub${activity ? " is-live" : ""}`}>{sub}</span>}
       </span>
-    </span>
+    </>
+  ) : null;
+  const center = headInner ? (
+    editHref ? (
+      <Link href={editHref} className="m-chathead" aria-label={t("ed.bot.editTitle", { name: title })}>
+        {headInner}
+      </Link>
+    ) : (
+      <span className="m-chathead">{headInner}</span>
+    )
   ) : null;
 
   // ---------- body ----------
@@ -355,7 +422,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     ) : null;
 
   const renderUser = (e: UserEntry) => (
-    <div className="m-msg m-msg--me" key={e.id}>
+    <div className={`m-msg m-msg--me${found === e.id ? " is-found" : ""}`} key={e.id} id={`m-${e.id}`}>
       {stamp(e.at)}
       {(e.attachments ?? []).map((a) => (
         <div className="m-file" key={a.id}>
@@ -391,13 +458,19 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     // On a wide screen (the web version) messages read like the computer's: the face at the top, then a line with
     // the bot's name, its role and the time; on a phone, WhatsApp's way (face at the end of a run, name in groups).
     return (
-      <div className="m-msg m-msg--bot" key={e.id}>
+      <div className={`m-msg m-msg--bot${found === e.id ? " is-found" : ""}`} key={e.id} id={`m-${e.id}`}>
         {stamp(e.at)}
         {showName && <div className="m-msg__name">{name}</div>}
         <div className={`m-msg__row${wide ? " m-msg__row--top" : ""}`}>
-          <span className="m-msg__face" aria-hidden>
-            {(wide ? firstOfRun : lastOfRun) ? <BotFace face={b?.face} size={wide ? 38 : 30} mood={act?.mood} /> : null}
-          </span>
+          {(wide ? firstOfRun : lastOfRun) && b && m.setup?.bots.some((x) => x.id === e.botId) ? (
+            <Link href={to(`/bot/${encodeURIComponent(e.botId)}`)} className="m-msg__face" aria-label={t("ed.bot.editTitle", { name })} tabIndex={-1}>
+              <BotFace face={b.face} size={wide ? 38 : 30} mood={act?.mood} />
+            </Link>
+          ) : (
+            <span className="m-msg__face" aria-hidden>
+              {(wide ? firstOfRun : lastOfRun) ? <BotFace face={b?.face} size={wide ? 38 : 30} mood={act?.mood} /> : null}
+            </span>
+          )}
           <div className="m-msg__col">
             {wide && firstOfRun && (
               <div className="m-msg__who">
@@ -584,8 +657,52 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   return (
     <div className="m-screen m-screen--chat">
-      <NavBar title={title} back={{ href: to(), label: t("tab.chats") }} center={center} solid />
+      <NavBar
+        title={title}
+        back={{ href: to(), label: t("tab.chats") }}
+        center={center}
+        solid
+        right={
+          view ? (
+            <button type="button" className="m-nav__more" aria-label={t("dk.options")} onClick={() => (tap(), setChatMenu(true))}>
+              <Icon name="more" size={24} />
+            </button>
+          ) : null
+        }
+      />
       <main className="m-main m-main--chat">
+        {find !== null && (
+          <div className="m-find" role="search">
+            <Icon name="search" size={17} stroke={2.1} />
+            <input
+              autoFocus
+              type="search"
+              dir="auto"
+              value={find}
+              placeholder={t("dk.chat.findPh")}
+              aria-label={t("dk.chat.find")}
+              onChange={(e) => (setFind(e.target.value), setFindAt(0))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && matches.length) {
+                  e.preventDefault();
+                  setFindAt((i) => (e.shiftKey ? (i - 1 + matches.length) % matches.length : (i + 1) % matches.length));
+                }
+              }}
+            />
+            <span className="m-find__n" role="status" aria-live="polite">
+              {find.trim() ? (matches.length ? t("dk.findCount", { i: String(Math.min(findAt, matches.length - 1) + 1), n: String(matches.length) }) : t("dk.findNone")) : ""}
+            </span>
+            <button type="button" className="m-icon-btn" aria-label={t("dk.findPrev")} disabled={!matches.length} onClick={() => setFindAt((i) => (i - 1 + matches.length) % matches.length)}>
+              <Icon name="up" size={18} stroke={2.4} />
+            </button>
+            <button type="button" className="m-icon-btn" aria-label={t("dk.findNext")} disabled={!matches.length} onClick={() => setFindAt((i) => (i + 1) % matches.length)}>
+              <Icon name="up" size={18} stroke={2.4} className="m-flipv" />
+            </button>
+            <button type="button" className="m-icon-btn" aria-label={t("dk.findClose")} onClick={() => setFind(null)}>
+              <Icon name="close" size={16} stroke={2.4} />
+            </button>
+          </div>
+        )}
         {main}
         <div ref={endRef} className="m-end" />
       </main>
@@ -600,11 +717,13 @@ export function ChatScreen({ chatId }: { chatId: string }) {
             onToast={showToast}
             reply={reply}
             onCancelReply={() => setReply(null)}
+            opts={opts}
+            onOpts={setOpts}
             onSend={async (text) => {
               tap();
               const r = reply;
               setReply(null);
-              const ok = await m.send(chatId, text, r ?? undefined);
+              const ok = await m.send(chatId, text, r ?? undefined, opts);
               if (!ok) showToast(m.lastJobError());
               return true;
             }}
@@ -627,9 +746,53 @@ export function ChatScreen({ chatId }: { chatId: string }) {
                     void navigator.clipboard?.writeText(menu.text).then(() => showToast(t("common.copied")), () => {});
                   },
                 },
+                // Only the computer can do these (they change its copy of the chat and what the bots learned).
+                { label: t("dk.chat.fork"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+                ...(menu.kind === "bot"
+                  ? [
+                      { label: t("dk.chat.good"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+                      { label: t("dk.chat.bad"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+                    ]
+                  : []),
               ]
             : []
         }
+      />
+      <ActionSheet
+        open={chatMenu}
+        title={title}
+        onClose={() => setChatMenu(false)}
+        actions={
+          view
+            ? [
+                { label: t("dk.chat.find"), onPress: () => (setFind(""), setFindAt(0)) },
+                { label: isPinned(m.pins, view) ? t("dk.chat.unpin") : t("dk.chat.pin"), onPress: () => m.togglePin(view) },
+                ...(view.entries.length ? [{ label: t("dk.chat.export"), onPress: download }] : []),
+                ...(editHref ? [{ label: t("ed.bot.editTitle", { name: title }), onPress: () => router.push(editHref) }] : []),
+                ...(chat ? [{ label: t("dk.delete"), destructive: true, onPress: () => setAskDelete(true) }] : []),
+                { label: t("dk.chat.clear"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+                { label: t("dk.cv.title"), sub: t("dk.canvasHint"), disabled: true, onPress: () => {} },
+                { label: t("dk.chat.live"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+                { label: t("dk.folder.title"), sub: t("ed.onComputer"), disabled: true, onPress: () => {} },
+              ]
+            : []
+        }
+      />
+      <ActionSheet
+        open={askDelete}
+        message={t("chats.deleteAsk", { name: title })}
+        onClose={() => setAskDelete(false)}
+        actions={[
+          {
+            label: t("dk.delete"),
+            destructive: true,
+            onPress: () =>
+              void m.removeChat(chatId).then((ok) => {
+                showToast(ok ? t("chats.deleted") : t("create.err.save"));
+                if (ok) router.replace(to());
+              }),
+          },
+        ]}
       />
     </div>
   );

@@ -2,6 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   activityOf,
+  chatMarkdown,
+  exportName,
+  findInChat,
+  isPinned,
+  editBotItem,
+  editGroupItem,
+  setupWithoutBot,
   agoShort,
   backoffMs,
   bytesLabel,
@@ -123,7 +130,7 @@ test("setup: bots, groups and connectors with name and on/off only (no commands,
     { id: "m1", name: "Notion", enabled: true, kind: "remote" },
   ]);
   assert.deepEqual(s.groups[0]!.memberIds, ["b1", "b2"]);
-  assert.deepEqual(phoneSetup(null), { bots: [], groups: [], connectors: [], mainId: null });
+  assert.deepEqual(phoneSetup(null), { bots: [], groups: [], connectors: [], mainId: null, routines: [] });
 });
 
 test("slim chats keep text and the running reply's last step, drop tool results", () => {
@@ -323,4 +330,86 @@ test("one list: chats, then the bots and groups that have no chat yet; new bots 
   assert.deepEqual(newGroupItem({ name: "Team", memberIds: ["b2", "b1", "b2"] }, 3), { name: "Team", memberIds: ["b2", "b1"], leadId: "b2", orchestrate: true, createdAt: 3 });
   assert.equal(newGroupItem({ name: "", memberIds: ["b1"] }, 3), null);
   assert.match(setupId(), /^[0-9a-f]{12}$/);
+});
+
+test("editing a bot keeps what the phone doesn't change (model, connectors, expert), and follows the computer's rules", () => {
+  const item = { name: "Rex", role: "Writer", instructions: "Write.", face: { color: 1 }, tools: { web: true, browser: true, accounts: true, mcp: ["gmail"] }, provider: "openai", model: "x", createdAt: 5 };
+  const out = editBotItem(item, { name: " Rex Two ", role: "  Editor ", about: "", tools: { browser: false }, hidden: true });
+  assert.equal(out.name, "RexTwo");
+  assert.equal(out.role, "Editor");
+  assert.equal("about" in out, false);
+  assert.deepEqual(out.tools, { web: true, browser: false, accounts: false, mcp: ["gmail"] });
+  assert.equal(out.provider, "openai");
+  assert.equal(out.model, "x");
+  assert.equal(out.createdAt, 5);
+  assert.equal(out.hidden, true);
+  assert.equal("hidden" in editBotItem(out, { hidden: false }), false);
+  assert.equal(editBotItem(item, { local: true }).local, true);
+  // An expert's character is oovi's: role and instructions stay.
+  const ex = editBotItem({ ...item, expert: "m1" }, { role: "Hacked", instructions: "Hacked", name: "Ex" });
+  assert.equal(ex.role, "Writer");
+  assert.equal(ex.instructions, "Write.");
+  assert.equal(ex.name, "Ex");
+  assert.equal(String(editBotItem(item, { name: "a".repeat(40) }).name).length, 24);
+});
+
+test("editing a group: a name, at least one member, the leader is a member", () => {
+  const g = { name: "Studio", memberIds: ["a", "b"], leadId: "b", orchestrate: true, createdAt: 1 };
+  assert.deepEqual(editGroupItem(g, { name: " Team ", memberIds: ["a", "c", "a"] }), { name: "Team", memberIds: ["a", "c"], leadId: "a", orchestrate: true, createdAt: 1 });
+  assert.equal(editGroupItem(g, { leadId: "a" })?.leadId, "a");
+  assert.equal(editGroupItem(g, { orchestrate: false })?.orchestrate, false);
+  assert.equal(editGroupItem(g, { name: "  " }), null);
+  assert.equal(editGroupItem(g, { memberIds: [] }), null);
+});
+
+test("deleting a bot, as the computer does: it leaves its groups and is no longer the Chief", () => {
+  const items = { "bot:a": { name: "A" }, "bot:b": { name: "B" }, "group:g": { name: "G", memberIds: ["a", "b"], leadId: "a" }, "group:h": { name: "H", memberIds: ["b"], leadId: "b" }, main: "a", settings: { x: 1 } };
+  const out = setupWithoutBot(items, "a");
+  assert.equal("bot:a" in out, false);
+  assert.equal("main" in out, false);
+  assert.deepEqual(out["group:g"], { name: "G", memberIds: ["b"], leadId: "b" });
+  assert.deepEqual(out["group:h"], items["group:h"]);
+  assert.deepEqual(out.settings, { x: 1 });
+  assert.equal(setupWithoutBot(items, "b").main, "a");
+});
+
+test("download a chat as Markdown, like the computer: who and when, quotes, no inner steps", () => {
+  const chat = {
+    id: "dm-rex",
+    kind: "direct",
+    name: "Rex",
+    memberIds: ["rex"],
+    createdAt: 0,
+    updatedAt: 0,
+    entries: [
+      { id: "u1", kind: "user", text: "Hi", at: Date.UTC(2026, 10, 19, 8, 5) },
+      { id: "b1", kind: "bot", botId: "rex", text: "Hello **you**", status: "done", at: Date.UTC(2026, 10, 19, 8, 6), steps: [{ role: "tool", results: [] }] },
+      { id: "u2", kind: "user", text: "More", at: Date.UTC(2026, 10, 19, 8, 7), replyTo: { id: "b1", who: "Rex", text: "Hello\nyou" } },
+      { id: "b2", kind: "bot", botId: "rex", text: "", status: "running", at: Date.UTC(2026, 10, 19, 8, 8) },
+    ],
+  } as never;
+  const md = chatMarkdown(chat, "Rex", (id) => (id === "rex" ? "Rex" : id), Date.UTC(2026, 10, 19, 9, 0));
+  assert.equal(md, "# Rex\n\n_Exported from oovi on 2026-11-19 09:00 (UTC)._\n\n## You · 2026-11-19 08:05\n\nHi\n\n## Rex · 2026-11-19 08:06\n\nHello **you**\n\n## You · 2026-11-19 08:07\n\n> Rex: Hello you\n\nMore\n");
+  assert.equal(exportName('A/B: "c"?'), "A B c .md".replace("c .md", "c.md"));
+  assert.equal(exportName("   "), "oovi chat.md");
+  assert.deepEqual(findInChat((chat as { entries: never[] }).entries, "HELLO"), ["b1"]);
+  assert.deepEqual(findInChat((chat as { entries: never[] }).entries, " "), []);
+  assert.equal(isPinned(["-x"], { id: "x", pinned: true }), false);
+  assert.equal(isPinned([], { id: "x", pinned: true }), true);
+});
+
+test("routines from the account's setup: read-only, when they run in words", async () => {
+  const { phoneSetup, routineWhen } = await import("../../web/app/m/_lib/core.ts");
+  const s = phoneSetup({
+    "routine:r1": { name: "Morning news", botId: "b1", prompt: "secret prompt", schedule: { kind: "weekly", time: "08:30", days: [1, 3] }, timezone: "Africa/Algiers" },
+    "routine:r2": { name: "Watch", botId: "b1", schedule: { kind: "hourly", every: 2, from: "07:00" } },
+    "routine:bad": { name: "", botId: "b1" },
+  });
+  assert.equal(s.routines?.length, 2);
+  assert.deepEqual(s.routines?.[0], { id: "r1", name: "Morning news", botId: "b1", schedule: { kind: "weekly", time: "08:30", days: [1, 3] }, timezone: "Africa/Algiers" });
+  assert.equal(JSON.stringify(s).includes("secret prompt"), false);
+  assert.deepEqual(routineWhen({ kind: "weekly", time: "08:30", days: [1, 3] }, "en"), { key: "weekly", vars: { time: "08:30", days: "Mon, Wed" } });
+  assert.deepEqual(routineWhen({ kind: "hourly", every: 2 }, "en"), { key: "hourly", vars: { n: "2" } });
+  assert.equal(routineWhen({ kind: "webhook" }, "fr").key, "webhook");
+  assert.equal(routineWhen({ kind: "?" }, "ar").key, "other");
 });

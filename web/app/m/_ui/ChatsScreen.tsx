@@ -98,6 +98,13 @@ export function ChatsScreen({ archivedView = false, side = base() === "/app" }: 
           .join(", ")
       : bot(c.memberIds[0] ?? "")?.role || t("chats.sayHello");
 
+  // Tapping a face edits that bot or group (owner, 2026-11-19), when it is in the account's setup.
+  const editHref = (c: Chat): string | null => {
+    if (c.kind === "group") return setup?.groups.some((g) => g.id === c.id) ? to(`/group/${encodeURIComponent(c.id)}`) : null;
+    const id = c.memberIds[0];
+    return id && setup?.bots.some((b) => b.id === id) ? to(`/bot/${encodeURIComponent(id)}`) : null;
+  };
+
   const row = (r: ListRow) => {
     const c = r.chat;
     const fresh = isFresh(c);
@@ -125,11 +132,17 @@ export function ChatsScreen({ archivedView = false, side = base() === "/app" }: 
           ]}
           trail={trail}
         >
-          <Link href={`${to()}/c/${encodeURIComponent(c.id)}`} className={`m-chat${side ? " m-chat--side" : ""}${fresh ? " is-fresh" : ""}${openId === c.id ? " is-open" : ""}`} aria-current={openId === c.id ? "page" : undefined}>
-            <span className="m-chat__face" aria-hidden>
-              <ChatFace faces={faces} size={side ? 40 : 54} mood={running ? "working" : undefined} />
-            </span>
-            <span className="m-chat__main">
+          <div className={`m-chat${side ? " m-chat--side" : ""}${fresh ? " is-fresh" : ""}${openId === c.id ? " is-open" : ""}`}>
+            {editHref(c) ? (
+              <Link href={editHref(c)!} className="m-chat__face is-tap" aria-label={t("ed.bot.editTitle", { name: title })} onClick={() => tap()}>
+                <ChatFace faces={faces} size={side ? 40 : 54} mood={running ? "working" : undefined} />
+              </Link>
+            ) : (
+              <span className="m-chat__face" aria-hidden>
+                <ChatFace faces={faces} size={side ? 40 : 54} mood={running ? "working" : undefined} />
+              </span>
+            )}
+            <Link href={`${to()}/c/${encodeURIComponent(c.id)}`} className="m-chat__main" aria-current={openId === c.id ? "page" : undefined}>
               <span className="m-chat__top">
                 <span className="m-chat__name" dir="auto">
                   {title}
@@ -152,8 +165,8 @@ export function ChatsScreen({ archivedView = false, side = base() === "/app" }: 
                   <span className="m-count m-count--dot" role="img" aria-label={t("chats.unreadDot")} />
                 ) : null}
               </span>
-            </span>
-          </Link>
+            </Link>
+          </div>
         </SwipeRow>
       </li>
     );
@@ -279,6 +292,8 @@ export function ChatsScreen({ archivedView = false, side = base() === "/app" }: 
   );
 
   const startable = all.filter((r) => !archived.includes(r.chat.id));
+  // Hidden bots stay out of the list (like the computer's); "New chat" still reaches them.
+  const hiddenBots = (setup?.bots ?? []).filter((b) => b.hidden);
   return (
     <div className={`m-screen${side ? " m-screen--side" : ""}${side && !archivedView ? " m-screen--sidelist" : ""}`}>
       {side && !archivedView ? (
@@ -369,6 +384,30 @@ export function ChatsScreen({ archivedView = false, side = base() === "/app" }: 
             );
           })}
         </ul>
+        {hiddenBots.length > 0 && (
+          <>
+            <h3 className="m-list-head">{t("dk.hiddenBots")}</h3>
+            <ul className="m-chats m-chats--pick">
+              {hiddenBots.map((b) => (
+                <li key={b.id}>
+                  <Link href={`${to()}/c/${encodeURIComponent(`dm-${b.id}`)}`} className="m-chat" onClick={() => setPicking(false)}>
+                    <span className="m-chat__face" aria-hidden>
+                      <ChatFace faces={[b.face]} size={44} />
+                    </span>
+                    <span className="m-chat__main">
+                      <span className="m-chat__name" dir="auto">
+                        {b.name}
+                      </span>
+                      <span className="m-chat__preview" dir="auto">
+                        {b.role}
+                      </span>
+                    </span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
       </Sheet>
     </div>
   );

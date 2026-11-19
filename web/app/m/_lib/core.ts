@@ -13,6 +13,7 @@ import type {
   SetupBot,
   SetupConnector,
   SetupGroup,
+  SetupRoutine,
   ToolCall,
   UserEntry,
 } from "./types";
@@ -135,6 +136,7 @@ export function phoneSetup(items: Record<string, unknown> | null | undefined): P
   const bots: SetupBot[] = [];
   const groups: SetupGroup[] = [];
   const connectors: SetupConnector[] = [];
+  const routines: SetupRoutine[] = [];
   let mainId: string | null = null;
   for (const [k, raw] of Object.entries(items ?? {})) {
     const v = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -156,13 +158,30 @@ export function phoneSetup(items: Record<string, unknown> | null | undefined): P
     } else if (k.startsWith("mcp:")) {
       if (typeof v.name !== "string" || !v.name) continue;
       connectors.push({ id: k.slice(4), name: v.name.slice(0, 80), enabled: v.enabled !== false, kind: v.transport === "stdio" ? "local" : "remote" });
+    } else if (k.startsWith("routine:")) {
+      if (typeof v.name !== "string" || !v.name || typeof v.botId !== "string") continue;
+      const sc = (v.schedule && typeof v.schedule === "object" ? v.schedule : {}) as Record<string, unknown>;
+      routines.push({
+        id: k.slice(8),
+        name: v.name.slice(0, 80),
+        botId: v.botId,
+        schedule: {
+          kind: typeof sc.kind === "string" ? sc.kind : "",
+          ...(typeof sc.time === "string" ? { time: sc.time.slice(0, 5) } : typeof sc.from === "string" ? { time: sc.from.slice(0, 5) } : {}),
+          ...(Array.isArray(sc.days) ? { days: sc.days.filter((d): d is number => Number.isInteger(d) && d >= 0 && d <= 6) } : {}),
+          ...(typeof sc.every === "number" ? { every: sc.every } : {}),
+          ...(typeof sc.at === "number" ? { at: sc.at } : {}),
+        },
+        ...(typeof v.timezone === "string" ? { timezone: v.timezone.slice(0, 60) } : {}),
+      });
     } else if (k === "main" && typeof raw === "string") {
       mainId = raw;
     }
   }
+  routines.sort((a, b) => a.name.localeCompare(b.name));
   bots.sort((a, b) => (a.id === mainId ? -1 : b.id === mainId ? 1 : (a.createdAt ?? 0) - (b.createdAt ?? 0)));
   connectors.sort((a, b) => a.name.localeCompare(b.name));
-  return { bots, groups, connectors, mainId };
+  return { bots, groups, connectors, mainId, routines };
 }
 
 /** The direct chat with a bot has this id on the computer (lib/store.ts dmId). */
@@ -329,7 +348,9 @@ export function needsComputerAction(it: ApprovalItem): boolean {
 
 // ---------- the phone's messages on their way ----------
 
-export type Outgoing = { entryId: string; chatId: string; text: string; at: number; jobId?: string; state: "sending" | "sent" | "failed"; replyTo?: { id: string; who: string; text: string } };
+/** How the bots work on a message (the computer's composer: effort, plan first, deep work), sent with it. */
+export type SendOptions = { effort?: "auto" | "low" | "medium" | "high" | "max"; plan?: boolean; deep?: boolean };
+export type Outgoing = { entryId: string; chatId: string; text: string; at: number; jobId?: string; state: "sending" | "sent" | "failed"; replyTo?: { id: string; who: string; text: string }; opts?: SendOptions };
 
 /**
  * Messages sent from the phone that the chat does not show yet (the computer or the runner adds them). Matched by
@@ -484,14 +505,14 @@ export const isFresh = (c: Chat) => c.entries.length === 0;
 export function botNameProblem(name: string, taken: string[]): "empty" | "oneWord" | "taken" | null {
   const n = name.trim();
   if (!n) return "empty";
-  if (!/^[\p{L}\p{N}_-]{1,30}$/u.test(n)) return "oneWord";
+  if (!/^[\p{L}\p{N}_-]{1,24}$/u.test(n)) return "oneWord";
   if (taken.some((t) => t.toLowerCase() === n.toLowerCase())) return "taken";
   return null;
 }
 
 /** A new bot as the account's setup keeps it (the desktop's lib/setup-sync.ts reads it and adds the bot). */
 export function newBotItem(input: { name: string; role: string; face: Record<string, unknown> }, now: number): Record<string, unknown> {
-  const name = input.name.trim().slice(0, 30);
+  const name = input.name.trim().slice(0, 24);
   const role = input.role.trim().slice(0, 80);
   return {
     name,
@@ -516,4 +537,146 @@ export function setupId(rand: () => number = Math.random): string {
   let s = "";
   for (let i = 0; i < 12; i++) s += "0123456789abcdef"[Math.floor(rand() * 16)];
   return s;
+}
+
+// ---------- editing a bot or a group (owner, 2026-11-19: tap a face to edit it), in the desktop's item shapes ----------
+
+/** The desktop's limits (lib/bot-limits.ts and components/BotEditor.tsx). */
+export const BOT_LIMITS = { name: 24, role: 80, about: 400, instructions: 6000, groupName: 48 } as const;
+
+export type BotPatch = {
+  name?: string;
+  role?: string;
+  about?: string;
+  instructions?: string;
+  face?: Record<string, unknown>;
+  tools?: { web?: boolean; browser?: boolean; accounts?: boolean };
+  hidden?: boolean;
+  local?: boolean;
+};
+
+/**
+ * A bot item with the person's changes, everything else kept as it is (its model, connectors, expert id, createdAt…:
+ * the phone never sees or changes a model). An expert's role, description and instructions are oovi's: kept.
+ * Accounts need the browser, like on the computer.
+ */
+export function editBotItem(item: Record<string, unknown>, p: BotPatch): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...item };
+  const expert = typeof item.expert === "string" && !!item.expert;
+  if (p.name !== undefined) out.name = p.name.replace(/\s+/g, "").slice(0, BOT_LIMITS.name);
+  if (!expert) {
+    if (p.role !== undefined) out.role = p.role.trim().slice(0, BOT_LIMITS.role);
+    if (p.about !== undefined) {
+      const a = p.about.trim().slice(0, BOT_LIMITS.about);
+      if (a) out.about = a;
+      else delete out.about;
+    }
+    if (p.instructions !== undefined) out.instructions = p.instructions.slice(0, BOT_LIMITS.instructions);
+  }
+  if (p.face !== undefined) out.face = p.face;
+  if (p.tools) {
+    const cur = (item.tools && typeof item.tools === "object" ? item.tools : {}) as Record<string, unknown>;
+    const web = p.tools.web ?? cur.web === true;
+    const browser = p.tools.browser ?? cur.browser === true;
+    const accounts = browser && (p.tools.accounts ?? cur.accounts === true);
+    out.tools = { ...cur, web, browser, accounts };
+  }
+  if (p.hidden !== undefined) {
+    if (p.hidden) out.hidden = true;
+    else delete out.hidden;
+  }
+  if (p.local !== undefined) {
+    if (p.local) out.local = true;
+    else delete out.local;
+  }
+  return out;
+}
+
+/** A group item with its new name, members and leader (the leader is a member, else the first one). */
+export function editGroupItem(item: Record<string, unknown>, p: { name?: string; memberIds?: string[]; leadId?: string; orchestrate?: boolean }): Record<string, unknown> | null {
+  const out: Record<string, unknown> = { ...item };
+  if (p.name !== undefined) {
+    const n = p.name.trim().slice(0, BOT_LIMITS.groupName);
+    if (!n) return null;
+    out.name = n;
+  }
+  const members = p.memberIds !== undefined ? [...new Set(p.memberIds.filter(Boolean))].slice(0, 12) : Array.isArray(item.memberIds) ? (item.memberIds as string[]) : [];
+  if (!members.length) return null;
+  out.memberIds = members;
+  const lead = p.leadId ?? (typeof item.leadId === "string" ? item.leadId : undefined);
+  out.leadId = lead && members.includes(lead) ? lead : members[0];
+  if (p.orchestrate !== undefined) out.orchestrate = p.orchestrate;
+  return out;
+}
+
+/**
+ * The setup without a bot, as the computer deletes one (lib/store.ts deleteBot): it leaves every group (a group it
+ * led gets its first remaining member as leader), and it is no longer the Chief.
+ */
+export function setupWithoutBot(items: Record<string, unknown>, botId: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(items)) {
+    if (k === `bot:${botId}`) continue;
+    if (k === "main" && v === botId) continue;
+    if (k.startsWith("group:") && v && typeof v === "object") {
+      const g = v as Record<string, unknown>;
+      const members = Array.isArray(g.memberIds) ? (g.memberIds as string[]) : [];
+      if (members.includes(botId)) {
+        const left = members.filter((m) => m !== botId);
+        out[k] = { ...g, memberIds: left, leadId: g.leadId === botId ? left[0] : g.leadId };
+        continue;
+      }
+    }
+    out[k] = v;
+  }
+  return out;
+}
+
+/** When a routine runs, in words (its time zone is the computer's). Days: 0 = Sunday. */
+export function routineWhen(s: SetupRoutine["schedule"], lang: Lang): { key: "daily" | "weekly" | "hourly" | "minutes" | "once" | "webhook" | "other"; vars: Record<string, string> } {
+  const loc = lang === "ar" ? "ar-DZ-u-nu-latn" : lang === "fr" ? "fr-FR" : "en-US";
+  const dayName = (d: number) => new Intl.DateTimeFormat(loc, { weekday: "short", timeZone: "UTC" }).format(new Date(Date.UTC(2024, 0, 7 + d)));
+  const time = s.time ?? "";
+  if (s.kind === "daily") return { key: "daily", vars: { time } };
+  if (s.kind === "weekly") return { key: "weekly", vars: { time, days: (s.days ?? []).map(dayName).join(lang === "ar" ? "، " : ", ") } };
+  if (s.kind === "hourly") return { key: "hourly", vars: { n: String(s.every ?? 1) } };
+  if (s.kind === "minutes") return { key: "minutes", vars: { n: String(s.every ?? 30) } };
+  if (s.kind === "once" && s.at) return { key: "once", vars: { when: new Intl.DateTimeFormat(loc, { dateStyle: "medium", timeStyle: "short" }).format(new Date(s.at)) } };
+  if (s.kind === "webhook") return { key: "webhook", vars: {} };
+  return { key: "other", vars: {} };
+}
+
+// ---------- a chat's own tools (the computer's chat header: find, pin, download) ----------
+
+export const isPinned = (pins: string[], chat: Pick<Chat, "id" | "pinned">) => pins.includes(chat.id) || (chat.pinned === true && !pins.includes(`-${chat.id}`));
+
+const mdWhen = (t: number) => new Date(t).toISOString().slice(0, 16).replace("T", " ");
+
+/**
+ * The chat as a Markdown file, as the computer's "Download this chat" makes it (lib/chat-basics-core.ts
+ * chatMarkdown): who wrote what and when (UTC), without the bots' inner steps.
+ */
+export function chatMarkdown(chat: Chat, title: string, nameOf: (botId: string) => string, now = Date.now()): string {
+  const out = [`# ${title}`, "", `_Exported from oovi on ${mdWhen(now)} (UTC)._`, ""];
+  for (const e of chat.entries) {
+    if (e.kind === "user") {
+      if ((e as { via?: unknown }).via) continue;
+      out.push(`## You · ${mdWhen(e.at)}`, "");
+      if (e.replyTo) out.push(`> ${e.replyTo.who}: ${e.replyTo.text.replace(/\n/g, " ")}`, "");
+      out.push(e.text || "", "");
+    } else {
+      if (!e.text || (e as { held?: boolean }).held) continue;
+      out.push(`## ${nameOf(e.botId)} · ${mdWhen(e.at)}`, "", e.text, "");
+    }
+  }
+  return `${out.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
+}
+
+/** A file name for the download: the chat's name without characters file systems refuse. */
+export const exportName = (title: string) => `${(title.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim() || "oovi chat").slice(0, 80)}.md`;
+
+/** The ids of the messages that contain the words searched (accents and case ignored), oldest first. */
+export function findInChat(entries: Entry[], q: string): string[] {
+  if (!q.trim()) return [];
+  return entries.filter((e) => (e.kind === "user" || (e.kind === "bot" && !(e as { held?: boolean }).held)) && matchesQuery(q, [e.text])).map((e) => e.id);
 }

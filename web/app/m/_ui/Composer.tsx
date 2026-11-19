@@ -5,6 +5,7 @@
 // (visualViewport) and above the home indicator (safe area).
 import { useEffect, useRef, useState } from "react";
 import { ApiError, transcribe } from "../_lib/api";
+import type { SendOptions } from "../_lib/core";
 import { tap } from "../_lib/haptics";
 import { Icon } from "./Icon";
 import { ActionSheet, Spinner } from "./kit";
@@ -29,7 +30,12 @@ export function Composer({
   onToast,
   reply,
   onCancelReply,
+  opts,
+  onOpts,
 }: {
+  /** Effort, plan first, deep work (the computer's composer), sent with the message. */
+  opts?: SendOptions;
+  onOpts?: (o: SendOptions) => void;
   reply?: { who: string; text: string } | null;
   onCancelReply?: () => void;
   placeholder: string;
@@ -46,6 +52,9 @@ export function Composer({
   const [secs, setSecs] = useState(0);
   const [canVoice, setCanVoice] = useState(false);
   const [attach, setAttach] = useState(false);
+  const [effortOpen, setEffortOpen] = useState(false);
+  const effort = opts?.effort ?? "auto";
+  const optsOn = !!opts && (!!opts.plan || !!opts.deep || effort !== "auto");
   const box = useRef<HTMLTextAreaElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
@@ -213,6 +222,26 @@ export function Composer({
           </button>
         </div>
       ) : (
+        <>
+        {optsOn && onOpts && (
+          <div className="m-optsbar">
+            {effort !== "auto" && (
+              <button type="button" className="m-optchip" onClick={() => setEffortOpen(true)}>
+                {t("dk.chat.effortTitle")}: {t(`dk.chat.effort.${effort}`)}
+              </button>
+            )}
+            {opts?.plan && (
+              <button type="button" className="m-optchip" onClick={() => onOpts({ ...opts, plan: false })} aria-label={`${t("dk.chat.planMode")} ✕`}>
+                {t("dk.chat.planMode")} <Icon name="close" size={12} stroke={2.6} />
+              </button>
+            )}
+            {opts?.deep && (
+              <button type="button" className="m-optchip" onClick={() => onOpts({ ...opts, deep: false })} aria-label={`${t("dk.chat.deep")} ✕`}>
+                {t("dk.chat.deep")} <Icon name="close" size={12} stroke={2.6} />
+              </button>
+            )}
+          </div>
+        )}
         <div className="m-composer__row">
           <button type="button" className="m-icon-btn m-composer__plus" onClick={() => setAttach(true)} aria-label={t("chat.attach")} disabled={rec === "working"}>
             <Icon name="plus" size={26} stroke={2} />
@@ -257,6 +286,7 @@ export function Composer({
             </button>
           )}
         </div>
+        </>
       )}
       {disabled && <p className="m-composer__hint">{t("chat.offlineSend")}</p>}
       <ActionSheet
@@ -264,8 +294,25 @@ export function Composer({
         title={t("chat.attach")}
         message={t("chat.attachSoon")}
         onClose={() => setAttach(false)}
-        actions={canVoice ? [{ label: t("chat.voiceNote"), onPress: () => void startVoice() }] : []}
+        actions={[
+          ...(canVoice ? [{ label: t("chat.voiceNote"), onPress: () => void startVoice() }] : []),
+          ...(onOpts
+            ? [
+                { label: `${t("dk.chat.effortTitle")}: ${t(`dk.chat.effort.${effort}`)}`, onPress: () => setEffortOpen(true) },
+                { label: t("dk.chat.planMode"), sub: t("dk.chat.planModeHint"), checked: !!opts?.plan, onPress: () => onOpts({ ...opts, plan: !opts?.plan }) },
+                { label: t("dk.chat.deep"), sub: t("dk.chat.deepHint"), checked: !!opts?.deep, onPress: () => onOpts({ ...opts, deep: !opts?.deep }) },
+              ]
+            : []),
+        ]}
       />
+      {onOpts && (
+        <ActionSheet
+          open={effortOpen}
+          title={t("dk.chat.effortTitle")}
+          onClose={() => setEffortOpen(false)}
+          actions={(["auto", "low", "medium", "high", "max"] as const).map((e) => ({ label: t(`dk.chat.effort.${e}`), sub: t(`dk.chat.effort.${e}.hint`), checked: effort === e, onPress: () => onOpts({ ...opts, effort: e }) }))}
+        />
+      )}
     </div>
   );
 }

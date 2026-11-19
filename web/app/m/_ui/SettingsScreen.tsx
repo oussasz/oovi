@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { getAccount, resendVerification } from "../_lib/api";
-import { agoShort, bytesLabel, computerState, syncUse } from "../_lib/core";
+import { agoShort, bytesLabel, computerState, routineWhen, syncUse } from "../_lib/core";
 import type { Account } from "../_lib/types";
 import { Icon } from "./Icon";
 import { ActionSheet, IconTile, LargeTitle, MeAvatar, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
@@ -236,6 +236,33 @@ export function SettingsScreen() {
             </>
           )}
           <Row icon={<IconTile name="plug" color="var(--m-blob-yellow)" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href={to("/connectors")} />
+        </Section>
+
+        <Section header={t("dk.routines")} footer={t("dk.routinesNote")} id="routines-h">
+          {(setup?.routines ?? []).length ? (
+            (setup?.routines ?? []).map((r) => {
+              const w = routineWhen(r.schedule, lang);
+              return (
+                <Row
+                  key={r.id}
+                  icon={<IconTile name="clock" color="var(--m-blob-mint)" />}
+                  title={<span dir="auto">{r.name}</span>}
+                  sub={`${t(`dk.routine.${w.key}`, w.vars)} · ${t("dk.routine.by", { name: m.bot(r.botId)?.name ?? "oovi" })}`}
+                  value={
+                    <span className="m-pill m-pill--quiet">
+                      <Icon name="laptop" size={14} /> {t("ed.onComputer")}
+                    </span>
+                  }
+                />
+              );
+            })
+          ) : (
+            <div className="m-row m-row--note">{t("dk.routinesNone")}</div>
+          )}
+        </Section>
+
+        <Section>
+          <Row icon={<IconTile name="bots" color="var(--m-blob-yellow)" />} title={t("dk.marketplace")} sub={t("dk.marketplaceSub")} href="/experts" external />
         </Section>
 
         <Section header={t("settings.prefs")}>

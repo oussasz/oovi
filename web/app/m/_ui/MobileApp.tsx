@@ -4,11 +4,11 @@
 // phone and their refresh, pins and unread marks, and the messages the phone sends (POST /api/v1/cloud/jobs).
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { ApiError, SIGNED_OUT_EVENT, addToSetup, deleteChat, removeFromSetup, finishSignIn, getChat, getCredits, getMe, getSetup, getStatus, getVault, listChats, listVault, postJob } from "../_lib/api";
+import { ApiError, SIGNED_OUT_EVENT, addToSetup, changeSetup, deleteChat, removeFromSetup, finishSignIn, getChat, getCredits, getMe, getSetup, getStatus, getVault, listChats, listVault, postJob } from "../_lib/api";
 import { finishProblem, pendingToHandle, viewOfVault, type ConnectorView, type PendingSignIn } from "../_lib/connectors";
 import { useToast } from "./kit";
 import { signInRecent } from "./signin";
-import { lastShownEntry, newBotItem, newGroupItem, newId, pendingOutgoing, phoneSetup, setupId, pickLang, slimChat, toggleArchive as toggleArchiveList, togglePin as togglePinList, type Lang, type Outgoing } from "../_lib/core";
+import { dmId, setupWithoutBot, lastShownEntry, newBotItem, newGroupItem, newId, pendingOutgoing, phoneSetup, setupId, pickLang, slimChat, toggleArchive as toggleArchiveList, togglePin as togglePinList, type Lang, type Outgoing, type SendOptions } from "../_lib/core";
 import { translate, type Key } from "../_lib/i18n";
 import * as L from "../_lib/local";
 import type { Chat, CloudStatus, Credits, JobPayload, Me, PhoneSetup, SetupBot } from "../_lib/types";
@@ -42,13 +42,17 @@ type Ctx = {
   /** Deletes a chat on every device. */
   removeChat: (chatId: string) => Promise<boolean>;
   /** Adds a bot or a group to the account (the computer adds it at its next setup sync). Answers its id. */
+  /** Changes the account's setup (a bot or group edited here); 409 → read again and apply again. */
+  editSetup: (change: (items: Record<string, unknown>) => Record<string, unknown>) => Promise<boolean>;
+  /** Deletes a bot as the computer does (it leaves its groups), and its direct chat everywhere. */
+  removeBot: (botId: string) => Promise<boolean>;
   addBot: (input: { name: string; role: string; face: Record<string, unknown> }) => Promise<string | null>;
   addGroup: (input: { name: string; memberIds: string[] }) => Promise<string | null>;
   seen: Record<string, number>;
   markSeen: (chatId: string, at?: number) => void;
   markUnread: (chatId: string) => void;
   outbox: Outgoing[];
-  send: (chatId: string, text: string, replyTo?: Outgoing["replyTo"]) => Promise<boolean>;
+  send: (chatId: string, text: string, replyTo?: Outgoing["replyTo"], opts?: SendOptions) => Promise<boolean>;
   retry: (entryId: string) => Promise<boolean>;
   /** The job's id, or null when it couldn't be sent (lastJobError says why, in words for people). */
   job: (chatId: string, job: JobPayload) => Promise<string | null>;
@@ -488,6 +492,37 @@ export function MobileApp({ children }: { children: ReactNode }) {
     [commit, setup],
   );
 
+  const editSetup = useCallback(
+    async (change: (items: Record<string, unknown>) => Record<string, unknown>) => {
+      try {
+        applySetupItems(await changeSetup(change));
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    [applySetupItems],
+  );
+
+  const removeBot = useCallback(
+    async (botId: string) => {
+      try {
+        applySetupItems(await changeSetup((items) => setupWithoutBot(items, botId)));
+      } catch {
+        return false;
+      }
+      try {
+        await deleteChat(dmId(botId));
+      } catch {
+        /* never synced, or already gone */
+      }
+      delete cache.current.chats[dmId(botId)];
+      commit();
+      return true;
+    },
+    [applySetupItems, commit],
+  );
+
   const addBot = useCallback(
     async (input: { name: string; role: string; face: Record<string, unknown> }) => {
       const id = setupId();
@@ -572,7 +607,7 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const deliver = useCallback(
     async (o: Outgoing) => {
       updateOutbox((list) => list.map((x) => (x.entryId === o.entryId ? { ...x, state: "sending" } : x)));
-      const jobId = await job(o.chatId, { kind: "message", payload: { text: o.text, entryId: o.entryId, ...(o.replyTo ? { replyTo: o.replyTo.id } : {}) } });
+      const jobId = await job(o.chatId, { kind: "message", payload: { text: o.text, entryId: o.entryId, ...(o.replyTo ? { replyTo: o.replyTo.id } : {}), ...(o.opts?.effort && o.opts.effort !== "auto" ? { effort: o.opts.effort } : {}), ...(o.opts?.plan ? { plan: true } : {}), ...(o.opts?.deep ? { deep: true } : {}) } });
       updateOutbox((list) => list.map((x) => (x.entryId === o.entryId ? { ...x, state: jobId === null ? "failed" : "sent", ...(jobId ? { jobId } : {}) } : x)));
       return jobId !== null;
     },
@@ -580,8 +615,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   );
 
   const send = useCallback(
-    async (chatId: string, text: string, replyTo?: Outgoing["replyTo"]) => {
-      const o: Outgoing = { entryId: newId(), chatId, text: text.slice(0, 20_000), at: Date.now(), state: "sending", ...(replyTo ? { replyTo } : {}) };
+    async (chatId: string, text: string, replyTo?: Outgoing["replyTo"], opts?: SendOptions) => {
+      const o: Outgoing = { entryId: newId(), chatId, text: text.slice(0, 20_000), at: Date.now(), state: "sending", ...(replyTo ? { replyTo } : {}), ...(opts && (opts.plan || opts.deep || (opts.effort && opts.effort !== "auto")) ? { opts } : {}) };
       updateOutbox((list) => [...list, o]);
       return deliver(o);
     },
@@ -614,8 +649,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
-    [lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
+    [lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
   );
 
   return (

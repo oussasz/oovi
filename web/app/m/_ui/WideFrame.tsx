@@ -26,7 +26,7 @@ export function WideFrame({ children }: { children: ReactNode }) {
   const path = inApp(usePathname() ?? "");
   // Sign-in and the offline page stay one plain screen.
   if (!wide || path.startsWith("/login") || path.startsWith("/offline")) return <>{children}</>;
-  const main = path.startsWith("/c/") || path.startsWith("/connectors") || path.startsWith("/settings") ? children : null;
+  const main = path.startsWith("/c/") || path.startsWith("/connectors") || path.startsWith("/settings") || path.startsWith("/bot/") || path.startsWith("/group/") ? children : null;
   return (
     <div className="m-wide">
       <Pane className="m-pane--list" label={t("tab.chats")}>

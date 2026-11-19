@@ -24,6 +24,7 @@ function fixtures(lang, now = Date.now()) {
   items["mcp:calendar"] = { name: "Google Calendar", transport: "http", url: "https://mcp.example.test/cal", envKeys: [], headerKeys: [], enabled: false, trusted: false, createdAt: 3 };
   items["mcp:files"] = { name: ar ? "ملفات الحاسوب" : "Computer files", transport: "stdio", command: "npx", args: ["-y", "files-server", "C:\\Users\\me"], envKeys: [], headerKeys: [], enabled: true, trusted: true, createdAt: 4 };
   items.settings = { approvals: "ask" };
+  items["routine:r1"] = { name: ar ? "ملخص الصباح" : "Morning digest", botId: "nova", prompt: "SECRET-ROUTINE-PROMPT", schedule: { kind: "weekly", time: "08:30", days: [1, 3, 5] }, timezone: "Africa/Algiers", notifyTelegram: false, createdAt: 1 };
 
   const hotelsAsk = ar ? "لقى لي 3 فنادق في وهران للويكاند الجاي، أقل من 12000 دينار لليلة" : "Find me 3 hotels in Oran for next weekend, under 12,000 DA a night";
   const hotelsReply = ar
@@ -128,7 +129,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0 };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0, avatars: {} };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -360,7 +361,22 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       res.writeHead(200, { "content-type": "text/html" });
       return res.end("<!doctype html><title>Paddle billing</title><h1>Stand-in Paddle customer portal</h1>");
     }
-    if (p.startsWith("/api/v1/avatars/")) return send(res, 404, { error: "no picture" });
+    // A bot's own picture ("Your picture"): POST {png} → {id} (32 hex, like the website), then served back.
+    if (p === "/api/v1/avatars" && req.method === "POST") {
+      if (!signed(req)) return send(res, 401, { error: "Sign in first." });
+      const b = await readBody(req);
+      const png = Buffer.from(String((b && b.png) || "").replace(/^data:image\/png;base64,/, ""), "base64");
+      if (png.length < 8 || png.readUInt32BE(0) !== 0x89504e47) return send(res, 400, { error: "Use a PNG picture." });
+      const id = require("node:crypto").createHash("sha256").update(png).digest("hex").slice(0, 32);
+      state.avatars[id] = png;
+      return send(res, 201, { id });
+    }
+    if (p.startsWith("/api/v1/avatars/")) {
+      const png = state.avatars[p.slice("/api/v1/avatars/".length)];
+      if (!png) return send(res, 404, { error: "no picture" });
+      res.writeHead(200, { "content-type": "image/png", "cache-control": "no-store" });
+      return res.end(png);
+    }
     // The public catalog (the real one needs the website's database): two published connectors, one hidden.
     if (p === "/api/v1/catalog") return send(res, 200, { items: state.catalog, hidden: ["make"] });
     // A stand-in service's sign-in page. mode "same": comes back in this browser (website callback → /m/connectors);

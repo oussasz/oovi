@@ -287,7 +287,8 @@ function useDialogFocus(open: boolean, onClose: () => void) {
   return ref;
 }
 
-export type SheetAction = { label: string; onPress: () => void; destructive?: boolean; bold?: boolean; checked?: boolean };
+/** disabled + sub: something only the computer can do, shown with why (never hidden silently). */
+export type SheetAction = { label: string; onPress: () => void; destructive?: boolean; bold?: boolean; checked?: boolean; disabled?: boolean; sub?: string };
 
 /** iOS action sheet: a message, a group of choices, and Cancel apart. */
 export function ActionSheet({ open, title, message, actions, onClose }: { open: boolean; title?: string; message?: string; actions: SheetAction[]; onClose: () => void }) {
@@ -309,15 +310,21 @@ export function ActionSheet({ open, title, message, actions, onClose }: { open: 
             <button
               key={a.label}
               type="button"
-              className={`m-asheet__btn${a.destructive ? " is-danger" : ""}${a.bold ? " is-bold" : ""}`}
+              className={`m-asheet__btn${a.destructive ? " is-danger" : ""}${a.bold ? " is-bold" : ""}${a.disabled ? " is-off" : ""}`}
               aria-pressed={a.checked === undefined ? undefined : a.checked}
+              aria-disabled={a.disabled || undefined}
               onClick={() => {
+                if (a.disabled) return;
                 tap(a.destructive ? "warning" : "light");
                 onClose();
                 a.onPress();
               }}
             >
-              <span>{a.label}</span>
+              <span className="m-asheet__text">
+                <span>{a.label}</span>
+                {a.sub && <small>{a.sub}</small>}
+              </span>
+              {a.disabled && <Icon name="laptop" size={18} />}
               {a.checked && <Icon name="check" size={20} stroke={2.4} />}
             </button>
           ))}

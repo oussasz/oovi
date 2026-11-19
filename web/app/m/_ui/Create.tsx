@@ -57,7 +57,7 @@ export function NewBotSheet({ open, onClose }: { open: boolean; onClose: () => v
         <div className="m-group m-group--form">
           <label className="m-field">
             <span>{t("create.name")}</span>
-            <input dir="auto" autoComplete="off" maxLength={30} placeholder={t("create.namePh")} value={name} onChange={(e) => setName(e.target.value)} />
+            <input dir="auto" autoComplete="off" maxLength={24} placeholder={t("create.namePh")} value={name} onChange={(e) => setName(e.target.value)} />
           </label>
           <label className="m-field">
             <span>{t("create.role")}</span>
