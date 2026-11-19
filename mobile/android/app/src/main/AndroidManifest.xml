@@ -48,6 +48,8 @@
 
     <!-- Permissions: the internet, and the microphone for voice notes (asked the first time, with an explanation). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Lets the page know when the connection comes back (the offline page then opens oovi by itself). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.microphone" android:required="false" />

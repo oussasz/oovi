@@ -1,6 +1,11 @@
 package app.oovi.mobile;
 
 import android.net.Uri;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.regex.Matcher;
+import org.json.JSONObject;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
@@ -15,12 +20,10 @@ import com.getcapacitor.BridgeWebViewClient;
  */
 class OoviWebViewClient extends BridgeWebViewClient {
 
-    private final Bridge bridge;
     private final MainActivity activity;
 
     OoviWebViewClient(Bridge bridge, MainActivity activity) {
         super(bridge);
-        this.bridge = bridge;
         this.activity = activity;
     }
 
@@ -44,11 +47,24 @@ class OoviWebViewClient extends BridgeWebViewClient {
     @Override
     public void onReceivedError(WebView view, WebResourceRequest request, WebResourceError error) {
         if (!request.isForMainFrame() || !isNetworkError(error.getErrorCode())) return;
-        String errorUrl = bridge.getErrorUrl();
         String failed = request.getUrl().toString();
-        // Never loop on the offline page itself.
-        if (errorUrl == null || failed.startsWith(errorUrl)) return;
-        view.loadUrl(errorUrl + "#" + Uri.encode(NavPolicy.retryPath(failed), "/?=&"));
+        if (failed.startsWith(NavPolicy.OFFLINE_URL)) return; // never loop on the offline page
+        String html = offlineHtml(NavPolicy.retryPath(failed));
+        if (html != null) view.loadDataWithBaseURL(NavPolicy.OFFLINE_URL, html, "text/html", "utf-8", NavPolicy.OFFLINE_URL);
+    }
+
+    /** The offline page built into the app (www/offline.html), told which page to try again. */
+    private String offlineHtml(String retry) {
+        try (InputStream in = activity.getAssets().open("public/offline.html")) {
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            byte[] buf = new byte[8192];
+            for (int n; (n = in.read(buf)) > 0; ) out.write(buf, 0, n);
+            String page = out.toString("UTF-8");
+            // JSONObject.quote escapes quotes and "/" so the value can't end the script.
+            return page.replaceFirst("<script>", Matcher.quoteReplacement("<script>window.OOVI_RETRY=" + JSONObject.quote(retry) + ";"));
+        } catch (IOException e) {
+            return null;
+        }
     }
 
     /** No connection, no name lookup, a timeout or a broken TLS connection: the website can't be reached. */

@@ -11,8 +11,8 @@ go into the stores without changes:
 - **Version code always grows:** major × 1,000,000 + minor × 1,000 + patch (`mobile/scripts/version.mjs`).
 - **Target SDK 36** (Android 16), above Play's current minimum. Check each year: Play raises the minimum every August
   (Play Console → Policy status warns you). To raise it: `mobile/android/variables.gradle`.
-- **Permissions:** internet and microphone (voice notes) only, plus "audio settings" that Android pairs with the
-  microphone. No camera, location, contacts, storage or phone-state.
+- **Permissions:** internet, network state (to notice the connection coming back) and microphone (voice notes)
+  only, plus "audio settings" that Android pairs with the microphone. No camera, location, contacts, storage or phone-state.
 - **Privacy policy inside the app:** Settings → bottom → "Privacy policy" (https://oovi.conuron.com/privacy), and Terms.
 - **No "download the APK" text inside the apps:** the website hides the Android card and the APK button inside oovi's
   app (user agent `ooviApp/…`), so the iPhone app never shows them.

@@ -16,7 +16,10 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
   - Connector sign-in: the service opens in a Custom Tab; it comes back there without the app's session, so the
     website shows its "Yes, it's my account" page (held flow); back in the app, the app re-checks at once (it sends
     "focus" on resume) and `/oauth/finish` completes it. Same flow as an iPhone Home Screen app; NOT tried on a phone.
-  - Offline: no network on a page load → the page built into the app (`mobile/src/offline.html` → `www/offline.html`,
+  - Offline (fixed after the first emulator run showed Android's own "Webpage not available": Capacitor's errorPath
+    points at https://localhost and isn't served; now the app loads the page itself with `loadDataWithBaseURL` at
+    https://oovi.conuron.com/offline.html, `ACCESS_NETWORK_STATE` lets the page see the connection come back):
+    no network on a page load → the page built into the app (`mobile/src/offline.html` → `www/offline.html`,
     logo inlined, ar/fr/en from the app's saved language or the phone's, light/dark), "Try again" and automatic retry
     when the connection is back, to the page that failed (app pages only). The website's own error pages (404...)
     show as they are. After the first visit the phone app's offline worker shows saved chats instead.
@@ -33,7 +36,7 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
   - User agent ends with `ooviApp/1.0` (`web/lib/app-detect.ts`).
 - **Store-ready from day one (owner, via the main session: the APK is temporary until Google Play and the App
   Store):** same app id and key will be Play's (Play App Signing with our key, steps in `mobile/STORES.md`), AAB built
-  each release, target SDK 36, only internet + microphone permissions, Privacy policy and Terms links at the bottom of
+  each release, target SDK 36, only internet, network state and microphone permissions, Privacy policy and Terms links at the bottom of
   the phone app's Settings, no APK/Android text inside oovi's app (so none in the iPhone app), iPhone usage texts for
   microphone, camera and photos. When oovi is on Play: set `NEXT_PUBLIC_PLAY_STORE_URL` in Vercel and the website
   switches to "Get it on Google Play" (`?apk=1` keeps the APK). `mobile/STORES.md`: Play Console listing, Data safety
@@ -64,10 +67,10 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
 - **Verified here:** Android SDK 36 installed in a scratch folder; debug build OK (4.4 MB); `NavPolicyTest` 6/6
   (JUnit); a full release build signed with a THROWAWAY stand-in key exactly like the workflow (keytool → openssl
   encrypt → decrypt identical; wrong password refused; `apksigner` shows the key's SHA-256; versionCode 13000 /
-  0.13.0; permissions: internet, microphone (+ audio settings); release APK 3.3 MB, AAB 3.2 MB); `npx tsc --noEmit`
+  0.13.0; permissions: internet, microphone (+ audio settings) (network state added after, see below); release APK 3.3 MB, AAB 3.2 MB); `npx tsc --noEmit`
   root and web clean; unit tests 425 (424 pass, 1 skipped: the live YouTube test; new `mobile-native.test.mts` 5/5);
   `npm run build` in web OK; `node tests/e2e/mobile-scenario.cjs` 127/127; new `node tests/e2e/native-web-scenario.cjs`
-  57/57 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
+  59/59 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
   app, Back closes a sheet, /download/android, the offline page in 3 languages × light/dark, its retry never leaves
   the app's pages, nothing loaded from the network). Suggest adding it to the release checks in CLAUDE.md (owner's file, not changed).
 - **NOT verified:** no emulator here (no hardware acceleration in this machine): the app was never opened on Android

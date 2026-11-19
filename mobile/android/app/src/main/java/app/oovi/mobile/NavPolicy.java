@@ -14,6 +14,8 @@ public final class NavPolicy {
 
     public static final String HOST = "oovi.conuron.com";
     public static final String HOME = "https://" + HOST + "/m";
+    /** The address the built-in offline page is shown at (its own origin, so it reads the app's saved language). */
+    public static final String OFFLINE_URL = "https://" + HOST + "/offline.html";
 
     public enum Action {
         /** Load it in the app. */

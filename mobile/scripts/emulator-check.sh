@@ -36,10 +36,17 @@ shot 2-signin-dark
 adb shell cmd uimode night no
 
 echo "== 4. App Link to a page of the phone app (unverified link: opened by naming the app)"
+adb logcat -c
 adb shell am start -W -a android.intent.action.VIEW -d "https://oovi.conuron.com/m/settings" $PKG
-waitfor 12
-shot 3-deeplink
+waitfor 2
 top
+shot 3a-deeplink-2s
+waitfor 10
+top
+shot 3-deeplink
+if top | grep -q "$PKG"; then echo "ok: the app is in front after the link"; else echo "::warning::the app is not in front after the link"; fi
+echo "-- log after the link --"
+adb logcat -d | grep -E "ActivityTaskManager|ActivityManager: (Start|Kill|Force)|WindowManager|oovi|Capacitor|chromium" | grep -v AppsFilter | tail -60 || true
 
 echo "== 5. Offline: no network, fresh data (no saved copy of the app)"
 adb shell am force-stop $PKG

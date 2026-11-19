@@ -1,7 +1,7 @@
 <!doctype html>
 <!-- Shown by the oovi app when the website can't be reached (no network, airplane mode, server down).
      Built into the app (mobile/scripts/native-icons.cjs writes www/offline.html with the logo inlined): it must
-     not load anything from the network. The path to go back to comes after "#" (set by the app). -->
+     not load anything from the network. The page to try again is window.OOVI_RETRY (set by the app) or comes after "#". -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -71,7 +71,9 @@
 
   // Only a page of the app itself, never another site.
   var target = "/m";
-  var asked = decodeURIComponent((location.hash || "").slice(1));
+  // Set by the app (OoviWebViewClient), or after "#" (tests).
+  var asked = typeof window.OOVI_RETRY === "string" ? window.OOVI_RETRY : "";
+  if (!asked) { try { asked = decodeURIComponent((location.hash || "").slice(1)); } catch (e) { asked = ""; } }
   if (/^\/(m|app|login|signup|forgot-password|reset-password)(\/[^\s]*)?(\?[^\s]*)?$/.test(asked) && asked.indexOf("//") === -1) target = asked;
 
   function go() {

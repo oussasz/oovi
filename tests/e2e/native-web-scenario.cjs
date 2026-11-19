@@ -181,7 +181,7 @@ async function main() {
     const requests = [];
     const srv = http.createServer((req, resp) => {
       requests.push(req.url);
-      if (req.url === "/offline.html") {
+      if (req.url.split("?")[0] === "/offline.html") {
         resp.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
         resp.end(offline);
       } else {
@@ -233,6 +233,14 @@ async function main() {
       check("E a website page that isn't the app goes to /m instead", u.pathname === "/m", page.url());
       u = await tryAgain("");
       check("E no hash: /m", u.pathname === "/m", page.url());
+      // The app passes the page in window.OOVI_RETRY (OoviWebViewClient); same rules.
+      await ctx.addInitScript(() => { window.OOVI_RETRY = location.search.includes("evil") ? "//evil.example/m" : "/m/settings"; });
+      u = await tryAgain("");
+      check("E the page set by the app (OOVI_RETRY) is retried", u.pathname === "/m/settings", page.url());
+      await page.goto(`${OFF}/offline.html?evil`);
+      await page.getByRole("button").click();
+      await page.waitForURL((x) => !x.pathname.endsWith("/offline.html"), { timeout: 5000 }).catch(() => {});
+      check("E ... and an unsafe one is not", new URL(page.url()).pathname === "/m" && new URL(page.url()).host === `127.0.0.1:${OFF_PORT}`, page.url());
       await ctx.close();
       check("E the offline page asked the network for nothing but itself and the retried pages", requests.every((r) => r.startsWith("/offline.html") || r.startsWith("/m")), requests.join(","));
     } finally {

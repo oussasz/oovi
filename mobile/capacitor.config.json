@@ -6,7 +6,6 @@
   "backgroundColor": "#FBFAF7",
   "server": {
     "url": "https://oovi.conuron.com/m",
-    "errorPath": "offline.html",
     "cleartext": false
   },
   "android": {
