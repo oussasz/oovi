@@ -1,5 +1,20 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Cloud LIVE state (2026-11-19, owner said "deploy" and approved adding RUNNER_SECRET to Vercel)
+- Website deployed from branch cloud-integration (W + A + R + integration fixes): /api/v1/cloud live; RUNNER_SECRET set in
+  Vercel production (generated on the build machine, never shown). Checked: signed out 401, wrong runner secret 403,
+  real secret claim → {"job":null}.
+- Azure for Students: resource group oovi-runner-rg, VM oovi-runner-1, Sweden Central, Standard_B2ats_v2 (2 vCPU, 1 GiB +
+  2 GB swap), public IP 51.12.81.178, NO inbound port open (NSG allows SSH only from 127.0.0.1/32). Managed with
+  `az vm run-command invoke … --command-id RunShellScript` (the build machine can't reach port 22). ≈ $13.40/month.
+- The runner image was built on the build machine and loaded on the VM through a temporary storage account (deleted
+  after): RUNNER_IMAGE=oovi-runner:local in /opt/oovi-runner/.env, RUNNER_MEM_LIMIT=800m, RUNNER_CONCURRENCY=1. The
+  6-hour auto-update can't pull a local image (it fails harmlessly): to update, rebuild and load again the same way,
+  or run the "Runner image" workflow to ghcr.io and switch RUNNER_IMAGE (needs the workflow on the default branch and
+  the package public, or a read-only token on the server).
+- Status checked: container healthy, "0 job(s) running", log line {"ev":"start"}.
+- Users see nothing yet: the desktop app with sync is not released; the phone/web app (part M) is still being built.
+
 ## Cloud integration: W + A + R together, for real (branch `cloud-integration`, 2026-11-18, nothing deployed)
 Tested with the REAL website (web/, built, `next start`) on a throwaway local PostgreSQL, the real desktop app
 (built) and the real runner (as Node and as the Docker image); stand-ins only for theOovi's upstream model and for a
