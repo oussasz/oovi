@@ -1,14 +1,14 @@
 "use client";
 
 // One app that adapts: on a phone, one screen at a time (the route's page). On a wide screen (the web version at
-// /app, a tablet, a computer's browser) two columns like WhatsApp Web: a rail of sections, the list of the current
-// section on the left (chats, bots or settings), and on the right the open chat or connector, or a quiet welcome.
+// /app, a tablet, a computer's browser) it reads like the computer app: a sidebar (logo, the person's picture,
+// "+ Group" / "+ Bot", search, Pinned, Groups and Bots) and the open chat, Settings or a connector beside it, or a
+// quiet welcome.
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
 import { inApp } from "../_lib/route";
-import { BotsScreen } from "./BotsScreen";
 import { ChatsScreen } from "./ChatsScreen";
-import { PaneCtx, SlimeTrio, TabBar, useWide } from "./kit";
+import { PaneCtx, SlimeTrio, useWide } from "./kit";
 import { useM } from "./MobileApp";
 import { SettingsScreen } from "./SettingsScreen";
 
@@ -27,23 +27,17 @@ export function WideFrame({ children }: { children: ReactNode }) {
   const path = inApp(usePathname() ?? "");
   // Sign-in and the offline page stay one plain screen.
   if (!wide || path.startsWith("/login") || path.startsWith("/offline")) return <>{children}</>;
-  const section = path.startsWith("/bots") ? "bots" : path.startsWith("/settings") || path.startsWith("/connectors") ? "settings" : "chats";
-  const detail = path.startsWith("/c/") || path.startsWith("/connectors");
-  const left = section === "bots" ? <BotsScreen /> : section === "settings" ? <SettingsScreen /> : <ChatsScreen archivedView={path.startsWith("/archived")} />;
-  const hello = section === "bots" ? t("wide.pickBot") : section === "settings" ? t("wide.pickSetting") : t("wide.pickChat");
+  const main = path.startsWith("/c/") || path.startsWith("/connectors") ? children : path.startsWith("/settings") ? <SettingsScreen /> : null;
   return (
     <div className="m-wide">
-      <TabBar rail />
-      <Pane className="m-pane--list" label={section === "bots" ? t("tab.bots") : section === "settings" ? t("tab.settings") : t("tab.chats")}>
-        {left}
+      <Pane className="m-pane--list" label={t("tab.chats")}>
+        <ChatsScreen side archivedView={path.startsWith("/archived")} />
       </Pane>
-      <Pane className="m-pane--main" label={hello}>
-        {detail ? (
-          children
-        ) : (
+      <Pane className="m-pane--main" label={main ? t("wide.open") : t("wide.pickChat")}>
+        {main ?? (
           <div className="m-welcome">
             <SlimeTrio mood="happy" size={150} />
-            <h2>{hello}</h2>
+            <h2>{t("wide.pickChat")}</h2>
             <p>{t("wide.sub")}</p>
           </div>
         )}

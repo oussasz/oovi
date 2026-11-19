@@ -163,3 +163,38 @@ export async function changeVault(id: string, change: (d: VaultItem) => VaultIte
   }
   throw new ApiError(409, "conflict");
 }
+
+// ---------- adding bots and groups (the account's setup, as the desktop's setup sync keeps it) ----------
+
+export const putSetup = (baseVersion: number, items: Record<string, unknown>) =>
+  call<{ version: number }>("/api/v1/setup", { method: "PUT", json: { baseVersion, items } });
+
+/**
+ * Changes the account's setup (adds a bot "bot:<id>" or a group "group:<id>", removes a group): reads it, applies
+ * `change`, saves it. When a computer saved in between (409) it reads again and applies the change once more. The
+ * computer follows at its next setup sync (a few minutes).
+ */
+export async function changeSetup(change: (items: Record<string, unknown>) => Record<string, unknown>): Promise<Record<string, unknown>> {
+  for (let i = 0; i < 3; i++) {
+    const cur = await getSetup();
+    const items = change({ ...(cur?.items ?? {}) });
+    try {
+      await putSetup(cur?.version ?? 0, items);
+      return items;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409) || i === 2) throw err;
+    }
+  }
+  throw new ApiError(409, "conflict");
+}
+
+export const addToSetup = (add: Record<string, unknown>) => changeSetup((items) => ({ ...items, ...add }));
+
+export const removeFromSetup = (keys: string[]) =>
+  changeSetup((items) => {
+    for (const k of keys) delete items[k];
+    return items;
+  });
+
+/** Deletes a chat on every device (kept 30 days as a tombstone so the others remove it too). */
+export const deleteChat = (chatId: string) => call<{ version: number }>(`/api/v1/cloud/chats/${encodeURIComponent(chatId)}`, { method: "DELETE" });

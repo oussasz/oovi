@@ -224,19 +224,34 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
 (the desktop's sync) uploads chats; until then it shows "Not synced yet" with the 3 steps.
 - Look (owner, 2026-11-19: "a unique identity, not a copy of Apple"): the website's own language. Warm paper
   (#FBFAF7, dark #151513), Nunito in heavy weights (Tajawal for Arabic), ink-black pill buttons, white cards with
-  warm borders and 22px corners, the logo's pastel pebbles as the color system (floating dock whose active tab sits
-  on a pebble, settings icons on pebbles, unread counts, the switch's yellow pebble), bots' faces shown bare (no
+  warm borders and 22px corners, the logo's pastel pebbles as the color system (settings icons on pebbles, unread
+  counts, the switch's yellow pebble, swipe actions), bots' faces shown bare (no
   tile or frame, owner 2026-11-19), small heavy Nunito section labels (no handwriting: owner found it not
   professional), the sparkle doodle on titles, the slimes in empty states and sign-in, each bot's replies washed in its
   own face color, three hopping pebbles while loading. Kept from good platform practice: 44 pt targets, safe areas,
   springy motion, Dynamic Type sizes, light/dark.
+- ONE LIST, NO TABS (owner, 2026-11-19, review after 99e2d48): no tab bar, no Bots screen, no Settings tab. The
+  chat list holds everything: chats (pinned, then newest), then each bot and group with no chat yet under "Start a
+  chat" (its role or members). At the top "+ Group" and "+ Bot" like the computer, and a pen (New chat: pick any bot
+  or group). "+ Bot": a one-word name (used for @mentions, unique), a role, a face (shuffle); "+ Group": a name and
+  its bots (the first leads). Both are written to the account's setup (`PUT /api/v1/setup`, read-merge-write, 409 →
+  read again; `bot:<12 hex>` / `group:<12 hex>`, the computer's own item shapes in `lib/setup-sync.ts`), the new
+  chat opens at once, and the computer sets them up at its next setup sync (a few minutes). Delete is in the row's
+  swipe and long-press menu, asks first, then `DELETE /api/v1/cloud/chats/<id>` (all devices); a group is also
+  removed from the setup (like deleting it on the computer); a bot with no chat has nothing to delete (its chat
+  starts again). The person's picture (or initial) sits top right where the pen was, and opens Settings (Settings
+  has a back button to Chats). Old `/m/bots` and `/app/bots` links land on the list.
 - WEB VERSION (owner, 2026-11-19, contract 9e27545): the same app in any browser at `/app` (`web/app/app/`: its
   own layout, the pages re-export /m's; links go through `web/app/m/_lib/route.ts` so each version stays itself).
   Signed-in only: every API call checks the session; a signed-out visitor is sent to the website's sign-in page
   and back (`/login?next=/app/...`). Not installable (no manifest or offline worker: installing is the phone's /m).
-  On wide screens (900 px and up, /app or /m on a tablet) two columns like WhatsApp Web (`_ui/WideFrame.tsx`): a
-  rail (Chats, Bots, Settings), the section's list on the left, the open chat or connector on the right, a quiet
-  welcome otherwise; the open chat's row is marked. Keyboard: Enter sends, Shift+Enter is a new line, Esc closes a
+  On wide screens (900 px and up, /app or /m on a tablet) it reads like the computer app (owner, 2026-11-19;
+  `_ui/WideFrame.tsx`, modelled on `components/Sidebar.tsx` and `ChatView.tsx`): a sidebar (logo, the person's
+  picture → Settings, "+ Group" / "+ Bot", search, Pinned / Groups / Bots with compact rows, the desktop card at the
+  bottom) and on the right the open chat, Settings or a connector, or a quiet welcome; the open row is marked. A
+  chat's header gives the name and who is in it (a bot's role, a group's members); a bot's message has its face at
+  the top and a line with its name, its role and the time, like the computer; messages and the box sit in a column
+  of 820 px. Keyboard: Enter sends, Shift+Enter is a new line, Esc closes a
   menu, then a reply, then the chat. On the web, Settings says "This browser".
 - The desktop app, suggested gently (same decision; `_ui/Desktop.tsx`, ar/fr/en): a small card in the chat list
   that can be hidden for good, a card in Settings, and under "This needs your computer" the owner's line ("The
@@ -252,8 +267,7 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   message to reply (sent as `replyTo`), "+" (voice note; photos and files say "coming soon" because files are not
   synced yet), the end button is Send / Stop / microphone like WhatsApp, voice note to text through
   `/api/v1/ai/transcribe` (the text lands in the box to check), Allow / Not now, question and plan cards,
-  "This needs your computer"); Bots (main bot, bots, groups, start a chat; computer-only bots have no box);
-  Settings (account, theOovi credits, devices, sync and space, language, look, Add to Home Screen help, sign out);
+  "This needs your computer"; computer-only bots have no box); Settings (account, theOovi credits, devices, sync and space, language, look, Add to Home Screen help, sign out);
   Connectors, managed from the phone (owner's decision, contract 1f0f147): on/off in the list, a connector's page
   (bots that use it, sign in / again / out, its key, remove), "+" adds one from the catalog (built-in list +
   published Marketplace, hidden ones out), sign-in through the website (opens the service; back at
@@ -268,20 +282,24 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   jobs and `jobsAfter`, tombstones, `sync_off`/`busy` codes, vault, sign-in start/finish. What the phone sends is in
   `docs/CLOUD-BUILD.md`, "Changes to this file" (job payloads incl. `replyTo`).
 - Screenshots (iPhone 15 size, stand-in data, `docs/mobile/*.jpg`): `en-light-*`, `en-dark-*`, `ar-light-*`,
-  `ar-dark-*` for chats, chat-approval, chat-live, needs-computer, group, bots, settings, connectors, connector,
+  `ar-dark-*` for chats, chat-approval, chat-live, needs-computer, group, new-bot, settings, connectors, connector,
   connector-add; plus chat-composer-voice, not-synced and sign-in in light; the web version at 1440×900:
-  `web-{en,ar}-{light,dark}-{chat,chats,needs-computer,settings,connectors}.jpg`. Made with
+  `web-{en,ar}-{light,dark}-{chat,group,chats,needs-computer,settings,connectors}.jpg`. Made with
   `node tests/e2e/mobile-scenario.cjs --shots-only` (website built first).
 - Checked here (Linux, Chrome emulating an iPhone 15, the BUILT website behind a stand-in for W's API,
-  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 366 (365 pass, 1 skipped:
+  `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 417 (416 pass, 1 skipped:
   the existing live YouTube test), of which the phone's `tests/unit/mobile-*.test.mts`; `npm run build` in web OK;
-  `node tests/e2e/mobile-scenario.cjs` 112/112 (sign-in, sync off and API missing, list and counts, archive, pin,
+  `node tests/e2e/mobile-scenario.cjs` 127/127, twice in a row (sign-in, sync off and API missing, list and counts, archive, pin,
   search, Markdown and safe links, approval → decision job, send → live status by long-poll → answer, ticks,
-  reply, Stop, needs-computer, queued while off, voice note with a fake microphone and with the service off, bots,
+  reply, Stop, needs-computer, queued while off, voice note with a fake microphone and with the service off, the
+  one list with a bot to start, profile picture → Settings and back, + Bot (one-word and unique name, saved after a
+  setup conflict), + Group (its first message goes out and is answered), delete asks first then removes it everywhere,
+  the old Bots link,
   every connector flow incl. the other-browser sign-in, AI key refused, no secret on the page or in storage,
   no sideways scroll at 320 px on 11 screens, Arabic right to left, offline from the worker, account switch
-  wipes the old copy, sign-out asks then wipes; the web version: two columns, the open row, Shift+Enter / Enter /
-  Esc, the desktop suggestions and hiding the card, connectors beside settings, signed out → the website's sign-in);
+  wipes the old copy, sign-out asks then wipes; the web version: the sidebar with Groups and Bots and + Group / + Bot,
+  the open row, name/role/time above a bot's message, profile picture → Settings beside the list, Shift+Enter / Enter /
+  Esc, the desktop suggestions and hiding the card, connectors beside the list, signed out → the website's sign-in);
   `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100 and best practices 100 on all 11
   screens tested (8 phone, 3 web), PWA 100 on the phone's 8 (the web version is not installable on purpose).
 - NOT checked: a real iPhone or Android phone (Safari, Add to Home Screen, the keyboard, the microphone, Dynamic

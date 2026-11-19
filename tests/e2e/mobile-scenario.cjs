@@ -3,14 +3,16 @@
 // contract in docs/CLOUD-BUILD.md). Nothing leaves this machine. Checked:
 //   A) signed out → the app's own sign-in; a wrong password says so; the right one opens the chats,
 //   B) sync off → "Not synced yet" with the three steps; the API missing → the same screen, "coming soon",
-//   C) the chat list: routine chats left out, pinned first, unread dot and tab badge, search in messages,
-//      pin from the row's actions,
+//   C) the one list: routine chats left out, pinned first, a bot with no chat under "Start a chat", unread count,
+//      search in messages, pin and archive from the row's actions, the profile picture opens Settings,
 //   D) a chat: Markdown table, safe links, the approval card (Allow → POST /jobs decision → card goes),
 //   E) sending: the message shows at once, the bot's live status arrives by long-poll, then its answer;
 //      the message is never shown twice,
 //   F) Stop while the bot works, G) "This needs your computer" and the queued-while-off note,
 //   H) a voice note becomes text in the box (fake microphone), and "not available" when the service is off,
-//   I) bots and groups, a new chat with a bot, a bot that is on the computer only,
+//   I) "+ Bot" and "+ Group" (saved to the account's setup, a conflict merged again), the new chat opens and
+//      sends; delete from the row's actions (asks first); the old Bots page lands on the list; a new chat with a
+//      bot; a bot that is on the computer only,
 //   J) settings: credits, devices, sync; connectors: names and on/off, never addresses, commands or keys
 //      (not on the page, not in the phone's storage),
 //   K) no sideways scroll at 320 px on every screen, L) Arabic: right to left,
@@ -109,17 +111,18 @@ async function main() {
 
     // ---------- C) the chat list ----------
     const rows = page.locator(".m-chats > li");
-    check("C five chats (the routine's chat is left out)", (await rows.count()) === 5, String(await rows.count()));
-    check("C pinned on top: Lina", (await page.locator("#pinned-h + ul .m-chat__name").first().textContent()) === "Lina");
+    check("C five chats and Sami to start (the routine's chat is left out)", (await rows.count()) === 6, String(await rows.count()));
+    check("C a bot with no chat yet: under 'Start a chat', with its role", (await page.locator("#list-start + ul .m-chat").textContent()).includes("Desktop helper"));
+    check("C no tab bar any more", (await page.locator(".m-tabs, .m-tab").count()) === 0);
+    check("C pinned on top: Lina", (await page.locator("#list-pinned + ul .m-chat__name").first().textContent()) === "Lina");
     check("C the API is called as this phone", S.requests.some((r) => r.path.startsWith("/api/v1/cloud") && /^phone:phone-/.test(r.device || "")));
     check("C nothing unread on the first open", (await page.locator(".m-count").count()) === 0);
-    // A new reply in Studio, then the app comes back: one unread dot, a badge on the tab.
+    // A new reply in Studio, then the app comes back: an unread count on its row.
     const studio = S.chats.studio.chat;
     studio.entries.push({ id: "b9", kind: "bot", botId: "oovi", at: Date.now(), text: "Posted ✅", status: "done" });
     sb.bump("studio");
     await page.reload();
     check("C a new reply: an unread count on the row", await until(async () => (await page.locator(".m-chat", { hasText: "Studio" }).locator(".m-count").textContent()) === "1"));
-    check("C a new reply: badge on the Chats tab", (await page.locator(".m-tab .m-badge").textContent()) === "1");
     await page.fill('input[type="search"]', "oran");
     check("C search finds words inside messages", await until(async () => (await rows.count()) === 1 && (await page.locator(".m-chat__name").first().textContent()) === "Oovi"));
     await page.fill('input[type="search"]', "zzz");
@@ -128,12 +131,11 @@ async function main() {
     await page.getByRole("button", { name: "More actions for Rex" }).focus();
     await page.getByRole("button", { name: "More actions for Rex" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Pin" }).click();
-    check("C pin from the row's actions", await until(async () => (await page.locator("#pinned-h + ul .m-chat__name").allTextContents()).includes("Rex")));
+    check("C pin from the row's actions", await until(async () => (await page.locator("#list-pinned + ul .m-chat__name").allTextContents()).includes("Rex")));
     await page.getByRole("button", { name: "More actions for Studio" }).focus();
     await page.getByRole("button", { name: "More actions for Studio" }).click();
     await page.getByRole("dialog").getByRole("button", { name: "Archive" }).click();
     check("C archive: the chat leaves the list, 'Archived' shows its unread", await until(async () => (await page.locator(".m-chats .m-chat__name", { hasText: "Studio" }).count()) === 0 && (await page.locator(".m-archrow").textContent()).includes("Archived")));
-    check("C …and the tab's count leaves out archived chats", (await page.locator(".m-tab .m-badge").count()) === 0);
     await page.click(".m-archrow");
     check("C the archived chats", await until(async () => page.url().endsWith("/m/archived") && (await page.locator(".m-chats .m-chat__name").allTextContents()).join() === "Studio"));
     await page.getByRole("button", { name: "More actions for Studio" }).focus();
@@ -141,6 +143,10 @@ async function main() {
     await page.getByRole("dialog").getByRole("button", { name: "Unarchive" }).click();
     await page.goto(`${BASE}/m`);
     check("C unarchive brings it back", await until(async () => (await page.locator(".m-chats .m-chat__name", { hasText: "Studio" }).count()) === 1 && (await page.locator(".m-archrow").count()) === 0));
+    await page.getByRole("link", { name: "Your profile and settings" }).click();
+    check("C the profile picture opens Settings", await until(() => page.url().endsWith("/m/settings") && page.getByText("phone.tester@example.test").isVisible()));
+    await page.getByRole("button", { name: "Chats" }).click();
+    check("C …and Settings goes back to the chats", await until(() => page.url().endsWith("/m")));
 
     // ---------- D) a chat with an approval ----------
     await page.click('a[href="/m/c/dm-oovi"]');
@@ -218,12 +224,51 @@ async function main() {
     check("H service off: says so", await until(() => page.getByText("Voice notes aren’t available right now. Type your message instead.").isVisible(), 6000));
     S.transcribe = "ok";
 
-    // ---------- I) bots ----------
+    // ---------- I) "+ Bot", "+ Group", delete, a new chat ----------
     await page.goto(`${BASE}/m/bots`);
-    check("I bots listed (hidden ones left out)", await until(async () => (await page.locator(".m-group .m-row--tall").count()) === 6));
-    check("I the main bot first", (await page.locator(".m-section").first().textContent()).includes("Oovi"));
-    check("I a computer-only bot is marked", await page.getByText("On your computer only").isVisible());
-    await page.click('a[href="/m/c/dm-nova"]');
+    check("I the old Bots page lands on the list", await until(() => page.url().endsWith("/m") && page.locator(".m-chats").first().isVisible()));
+    await page.getByRole("button", { name: "Bot", exact: true }).click();
+    const sheet = page.getByRole("dialog");
+    await sheet.getByLabel("Name").fill("Two words");
+    await sheet.getByRole("button", { name: "Create" }).click();
+    check("I a bot's name is one word", await until(() => sheet.getByRole("alert").filter({ hasText: "One word only" }).isVisible()));
+    await sheet.getByLabel("Name").fill("nova");
+    await sheet.getByRole("button", { name: "Create" }).click();
+    check("I …and not another bot's name", await until(() => sheet.getByRole("alert").filter({ hasText: "already has this name" }).isVisible()));
+    await sheet.getByLabel("Name").fill("Mira");
+    await sheet.getByLabel("Role").fill("Accountant");
+    await sheet.getByRole("button", { name: "Another face" }).click();
+    S.setupConflicts = 1; // a computer saves in between: read again, add again
+    await sheet.getByRole("button", { name: "Create" }).click();
+    const miraKey = () => Object.keys(S.items).find((k) => k.startsWith("bot:") && S.items[k].name === "Mira");
+    check("I + Bot: saved to the account's setup (after a conflict), the rest kept", await until(() => !!miraKey()) && S.items[miraKey()].role === "Accountant" && /^bot:[0-9a-f]{12}$/.test(miraKey()) && !!S.items["bot:nova"] && S.setupConflicts === 0);
+    check("I + Bot: its chat opens", await until(() => page.url().endsWith(`/m/c/dm-${miraKey().slice(4)}`) && page.getByText("Say hello to Mira").isVisible()));
+    await page.goto(`${BASE}/m`);
+    check("I + Bot: in the list, under 'Start a chat'", await until(async () => (await page.locator("#list-start + ul .m-chat__name").allTextContents()).includes("Mira")));
+    await page.getByRole("button", { name: "Group", exact: true }).click();
+    await sheet.getByLabel("Name").fill("Finance");
+    await sheet.getByRole("checkbox", { name: /Mira/ }).click();
+    await sheet.getByRole("checkbox", { name: /Nova/ }).click();
+    await sheet.getByRole("button", { name: "Create" }).click();
+    const finKey = () => Object.keys(S.items).find((k) => k.startsWith("group:") && S.items[k].name === "Finance");
+    check("I + Group: saved with its bots, the first one leads", await until(() => !!finKey()) && S.items[finKey()].memberIds.join() === `${miraKey().slice(4)},nova` && S.items[finKey()].leadId === miraKey().slice(4));
+    check("I + Group: its chat opens", await until(() => page.url().endsWith(`/m/c/${finKey().slice(6)}`) && page.locator(".m-composer textarea").isVisible()));
+    await page.locator(".m-composer textarea").fill("Hello team");
+    await page.getByRole("button", { name: "Send", exact: true }).click();
+    check("I the new group's first message goes to the computer", await until(() => jobsOf("message").some((j) => j.chatId === finKey().slice(6) && j.payload.text === "Hello team")));
+    check("I …and its answer comes back", await until(() => page.getByText("I asked for").isVisible(), 10_000));
+    const finId = finKey().slice(6);
+    await page.goto(`${BASE}/m`);
+    await page.getByRole("button", { name: "More actions for Finance" }).focus();
+    await page.getByRole("button", { name: "More actions for Finance" }).click();
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    check("I delete asks first", await until(() => page.getByRole("dialog").getByText(/Delete the chat with Finance on all your devices\?/).isVisible()));
+    await page.getByRole("dialog").getByRole("button", { name: "Delete" }).click();
+    check("I delete: gone from every device, and the group from the setup", await until(() => S.deletedChats.includes(finId) && !finKey()));
+    check("I …and from the list", await until(async () => (await page.locator(".m-chat__name", { hasText: "Finance" }).count()) === 0));
+    await page.getByRole("button", { name: "New chat" }).click();
+    check("I new chat: every bot and group to pick", await until(async () => (await page.getByRole("dialog").locator(".m-chat__name").allTextContents()).includes("Mira")));
+    await page.getByRole("dialog").locator('a[href="/m/c/dm-nova"]').click();
     check("I a bot opens its chat", await until(() => page.url().endsWith("/m/c/dm-nova")));
     S.chats["dm-rex"].deleted = true;
     await page.goto(`${BASE}/m/c/dm-rex`);
@@ -291,7 +336,7 @@ async function main() {
     check("J an AI model key is refused", await until(() => page.getByRole("alert").filter({ hasText: "AI model key" }).isVisible()));
     await page.getByLabel("GitHub token").fill("github_pat_standin");
     await page.getByRole("button", { name: "Add GitHub" }).click();
-    check("J added: in the account, its key in the header, every bot", await until(() => S.vault.github?.data.headers?.Authorization === "Bearer github_pat_standin" && S.vault.github.data.bots.length === 5 && S.vault.github.data.catalogId === "github"));
+    check("J added: in the account, its key in the header, every bot (Mira, added above, too)", await until(() => S.vault.github?.data.headers?.Authorization === "Bearer github_pat_standin" && S.vault.github.data.bots.length === 6 && S.vault.github.data.catalogId === "github"));
     check("J …and its page opens", await until(() => page.url().endsWith("/m/connectors/github")));
     check("J the key never shown", !(await page.content()).includes("github_pat_standin"));
     await page.getByRole("button", { name: "Remove connector" }).click();
@@ -302,7 +347,7 @@ async function main() {
     // ---------- K) 320 px ----------
     await page.setViewportSize({ width: 320, height: 640 });
     const wide = [];
-    for (const u of ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/c/dm-rex", "/m/bots", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/offline"]) {
+    for (const u of ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/c/dm-rex", "/m/archived", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/offline"]) {
       await page.goto(BASE + u);
       await sleep(700);
       const w = await page.evaluate(() => document.documentElement.scrollWidth);
@@ -316,7 +361,7 @@ async function main() {
     await page.getByRole("button", { name: /Language/ }).click();
     await page.getByRole("dialog").getByRole("button", { name: "العربية" }).click();
     check("L Arabic: right to left", await until(async () => (await page.evaluate(() => document.documentElement.dir)) === "rtl"));
-    check("L Arabic words", await page.locator(".m-tab", { hasText: "المحادثات" }).isVisible());
+    check("L Arabic words", await page.locator(".m-nav__back", { hasText: "المحادثات" }).isVisible());
     await page.reload();
     check("L Arabic stays after a reload (before the first paint)", (await page.evaluate(() => document.documentElement.dir)) === "rtl");
     await page.getByRole("button", { name: /اللغة/ }).click();
@@ -336,10 +381,10 @@ async function main() {
     check("B the cloud API missing: coming soon", await until(() => page.getByText(/isn’t available on your account yet/).isVisible()));
     S.statusMissing = false;
     await page.getByRole("button", { name: "Check again" }).click();
-    check("B Check again brings the chats", await until(async () => (await page.locator(".m-chats > li").count()) === 5));
+    check("B Check again brings the chats", await until(async () => (await page.locator(".m-chats > li").count()) >= 6));
 
     // ---------- M) offline ----------
-    for (const u of ["/m", "/m/c/dm-oovi", "/m/bots", "/m/settings"]) {
+    for (const u of ["/m", "/m/c/dm-oovi", "/m/archived", "/m/settings"]) {
       await page.goto(BASE + u);
       await sleep(400);
     }
@@ -347,7 +392,7 @@ async function main() {
     check("M the offline worker controls the app", sw);
     await ctx.setOffline(true);
     await page.goto(`${BASE}/m`).catch(() => {});
-    check("M offline: the app opens with the saved chats", await until(async () => (await page.locator(".m-chats > li").count()) === 5, 8000));
+    check("M offline: the app opens with the saved chats", await until(async () => (await page.locator(".m-chats > li").count()) >= 6, 8000));
     check("M offline: said plainly", await page.getByText("You’re offline. Showing what this phone saved.").isVisible());
     await page.goto(`${BASE}/m/c/dm-oovi`).catch(() => {});
     check("M offline: a chat seen before opens", await until(() => page.locator(".m-md table").isVisible(), 8000));
@@ -361,7 +406,8 @@ async function main() {
       const werr = [];
       w.on("pageerror", (e) => werr.push(e.message));
       await w.goto(`${BASE}/app`);
-      check("W web: list on the left, a welcome on the right, the rail", await until(async () => (await w.locator(".m-pane--list .m-chats > li").count()) >= 4 && (await w.getByText("Pick a chat").isVisible()) && (await w.locator(".m-rail").isVisible())));
+      check("W web: the sidebar like the computer's (Groups, Bots), a welcome on the right", await until(async () => (await w.locator(".m-pane--list .m-chats > li").count()) >= 4 && (await w.getByText("Pick a chat").isVisible()) && (await w.locator("#list-groups").isVisible()) && (await w.locator("#list-bots").isVisible())));
+      check("W …with + Group and + Bot at the top", (await w.locator(".m-pane--list").getByRole("button", { name: "Group", exact: true }).isVisible()) && (await w.locator(".m-pane--list").getByRole("button", { name: "Bot", exact: true }).isVisible()));
       const card = w.locator(".m-desk--list");
       check("W the desktop app suggested gently in the list, with the download page", (await card.isVisible()) && (await card.locator("a").getAttribute("href")) === "/download");
       await card.getByRole("button", { name: "Hide this" }).click();
@@ -371,6 +417,7 @@ async function main() {
       await w.locator('.m-pane--list a[href="/app/c/dm-oovi"]').click();
       check("W a chat opens beside the list", await until(async () => w.url().endsWith("/app/c/dm-oovi") && (await w.locator(".m-pane--main .m-md table").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
       check("W its row is marked open", (await w.locator('.m-pane--list a[aria-current="page"]').getAttribute("href")) === "/app/c/dm-oovi");
+      check("W a bot's message: name, role and time above it, like on the computer", await w.locator(".m-pane--main .m-msg__who").first().textContent().then((x) => x.includes("Oovi")));
       const wbox = w.locator(".m-pane--main .m-composer textarea");
       await wbox.click();
       await wbox.type("Line one");
@@ -387,10 +434,10 @@ async function main() {
       await w.goto(`${BASE}/app/c/dm-rex`);
       const line = w.locator(".m-card--computer .m-desk--line");
       check("W 'needs your computer' says what the desktop app does, with Download", await until(() => line.isVisible()) && (await line.textContent()).includes("it works on your files") && (await line.locator("a").getAttribute("href")) === "/download");
-      await w.goto(`${BASE}/app/settings`);
-      check("W settings: this browser, and the desktop app section", await until(() => w.getByText("This browser").isVisible()) && (await w.locator(".m-pane--list .m-desk--card").isVisible()));
-      await w.locator('.m-pane--list a[href="/app/connectors"]').click();
-      check("W connectors open beside the settings", await until(async () => (await w.locator(".m-pane--main .m-row--conn").count()) === 4 && (await w.locator(".m-pane--list").getByText("Sam Tester").isVisible())));
+      await w.locator(".m-pane--list").getByRole("link", { name: "Your profile and settings" }).click();
+      check("W the profile picture opens Settings beside the list: this browser, the desktop app section", await until(() => w.url().endsWith("/app/settings") && w.locator(".m-pane--main").getByText("This browser").isVisible()) && (await w.locator(".m-pane--main .m-desk--card").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible()));
+      await w.locator('.m-pane--main a[href="/app/connectors"]').click();
+      check("W connectors open beside the list", await until(async () => (await w.locator(".m-pane--main .m-row--conn").count()) === 4 && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
       check("W no sideways scroll at 1440 px", (await w.evaluate(() => document.documentElement.scrollWidth)) <= 1440);
       check("W no page errors", werr.length === 0, werr.join(" | "));
       await wctx.close();
@@ -410,7 +457,7 @@ async function main() {
       localStorage.setItem("oovi.m.chats", JSON.stringify(c));
     });
     await page.reload();
-    check("N another account signed in: the previous account's chats are wiped", await until(async () => (await page.getByText("Previous account's chat").count()) === 0 && (await page.locator(".m-chats > li").count()) === 5 && !(await page.evaluate(() => localStorage.getItem("oovi.m.chats") || "")).includes("old-account-chat")));
+    check("N another account signed in: the previous account's chats are wiped", await until(async () => (await page.getByText("Previous account's chat").count()) === 0 && (await page.locator(".m-chats > li").count()) >= 6 && !(await page.evaluate(() => localStorage.getItem("oovi.m.chats") || "")).includes("old-account-chat")));
 
     await page.goto(`${BASE}/m/settings`);
     await page.getByRole("button", { name: "Sign out" }).click();
@@ -464,7 +511,10 @@ async function screenshots(browser, sb) {
       await shot("chat-live", "/m/c/dm-nova");
       await shot("needs-computer", "/m/c/dm-rex");
       await shot("group", "/m/c/studio");
-      await shot("bots", "/m/bots");
+      await shot("new-bot", "/m", async (p) => {
+        await p.locator(".m-adds .m-btn").nth(1).click();
+        await sleep(500);
+      });
       await shot("settings", "/m/settings");
       await shot("connectors", "/m/connectors");
       await shot("connector", "/m/connectors/gmail");
@@ -491,7 +541,7 @@ async function screenshots(browser, sb) {
         if (!localStorage.getItem("oovi.m.seen")) localStorage.setItem("oovi.m.seen", JSON.stringify({ "dm-oovi": Date.now(), "dm-nova": Date.now(), "dm-rex": Date.now(), "dm-lina": Date.now(), studio: 0 }));
       }, [lang]);
       const wp = await wctx.newPage();
-      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["connectors", "/app/connectors"]]) {
+      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["connectors", "/app/connectors"]]) {
         await wp.goto(BASE + url);
         await wp.locator(".m-wide").first().waitFor({ timeout: 8000 }).catch(() => {});
         await sleep(1300);

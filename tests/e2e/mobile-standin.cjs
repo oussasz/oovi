@@ -128,7 +128,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok" };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [] };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -139,6 +139,10 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     for (const [id, chat] of Object.entries(f.chats)) state.chats[id] = { version: 3, chat, deleted: false, updatedAt: new Date(chat.updatedAt).toISOString() };
     // The runner could not do Rex's step (a file on the computer): W keeps the job as needs_computer.
     state.vault = vaultFromItems();
+    state.setupVersion = 7;
+    state.setupConflicts = 0;
+    state.setupPuts = 0;
+    state.deletedChats = [];
     state.vaultPuts = [];
     state.flows = [];
     state.oauthMode = "same";
@@ -190,9 +194,12 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     const c = state.chats[job.chatId];
     const ar = state.lang === "ar";
     if (job.kind === "message") {
-      const chat = c
-        ? c.chat
-        : (state.chats[job.chatId] = { version: 0, deleted: false, updatedAt: "", chat: { id: job.chatId, kind: "direct", name: job.chatId.slice(3), memberIds: [job.chatId.slice(3)], createdAt: Date.now(), updatedAt: Date.now(), entries: [] } }).chat;
+      // A chat that isn't in the cloud yet: the computer makes it on the first message (a group from the setup).
+      const g = state.items[`group:${job.chatId}`];
+      const fresh = g
+        ? { id: job.chatId, kind: "group", name: g.name, memberIds: g.memberIds, leadId: g.leadId, createdAt: Date.now(), updatedAt: Date.now(), entries: [] }
+        : { id: job.chatId, kind: "direct", name: job.chatId.slice(3), memberIds: [job.chatId.slice(3)], createdAt: Date.now(), updatedAt: Date.now(), entries: [] };
+      const chat = c && !c.deleted ? c.chat : (state.chats[job.chatId] = { version: c ? c.version : 0, deleted: false, updatedAt: "", chat: fresh }).chat;
       const botId = chat.leadId || chat.memberIds[0];
       setTimeout(() => {
         setJob(job, "claimed");
@@ -332,7 +339,22 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     if (isApi && !signed(req)) return send(res, 401, { error: "Not signed in or session expired." });
 
     if (p === "/api/v1/me") return send(res, 200, { user: { id: user.id, email: user.email, name: user.name, image: null, createdAt: user.createdAt } });
-    if (p === "/api/v1/setup") return send(res, 200, { version: 7, items: state.items });
+    if (p === "/api/v1/setup" && req.method === "PUT") {
+      const b = await readBody(req);
+      if (!b || !Number.isInteger(b.baseVersion) || !b.items || typeof b.items !== "object") return send(res, 400, { error: "Invalid request." });
+      // setupConflicts: answer 409 that many times first, as when a computer saved in between.
+      if (state.setupConflicts > 0) {
+        state.setupConflicts--;
+        state.setupVersion++;
+        return send(res, 409, { error: "Your setup changed on another computer. Merging again." });
+      }
+      if (b.baseVersion !== state.setupVersion) return send(res, 409, { error: "Your setup changed on another computer. Merging again." });
+      state.items = b.items;
+      state.setupVersion++;
+      state.setupPuts++;
+      return send(res, 200, { version: state.setupVersion });
+    }
+    if (p === "/api/v1/setup") return send(res, 200, { version: state.setupVersion, items: state.items });
     if (p === "/api/v1/ai/status")
       return send(res, 200, {
         state: "ok",
@@ -386,6 +408,16 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       if (!c) return send(res, 404, { error: "This chat isn't in the cloud.", code: "not_found" });
       // W: a tombstone answers 200 with chat null.
       return send(res, 200, { chatId: c.chat.id, version: c.version, deleted: c.deleted, chat: c.deleted ? null : c.chat });
+    }
+    if (one && req.method === "DELETE") {
+      if (!state.sync) return send(res, 403, { error: "Cloud sync is off for this account.", code: "sync_off" });
+      const c = state.chats[decodeURIComponent(one[1])];
+      if (!c || c.deleted) return send(res, 404, { error: "This chat isn't in the cloud.", code: "not_found" });
+      c.deleted = true;
+      c.version++;
+      c.updatedAt = new Date().toISOString();
+      state.deletedChats.push(decodeURIComponent(one[1]));
+      return send(res, 200, { version: c.version });
     }
     if (p === "/api/v1/cloud/jobs" && req.method === "POST") {
       const b = await readBody(req);

@@ -295,3 +295,32 @@ test("the web version's pages are allowed after sign-in too", async () => {
   assert.equal(safeMobileNext("/apple"), "/m");
   assert.equal(safeMobileNext("/mx"), "/m");
 });
+
+test("one list: chats, then the bots and groups that have no chat yet; new bots and groups", async () => {
+  const { chatsWithEveryone, sortChats, botNameProblem, newBotItem, newGroupItem, setupId } = await import("../../web/app/m/_lib/core.ts");
+  const setup = {
+    mainId: "b1",
+    connectors: [],
+    bots: [
+      { id: "b1", name: "Nova", role: "", face: {} },
+      { id: "b2", name: "Rex", role: "Writer", face: {} },
+      { id: "b3", name: "Ghost", role: "", face: {}, hidden: true },
+    ],
+    groups: [{ id: "g1", name: "Studio", memberIds: ["b1", "b2"] }, { id: "g2", name: "Empty", memberIds: [] }],
+  };
+  const talked = chat({ id: "dm-b1", memberIds: ["b1"], entries: [{ id: "u", kind: "user", text: "hi", at: 5 }] });
+  const all = chatsWithEveryone([talked], setup);
+  assert.deepEqual(all.map((c) => c.id), ["dm-b1", "g1", "dm-b2"]);
+  assert.deepEqual(sortChats(all, [], {}).map((r) => r.chat.id)[0], "dm-b1");
+  assert.equal(botNameProblem("", []), "empty");
+  assert.equal(botNameProblem("Two words", []), "oneWord");
+  assert.equal(botNameProblem("nova", ["Nova"]), "taken");
+  assert.equal(botNameProblem("سامي", []), null);
+  const bot = newBotItem({ name: " Sami ", role: "Accountant", face: { color: 1 } }, 9);
+  assert.equal(bot.name, "Sami");
+  assert.match(String(bot.instructions), /^You are Sami, Accountant\./);
+  assert.deepEqual(bot.tools, { web: true, browser: false });
+  assert.deepEqual(newGroupItem({ name: "Team", memberIds: ["b2", "b1", "b2"] }, 3), { name: "Team", memberIds: ["b2", "b1"], leadId: "b2", orchestrate: true, createdAt: 3 });
+  assert.equal(newGroupItem({ name: "", memberIds: ["b1"] }, 3), null);
+  assert.match(setupId(), /^[0-9a-f]{12}$/);
+});
