@@ -257,3 +257,13 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   subscriber}`. Phone and desktop open the url in the system browser and read credits again on return. Details:
   docs/HANDOFF.md "Pay in app".
 
+
+- 2026-11-19 (owner, his words: "نعم، خلي السيرفر يخدم الروتينات كي الحاسوب طافي"): routines run on the cloud server while
+  the computer is off. Table `cloud_routine` (user_id, routine_id, chat_id, due_at, ran_at, ran_status). The desktop
+  `PUT /api/v1/cloud/routines {deviceId, items:[{routineId, chatId, dueAt|null}]}` (replaces the account's list: only
+  routines that can run in the cloud) → `{items:[{routineId, ranAt, ranStatus}]}`, what the cloud ran, which the desktop
+  marks as done before catching up. With no desktop seen for 60 s, a due routine becomes a `cloud_job` of kind
+  `routine` (payload `{routineId, at}`) that only the runner claims; the runner runs it with the app's own routine code
+  in the routine's chat, then reports `routine: {ranAt, status, next}` with `done` (next: the following time, so it keeps
+  running while the computer stays off). Results go to Telegram through `POST /api/v1/cloud/runner/telegram` (the token
+  the Telegram relay keeps). Never: watched pages, routines started by a web address (they need the computer).

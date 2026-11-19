@@ -48,8 +48,10 @@ import type { RunInput } from "./orchestrator";
 import { isRunning, onRunEnd, startRun, steerRun, stopRun, whenIdle } from "./runner";
 import { dataDir, loadSettings } from "./settings";
 import { deleteChat, getBot, getChat, ID_RE, listBots, listChats, onChatChange, saveChat } from "./store";
+import { getRoutine, listRoutines, mutateRoutine } from "./routines";
+import { nextRun } from "./routines-schedule";
 import { syncSetup } from "./setup-sync";
-import type { Chat } from "./types";
+import type { Chat, Routine } from "./types";
 
 const API = "/api/v1/cloud";
 const PULL_MS = 15_000;
@@ -619,6 +621,58 @@ export async function pullSignIn(id: string): Promise<boolean> {
   return true;
 }
 
+// ---------- routines while this computer is off ----------
+
+/** How often the list is sent even when nothing changed (the account then knows this computer's routines are current). */
+const ROUTINES_EVERY_MS = 5 * 60_000;
+const rtRoutines = { key: "", at: 0, sent: new Set<string>() };
+
+/**
+ * A routine the cloud server can run while this computer is off: on, started by the clock (not a web address), not
+ * watching a page (its last copy stays here), its bot known, and its chat one that travels to the account.
+ */
+function cloudable(r: Routine, bots = listBots()): boolean {
+  if (!r.enabled || r.schedule.kind === "webhook" || r.watch || !getBot(r.botId)) return false;
+  return chatTravels({ memberIds: [r.botId] }, bots);
+}
+
+/**
+ * Tells the account this computer's routines that may run in the cloud and when each runs next, and marks done here
+ * what the cloud already ran (before the scheduler catches up, so nothing runs twice). Called by the routine
+ * scheduler before each check (lib/routines-scheduler.ts tick); sends only when something changed, or every 5 min.
+ */
+export async function syncCloudRoutines(force = false): Promise<void> {
+  if (!active()) return;
+  const bots = listBots();
+  const items = listRoutines()
+    .filter((r) => cloudable(r, bots))
+    .map((r) => ({ routineId: r.id, chatId: r.chatId, dueAt: typeof r.nextRunAt === "number" ? new Date(r.nextRunAt).toISOString() : null, timeZone: r.timezone ?? null }));
+  const key = hashOf(items);
+  if (!force && key === rtRoutines.key && Date.now() - rtRoutines.at < ROUTINES_EVERY_MS) return;
+  // A routine the account hasn't been told about yet: its setup goes first, so the cloud server finds it.
+  if (items.some((x) => !rtRoutines.sent.has(x.routineId))) await syncSetup().catch(() => null);
+  const r = await call<{ items?: { routineId: string; ranAt: string | null; ranStatus: string | null }[] }>("PUT", "/routines", { deviceId: deviceId(), items });
+  rtRoutines.key = key;
+  rtRoutines.at = Date.now();
+  rtRoutines.sent = new Set(items.map((x) => x.routineId));
+  for (const x of Array.isArray(r?.items) ? r.items : []) {
+    const ran = x.ranAt ? Date.parse(x.ranAt) : NaN;
+    const here = typeof x.routineId === "string" ? getRoutine(x.routineId) : undefined;
+    // Ran in the cloud after its last run here; a run the cloud left for the computer is caught up as usual.
+    if (!here || !Number.isFinite(ran) || ran <= (here.lastStartedAt ?? 0) || x.ranStatus === "needs_computer") continue;
+    mutateRoutine(here.id, (y) => {
+      y.lastStartedAt = ran;
+      y.lastRun = { at: ran, status: x.ranStatus === "error" ? "error" : "ok", note: "Ran on oovi's cloud server while this computer was off." };
+      if (y.schedule.kind === "once") {
+        y.enabled = false;
+        y.nextRunAt = null;
+        y.pausedReason = "done";
+      } else if (y.schedule.kind !== "webhook") y.nextRunAt = nextRun(y.schedule, y.timezone, Math.max(Date.now(), ran + 60_000));
+    });
+    rtRoutines.key = ""; // the next check sends the new times
+  }
+}
+
 // ---------- the desktop worker (jobs from the phone) ----------
 
 /** A claimed job (web/lib/cloud-types.ts ClaimedJob). */
@@ -834,6 +888,7 @@ export function startCloudSync(): void {
   if (rt.started) return;
   rt.started = true;
   setSignInRefresher(pullSignIn);
+  (globalThis as typeof globalThis & { __ooviCloudRoutines?: (force?: boolean) => Promise<void> }).__ooviCloudRoutines = syncCloudRoutines;
   onChatChange((id) => {
     countsCache = null;
     schedulePush(id);

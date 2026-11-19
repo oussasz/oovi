@@ -50,6 +50,8 @@ export function proxyRoute(method, pathname) {
   if (method === "GET" && p === "/api/v1/setup") return "setup-get";
   if (method === "PUT" && p === "/api/v1/setup") return "setup-put";
   if (method === "GET" && p === "/api/v1/catalog") return "catalog";
+  // A message to the account's own Telegram (a routine's result); the website sends it with the token it keeps.
+  if (method === "POST" && p === "/api/v1/telegram/send") return "telegram";
   return null;
 }
 

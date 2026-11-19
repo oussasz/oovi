@@ -169,6 +169,23 @@ function newChat(r: Routine): Chat {
 }
 
 /**
+ * The cloud runner: the routine uses the computer's chat for it (same id, so the result shows there once synced),
+ * made here when the account has never had it. false: no such routine.
+ */
+export function useRoutineChat(id: string, chatId: string): boolean {
+  const r = mutateRoutine(id, (x) => {
+    x.chatId = chatId;
+  });
+  if (!r) return false;
+  const cur = getChat(chatId);
+  if (!cur || cur.routine !== r.id) {
+    const now = Date.now();
+    saveChat({ id: chatId, kind: "direct", name: chatName(r), memberIds: [r.botId], leadId: r.botId, createdAt: now, updatedAt: now, entries: [], routine: r.id });
+  }
+  return true;
+}
+
+/**
  * The routine's chat, created when missing and kept in step with the routine (name, bot).
  * While a run holds the chat in memory nothing is written (the run would overwrite it); the
  * next call catches up.

@@ -25,7 +25,18 @@ Zapier / morning check / Telegram problems "from the root" before 0.14.
 - **"Not confirmed" on a real connector action**: lib/receipts-core.ts counted only connector tools named with
   send/post/create…; Zapier's `execute_zapier_write_action` wasn't. Now any connector tool counts unless its name says it
   only reads (list/get/search/read/inspect…). Unit test added.
-- Open, proposed to the owner: running routines on the cloud server when the computer is off (#87).
+- **Routines run on the cloud server while the computer is off** (owner: "نعم، خلي السيرفر يخدم الروتينات كي الحاسوب طافي").
+  Contract in docs/CLOUD-BUILD.md "Changes". The computer publishes its cloud-able routines (on, clock-started, not a
+  watched page, chat travels) with their next time and time zone at every routine check (`syncCloudRoutines`,
+  lib/cloud-sync.ts; PUT /api/v1/cloud/routines), uploading its setup first for a new one. With no desktop seen for 60 s,
+  `queueDueRoutines` (web/lib/cloud.ts, run before each runner claim) turns a due routine (≤ 3 h late) into a runner-only
+  `routine` job; the runner runs it with `runRoutineInCloud` (lib/routines-scheduler.ts, the same code as on the
+  computer) in the computer's routine chat (`useRoutineChat`), Telegram through the website (sendToMainChat on the
+  runner → /api/v1/cloud/runner/telegram, `sendToOwner`), then reports ran/next with `done`. The computer, back on,
+  marks those runs done before its catch-up (cloud sync now starts before routines, instrumentation.ts). A run that needs
+  the computer is left to the computer's catch-up. Tables: `cloud_routine`, `cloud_job.kind` gains 'routine' (migrated
+  in place). Test: cloud-integration-scenario section 5 (real website + Postgres + runner + desktop).
+  NEEDS: website deploy + runner image update + desktop release, together.
 
 ## 0.13.1 (released 2026-11-19, owner: "yes, deploy the website and release 0.13.1")
 Bot pictures made with "Your picture" go to the account (POST /api/v1/avatars) so the phone, web and other computers show them. Website deployed: sign-in lands in /app, the account page is in /app Settings (real-auth check 12/12 on a throwaway database).

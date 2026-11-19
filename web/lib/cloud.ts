@@ -60,7 +60,7 @@ export const CLOUD_DDL = `
     id          UUID PRIMARY KEY,
     user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     chat_id     TEXT NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('message', 'decision', 'stop')),
+    kind        TEXT NOT NULL CHECK (kind IN ('message', 'decision', 'stop', 'routine')),
     payload     JSONB NOT NULL,
     status      TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'claimed', 'done', 'needs_computer', 'failed')),
     claimed_by  TEXT NULL,
@@ -93,6 +93,25 @@ export const CLOUD_DDL = `
   CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_id_idx ON cloud_oauth_flow (id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_hold_idx ON cloud_oauth_flow (hold_hash);
+  CREATE TABLE IF NOT EXISTS cloud_routine (
+    user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    routine_id TEXT NOT NULL,
+    chat_id    TEXT NOT NULL,
+    due_at     TIMESTAMPTZ NULL,
+    ran_at     TIMESTAMPTZ NULL,
+    ran_status TEXT NULL,
+    time_zone  TEXT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, routine_id)
+  );
+  CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  -- Tables made before routines ran in the cloud: their job kinds gain 'routine' (once).
+  DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cloud_job_kind_check' AND pg_get_constraintdef(oid) LIKE '%routine%') THEN
+      ALTER TABLE cloud_job DROP CONSTRAINT IF EXISTS cloud_job_kind_check;
+      ALTER TABLE cloud_job ADD CONSTRAINT cloud_job_kind_check CHECK (kind IN ('message', 'decision', 'stop', 'routine'));
+    END IF;
+  END $$;
 `;
 
 const g = globalThis as typeof globalThis & { __ooviCloudTables?: Promise<void> };
@@ -453,7 +472,8 @@ export async function claimForDesktop(userId: string, deviceId: string, chatIds:
   await ensureCloudTables();
   if (!(await isEnabled(userId))) return OFF;
   await touchDevice(userId, "desktop", deviceId);
-  const r = await claim(`desktop:${deviceId}`, "j.user_id = $1 AND ($2::text[] IS NULL OR j.chat_id = ANY($2::text[]))", [userId, chatIds]);
+  // Routines due while it was off run on the cloud server only: the desktop runs its own (lib/routines-scheduler.ts).
+  const r = await claim(`desktop:${deviceId}`, "j.user_id = $1 AND j.kind <> 'routine' AND ($2::text[] IS NULL OR j.chat_id = ANY($2::text[]))", [userId, chatIds]);
   return r ? toClaimed(r) : null;
 }
 
@@ -463,6 +483,7 @@ export async function claimForDesktop(userId: string, deviceId: string, chatIds:
  */
 export async function claimForRunner(runnerId: string, exclude: string[] = []): Promise<RunnerClaimedJob | null> {
   await ensureCloudTables();
+  await queueDueRoutines().catch((e) => console.error("[cloud] routines due:", (e as Error).message));
   if (Math.random() < 0.02) {
     await pool.query("DELETE FROM cloud_job WHERE status IN ('done', 'failed') AND updated_at < now() - interval '1 day'").catch(() => {});
   }
@@ -511,6 +532,83 @@ export async function finishJob(jobId: string, by: string, userId: string | null
             payload = CASE WHEN $4 = 'needs_computer' THEN payload ELSE '{}'::jsonb END
       WHERE id = $1 AND claimed_by = $2 AND status = 'claimed' AND ($3::text IS NULL OR user_id = $3)`,
     [jobId, by, userId, status, error],
+  );
+  return !!r.rowCount;
+}
+
+// ---------- routines while the computer is off ----------
+
+/** How late a routine may still start in the cloud; later than this it is left to the computer's own catch-up. */
+const ROUTINE_LATE_HOURS = 3;
+const MAX_ROUTINES = 200;
+
+export type RoutineItem = { routineId: string; chatId: string; dueAt: string | null; timeZone: string | null };
+export type RoutineRan = { routineId: string; ranAt: string | null; ranStatus: string | null };
+
+/**
+ * The desktop's routines that may run in the cloud (replaces the account's list) and when each runs next. Answers
+ * what the cloud ran (so the desktop marks it done before catching up). The desktop is online while it calls this:
+ * nothing it sends becomes a cloud job until it has been quiet for ONLINE_SECONDS.
+ */
+export async function putRoutines(userId: string, deviceId: string, items: RoutineItem[]): Promise<RoutineRan[] | Off> {
+  await ensureCloudTables();
+  if (!(await isEnabled(userId))) return OFF;
+  await touchDevice(userId, "desktop", deviceId);
+  const list = items.slice(0, MAX_ROUTINES);
+  return tx(async (c) => {
+    const ids = list.map((x) => x.routineId);
+    await c.query("DELETE FROM cloud_routine WHERE user_id = $1 AND NOT (routine_id = ANY($2::text[]))", [userId, ids]);
+    for (const x of list) {
+      await c.query(
+        `INSERT INTO cloud_routine (user_id, routine_id, chat_id, due_at, time_zone) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (user_id, routine_id) DO UPDATE SET chat_id = EXCLUDED.chat_id, due_at = EXCLUDED.due_at, time_zone = EXCLUDED.time_zone, updated_at = now()`,
+        [userId, x.routineId, x.chatId, x.dueAt, x.timeZone],
+      );
+    }
+    const { rows } = await c.query("SELECT routine_id, ran_at, ran_status FROM cloud_routine WHERE user_id = $1 AND ran_at IS NOT NULL", [userId]);
+    return rows.map((r) => ({ routineId: r.routine_id as string, ranAt: iso(r.ran_at), ranStatus: (r.ran_status as string | null) ?? null }));
+  });
+}
+
+/**
+ * Routines due now for accounts whose computer is off (no desktop seen for ONLINE_SECONDS): each becomes one
+ * runner-only job, and leaves the due list until the runner says when it runs next. Called before every runner claim.
+ */
+export async function queueDueRoutines(): Promise<number> {
+  return tx(async (c) => {
+    const { rows } = await c.query(
+      `SELECT r.user_id, r.routine_id, r.chat_id, r.due_at, r.time_zone FROM cloud_routine r
+        WHERE r.due_at IS NOT NULL AND r.due_at <= now()
+          AND EXISTS (SELECT 1 FROM cloud_sync s WHERE s.user_id = r.user_id AND s.enabled)
+          AND NOT EXISTS (SELECT 1 FROM cloud_device d WHERE d.user_id = r.user_id AND d.kind = 'desktop' AND d.last_seen > now() - make_interval(secs => ${ONLINE_SECONDS}))
+        ORDER BY r.due_at LIMIT 20 FOR UPDATE OF r SKIP LOCKED`,
+    );
+    let queued = 0;
+    for (const r of rows) {
+      const at = new Date(r.due_at as Date);
+      // Too late to still be useful (the computer was off for long, or the runner was down): the computer decides.
+      if (Date.now() - at.getTime() <= ROUTINE_LATE_HOURS * 3600_000) {
+        const { sealed } = sealJson({ routineId: r.routine_id, at: at.toISOString(), ...(r.time_zone ? { timeZone: r.time_zone } : {}) });
+        // Ready for the runner at once: it already waited for the computer.
+        await c.query(
+          `INSERT INTO cloud_job (id, user_id, chat_id, kind, payload, created_at) VALUES ($1, $2, $3, 'routine', $4, now() - make_interval(secs => ${RUNNER_DELAY_SECONDS + 1}))`,
+          [crypto.randomUUID(), r.user_id, r.chat_id, sealed],
+        );
+        queued++;
+      }
+      await c.query("UPDATE cloud_routine SET due_at = NULL, updated_at = now() WHERE user_id = $1 AND routine_id = $2", [r.user_id, r.routine_id]);
+    }
+    return queued;
+  });
+}
+
+/** After a routine ran in the cloud: when, how it went, and the next time (null: none, e.g. a "once" routine). */
+export async function routineRan(jobId: string, by: string, ran: { routineId: string; ranAt: string; status: string; next: string | null }): Promise<boolean> {
+  await ensureCloudTables();
+  const r = await pool.query(
+    `UPDATE cloud_routine SET ran_at = $4, ran_status = $5, due_at = $6, updated_at = now()
+      WHERE routine_id = $3 AND user_id = (SELECT user_id FROM cloud_job WHERE id = $1 AND claimed_by = $2 AND kind = 'routine')`,
+    [jobId, by, ran.routineId, ran.ranAt, ran.status, ran.next],
   );
   return !!r.rowCount;
 }

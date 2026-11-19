@@ -96,6 +96,25 @@ export async function removeRelay(userId: string): Promise<void> {
   await pool.query("DELETE FROM telegram_inbox WHERE user_id = $1", [userId]);
 }
 
+/**
+ * A message to the user's own paired Telegram chat, sent from here (the cloud server ran a routine while the computer
+ * was off). false: no Telegram connected, or Telegram refused it.
+ */
+export async function sendToOwner(userId: string, text: string): Promise<boolean> {
+  const c = await getConnection(userId);
+  if (!c || !("token" in c)) return false;
+  const chatId = typeof c.config.chatId === "number" ? c.config.chatId : null;
+  if (chatId === null) return false;
+  const parts: string[] = [];
+  for (let t = text; t.length; t = t.slice(4000)) parts.push(t.slice(0, 4000));
+  try {
+    for (const part of parts.slice(0, 5)) await tg(c.token, "sendMessage", { chat_id: chatId, text: part, disable_web_page_preview: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /** The account's Telegram connection, for a computer that hasn't got it yet (or "gone" after a disconnect). */
 export async function getConnection(userId: string): Promise<{ token: string; config: Record<string, unknown>; connectedAt: number } | { disconnectedAt: number } | null> {
   await ensureTables();

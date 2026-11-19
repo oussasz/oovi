@@ -237,7 +237,9 @@ async function runJob(job, ctl) {
     token = proxy.issue(job.userId);
     srv = await startJobServer(job, dir, token);
     if (ctl.stopped) throw new Error(ctl.stopped);
-    const prep = await srv.ask({ type: "prepare", chatId: job.chatId, chat, work }, 120_000);
+    // A routine due while the computer is off: its chat is made if the account doesn't have it yet.
+    const routineId = job.kind === "routine" && typeof payload.routineId === "string" ? payload.routineId : null;
+    const prep = await srv.ask({ type: "prepare", chatId: job.chatId, chat, work, ...(routineId ? { routineId } : {}) }, 120_000);
     if (!prep.ok) throw new Error(prep.error === "chat not found" ? "chat not found" : "setup failed");
     // The connectors this chat's bots use, with their sign-in, from the account's vault.
     const vault = [];
@@ -257,7 +259,7 @@ async function runJob(job, ctl) {
         if (m?.type === "step" && m.chatId === job.chatId) pushSoon();
         else if (m?.type === "ended" && m.chatId === job.chatId) {
           off();
-          resolve({ needsComputer: typeof m.needsComputer === "string" ? m.needsComputer : null });
+          resolve({ needsComputer: typeof m.needsComputer === "string" ? m.needsComputer : null, routine: m.routine && typeof m.routine === "object" ? m.routine : null });
         }
       });
       srv.exited.then(() => resolve({ crashed: true }));
@@ -288,7 +290,7 @@ async function runJob(job, ctl) {
       if (was) await web.putVault(job.userId, s.id, was.version, { ...was.data, oauth: s.oauth }).catch(() => false);
     }
     if (end.needsComputer) log({ ev: "needs_computer", ...base, tool: end.needsComputer });
-    result = { error: ctl.stopped === "timeout" ? "timeout" : null, needsComputer: end.needsComputer };
+    result = { error: ctl.stopped === "timeout" ? "timeout" : null, needsComputer: end.needsComputer, routine: end.routine };
   } catch (e) {
     result = { error: errorCode(e), needsComputer: null };
   } finally {
@@ -305,8 +307,16 @@ async function runJob(job, ctl) {
         await web.release(job.id);
         log({ ev: "job_released", ...base, ms });
       } else {
-        const out = outcomeOf(result);
-        await web.done(job.id, out);
+        let out = outcomeOf(result);
+        let routine = result?.routine ?? null;
+        // A routine that needs the computer isn't kept for it (the desktop runs its own routines and catches up):
+        // the job ends here, and the cloud stops running it until the computer says when it runs next.
+        if (job.kind === "routine" && out.status === "needs_computer") {
+          out = { status: "done" };
+          routine = routine ? { ...routine, status: "needs_computer", next: null } : null;
+        }
+        // A routine: when it ran, how, and its next time (the website keeps it going while the computer is off).
+        await web.done(job.id, routine ? { ...out, routine } : out);
         log({ ev: "job_end", ...base, status: out.status, code: out.error, ms });
       }
     } catch (e) {
@@ -361,7 +371,7 @@ async function loop() {
       continue;
     }
     misses = 0;
-    if (!isId(job.id) || !isId(job.userId) || !isId(job.chatId) || !["message", "decision", "stop"].includes(job.kind)) {
+    if (!isId(job.id) || !isId(job.userId) || !isId(job.chatId) || !["message", "decision", "stop", "routine"].includes(job.kind)) {
       log({ ev: "job_invalid", job: short(job.id) });
       if (isId(job.id)) await web.done(job.id, { status: "failed", error: "invalid" }).catch(() => {});
       continue;

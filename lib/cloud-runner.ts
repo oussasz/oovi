@@ -15,6 +15,8 @@ import { runInputOf } from "./cloud-runner-core";
 import { installVaultConnector, vaultSignIn, type VaultConnector } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { startRun, stopRun, subscribe } from "./runner";
+import { useRoutineChat } from "./routines";
+import { runRoutineInCloud } from "./routines-scheduler";
 import { pullSetup, syncSetup } from "./setup-sync";
 import { getChat, listBots, saveChat } from "./store";
 import type { Chat } from "./types";
@@ -39,6 +41,8 @@ async function handle(m: Msg): Promise<void> {
     await pullSetup();
     const chat = m.chat as Chat | null;
     if (chat && typeof chat.id === "string") saveChat(chat);
+    // A routine due while the computer is off: it runs in the computer's chat for it (made here if new).
+    if (typeof m.routineId === "string" && !useRoutineChat(m.routineId, String(m.chatId))) return reply(m, { ok: false, error: "routine not found" });
     if (chat && m.work && typeof m.work === "object") saveWork(chat.id, m.work as WorkStore);
     // The connectors this chat's bots use: only those are fetched from the vault.
     const here = getChat(String(m.chatId));
@@ -54,6 +58,33 @@ async function handle(m: Msg): Promise<void> {
       signIns.set(v.id, JSON.stringify(vaultSignIn(v.id)));
     }
     return reply(m, { ok: true, connectors });
+  }
+  if (m.type === "run" && m.kind === "routine") {
+    const chatId = String(m.chatId);
+    const routineId = String((m.payload as { routineId?: unknown } | undefined)?.routineId ?? "");
+    let needs: string | null = null;
+    const off = onNeedsComputer((id, tool) => {
+      if (id !== chatId) return;
+      needs = tool;
+      stopRun(chatId);
+    });
+    // Runs the way the computer would (lib/routines-scheduler.ts), and reports when it is recorded.
+    const sub = subscribe(chatId, (e) => {
+      if (e.type === "entry" || e.type === "approval") send({ type: "step", chatId });
+    });
+    void runRoutineInCloud(routineId)
+      .then((res) => {
+        sub?.();
+        off();
+        const routine = res ? { routineId, ranAt: new Date(res.ranAt).toISOString(), status: needs ? "needs_computer" : res.status, next: res.next ? new Date(res.next).toISOString() : null } : null;
+        send({ type: "ended", chatId, needsComputer: needs, routine });
+      })
+      .catch(() => {
+        sub?.();
+        off();
+        send({ type: "ended", chatId, needsComputer: null, routine: null });
+      });
+    return reply(m, { ok: true });
   }
   if (m.type === "run") {
     const chatId = String(m.chatId);

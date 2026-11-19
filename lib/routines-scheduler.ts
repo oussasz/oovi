@@ -28,7 +28,7 @@ const TELEGRAM_MAX = 12_000;
 const DESKTOP_MAX = 240;
 
 type Active = { chatId: string; startedAt: number; entryId?: string };
-type State = { timer?: ReturnType<typeof setInterval>; ticking: boolean; busySince: Map<string, number>; active: Map<string, Active>; watching: Set<string> };
+type State = { timer?: ReturnType<typeof setInterval>; ticking: boolean; cloudChecked?: boolean; busySince: Map<string, number>; active: Map<string, Active>; watching: Set<string> };
 
 const g = globalThis as typeof globalThis & {
   __ooviRoutines?: State;
@@ -64,6 +64,13 @@ async function tick(): Promise<void> {
   try {
     // Routines belong to the signed-in account; nothing runs while signed out.
     if (!currentSession()) return;
+    // With cloud sync: first what the cloud server ran while this computer was off (marked done here, so the catch-up
+    // below doesn't run it again), and this computer's next times for it (lib/cloud-sync.ts). A few seconds at most.
+    const cloudRoutines = (g as typeof g & { __ooviCloudRoutines?: (force?: boolean) => Promise<void> }).__ooviCloudRoutines;
+    if (cloudRoutines) {
+      const first = !s.cloudChecked;
+      await Promise.race([cloudRoutines(first).then(() => void (s.cloudChecked = true)).catch(() => {}), new Promise((r) => setTimeout(r, first ? 8000 : 4000))]);
+    }
     const now = Date.now();
     for (const r of listRoutines()) {
       try {
@@ -274,6 +281,25 @@ export function runRoutineNow(id: string): FireResult {
   const r = getRoutine(id);
   if (!r) return "missing";
   return fire(r, true);
+}
+
+/**
+ * The cloud runner (lib/cloud-runner.ts): runs a routine that came due while the computer was off, now, in its chat,
+ * with the same code as on the computer (reminders, results, Telegram). Resolves once the run is recorded, with how
+ * it went and its next time (null: none, a "once" routine).
+ */
+export async function runRoutineInCloud(id: string): Promise<{ status: string; ranAt: number; next: number | null } | null> {
+  const r = getRoutine(id);
+  if (!r) return null;
+  const ranAt = Date.now();
+  const nextOf = () => (r.schedule.kind === "once" || r.schedule.kind === "webhook" ? null : nextRun(r.schedule, r.timezone, Date.now()));
+  const started = fire(r, false);
+  if (started !== "started") return { status: started === "bot" ? "error" : "busy", ranAt, next: started === "bot" ? null : nextOf() };
+  // finish() records the run just after it ends (lib/routines-scheduler.ts fire): wait for both.
+  for (let i = 0; i < 20 * 60 * 4 && state().active.has(id); i++) await new Promise((res) => setTimeout(res, 250));
+  await new Promise((res) => setTimeout(res, 50));
+  const after = getRoutine(id);
+  return { status: after?.lastRun?.status ?? "ok", ranAt, next: nextOf() };
 }
 
 /** Record a finished (or paused-for-approval) run and tell the user. */

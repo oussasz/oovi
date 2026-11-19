@@ -359,7 +359,7 @@ await pool.query(`
     id          UUID PRIMARY KEY,
     user_id     TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
     chat_id     TEXT NOT NULL,
-    kind        TEXT NOT NULL CHECK (kind IN ('message', 'decision', 'stop')),
+    kind        TEXT NOT NULL CHECK (kind IN ('message', 'decision', 'stop', 'routine')),
     payload     JSONB NOT NULL,
     status      TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued', 'claimed', 'done', 'needs_computer', 'failed')),
     claimed_by  TEXT NULL,
@@ -392,6 +392,24 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_id_idx ON cloud_oauth_flow (id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_hold_idx ON cloud_oauth_flow (hold_hash);
+  CREATE TABLE IF NOT EXISTS cloud_routine (
+    user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    routine_id TEXT NOT NULL,
+    chat_id    TEXT NOT NULL,
+    due_at     TIMESTAMPTZ NULL,
+    ran_at     TIMESTAMPTZ NULL,
+    ran_status TEXT NULL,
+    time_zone  TEXT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (user_id, routine_id)
+  );
+  CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  DO $$ BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'cloud_job_kind_check' AND pg_get_constraintdef(oid) LIKE '%routine%') THEN
+      ALTER TABLE cloud_job DROP CONSTRAINT IF EXISTS cloud_job_kind_check;
+      ALTER TABLE cloud_job ADD CONSTRAINT cloud_job_kind_check CHECK (kind IN ('message', 'decision', 'stop', 'routine'));
+    END IF;
+  END $$;
   -- Payment links made for the app (keep in sync with lib/pay-links.ts PAY_DDL).
   CREATE TABLE IF NOT EXISTS pay_links (
     token_hash TEXT PRIMARY KEY,

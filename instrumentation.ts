@@ -15,6 +15,11 @@ export async function register() {
     // Anonymous daily usage counts (Settings > About & privacy turns this off).
     const { startUsageReporter } = await import("./lib/usage");
     startUsageReporter();
+    // Optional cloud sync (Settings > Sync, off by default): chats and connectors follow the account, and the
+    // phone's messages are run here while oovi is open. Started before routines: their first check asks what
+    // the cloud server ran while this computer was off.
+    const { startCloudSync } = await import("./lib/cloud-sync");
+    startCloudSync();
     // Routines: scheduled tasks run while oovi is open (or in the background, when the user allows it).
     const { startRoutines } = await import("./lib/routines-scheduler");
     startRoutines();
@@ -25,9 +30,5 @@ export async function register() {
     // The user's setup (bots, groups, skills…, never chats) follows their account to their other computers.
     const { startSetupSync } = await import("./lib/setup-sync");
     startSetupSync();
-    // Optional cloud sync (Settings > Sync, off by default): chats and connectors follow the account, and the
-    // phone's messages are run here while oovi is open.
-    const { startCloudSync } = await import("./lib/cloud-sync");
-    startCloudSync();
   }
 }

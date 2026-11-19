@@ -57,6 +57,19 @@ const waitFor = async (what, fn, ms = 60_000) => {
   return null;
 };
 
+// ---------- a stand-in Telegram API (the website sends a routine's result there while the computer is off) ----------
+const tgSent = [];
+const telegram = http.createServer((rq, rs) => {
+  let b = "";
+  rq.on("data", (c) => (b += c));
+  rq.on("end", () => {
+    const method = rq.url.split("/").pop();
+    if (method === "sendMessage") tgSent.push(JSON.parse(b || "{}"));
+    rs.writeHead(200, { "content-type": "application/json" });
+    rs.end(JSON.stringify({ ok: true, result: method === "getMe" ? { id: 1, is_bot: true, username: "sara_oovi_bot" } : true }));
+  });
+});
+
 // ---------- the stand-in for theOovi's upstream model (Anthropic Messages API) ----------
 const calls = [];
 const textOf = (m) => (typeof m.content === "string" ? m.content : (m.content || []).filter((b) => b.type === "text").map((b) => b.text).join(" "));
@@ -179,9 +192,10 @@ async function stopRunner() {
   await db.query("INSERT INTO credit_accounts (user_id, balance_mc) VALUES ($1, $2)", [USER, 1000 * 1000]);
   await new Promise((r) => model.listen(0, "127.0.0.1", r));
   await new Promise((r) => connector.listen(0, "127.0.0.1", r));
+  await new Promise((r) => telegram.listen(0, "127.0.0.1", r));
   webProc = spawn(process.execPath, [require.resolve("next/dist/bin/next", { paths: [WEB] }), "start", "-p", String(WEB_PORT), "-H", "127.0.0.1"], {
     cwd: WEB,
-    env: { ...process.env, DATABASE_URL: DB, BETTER_AUTH_SECRET: "local-test-secret-0123456789abcdef", BETTER_AUTH_URL: SITE, RUNNER_SECRET, ANTHROPIC_API_KEY: "test-key-not-real", OOVI_AI_UPSTREAM: `http://127.0.0.1:${model.address().port}`, NODE_ENV: "production" },
+    env: { ...process.env, DATABASE_URL: DB, BETTER_AUTH_SECRET: "local-test-secret-0123456789abcdef", BETTER_AUTH_URL: SITE, RUNNER_SECRET, ANTHROPIC_API_KEY: "test-key-not-real", OOVI_AI_UPSTREAM: `http://127.0.0.1:${model.address().port}`, OOVI_TELEGRAM_API: `http://127.0.0.1:${telegram.address().port}`, NODE_ENV: "production" },
     stdio: process.env.DEBUG ? "inherit" : "ignore",
   });
   await waitFor("the website", async () => (await fetch(`${SITE}/api/v1/health`)).ok, 60_000);
@@ -281,8 +295,49 @@ async function stopRunner() {
     const local = (await app("GET", `/api/chats/${dm}`)).j;
     check("the desktop's own copy matches", texts(local).filter((t) => t.startsWith("NEEDPC")).length === 1 && texts(local).includes("DONE-ON-THE-COMPUTER"));
 
+    // ---- 5) routines while the computer is off (owner, 2026-11-19) ----
+    // Telegram connected (the website keeps the bot's token, as the desktop registers it).
+    const tgOn = await site("POST", "/api/v1/telegram/relay", { token: "123456789:AAH-stand-in-token-for-tests-0123456789", chats: [555], language: "en", config: { chatId: 555 }, connectedAt: Date.now() });
+    check("Telegram is connected for the account (the website keeps its token)", tgOn.status < 300, JSON.stringify(tgOn.j));
+    const made = await app("POST", "/api/routines", { name: "Morning check", botId: oovi.id, prompt: "PHONE-morning give me my morning check", schedule: { kind: "daily", time: "08:00" }, timezone: "Africa/Algiers", enabled: true, notifyTelegram: true });
+    check("a daily routine is made on the computer", made.status === 201 && made.j?.id, JSON.stringify(made.j));
+    const rid = made.j.id;
+    const published = await waitFor("the computer tells the website its routine", async () => (await db.query("SELECT chat_id, due_at, time_zone FROM cloud_routine WHERE user_id = $1 AND routine_id = $2", [USER, rid])).rows[0], 60_000);
+    check("the computer tells the website when the routine runs next, and its time zone", !!published?.due_at && published.time_zone === "Africa/Algiers", JSON.stringify(published));
+    const rChat = published.chat_id;
+    await stopApp();
+    // The computer stays off past the routine's time (made due now here; the schedule's own maths are unit-tested).
+    await db.query("UPDATE cloud_routine SET due_at = now() - interval '1 minute' WHERE user_id = $1 AND routine_id = $2", [USER, rid]);
+    const tgBefore = tgSent.length;
+    startRunner();
+    const rj = await waitFor("the cloud server runs the routine", async () => (await db.query("SELECT id, status, claimed_by, error FROM cloud_job WHERE user_id = $1 AND kind = 'routine' AND status IN ('done', 'failed')", [USER])).rows[0], 120_000);
+    check("computer off: the routine runs on the cloud server", rj?.status === "done" && /^runner:/.test(rj.claimed_by || ""), JSON.stringify(rj));
+    const rRow = (await db.query("SELECT due_at, ran_at, ran_status FROM cloud_routine WHERE user_id = $1 AND routine_id = $2", [USER, rid])).rows[0];
+    check("…recorded, with its next time (tomorrow at 08:00, Algiers) so it keeps running while the computer stays off", rRow?.ran_status === "ok" && !!rRow.ran_at && new Date(rRow.due_at) > new Date() && new Date(rRow.due_at).getUTCHours() === 7, JSON.stringify(rRow));
+    const rCloud = await waitFor("the result in the routine's chat on the website", async () => {
+      const c = await cloudChat(rChat);
+      return texts(c).includes("REPLY PHONE-morning") ? c : null;
+    }, 30_000);
+    check("the result is in the routine's own chat (the computer's chat id), for the phone and the computer", !!rCloud);
+    const tgMsg = tgSent.slice(tgBefore).find((m) => /Morning check/.test(m.text || ""));
+    check("…and on the user's Telegram, sent by the website", !!tgMsg && tgMsg.chat_id === 555 && /REPLY PHONE-morning/.test(tgMsg.text), JSON.stringify(tgSent.slice(tgBefore)));
+    const modelCalls = calls.length;
+    await stopRunner();
+    await startApp();
+    const back = await waitFor("the computer marks the cloud's run", async () => {
+      const r2 = (await app("GET", "/api/routines")).j;
+      const one = (Array.isArray(r2) ? r2 : r2?.routines || []).find((x) => x.id === rid);
+      return one?.lastRun?.note && /cloud server/.test(one.lastRun.note) ? one : null;
+    }, 60_000);
+    check("the computer, back on, marks the run the cloud did (no second run)", !!back, JSON.stringify(back && back.lastRun));
+    await sleep(8000); // a few more checks of the computer's routines
+    const localR = (await app("GET", `/api/chats/${rChat}`)).j;
+    await app("POST", "/api/cloud", { action: "sync" });
+    check("…the routine ran once: one result, and no new model call from the computer", texts(localR).filter((t) => t === "REPLY PHONE-morning").length <= 1 && calls.slice(modelCalls).every((x) => !/PHONE-morning/.test(x.ask)), JSON.stringify({ texts: texts(localR), newCalls: calls.length - modelCalls }));
+    check("…and its next run is tomorrow", back && back.nextRunAt > Date.now(), JSON.stringify(back && back.nextRunAt));
+
     // ---- logs ----
-    const leaks = ["PHONE-two", "NEEDPC", "MCP-RESULT", CONNECTOR_KEY, RUNNER_SECRET, TOKEN].filter((w) => out.includes(w));
+    const leaks = ["PHONE-two", "PHONE-morning", "NEEDPC", "MCP-RESULT", CONNECTOR_KEY, RUNNER_SECRET, TOKEN].filter((w) => out.includes(w));
     check("the runner's logs carry no chat text, keys or tokens", leaks.length === 0, leaks.join(", "));
   } catch (e) {
     check("no crash", false, e.stack);
@@ -290,6 +345,7 @@ async function stopRunner() {
     for (const p of [appProc, runnerProc, webProc]) if (p && p.exitCode === null) p.kill("SIGTERM");
     model.close();
     connector.close();
+    telegram.close();
     await db.query(`DELETE FROM "user" WHERE id = $1`, [USER]).catch(() => {});
     await db.end();
   }

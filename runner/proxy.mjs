@@ -65,6 +65,16 @@ export function startProxy(cfg, web) {
         const r = await web.raw("PUT", `/setup/${uid}`, body, 30_000);
         return send(res, r.status, r.body);
       }
+      if (route === "telegram") {
+        let text = "";
+        try {
+          text = String(JSON.parse(body.toString("utf8") || "{}").text ?? "");
+        } catch {
+          return send(res, 400, { error: "Invalid request." });
+        }
+        const r = await web.raw("POST", "/telegram", JSON.stringify({ userId: job.userId, text }), 30_000);
+        return send(res, r.status, r.body);
+      }
       // theOovi, billed to the job's account by the website.
       const r = await web.raw("POST", `/ai/${uid}`, body, 10 * 60_000);
       return send(res, r.status, r.body, r.retryAfter ? { "retry-after": r.retryAfter } : {});

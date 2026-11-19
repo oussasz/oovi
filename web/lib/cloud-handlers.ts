@@ -2,7 +2,7 @@
 // (/api/v1/cloud/runner/chats, /runner/vault): the account id always comes from the caller, never the body.
 import type { NextResponse } from "next/server";
 import { MAX_CHAT_TEXT, MAX_VAULT_ITEMS, MAX_VAULT_TEXT, checkChatPut, checkDone, checkVaultPut, isId } from "./cloud-core";
-import { finishJob, getChat, getVault, heartbeat, putChat, putVault } from "./cloud";
+import { finishJob, getChat, getVault, heartbeat, putChat, putVault, routineRan } from "./cloud";
 import { body, fail, notFound, ok, syncOff } from "./cloud-route";
 
 export async function chatGet(userId: string, chatId: string): Promise<NextResponse> {
@@ -64,7 +64,23 @@ export async function jobDone(req: Request, jobId: string, kind: "desktop" | "ru
   if (b === "too_big" || b === "bad") return fail(400, "bad_request", "Invalid request.");
   const v = checkDone(b, kind === "desktop" ? "deviceId" : "runnerId");
   if (typeof v === "string") return fail(400, "bad_request", v);
+  // A routine the runner ran: when, how it went, and when it runs next (lib/cloud.ts routineRan), recorded while
+  // the claim is still its own.
+  const ran = kind === "runner" ? routineOf(b.routine) : null;
+  if (ran) await routineRan(jobId, `${kind}:${v.by}`, ran);
   const done = await finishJob(jobId, `${kind}:${v.by}`, userId, v.status, v.error);
   if (!done) return fail(409, "conflict", "This job's lease was lost: another device took it, or it ended.");
   return ok({ ok: true });
+}
+
+const isoOrNull = (v: unknown): string | null => (typeof v === "string" && v.length <= 40 && !Number.isNaN(Date.parse(v)) ? new Date(v).toISOString() : null);
+
+/** The routine part of a runner's "done" ({routineId, ranAt, status, next}), checked. */
+function routineOf(v: unknown): { routineId: string; ranAt: string; status: string; next: string | null } | null {
+  if (!v || typeof v !== "object") return null;
+  const o = v as Record<string, unknown>;
+  const ranAt = isoOrNull(o.ranAt);
+  if (typeof o.routineId !== "string" || !/^[\w-]{1,64}$/.test(o.routineId) || !ranAt) return null;
+  const status = typeof o.status === "string" && /^[a-z_]{1,20}$/.test(o.status) ? o.status : "ok";
+  return { routineId: o.routineId, ranAt, status, next: isoOrNull(o.next) };
 }

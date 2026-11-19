@@ -25,6 +25,7 @@ import { takeTelegramFollowUp } from "./telegram-followups";
 import { listRoutines } from "./routines";
 import { dataDir, decryptSecret, encryptSecret, loadSettings } from "./settings";
 import { cloud, CloudError, sessionToken } from "./account";
+import { cloudRunner } from "./cloud-flag";
 import { resolveLocale } from "./i18n";
 import { localeOfText } from "./text-locale";
 import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
@@ -194,6 +195,12 @@ export function telegramConnected(): boolean {
 /** Send a text to the user's paired main chat (e.g. a routine's result). Resolves false when not connected or not sent. */
 /** Queues a message for the owner's chat. It goes through the outbox, so it's retried if Telegram or the network is down (e.g. right after the computer wakes). */
 export async function sendToMainChat(text: string): Promise<boolean> {
+  // On the cloud server (a routine while the computer is off) there is no Telegram here: the website sends it with
+  // the token it keeps for the account (runner/proxy.mjs → /api/v1/cloud/runner/telegram). The routine's chat has it.
+  if (cloudRunner()) {
+    const r = await cloud<{ sent?: boolean }>("/api/v1/telegram/send", { method: "POST", auth: true, body: { text: text.slice(0, 20_000) } }).catch(() => null);
+    return r?.sent === true;
+  }
   const s = read();
   if (!token(s) || !s.chatId) return false;
   deliver(s.chatId, text);
