@@ -4,6 +4,7 @@ import { useActionState, useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { framedHtml, FRAME_SANDBOX } from "@/lib/announcement-frame";
 import type { Announcement } from "@/lib/announcements";
+import { STATE_WORDS, audienceLabel, parsePeople, peopleOf, type PersonState } from "@/lib/announcement-audience";
 import { changeStatus, removeAnn, saveAnn, sendAnnEmails, sendAnnTest, type AnnState } from "../actions";
 
 /** A starting point that looks right in the app's window and in mail apps (tables and inline styles). */
@@ -37,15 +38,19 @@ const STARTER = `<!doctype html>
 
 type View = "window" | "bar" | "email";
 
-export function AnnEditor({ a, adminEmail, counts }: { a: (Announcement & { stats: Record<string, number> }) | null; adminEmail: string; counts: { sent: number; left: number } | null }) {
+export function AnnEditor({ a, adminEmail, counts, people }: { a: (Announcement & { stats: Record<string, number> }) | null; adminEmail: string; counts: { sent: number; left: number } | null; people?: { email: string; state: PersonState }[] }) {
   const router = useRouter();
   const [state, save, saving] = useActionState<AnnState, FormData>(saveAnn, null);
   const [title, setTitle] = useState(a?.title ?? "");
   const [barText, setBarText] = useState(a?.barText ?? "");
   const [html, setHtml] = useState(a?.html ?? STARTER);
   const [ch, setCh] = useState({ email: a?.email ?? false, window: a?.window ?? true, bar: a?.bar ?? true });
-  const [audience, setAudience] = useState<"all" | "test">(a?.testEmail ? "test" : a ? "all" : "test");
-  const [testEmail, setTestEmail] = useState(a?.testEmail || adminEmail);
+  const [audience, setAudience] = useState<"all" | "chosen">(a?.testEmail ? "chosen" : a ? "all" : "chosen");
+  const [peopleText, setPeopleText] = useState(a?.testEmail ? peopleOf(a.testEmail).join("\n") : adminEmail);
+  const [message, setMessage] = useState(a?.message ?? "");
+  const typed = parsePeople(peopleText);
+  const chosen = a ? audienceLabel(a.testEmail) : "";
+  const skipped = (people ?? []).filter((p) => p.state !== "ok");
   const [testTo, setTestTo] = useState(adminEmail);
   const [view, setView] = useState<View>("window");
   const [msg, setMsg] = useState<AnnState>(null);
@@ -89,7 +94,7 @@ export function AnnEditor({ a, adminEmail, counts }: { a: (Announcement & { stat
             <input type="checkbox" name="bar" checked={ch.bar} onChange={(e) => touched(setCh)({ ...ch, bar: e.target.checked })} /> Bar at the top of the app (like the update bar; “Open” shows the window)
           </label>
           <label className="check">
-            <input type="checkbox" name="email" checked={ch.email} onChange={(e) => touched(setCh)({ ...ch, email: e.target.checked })} /> Email (with an unsubscribe link; people who unsubscribed are skipped)
+            <input type="checkbox" name="email" checked={ch.email} onChange={(e) => touched(setCh)({ ...ch, email: e.target.checked })} /> Email {audience === "chosen" ? "(an ordinary email with your message)" : "(with an unsubscribe link; people who unsubscribed are skipped)"}
           </label>
           <span className="fine">The window and the bar need oovi 0.10.16 or newer; email reaches everyone.</span>
         </fieldset>
@@ -106,10 +111,46 @@ export function AnnEditor({ a, adminEmail, counts }: { a: (Announcement & { stat
         <fieldset className="adm-fieldset">
           <legend>Who sees it</legend>
           <label className="check">
-            <input type="radio" name="audience" value="test" checked={audience === "test"} onChange={() => touched(setAudience)("test")} /> One person, to test it
+            <input type="radio" name="audience" value="chosen" checked={audience === "chosen"} onChange={() => touched(setAudience)("chosen")} /> Only the people I choose (one or several)
           </label>
-          {audience === "test" && (
-            <input className="input" name="testEmail" type="email" value={testEmail} onChange={(e) => touched(setTestEmail)(e.target.value)} aria-label="Test person's email" style={{ maxWidth: 360 }} />
+          {audience === "chosen" && (
+            <div className="field" style={{ maxWidth: 420 }}>
+              <textarea
+                className="input"
+                name="people"
+                rows={Math.min(8, Math.max(2, typed.emails.length + 1))}
+                value={peopleText}
+                onChange={(e) => touched(setPeopleText)(e.target.value)}
+                aria-label="Email addresses of the people it is for"
+                placeholder={"sara@example.com\nkarim@example.com"}
+                spellCheck={false}
+              />
+              <span className="fine">
+                One address per line (commas work too): the email they use for oovi. {typed.emails.length} {typed.emails.length === 1 ? "person" : "people"}
+                {typed.bad.length ? `, ${typed.bad.length} not an address` : ""}.
+              </span>
+              {!dirty && skipped.length > 0 && (
+                <ul className="adm-errors" role="status">
+                  {skipped.map((p) => (
+                    <li key={p.email}>
+                      {p.email} {STATE_WORDS[p.state as Exclude<PersonState, "ok">]}.
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {ch.email && (
+                <>
+                  <label htmlFor="ann-message" style={{ marginTop: 10 }}>
+                    Your message (the email they get)
+                  </label>
+                  <textarea id="ann-message" className="input" name="message" rows={7} dir="auto" value={message} maxLength={5000} onChange={(e) => touched(setMessage)(e.target.value)} placeholder={"Hi Sara,\n\nI saw that…"} />
+                  <span className="fine">
+                    An ordinary email from oovi, with your words as written (any language). The title above is its subject. No news footer and no unsubscribe link: it is a message to this person, so it also reaches people who unsubscribed from news. The HTML below is only for the window and the bar in the app.
+                  </span>
+                </>
+              )}
+              {!ch.email && <input type="hidden" name="message" value={message} />}
+            </div>
           )}
           <label className="check">
             <input type="radio" name="audience" value="all" checked={audience === "all"} onChange={() => touched(setAudience)("all")} /> Everyone
@@ -171,13 +212,13 @@ export function AnnEditor({ a, adminEmail, counts }: { a: (Announcement & { stat
         {a && (
           <div className="adm-ann-actions">
             <p>
-              <b>Status:</b> {a.status === "live" ? (a.testEmail ? `Live for ${a.testEmail} only` : "Live for everyone") : a.status === "ended" ? "Ended" : "Draft"}
+              <b>Status:</b> {a.status === "live" ? (a.testEmail ? `Live for ${chosen} only` : "Live for everyone") : a.status === "ended" ? "Ended" : "Draft"}
               {dirty && <span className="fine"> · unsaved changes</span>}
             </p>
             <div className="row-actions" style={{ flexWrap: "wrap" }}>
               {a.status !== "live" && (
                 <button className="btn btn-dark btn-sm" disabled={busy || dirty} onClick={() => (a.testEmail || confirm("Make it live for everyone?")) && act(() => changeStatus(a.id, "live"))}>
-                  {a.testEmail ? `Go live for ${a.testEmail}` : "Go live for everyone"}
+                  {a.testEmail ? `Go live for ${chosen}` : "Go live for everyone"}
                 </button>
               )}
               {a.status === "live" && (
@@ -207,7 +248,7 @@ export function AnnEditor({ a, adminEmail, counts }: { a: (Announcement & { stat
                 </p>
                 <div className="row-actions" style={{ flexWrap: "wrap" }}>
                   <button className="btn btn-sm" disabled={busy || dirty || (!a.testEmail && !live) || !counts?.left} onClick={() => act(() => sendAnnEmails(a.id))}>
-                    {a.testEmail ? `Email ${a.testEmail}` : `Send the next ${Math.min(150, counts?.left ?? 0)} emails`}
+                    {a.testEmail && peopleOf(a.testEmail).length === 1 ? `Email ${chosen}` : `Send the next ${Math.min(150, counts?.left ?? 0)} emails`}
                   </button>
                 </div>
                 {!a.testEmail && !live && <p className="fine">Emails to everyone are sent once it is live.</p>}

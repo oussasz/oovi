@@ -257,6 +257,7 @@ await pool.query(`
     PRIMARY KEY (announcement_id, user_id, kind)
   );
   ALTER TABLE "user" ADD COLUMN IF NOT EXISTS news_opt_out BOOLEAN NOT NULL DEFAULT false;
+  ALTER TABLE announcements ADD COLUMN IF NOT EXISTS message TEXT NOT NULL DEFAULT '';
   -- Routines started by a web address (keep in sync with lib/routine-hooks.ts HOOKS_DDL).
   CREATE TABLE IF NOT EXISTS routine_hooks (
     id          TEXT PRIMARY KEY,

@@ -188,3 +188,11 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
     removes that entry and the bots' answers after it, then runs the message again: it is never in the chat twice.
     Part A: do the same when the desktop runs a `needs_computer` job (the cloud's "This needs your computer" reply
     is one of those answers).
+- 2026-11-19 (owner): a WEB version too, the same app as the phone (same code, same API), in any browser at
+  `/app` on the website (the phone keeps `/m`, or both share one route that adapts): signed-in only (every page
+  and API call checks the session; signed out → sign-in page), wide screens get a two-column layout (chat list +
+  chat), like WhatsApp Web / Messenger on the web. theOovi only, like the phone. Everywhere (phone and web) oovi
+  suggests the desktop app, never pushy: a short card in the chat list and in Settings, and a line when something
+  needs the computer: "The desktop app does more: it works on your files, uses your computer and its browser,
+  runs local connectors, and lets you use your own AI keys." with a Download button to the website's download page.
+
