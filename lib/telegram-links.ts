@@ -20,6 +20,11 @@ export type TgMessage = {
   chat: { id: number; type: string; title?: string; first_name?: string; last_name?: string; username?: string };
   from?: TgUser;
   text?: string;
+  /** The words sent with a photo, video or file (Telegram puts them here, not in `text`). */
+  caption?: string;
+  photo?: { file_id: string }[];
+  document?: { file_id: string; file_name?: string; mime_type?: string };
+  video?: { file_id: string };
   /** A voice message (or an audio file): turned into text (lib/voice.ts). */
   voice?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
   audio?: { file_id: string; duration?: number; mime_type?: string; file_size?: number };
@@ -65,7 +70,7 @@ const COMMANDS = new Set(["start", "yes", "no", "ask", "stop"]);
  * Returns null when a group message isn't for us (no mention, no reply, not our command).
  */
 export function addressedText(m: TgMessage, botUsername?: string): string | null {
-  const raw = (m.text ?? "").trim();
+  const raw = (m.text ?? m.caption ?? "").trim();
   if (!isGroupType(m.chat.type)) return raw;
   const cmd = raw.match(/^\/(\w+)(?:@(\w+))?(?:\s+([\s\S]*))?$/);
   if (cmd) {

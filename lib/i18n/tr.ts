@@ -1855,7 +1855,6 @@ const tr: Dict = {
   "tg.connected": "Bağlandı! oovi'de {bot} ile konuşuyorsun. İstediğini sor ya da bir grubu çalıştırmasını iste. oovi bilgisayarında açık olduğu sürece yanıt verir.",
   "tg.mainBot": "ana botun",
   "tg.private": "Bu özel bir oovi botu. Bağlanmak için oovi > Ayarlar > Telegram'da gösterilen bağlantıyı kullan.",
-  "tg.textOnly": "Şimdilik yalnızca metin mesajlarını okuyabiliyorum.",
   "tg.alreadyConnected": "Bağlısın. Ana botunla konuşmak için bir mesaj gönder.",
   "tg.noBots": "Henüz botun yok. Önce oovi'de bir tane oluştur.",
   "chat.stepLimit": "{count} adımdan sonra durduruldu (sınır Ayarlar'da). Devam etmek için bir mesaj gönder.",

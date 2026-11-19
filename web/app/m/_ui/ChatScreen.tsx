@@ -137,6 +137,19 @@ function Meta({ at, tick, lang, zone, t }: { at: number; tick?: "sending" | "sen
   );
 }
 
+/**
+ * theOovi's account errors (web/lib/credits.ts answers in English) in the phone's language, by the reply's errorCode;
+ * null for any other error (shown as "This reply stopped: …").
+ */
+function hostedKey(code?: string): "chat.err.noCredits" | "chat.err.dailyLimit" | "chat.err.signedOut" | "chat.err.verify" | "chat.err.offline" | null {
+  if (code === "no_credits") return "chat.err.noCredits";
+  if (code === "daily_limit") return "chat.err.dailyLimit";
+  if (code === "signed_out") return "chat.err.signedOut";
+  if (code === "verify_email") return "chat.err.verify";
+  if (code === "offline") return "chat.err.offline";
+  return null;
+}
+
 export function ChatScreen({ chatId }: { chatId: string }) {
   const m = useM();
   const { t, lang, chats, bot, status, sync, online, outbox, loadChat, putChat, markSeen, job } = m;
@@ -501,11 +514,27 @@ export function ChatScreen({ chatId }: { chatId: string }) {
                 <span>{act.label}</span>
               </div>
             )}
-            {e.status === "error" && e.errorCode !== "needs_computer" && (
+            {e.status === "error" && e.errorCode !== "needs_computer" && (hostedKey(e.errorCode) ? (
+              <div className="m-msg__account" role="note">
+                <p>
+                  <Icon name="warn" size={15} /> {t(hostedKey(e.errorCode)!)}
+                </p>
+                {(e.errorCode === "no_credits" || e.errorCode === "daily_limit") && m.credits?.links?.subscribe && (
+                  <Link href={to("/settings")} className="m-btn m-btn--fill m-btn--sm" onClick={() => tap()}>
+                    {t("settings.getMore")}
+                  </Link>
+                )}
+                {e.errorCode === "verify_email" && (
+                  <Link href={to("/settings")} className="m-btn m-btn--sm" onClick={() => tap()}>
+                    {t("acct.verifyTitle")}
+                  </Link>
+                )}
+              </div>
+            ) : (
               <p className="m-msg__err">
                 <Icon name="warn" size={15} /> {t("chat.error", { error: (e.error ?? t("chats.failed")).slice(0, 200) })}
               </p>
-            )}
+            ))}
             {e.status === "stopped" && <p className="m-msg__note">{t("chat.stopped")}</p>}
             {e.unconfirmed && <p className="m-msg__note m-msg__note--warn">{t("chat.unconfirmed")}</p>}
           </div>

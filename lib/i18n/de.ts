@@ -1855,7 +1855,6 @@ const de: Dict = {
   "tg.connected": "Verbunden! Du sprichst mit {bot} in oovi. Frag, was du willst, oder lass eine Gruppe arbeiten. Es antwortet, solange oovi auf deinem Computer geöffnet ist.",
   "tg.mainBot": "deinem Haupt-Bot",
   "tg.private": "Dies ist ein privater oovi-Bot. Zum Verbinden nutze den Link in oovi > Einstellungen > Telegram.",
-  "tg.textOnly": "Ich kann vorerst nur Textnachrichten lesen.",
   "tg.alreadyConnected": "Du bist verbunden. Schick eine Nachricht, um mit deinem Haupt-Bot zu sprechen.",
   "tg.noBots": "Du hast noch keine Bots. Erstelle zuerst einen in oovi.",
   "chat.stepLimit": "Nach {count} Schritten gestoppt (Grenze in den Einstellungen). Schick eine Nachricht, um weiterzumachen.",

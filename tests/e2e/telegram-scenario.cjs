@@ -67,6 +67,10 @@ async function answerAsync(body) {
     if (hasResult) return reply([{ type: "text", text: "REMIND-SET" }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_rem_${Date.now()}`, name: "propose_routine", input: { reminder: "طفي الفرن REMIND-OVEN", frequency: "once", in_minutes: 1 } }], "tool_use");
   }
+  if (/PHOTO-CAPTION/.test(u)) {
+    seen.caption = u;
+    return reply([{ type: "text", text: "CAPTION-READ" }], "end_turn");
+  }
   if (/VOICE-NOTE/.test(u)) return reply([{ type: "text", text: /^🎤 VOICE-NOTE/.test(u) ? "VOICE-HEARD" : "VOICE-WRONG" }], "end_turn");
   if (/LONG/.test(u)) {
     await sleep(8000);
@@ -114,6 +118,8 @@ http
         return send(200, { text: "VOICE-NOTE شحال الساعة دركا؟", seconds: 3, credits: 0.1 });
       }
       if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      // Out of credits, as the website answers (web/lib/credits.ts: English text + code). Asked last: the history keeps the word.
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && /NOCREDIT/.test(raw)) return send(402, { error: "You've used all your credits. Subscribe for more, or add your own API key.", code: "no_credits" });
       if (url === "/api/v1/ai/messages" && req.method === "POST") seen.model = (seen.model || 0) + 1;
       if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
@@ -322,6 +328,23 @@ const check = (name, ok, detail = "") => {
   check("the reminder is also in the chat in the app, once, and cost no model call", dmRem.entries.filter((e) => e.kind === "bot" && /طفي الفرن REMIND-OVEN/.test(e.text)).length === 1 && (seen.model || 0) === callsBefore, `${(seen.model || 0) - callsBefore} calls`);
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
+
+  // A photo with a caption: the caption is the message, and the bot is told the photo itself couldn't be opened.
+  const nP = sent.length;
+  updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, photo: [{ file_id: "p1", width: 90, height: 90 }], caption: "PHOTO-CAPTION شنو هذا؟" } });
+  await waitFor((m) => sent.indexOf(m) >= nP && /CAPTION-READ|photos or files|الصور أو الملفات|photos ni les fichiers/.test(m.text), 30_000, "caption reply");
+  check("a photo's caption is read as the message (not \"text messages only\")", sent.slice(nP).some((m) => /CAPTION-READ/.test(m.text)) && /PHOTO-CAPTION/.test(seen.caption || "") && /A photo came with this message/.test(seen.caption || ""), (seen.caption || "").slice(0, 160));
+  // A photo with no words: said plainly what works instead.
+  const nQ = sent.length;
+  updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, photo: [{ file_id: "p2", width: 90, height: 90 }] } });
+  const noFile = await waitFor((m) => sent.indexOf(m) >= nQ, 30_000, "photo without words");
+  check("a photo without words gets a plain reply naming what works (text and voice)", /photos or files from Telegram yet|الصور أو الملفات من تيليغرام|photos ni les fichiers venant de Telegram/.test(noFile?.text || "") && !/text messages for now/.test(noFile?.text || ""), noFile?.text);
+
+  // Out of credits while the user writes in Darija: the reason and the next step in Arabic, not the website's English.
+  const nC = sent.length;
+  userSays("NOCREDIT واش راك اليوم؟");
+  const credit = await waitFor((m) => sent.indexOf(m) >= nC, 60_000, "out-of-credits reply");
+  check("out of credits reaches Telegram translated, with what to do (Arabic)", /استهلكت كل رصيد theOovi/.test(credit?.text || "") && /افتح oovi على حاسوبك/.test(credit?.text || "") && !/You've used all/.test(credit?.text || ""), credit?.text);
 
   const ok = results.filter((r) => r.ok).length;
   log(`${ok}/${results.length} checks passed`);

@@ -14,7 +14,8 @@
 // and linked chats are answered; the routing rules live in telegram-links.ts.
 
 import { MAX_VOICE_BYTES, transcribeAudio, voiceText } from "./voice";
-import { translateFor, translatorFor } from "./i18n-server";
+import { translateFor, translatorFor, type Tr } from "./i18n-server";
+import { hostedErrorText } from "./hosted-words";
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
@@ -501,7 +502,7 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   // "/no" to a proposed plan: the entry keeps the plan's goal as its text; say it's cancelled instead.
   if (last?.planReview === "cancelled") return deliver(chatId, tr("tg.planCancelled"));
   if (!target.group) {
-    if (last?.status === "error") return deliver(chatId, tr("grp.problem", { bot: name, error: last.error ?? "unknown error" }));
+    if (last?.status === "error") return deliver(chatId, problemText(tr, name, last));
     if (last?.text) return deliver(chatId, plainText(last.text));
     return deliver(chatId, tr("tg.noReply", { name }));
   }
@@ -510,9 +511,17 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   const also = others.length
     ? `\n\n${tr(last?.status === "error" ? "grp.before" : "grp.also")}\n${others.map((e) => `${who(e.botId)}: ${clipText(plainText(e.text), 500)}`).join("\n\n")}`
     : "";
-  if (last?.status === "error") return deliver(chatId, `${tr("grp.problem", { bot: who(last.botId), error: last.error ?? "unknown error" })}${also}`);
+  if (last?.status === "error") return deliver(chatId, `${problemText(tr, who(last.botId), last)}${also}`);
   if (last?.text) return deliver(chatId, `${who(last.botId)}:\n${plainText(last.text)}${also}`);
   return deliver(chatId, tr("grp.noReply", { group: name }));
+}
+
+/**
+ * A reply that ended in an error, in the user's words: theOovi's account errors (no credits, daily limit, signed out,
+ * email not confirmed) say what happened and what to do; any other error is quoted after the bot's name.
+ */
+function problemText(tr: Tr, bot: string, e: { error?: string; errorCode?: string }): string {
+  return hostedErrorText(tr, e.errorCode, { away: true }) ?? tr("grp.problem", { bot, error: e.error || tr("tg.unknownError") });
 }
 
 /** oovi's words to the owner on Telegram: in the language of their latest message to the main bot, else the app's. */
@@ -632,7 +641,8 @@ async function handleMain(tok: string, s: Stored, m: TgMessage) {
   // A voice message counts as what it says (only once paired: pairing needs the typed /start link).
   const spoken = s.chatId && !m.text && (m.voice || m.audio) ? await voiceToText(tok, m) : null;
   if (s.chatId && (m.voice || m.audio) && !spoken) return;
-  const text = (spoken ?? m.text ?? "").trim();
+  // A photo or file with a caption: the caption is the message (the file itself can't be opened from here yet).
+  const text = withAttachmentNote(m, (spoken ?? m.text ?? m.caption ?? "").trim());
 
   // Pairing: only the person who opened oovi's link (with its one-time code) gets in.
   if (!s.chatId) {
@@ -652,7 +662,7 @@ async function handleMain(tok: string, s: Stored, m: TgMessage) {
     return;
   }
 
-  if (!text) return say(tok, m.chat.id, ownerTr()("tg.textOnly"));
+  if (!text) return say(tok, m.chat.id, ownerTr()("tg.noFiles"));
   if (/^\/start\b/.test(text)) return say(tok, m.chat.id, ownerTr()("tg.alreadyConnected"));
   const bot = mainBot();
   if (!bot) return say(tok, m.chat.id, ownerTr()("tg.noBots"));
@@ -698,15 +708,27 @@ async function answerRoutine(tok: string, chatId: number, text: string): Promise
   return true;
 }
 
+/**
+ * A photo or file came with the words: the bot is told it couldn't be opened, so it doesn't answer as if it saw it.
+ * (A note like the "[name on Telegram]" label: what the user wrote stays first.)
+ */
+function withAttachmentNote(m: TgMessage, text: string): string {
+  if (!text || m.text || !(m.photo?.length || m.document || m.video)) return text;
+  return `${text}\n\n[${m.photo?.length ? "A photo" : m.video ? "A video" : "A file"} came with this message on Telegram; oovi can't open it from Telegram yet.]`;
+}
+
 /** A message from a Telegram chat linked to an oovi group (already checked: linked, and addressed to the bot). */
 async function handleLinked(tok: string, s: Stored, m: TgMessage, link: TgLink, text: string) {
   const cid = m.chat.id;
   const tgGroup = m.chat.type !== "private";
   const group = getChat(link.groupId);
-  if (!group || group.kind !== "group") return say(tok, cid, "This chat is linked to an oovi group that no longer exists. Link it again in oovi > Settings > Telegram > Advanced.");
-  if (!text) return tgGroup ? undefined : say(tok, cid, "I can read text messages for now.");
+  // This chat's language when it's clear (Arabic/Darija, French), else the app's.
+  const tr = translatorFor(text || m.caption);
+  if (!group || group.kind !== "group") return say(tok, cid, tr("tg.groupGone"));
+  if (!text) return tgGroup ? undefined : say(tok, cid, tr("tg.noFiles"));
+  text = withAttachmentNote(m, text);
   if (/^\/start\b/i.test(text)) {
-    return say(tok, cid, `This chat is linked to the oovi group "${group.name}".${tgGroup ? ` Mention @${s.botUsername ?? "me"} or reply to my messages to talk to it.` : " Send a message to talk to it."}`);
+    return say(tok, cid, `${tr("tg.linkedTo", { group: group.name })} ${tgGroup ? tr("tg.linkedHowGroup", { bot: `@${s.botUsername ?? "oovi"}` }) : tr("tg.linkedHowPrivate")}`);
   }
   const target: Target = { tgChatId: cid, ooviChatId: group.id, name: group.name, group: true, tgGroup, ownerName: s.userName };
   // A plain "yes"/"no" counts only from someone who may answer, for a request shown in this chat.
@@ -714,15 +736,15 @@ async function handleLinked(tok: string, s: Stored, m: TgMessage, link: TgLink, 
   const plan = planCommand(text, group, words);
   if (plan) {
     if (!canApprove(m, link, s.chatId)) {
-      return say(tok, cid, s.chatId ? `Only ${s.userName ?? "the owner of this oovi"} can answer plans here.` : "Plans here need the owner's own Telegram: pair it first in oovi > Settings > Telegram.");
+      return say(tok, cid, s.chatId ? tr("tg.onlyOwnerPlans", { name: s.userName ?? tr("tg.owner") }) : tr("tg.plansNeedPair"));
     }
     return relay(tok, target, { planDecision: plan });
   }
   const ac = approvalCommand(text, group.pending?.approval, words);
-  if (ac.kind === "nothing-pending") return say(tok, cid, "Nothing is waiting for an OK right now.");
+  if (ac.kind === "nothing-pending") return say(tok, cid, tr("tg.nothingPending"));
   if (ac.kind === "decide") {
     if (!canApprove(m, link, s.chatId)) {
-      return say(tok, cid, s.chatId ? `Only ${s.userName ?? "the owner of this oovi"} can answer approvals here.` : "Approvals here need the owner's own Telegram: pair it first in oovi > Settings > Telegram.");
+      return say(tok, cid, s.chatId ? tr("tg.onlyOwnerApprovals", { name: s.userName ?? tr("tg.owner") }) : tr("tg.approvalsNeedPair"));
     }
     return relay(tok, target, ac.input);
   }
@@ -734,7 +756,7 @@ async function handleLinked(tok: string, s: Stored, m: TgMessage, link: TgLink, 
 }
 
 /** A chat nobody linked: list it in Settings, and send at most one short notice, ever. */
-async function handleUnknown(tok: string, chatId: number, title: string, type: string) {
+async function handleUnknown(tok: string, chatId: number, title: string, type: string, said?: string) {
   let notice = false;
   change((s) => {
     const others = (s.detected ?? []).filter((d) => d.chatId !== chatId);
@@ -745,7 +767,7 @@ async function handleUnknown(tok: string, chatId: number, title: string, type: s
       s.noticed = [...noticed, chatId].slice(-MAX_NOTICED);
     }
   });
-  if (notice) await say(tok, chatId, `This chat isn't linked to oovi yet. Its owner can link it in oovi > Settings > Telegram > Advanced (chat ID ${chatId}).`);
+  if (notice) await say(tok, chatId, translatorFor(said)("tg.notLinked", { id: chatId }));
 }
 
 /** /stop: stops what the owner's main bot (private chat) or a linked group is doing. Only the owner can stop. */
@@ -776,7 +798,7 @@ async function handle(tok: string, u: TgUpdate) {
     });
     return;
   }
-  if (route.kind === "unknown") return handleUnknown(tok, route.chatId, route.title, route.type);
+  if (route.kind === "unknown") return handleUnknown(tok, route.chatId, route.title, route.type, m.text ?? m.caption);
   if (route.kind === "linked") return handleLinked(tok, s, m, route.link, route.text);
   return handleMain(tok, s, m);
 }
@@ -942,7 +964,7 @@ export function startTelegram(): void {
     if (!f || !allowedChat(read(), f.telegramChatId)) return;
     const e = getChat(ooviChatId)?.entries.find((x): x is BotEntry => x.kind === "bot" && x.id === f.entryId);
     if (e?.status === "done" && e.text.trim()) deliver(f.telegramChatId, plainText(e.text));
-    else if (e?.status === "error") deliver(f.telegramChatId, ownerTr()("grp.problem", { bot: e.botId ? listBots().find((b) => b.id === e.botId)?.name ?? "oovi" : "oovi", error: e.error ?? "" }));
+    else if (e?.status === "error") deliver(f.telegramChatId, problemText(ownerTr(), e.botId ? (listBots().find((b) => b.id === e.botId)?.name ?? "oovi") : "oovi", e));
   });
   // Retry what couldn't be sent (also what was waiting when oovi closed).
   if (state.outboxTimer) clearInterval(state.outboxTimer);

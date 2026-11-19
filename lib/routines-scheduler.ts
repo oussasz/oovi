@@ -10,6 +10,7 @@ import fs from "node:fs";
 import { currentSession } from "./account";
 import type { TKey, Vars } from "./i18n";
 import { translateFor } from "./i18n-server";
+import { hostedErrorText } from "./hosted-words";
 import { getRoutine, listRoutines, mutateRoutine, routineChat } from "./routines";
 import { afterRun, CREDIT_CODES, decideTick, MAX_FAILURES, nextRun, resultOf, type ChatState, type RunResult } from "./routines-schedule";
 import { checkUrl } from "./browser";
@@ -347,7 +348,11 @@ function finish(id: string, res: RunResult, entryId?: string) {
     if (r.postTo && res.text) void postInChat(r.postTo, r.botId, `⏰ **${r.name}**\n\n${res.text}`);
     notifyResult(r, res.text);
     void telegramFiles(r);
-  } else if (res.status === "error" && !toldBefore) notifyResult(r, translateFor("routines.n.failed", { name: r.name, error: res.text.slice(0, 600) }), true);
+  } else if (res.status === "error" && !toldBefore) {
+    // theOovi's account errors (no credits, daily limit, signed out…) in the user's words with what to do; others as they are.
+    const account = hostedErrorText(translateFor, res.errorCode, { away: true });
+    notifyResult(r, account ? translateFor("routines.n.stopped", { name: r.name, why: account }) : translateFor("routines.n.failed", { name: r.name, error: res.text.slice(0, 600) }), true);
+  }
   else if (res.status === "waiting") notify(r, "routines.n.waiting", { name: r.name, what: res.text.slice(0, 600) }, "routines.n.waitingTg");
   if (paused) notify(r, "routines.n.paused", { name: r.name, count: MAX_FAILURES });
 }
@@ -422,7 +427,7 @@ async function telegramFiles(r: Routine) {
 function notifyResult(r: Routine, text: string, isError = false) {
   const body = text || translateFor("routines.n.empty", { name: r.name });
   desktop(`⏰ ${r.name}`, body, r.chatId);
-  const tg = body.length > TELEGRAM_MAX ? `${body.slice(0, TELEGRAM_MAX)}…\n(The full result is in oovi.)` : body;
+  const tg = body.length > TELEGRAM_MAX ? `${body.slice(0, TELEGRAM_MAX)}…\n${translateFor("routines.n.fullInApp")}` : body;
   telegram(r, isError ? tg : `⏰ ${r.name}:\n${tg}`);
 }
 
