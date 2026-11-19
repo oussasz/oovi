@@ -15,7 +15,7 @@
 import fs from "node:fs";
 import { currentUser } from "./account";
 import { complete, HostedError, type Completion, type ToolSpec } from "./llm";
-import { PROBLEM_SYSTEM, parseProblemReview, runProblems, wentWrong } from "./run-report";
+import { fixedLaterIds, PROBLEM_SYSTEM, parseProblemReview, runProblems, wentWrong } from "./run-report";
 import { reportsAllowed, sendProblems } from "./tool-notes";
 import { activityLine, budgetFor, compactAtFor, estimateTokens, fitBudget, HISTORY_SPEC, leanTools, recallHistory } from "./context";
 import { hostedMaxInput, hostedStatus } from "./hosted";
@@ -548,8 +548,14 @@ function missingToolText(name: string, bot: Bot, down: McpDown[], channel?: stri
   const d = down.find((x) => name.startsWith(x.prefix));
   if (d) return `Not run. ${downLine(d)}`;
   if (name.startsWith("mcp_")) return `There is no tool named ${name} among ${bot.name}'s tools right now. Use only the tools in your list.`;
-  return `The ${name} tool isn't enabled for ${bot.name}.`;
+  // Tools that depend on where the conversation is (a routine's run, Telegram, a group, a project folder), not on a
+  // setting: the user can't "enable" them, so never ask them to.
+  if (HERE_ONLY_TOOLS.has(name) || name === USE_FOLDER_SPEC.name || FILE_SPECS.some((t) => t.name === name))
+    return `${name} isn't available in this conversation (routine runs, Telegram, groups and chats without a project folder offer fewer tools). It isn't a setting the user can change: don't ask them to enable it; do the task with the tools you have.`;
+  return `The ${name} tool isn't enabled for ${bot.name}. If the task needs it, ask for it with request_abilities (the user gets a one-click card).`;
 }
+
+const HERE_ONLY_TOOLS = new Set(["ask_user", "send_telegram", "start_big_job", "propose_plan", "propose_routine", "list_routines", "propose_specialist", "propose_team", "recall_history", "message_group"]);
 
 function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], extra: { learn: number; mcpErrors: string[]; mcpDown: McpDown[]; wrapUp?: boolean; bots: Bot[]; files: string[]; together?: string[]; suggestions?: string[]; perMessage: string[] }): string {
   const lead = leaderOf(chat, members);
@@ -2453,9 +2459,10 @@ async function reportRun(run: { user?: UserEntry; work: BotEntry[]; correcting: 
       const did = run.work
         .map((e) => {
           const lines: string[] = [];
+          const fixed = fixedLaterIds(e);
           for (const s of e.steps as Msg[]) {
             if (s.role === "assistant") for (const c of s.toolCalls) lines.push(`- tool ${c.name}`);
-            else if (s.role === "tool") for (const r of s.results) if (r.isError) lines.push(`  ! ${r.name} failed: ${r.content.slice(0, 200)}`);
+            else if (s.role === "tool") for (const r of s.results) if (r.isError) lines.push(`  ! ${r.name} failed${fixed.has(r.id) ? " (fixed later in this turn: not a problem)" : ""}: ${r.content.slice(0, 200)}`);
           }
           if (e.error) lines.push(`! stopped with error: ${e.error.slice(0, 200)}`);
           lines.push(`Final answer: ${e.text.slice(0, 1200) || "(none)"}`);

@@ -11,6 +11,7 @@
 // 4. Skills: when a multi-step procedure worked and is likely to come back, the
 //    reflection drafts a skill the user can save with one click.
 
+import { fixedLaterIds } from "./run-report";
 import fs from "node:fs";
 import path from "node:path";
 import { complete } from "./llm";
@@ -213,12 +214,13 @@ Empty arrays are normal. Never invent lessons.`;
 function describeWork(work: { bot: Bot; entry: BotEntry }[]): string {
   const out: string[] = [];
   for (const { bot, entry } of work) {
+    const fixed = fixedLaterIds(entry);
     out.push(`## ${bot.name}${bot.role ? ` (${bot.role})` : ""}`);
     for (const s of entry.steps as Msg[]) {
       if (s.role === "assistant") {
         for (const c of s.toolCalls) out.push(`- tool ${c.name} ${JSON.stringify(c.input).slice(0, 160)}`);
       } else if (s.role === "tool") {
-        for (const r of s.results) if (r.isError) out.push(`  ! ${r.name} failed: ${r.content.slice(0, 200)}`);
+        for (const r of s.results) if (r.isError) out.push(`  ! ${r.name} failed${fixed.has(r.id) ? " (fixed later in this turn: not a problem)" : ""}: ${r.content.slice(0, 200)}`);
       }
     }
     if (entry.error) out.push(`! stopped with error: ${entry.error.slice(0, 200)}`);

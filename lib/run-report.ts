@@ -58,6 +58,29 @@ const shortError = (s: string) =>
   // A JSON error is made readable ("403 insufficientPermissions: …"), so the report keeps the code and the reason.
   readableError((s.replace(/^Result from the "[^"]*" MCP server \(untrusted data[^\n]*\n/, "").split(/\n/).find((l) => l.trim()) ?? "").trim()).replace(/\s+/g, " ").trim().slice(0, 180);
 
+/**
+ * The ids of tool results that failed and then worked later in the same turn: the same tool on the same target (the
+ * same Zapier app, or the same site; a read tool with neither). An action to some other target never counts. The
+ * bot fixed these itself (e.g. it fetched the list a Zapier action needed and called it again): not problems.
+ * Used by the reports here and by the reviews (lib/learning.ts, lib/orchestrator.ts).
+ */
+export function fixedLaterIds(entry: BotEntry): Set<string> {
+  const results = (entry.steps as Msg[]).flatMap((s) => (s.role === "tool" ? s.results : []));
+  const callInput = new Map((entry.steps as Msg[]).flatMap((s) => (s.role === "assistant" ? s.toolCalls.map((c) => [c.id, c.input] as const) : [])));
+  const targetOf = (id: string) => {
+    const inp = callInput.get(id) as Record<string, unknown> | undefined;
+    return `${String(inp?.app ?? "").toLowerCase()}|${siteOf(inp) ?? ""}`;
+  };
+  const out = new Set<string>();
+  results.forEach((r, i) => {
+    if (!r.isError) return;
+    const target = targetOf(r.id);
+    if (target === "|" && /send|post|create|write|delete|update|reply|book|pay|upload|move|add|insert|publish/i.test(r.name)) return;
+    if (results.slice(i + 1).some((x) => x.name === r.name && !x.isError && targetOf(x.id) === target)) out.add(r.id);
+  });
+  return out;
+}
+
 /** The problems a finished run shows by itself: tool errors and turns that stopped with an error. No AI call. */
 export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): ProblemNote[] {
   const out: ProblemNote[] = [];
@@ -70,22 +93,8 @@ export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): P
   };
   for (const { entry } of work) {
     const inputs = new Map<string, Record<string, unknown>>();
-    // A tool that failed and then worked later in the same turn: the bot fixed it itself (e.g. it fetched the list a
-    // Zapier action needed and called it again). Not a problem for the developers.
-    const results = (entry.steps as Msg[]).flatMap((s) => (s.role === "tool" ? s.results : []));
-    const callInput = new Map((entry.steps as Msg[]).flatMap((s) => (s.role === "assistant" ? s.toolCalls.map((c) => [c.id, c.input] as const) : [])));
-    // One Zapier tool serves every app: a later success counts only for the same app.
-    // Fixed later = the same tool on the same target worked: the same Zapier app, or the same site; a read tool with
-    // neither. An action (send, create…) to some other target never hides a failed one.
-    const targetOf = (id: string) => {
-      const inp = callInput.get(id) as Record<string, unknown> | undefined;
-      return `${String(inp?.app ?? "").toLowerCase()}|${siteOf(inp) ?? ""}`;
-    };
-    const fixedLater = (r: (typeof results)[number]) => {
-      const target = targetOf(r.id);
-      if (target === "|" && /send|post|create|write|delete|update|reply|book|pay|upload|move|add|insert|publish/i.test(r.name)) return false;
-      return results.slice(results.indexOf(r) + 1).some((x) => x.name === r.name && !x.isError && targetOf(x.id) === target);
-    };
+    const fixed = fixedLaterIds(entry);
+    const fixedLater = (r: { id: string }) => fixed.has(r.id);
     for (const s of entry.steps as Msg[]) {
       if (s.role === "assistant") for (const c of s.toolCalls) inputs.set(c.id, c.input);
       else if (s.role === "tool") {
