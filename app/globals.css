@@ -251,7 +251,10 @@ textarea { resize: vertical; }
 .settings-nav button small { font-size: 12px; }
 .settings-nav button:hover { background: var(--soft); }
 .settings-nav button.on { background: var(--panel); box-shadow: var(--shadow-sm); color: var(--text); }
-.settings-body > h2 { margin: 6px 0 4px; font-size: 22px; }
+/* Section icons sit on the logo's pebbles (as in the phone app's settings). */
+.settings-nav button > svg { flex: none; box-sizing: content-box; padding: 7px; border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%; background: var(--soft); color: var(--text); }
+.settings-nav button.on > svg { background: var(--blue); color: #171717; }
+.settings-body > h2 { margin: 6px 0 4px; font-size: 24px; font-weight: 900; }
 .settings-body .lead { margin: 0 0 16px; }
 .card-h { font-size: 15.5px; margin: 0 0 10px; }
 .card.collapsible { padding: 0; }
@@ -602,7 +605,7 @@ a.tag { text-decoration: none; }
 .live-shot img { display: block; width: 100%; border-radius: 12px; border: 1px solid var(--border); box-shadow: var(--shadow-sm); }
 .live-empty { margin: 8px 14px; padding: 36px 18px; border: 1.5px dashed var(--border); border-radius: var(--radius); display: flex; flex-direction: column; align-items: center; text-align: center; color: var(--muted); font-size: 13.5px; }
 .live-activity { padding: 16px 10px 20px; }
-.live-sub { font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); padding: 0 8px 6px; }
+.live-sub { font-size: 12.5px; font-weight: 800; letter-spacing: 0.01em; color: var(--muted); padding: 0 8px 6px; }
 .act { display: flex; align-items: center; gap: 8px; width: 100%; border: none; background: none; font: inherit; font-size: 13px; color: var(--text); padding: 6px 8px; border-radius: 10px; cursor: pointer; text-align: left; }
 .act span:nth-child(2) { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .act:hover:not(:disabled) { background: var(--panel); }
@@ -611,16 +614,16 @@ a.tag { text-decoration: none; }
 /* ---------- bot editor ---------- */
 .editor { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 28px; align-items: start; }
 .editor-preview { position: sticky; top: 24px; }
-.preview-card { background: var(--panel); border: 1px solid var(--border); border-radius: 24px; padding: 26px 18px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
-.preview-name { font-weight: 800; font-size: 22px; }
+.preview-card { background: var(--panel); border: 1px solid var(--border); box-shadow: var(--shadow-sm); border-radius: var(--radius); padding: 26px 18px 20px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; }
+.preview-name { font-weight: 900; font-size: 22px; }
 .preview-role { color: #171717; font-weight: 800; font-size: 12px; padding: 2px 10px; border-radius: 99px; max-width: 100%; overflow-wrap: anywhere; text-align: center; }
 .preview-about { margin: 6px 0 0; font-size: 13px; font-style: italic; color: var(--muted); text-align: center; overflow-wrap: anywhere; white-space: pre-line; }
 .mood-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 5px; margin: 6px 0 4px; }
 .mood-row .chip { padding: 3px 10px; font-size: 12px; }
-.editor-form h1 { margin: 4px 0 14px; font-size: 28px; }
+.editor-form h1 { margin: 4px 0 14px; font-size: 28px; font-weight: 900; }
 .presets { margin-bottom: 14px; }
 .opt-group { margin-top: 14px; }
-.opt-label { font-size: 11.5px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--faint); margin-bottom: 8px; }
+.opt-label { font-size: 13px; font-weight: 800; letter-spacing: 0.01em; color: var(--muted); margin-bottom: 8px; }
 .opt-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .opt { padding: 4px; border-radius: 14px; border: 2px solid transparent; background: var(--soft); cursor: pointer; }
 .opt:hover { border-color: var(--border); }
@@ -1270,7 +1273,8 @@ html[lang="ar"] { --font: var(--font-arabic), var(--font-nunito), ui-rounded, sy
 .zap-other { display: flex; gap: 6px; }
 .zap-other input { flex: 1; min-width: 0; padding: 5px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); font: inherit; font-size: 13px; }
 .editor-window .page { padding-top: 26px; }
-.editor-back { margin-bottom: 12px; }
+/* The page version's Back button takes its own row: as a grid item it pushed the form under the preview. */
+.editor-back { margin-bottom: 12px; grid-column: 1 / -1; justify-self: start; }
 .look-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .look-panel { min-height: 64px; }
 .look-panel .opt-group { margin: 0; }

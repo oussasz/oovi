@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito, Tajawal } from "next/font/google";
+import { Nunito } from "next/font/google";
+import localFont from "next/font/local";
 import AccountGate from "@/components/AccountGate";
 import { I18nProvider } from "@/components/I18n";
 import Sidebar from "@/components/Sidebar";
@@ -17,9 +18,27 @@ import "./styles/routines.css";
 
 const nunito = Nunito({ subsets: ["latin"], display: "swap", variable: "--font-nunito" });
 // Nunito has no Arabic glyphs: Tajawal is its rounded match for Arabic (the same pair as the phone and web app).
-// next/font's `subsets` only chooses what is preloaded: the CSS still declares every subset of a face, so the
-// order in the font stack decides (globals.css): Nunito first, Tajawal first only when the app is in Arabic.
-const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800", "900"], display: "swap", variable: "--font-arabic" });
+// Only Tajawal's Arabic letters are kept here (app/fonts, SIL Open Font License: Tajawal-OFL.txt), so Latin
+// letters and digits always come from Nunito, even in the Arabic interface. Its line metrics are tuned: with
+// Tajawal's own (ascent 0.643 em) Arabic words sat about 3 px above the middle of buttons, pills and rows.
+const arabic = localFont({
+  src: [
+    { path: "./fonts/tajawal-arabic-400.woff2", weight: "400", style: "normal" },
+    // 600 (semi-bold Latin text in Nunito) draws Arabic in medium: Tajawal has no 600 and 700 reads too heavy.
+    { path: "./fonts/tajawal-arabic-500.woff2", weight: "500 600", style: "normal" },
+    { path: "./fonts/tajawal-arabic-700.woff2", weight: "700", style: "normal" },
+    { path: "./fonts/tajawal-arabic-800.woff2", weight: "800", style: "normal" },
+    { path: "./fonts/tajawal-arabic-900.woff2", weight: "900", style: "normal" },
+  ],
+  variable: "--font-arabic",
+  display: "swap",
+  adjustFontFallback: false,
+  declarations: [
+    { prop: "ascent-override", value: "80%" },
+    { prop: "descent-override", value: "34%" },
+    { prop: "line-gap-override", value: "0%" },
+  ],
+});
 
 export const metadata: Metadata = {
   title: "oovi",

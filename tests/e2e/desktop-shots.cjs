@@ -36,7 +36,7 @@ const TEXT = {
   en: {
     ask: "Find me 3 hotels in Oran for next weekend, under 12,000 DA a night",
     answer:
-      "I found **3 hotels** in Oran that fit:\n\n| Hotel | Price a night | Rating |\n| --- | --- | --- |\n| Ibis Oran | 9,800 DA | 4.1 |\n| Hotel Andalous | 11,200 DA | 4.3 |\n| Royal Oran | 11,900 DA | 4.6 |\n\nThe cheapest is **Ibis**, close to the seafront. Shall I email them a booking request?",
+      "I found **3 hotels** in Oran that fit, and put them in the **Hotels** table:\n\n- **Ibis Oran**: 9,800 DA a night, rated 4.1\n- **Hotel Andalous**: 11,200 DA, rated 4.3\n- **Royal Oran**: 11,900 DA, rated 4.6\n\nThe cheapest is **Ibis**, close to the seafront. Shall I email them a booking request?",
     yes: "Yes, send it",
     approval: "Send an email in Gmail\nTo: reservations@ibis-oran.example\nSubject: Booking request, Nov 21–23",
     group: "Café team",
@@ -51,7 +51,7 @@ const TEXT = {
   ar: {
     ask: "لقى لي 3 فنادق في وهران للويكاند الجاي، أقل من 12000 دينار لليلة",
     answer:
-      "وجدت **3 فنادق** مناسبة في وهران:\n\n| الفندق | السعر لليلة | التقييم |\n| --- | --- | --- |\n| إيبيس وهران | 9 800 دج | 4.1 |\n| فندق الأندلس | 11 200 دج | 4.3 |\n| رويال وهران | 11 900 دج | 4.6 |\n\nالأرخص هو **إيبيس**، قريب من الواجهة البحرية. هل أرسل طلب الحجز بالبريد؟",
+      "وجدت **3 فنادق** مناسبة في وهران، ووضعتها في جدول **الفنادق**:\n\n- **إيبيس وهران**: 9 800 دج لليلة، تقييم 4.1\n- **فندق الأندلس**: 11 200 دج، تقييم 4.3\n- **رويال وهران**: 11 900 دج، تقييم 4.6\n\nالأرخص هو **إيبيس**، قريب من الواجهة البحرية. هل أرسل طلب الحجز بالبريد؟",
     yes: "إيه، أرسل لهم",
     approval: "إرسال بريد في Gmail\nإلى: reservations@ibis-oran.example\nالموضوع: طلب حجز، 21-23 نوفمبر",
     group: "فريق المقهى",
@@ -83,7 +83,7 @@ function seed(acc, bots, L) {
     updatedAt: t0 + 20 * 60e3,
     entries: [
       { id: "u1", kind: "user", text: L.ask, at: t0 },
-      { id: "b1", kind: "bot", botId: oovi.id, at: t0 + 60e3, steps: [], text: L.answer, status: "done", usage, credits: 1.4, model: "theOovi" },
+      { id: "b1", kind: "bot", botId: oovi.id, at: t0 + 60e3, steps: [{ role: "assistant", text: "", toolCalls: [{ id: "toolu_t1", name: "work_table", input: { action: "write", table: L.table } }] }, { role: "tool", results: [{ id: "toolu_t1", name: "work_table", content: `Wrote 3 rows to "${L.table}".` }] }], text: L.answer, status: "done", usage, credits: 1.4, model: "theOovi" },
       { id: "u2", kind: "user", text: L.yes, at: t0 + 15 * 60e3 },
       { id: "b2", kind: "bot", botId: oovi.id, at: t0 + 15 * 60e3 + 5e3, steps: [], text: "", status: "waiting", usage: { input: 0, output: 0 } },
     ],
