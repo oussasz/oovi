@@ -36,3 +36,12 @@ test("a connector's write action counts (Zapier's execute_zapier_write_action); 
     assert.ok(unconfirmedClaim(text, turn(read)), read);
   }
 });
+
+test("acting tools beyond connectors count: Telegram, replayed skills, logins, files, the computer's clicks and keys", () => {
+  const text = "I sent the email to Karim.";
+  for (const name of ["send_telegram", "replay_skill", "fill_login", "delete_file", "copy_file_to_downloads", "edit_copy_of_file", "desktop_left_click", "desktop_type", "desktop_key"]) {
+    assert.equal(unconfirmedClaim(text, turn(name)), null, name);
+  }
+  // Looking at the screen sends nothing.
+  for (const name of ["desktop_screenshot", "desktop_zoom", "desktop_wait", "desktop_cursor_position", "desktop_"]) assert.ok(unconfirmedClaim(text, turn(name)), name);
+});

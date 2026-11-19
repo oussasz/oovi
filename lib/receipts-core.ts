@@ -36,7 +36,7 @@ export function claimedAction(text: string): string | null {
  * verb, clicks and typing in a browser or on the computer, uploads, sending a file. Reading and searching
  * never count.
  */
-const ACTS = /^(click|type|browser_steps|upload_file|send_file_to_user|send_screenshot|open_app|manage_window|computer|desktop_|work_export|create_document|create_spreadsheet|create_presentation|create_image|write_file|edit_file|run_command|propose_routine|message_group|vm_run)$/i;
+const ACTS = /^(click|type|browser_steps|fill_login|upload_file|send_file_to_user|send_screenshot|send_telegram|replay_skill|open_app|manage_window|computer|desktop_(?!(screenshot|zoom|cursor_position|wait)$)\w+|work_export|create_document|create_spreadsheet|create_presentation|create_image|write_file|edit_file|edit_copy_of_file|copy_file_to_downloads|delete_file|run_command|propose_routine|message_group|vm_run|vm_write_file)$/i;
 /**
  * A connector tool acts unless its name says it only looks: services name their actions in many ways
  * ("execute_zapier_write_action", "set_mood", "move_card"), their reads mostly the same few ways.
