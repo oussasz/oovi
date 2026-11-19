@@ -7,7 +7,7 @@
   border: none; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer;
 }
 .att-add:hover { background: var(--soft); color: var(--text); }
-.att-add:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.att-add:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
 
 .att-pending { margin-bottom: 8px; }
 .att-list, .att-sent { display: flex; flex-wrap: wrap; gap: 8px; }

@@ -1,5 +1,32 @@
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
+## Desktop visual refresh (branch `desktop-refresh`, 2026-11-19, NOT RELEASED, nothing published)
+The desktop app now uses the phone/web app's look (web/app/m/m.css). No behaviour, texts or bot instructions changed.
+- **Found:** all Latin text was drawn in Noto Sans Arabic, not Nunito (next/font declares every subset of a face,
+  and Noto was first in the font stack). Now Nunito first; Tajawal (the phone app's Arabic face) first only when the
+  app is in Arabic (`html[lang="ar"]`, app/globals.css). Tajawal's Arabic letters are self-hosted in `app/fonts`
+  (SIL OFL, `Tajawal-OFL.txt`) with tuned line metrics (app/layout.tsx): with its own, Arabic words sat ~3 px high in
+  buttons and pills. Latin and digits come from Nunito in every language.
+- **Look:** colors, shadows and 22 px corners from the phone app (tokens at the top of app/globals.css; dark paper
+  #151513); your messages in ink; each bot's replies washed in its own face color (`--bot`, set per message in
+  components/ChatView.tsx); approval card as a white card with the actions in a paper box and 44 px pill buttons;
+  pill composer; heavy Nunito headings; section labels without capitals; settings icons on pebbles; hopping
+  pebbles while a bot types; focus ring #4A63D6 (light) / #A9BCF7 (dark).
+- **Fixed on the way:** the bot editor page (`/bots/<id>`) had its Back button as a grid item, which pushed the form
+  into the narrow column under the preview; it now takes its own row.
+- **Screenshots** (1440x900; en/ar x light/dark): `docs/desktop-refresh/before-*.jpg` and `after-*.jpg` for home,
+  chat-approval, group, canvas, settings, marketplace, bot-editor. Made by `node tests/e2e/desktop-shots.cjs <prefix>`
+  (needs a build; seeds a throwaway data folder, stand-in website).
+- **Checked:** tsc; unit tests 415 pass, 1 skipped; npm run build; chatbasics 23/23, upload 10/10, list 64/64,
+  onboarding 12/12, approvals 16/16, form 25/25, group 34/34, spec 37/37, phase1 11/11, cost 11/11 (weighted
+  169,901, unchanged). Contrast with axe-core on home, both chats, Marketplace, bot editor and Settings in en/ar x
+  light/dark: 0 violations (a planted low-contrast line was caught, so the check works). Focus rings seen in both
+  themes. Muted text passes 4.5:1 on paper, side bar, cards and fills.
+- **Not checked:** on Windows/Mac (fonts render differently; run the CI workflow), screens not in the list above
+  (routines, group editor, onboarding visuals were only covered by their scenarios, not looked at), small windows.
+- **Noticed, not changed:** Markdown tables in a bot's reply show as raw `|` lines on the desktop (components/Rich.tsx
+  has no table rendering); the phone app draws them as tables.
+
 ## Cloud LIVE state (2026-11-19, owner said "deploy" and approved adding RUNNER_SECRET to Vercel)
 - Website deployed from branch cloud-integration (W + A + R + integration fixes): /api/v1/cloud live; RUNNER_SECRET set in
   Vercel production (generated on the build machine, never shown). Checked: signed out 401, wrong runner secret 403,
