@@ -292,7 +292,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const center = view ? (
     <span className="m-chathead">
       <span className="m-chathead__face" aria-hidden>
-        <ChatFace faces={members.map((b) => b?.face ?? {})} size={30} mood={activity?.mood} />
+        <ChatFace faces={members.map((b) => b?.face ?? {})} size={40} mood={activity?.mood} />
       </span>
       <span className="m-chathead__text">
         <span className="m-chathead__name" dir="auto">

@@ -1,13 +1,12 @@
 /* oovi on the phone: the website's visual language made for a hand.
    Warm paper (#FBFAF7 / #151513), Nunito in heavy rounded weights (Tajawal for Arabic), ink-black pill buttons,
    white cards with warm borders and soft 22px corners, the logo's pastel pebbles (blue, yellow, coral, mint,
-   lilac) as the color system, a hand-written accent (Caveat), sparkle doodles, and the slimes themselves.
+   lilac) as the color system, sparkle doodles, and the slimes themselves.
    Good platform habits kept: 44 pt targets, safe areas, springy motion, sizes in rem (on iPhone the text size
    setting scales everything), light and dark, right-to-left for Arabic. Every class starts with "m-". */
 
 html.m-root {
   --m-font: var(--font-sans, "Nunito"), var(--font-ar, "Tajawal"), system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif;
-  --m-hand: var(--font-hand, "Caveat"), var(--font-ar, "Tajawal"), cursive;
   --m-paper: #fbfaf7;
   --m-paper-2: #f4f1ea;
   --m-card: #ffffff;
@@ -464,19 +463,17 @@ html.m-root[lang="ar"] .m-large {
   font-size: 0.882rem;
   font-weight: 600;
 }
-/* section heads in the website's hand-written accent */
 .m-list-head {
-  margin: 16px 24px 4px;
+  margin: 18px 24px 6px;
   color: var(--m-ink-2);
-  font-family: var(--m-hand);
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
 }
 html.m-root[lang="ar"] .m-list-head {
-  font-family: inherit;
-  font-size: 0.941rem;
-  font-weight: 800;
+  letter-spacing: 0;
+  font-size: 0.85rem;
 }
 .m-noresult {
   margin: 32px 16px;
@@ -514,9 +511,6 @@ html.m-root[lang="ar"] .m-list-head {
   place-items: center;
   width: 58px;
   height: 58px;
-  border-radius: 20px;
-  background: var(--m-card);
-  border: 1px solid var(--m-line);
 }
 .m-chat__main {
   flex: 1;
@@ -723,17 +717,16 @@ html.m-root[lang="ar"] .m-list-head {
   margin: 0 16px 26px;
 }
 .m-section__head {
-  margin: 0 8px 8px;
+  margin: 0 10px 8px;
   color: var(--m-ink-2);
-  font-family: var(--m-hand);
-  font-size: 1.35rem;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 0.82rem;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
 }
 html.m-root[lang="ar"] .m-section__head {
-  font-family: inherit;
-  font-size: 0.941rem;
-  font-weight: 800;
+  letter-spacing: 0;
+  font-size: 0.85rem;
 }
 .m-section__foot {
   margin: 8px 10px 0;
@@ -942,8 +935,8 @@ html.m-root[lang="ar"] .m-section__head {
   gap: 6px;
   margin: 8px 16px 24px;
   color: var(--m-ink-2);
-  font-family: var(--m-hand);
-  font-size: 1.25rem;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 .m-check {
   color: var(--m-ink);
@@ -1419,9 +1412,6 @@ html.m-root[lang="ar"] .m-section__head {
   place-items: center;
   width: 42px;
   height: 42px;
-  border-radius: 15px;
-  background: var(--m-card);
-  border: 1px solid var(--m-line);
 }
 .m-chathead__text {
   display: flex;
@@ -1477,12 +1467,11 @@ html.m-root[lang="ar"] .m-section__head {
 }
 .m-msg__name {
   margin: 10px 0 3px;
-  padding-inline-start: 50px;
+  padding-inline-start: 46px;
   color: var(--m-ink-2);
-  font-family: var(--m-hand);
-  font-size: 1.15rem;
-  font-weight: 700;
-  line-height: 1;
+  font-size: 0.765rem;
+  font-weight: 800;
+  line-height: 1.2;
 }
 .m-msg__row {
   display: flex;
@@ -1756,14 +1745,8 @@ html.m-root[data-mtheme="dark"] .m-meta .is-read {
   line-height: 1.3;
 }
 .m-replybar__body b {
-  font-family: var(--m-hand);
-  font-size: 1.12rem;
-  font-weight: 700;
-}
-html.m-root[lang="ar"] .m-replybar__body b {
-  font-family: inherit;
   font-size: 0.82rem;
-  font-weight: 800;
+  font-weight: 900;
 }
 .m-replybar__body span {
   color: var(--m-ink-2);

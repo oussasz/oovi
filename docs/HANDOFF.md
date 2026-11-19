@@ -7,8 +7,9 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
 - Look (owner, 2026-11-19: "a unique identity, not a copy of Apple"): the website's own language. Warm paper
   (#FBFAF7, dark #151513), Nunito in heavy weights (Tajawal for Arabic), ink-black pill buttons, white cards with
   warm borders and 22px corners, the logo's pastel pebbles as the color system (floating dock whose active tab sits
-  on a pebble, settings icons on pebbles, unread counts, the switch's yellow pebble), hand-written section heads
-  (Caveat), the sparkle doodle on titles, the slimes in empty states and sign-in, each bot's replies washed in its
+  on a pebble, settings icons on pebbles, unread counts, the switch's yellow pebble), bots' faces shown bare (no
+  tile or frame, owner 2026-11-19), small heavy Nunito section labels (no handwriting: owner found it not
+  professional), the sparkle doodle on titles, the slimes in empty states and sign-in, each bot's replies washed in its
   own face color, three hopping pebbles while loading. Kept from good platform practice: 44 pt targets, safe areas,
   springy motion, Dynamic Type sizes, light/dark.
 - Where: `web/app/m/` (screens in `_ui/`, pure helpers in `_lib/`, look in `m.css`), `web/public/m/` (manifest,
