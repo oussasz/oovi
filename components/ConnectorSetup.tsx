@@ -34,6 +34,16 @@ export type SetupServer = {
 export type SetupCatalog = { by?: string; description?: string; docs?: string; verified?: boolean };
 
 type BotLite = { id: string; name: string };
+
+/** A service's own error words (technical, often English), folded away under a small "Details". */
+export function ErrDetails({ text, label }: { text: string; label: string }) {
+  return (
+    <details className="err-details">
+      <summary>{label}</summary>
+      <code dir="auto">{text}</code>
+    </details>
+  );
+}
 type Test = { ok: boolean; tools?: string[]; details?: { name: string; description?: string }[]; error?: string };
 
 export default function ConnectorSetup(props: { server: SetupServer; catalogId?: string; setupUrl?: string; catalog?: SetupCatalog; busy: boolean; onSignIn: () => void; onChanged: () => void; onDisconnect: () => void }) {
@@ -101,7 +111,22 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
         <dt>{t("conn.fact.status")}</dt>
         <dd>
           <span className={`dot ${s.status === "connected" ? "ok" : s.status === "error" ? "err" : ""}`} />{" "}
-          {s.auth === "oauth" && !s.signedIn ? t("mk.notSignedIn") : s.status === "connected" ? t("conn.state.connected") : s.status === "error" ? s.error : t("conn.state.idle")}
+          {s.auth === "oauth" && !s.signedIn ? t("mk.notSignedIn") : s.status === "connected" ? t("conn.state.connected") : s.status === "error" ? t("conn.unreachable", { name: s.name }) : t("conn.state.idle")}
+          {s.status === "error" && signedIn && (
+            <>
+              <span className="cs-act">
+                {s.auth === "oauth" && (
+                  <button type="button" className="btn sm primary" disabled={busy} onClick={onSignIn}>
+                    {t("conn.reconnect")}
+                  </button>
+                )}
+                <button type="button" className="btn sm" disabled={testing} onClick={() => void runTest()}>
+                  {testing ? t("common.testing") : t("conn.testNow")}
+                </button>
+              </span>
+              {s.error && <ErrDetails text={s.error} label={t("conn.errDetails")} />}
+            </>
+          )}
         </dd>
         <dt>{t("conn.fact.kind")}</dt>
         <dd>{kind}</dd>
@@ -164,7 +189,7 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
             <div>
               <b>{zapier && signedIn ? t("zap.title") : t("conn.choose", { name: s.name })}</b>
               {zapier && signedIn ? (
-                <ZapierApps serverId={s.id} />
+                <ZapierApps serverId={s.id} onReconnect={s.auth === "oauth" ? onSignIn : undefined} />
               ) : (
                 <>
                   <p className="note">{zapier ? t("conn.zapier.choose") : t("conn.chooseHint", { name: s.name })}</p>
@@ -193,8 +218,9 @@ export default function ConnectorSetup(props: { server: SetupServer; catalogId?:
             </div>
             {test && !test.ok && (
               <div className="notice error small cs-msg">
-                {test.error}
+                {t("conn.unreachable", { name: s.name })}
                 {s.auth === "oauth" && <span className="cs-fix"> {t("conn.errorFix")}</span>}
+                {test.error && <ErrDetails text={test.error} label={t("conn.errDetails")} />}
               </div>
             )}
             {shownTools && shownTools.length > 0 && zapier && signedIn ? (

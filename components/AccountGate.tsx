@@ -11,7 +11,8 @@ import CloudAsk, { CloudQuestion } from "./CloudAsk";
 import { api } from "@/lib/client";
 import { randomFace, type Face as FaceT } from "@/lib/faces";
 import { GOALS, LEADERS } from "@/lib/onboarding-core";
-import { LOCALES, NATIVE_NAMES, setupText } from "@/lib/i18n";
+import { LOCALES, NATIVE_NAMES, setupText, type TKey } from "@/lib/i18n";
+import { authErrorCode, type AuthErrorCode } from "@/lib/auth-errors";
 import Face, { FaceStack } from "./Face";
 import { announceLanguage, useI18n } from "./I18n";
 import Icon from "./Icon";
@@ -71,6 +72,23 @@ function reportCrash(message: string, stack?: string) {
 
 // ---------- sign in / create account ----------
 
+/**
+ * POST /api/account for sign-in, sign-up and the email code. An error comes back in the user's language when the
+ * route names it (`code`, lib/auth-errors.ts); oovi's own server not answering counts as no connection.
+ */
+async function accountPost<T>(body: Record<string, unknown>, t: (k: TKey) => string): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch("/api/account", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  } catch {
+    throw new Error(t("auth.err.network"));
+  }
+  const j = (await res.json().catch(() => null)) as (T & { error?: string; code?: AuthErrorCode }) | null;
+  if (res.ok && j) return j;
+  const code = j?.code ?? (res.ok ? "server" : authErrorCode(res.status, j?.error));
+  throw new Error(code ? t(`auth.err.${code}`) : (j?.error ?? t("auth.err.server")));
+}
+
 function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: AccountState) => void }) {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [, setTouched] = useState(false);
@@ -105,7 +123,7 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
         : mode === "signin"
           ? { action: "signin", email, password }
           : { action: "signup", name, email, password, acceptTerms: agree };
-      const next = await api<AccountState & { verify?: { email: string } }>("/api/account", { method: "POST", body: JSON.stringify(body) });
+      const next = await accountPost<AccountState & { verify?: { email: string } }>(body, t);
       if (next.verify) {
         setCodeFor(next.verify.email);
         setCode("");
@@ -130,7 +148,7 @@ function AuthScreen({ cloudUrl, onDone }: { cloudUrl: string; onDone: (s: Accoun
     setError(null);
     setSent(false);
     try {
-      await api("/api/account", { method: "POST", body: JSON.stringify({ action: "resend", email: codeFor }) });
+      await accountPost({ action: "resend", email: codeFor }, t);
       setSent(true);
     } catch (err) {
       setError((err as Error).message);
@@ -277,11 +295,16 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
   const [picked, setPicked] = useState<string[]>([]);
   const [touched, setTouched] = useState(false);
   const [loading, setLoading] = useState(false);
+  // The team ideas couldn't be loaded: said, with [Try again] (bumps `retry`); "Just me" still skips.
+  const [ideasFailed, setIdeasFailed] = useState(false);
+  const [retry, setRetry] = useState(0);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const { t } = useI18n();
   const first = (account.user?.name ?? "").trim().split(/\s+/)[0] ?? "";
   const wantsTeam = goals.length > 0 || other.trim().length >= 3;
+  // The Chief's name: one word of letters and numbers (it is how the bot is @mentioned).
+  const nameOk = /^[\p{L}\p{N}_-]{1,24}$/u.test(chiefName);
 
   // Closed after the team was made but before the app opened: open it now (the choices are saved).
   useEffect(() => {
@@ -334,18 +357,23 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
       api<{ setups: Suggested[]; picked: string[] }>(`/api/onboarding?goals=${encodeURIComponent(goals.join(","))}&other=${encodeURIComponent(other.trim())}`)
         .then((r) => {
           if (!alive) return;
+          setIdeasFailed(false);
           setSetups(r.setups);
           // Until the user ticks or unticks something, the best fit is ticked; after that, their choices stay.
           setPicked((cur) => (touched ? cur.filter((id) => r.setups.some((x) => x.id === id)) : r.picked));
         })
-        .catch(() => alive && setSetups([]))
+        .catch(() => {
+          if (!alive) return;
+          setIdeasFailed(true);
+          setSetups((cur) => cur ?? []);
+        })
         .finally(() => alive && setLoading(false));
     }, 250);
     return () => {
       alive = false;
       clearTimeout(timer);
     };
-  }, [step, goals, other, wantsTeam, touched]);
+  }, [step, goals, other, wantsTeam, touched, retry]);
 
   // Screen 2 → 3: the choices are applied once; the first task is ready from the first goal.
   const apply = (ids: string[]) =>
@@ -388,14 +416,19 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
             <div className="chief-edit">
               <label className="field">
                 {t("onb.leaderName")}
-                <input value={chiefName} maxLength={24} onChange={(e) => setChiefName(e.target.value.replace(/\s+/g, ""))} />
+                <input value={chiefName} maxLength={24} onChange={(e) => setChiefName(e.target.value.replace(/\s+/g, ""))} aria-invalid={!nameOk} aria-describedby={nameOk ? undefined : "chief-name-rule"} />
               </label>
               <button type="button" className="btn" onClick={() => setFace(randomFace())}>
                 <Icon name="shuffle" size={16} /> {t("onb.shuffle")}
               </button>
             </div>
+            {!nameOk && (
+              <p id="chief-name-rule" className="field-rule" role="status">
+                {t("onb.nameRule")}
+              </p>
+            )}
             <div className="row-btns">
-              <button className="btn primary" disabled={!/^[\p{L}\p{N}_-]{1,24}$/u.test(chiefName)} onClick={toGoals}>
+              <button className="btn primary" disabled={!nameOk} onClick={toGoals}>
                 {t("common.continue")} <Icon name="arrow" size={16} />
               </button>
             </div>
@@ -424,6 +457,13 @@ function Onboarding({ account, onDone }: { account: AccountState; onDone: (s: Ac
               <h2 className="team-live-h">{t("onb.teamLive")}</h2>
               {!wantsTeam ? (
                 <p className="note">{t("onb.teamHint", { chief: chiefName })}</p>
+              ) : ideasFailed && !setups?.length ? (
+                <div className="notice error small" role="alert">
+                  {t("onb.teamIdeasFailed")}{" "}
+                  <button type="button" className="btn sm" disabled={loading} onClick={() => setRetry((n) => n + 1)}>
+                    {t("gate.tryAgain")}
+                  </button>
+                </div>
               ) : !setups ? (
                 <p className="note">{t("onb.loadingTeam")}</p>
               ) : (

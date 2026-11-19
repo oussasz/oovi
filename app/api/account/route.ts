@@ -1,6 +1,7 @@
 import { CloudError, clearSession, cloud, cloudUrl, currentSession, saveSession, setOnboarded, updateSessionUser, type AccountUser } from "@/lib/account";
 import { syncSetup } from "@/lib/setup-sync";
 import { guard } from "@/lib/guard";
+import { authErrorCode } from "@/lib/auth-errors";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,6 +13,17 @@ function state() {
 
 const fail = (e: unknown) =>
   Response.json({ error: (e as Error).message || "Something went wrong." }, { status: e instanceof CloudError && e.status >= 400 ? e.status : 502 });
+
+/**
+ * Sign-in, sign-up and email-code errors also carry `code` (lib/auth-errors.ts): the app shows them in the user's
+ * language instead of the account service's English. Not reachable (status 0) answers 503.
+ */
+const failAuth = (e: unknown) => {
+  const status = e instanceof CloudError ? e.status : 0;
+  const message = (e as Error).message || "Something went wrong.";
+  const code = authErrorCode(status, message);
+  return Response.json({ error: message, ...(code ? { code } : {}) }, { status: status >= 400 ? status : status === 0 ? 503 : 502 });
+};
 
 /** Current account. ?refresh=1 re-checks the session with the account service. */
 export async function GET(req: Request) {
@@ -59,7 +71,7 @@ export async function POST(req: Request) {
           : { name: String(b.name ?? "").trim(), email: String(b.email ?? "").trim(), password: String(b.password ?? ""), acceptTerms: b.acceptTerms === true };
       const r = await cloud<{ token?: string; user?: AccountUser; verify?: boolean; email?: string }>(`/api/v1/auth/${b.action === "signin" ? "sign-in" : "sign-up"}`, { method: "POST", body });
       if (r.verify) return Response.json({ ...state(), verify: { email: String(r.email ?? body.email) } });
-      if (!r.token || !r.user) return Response.json({ error: "The account service gave an unexpected answer. Please try again." }, { status: 502 });
+      if (!r.token || !r.user) return Response.json({ error: "The account service gave an unexpected answer. Please try again.", code: "server" }, { status: 502 });
       saveSession(r.token, r.user);
       await restoreSetup();
       return Response.json(state());
@@ -81,7 +93,7 @@ export async function POST(req: Request) {
     }
     return Response.json({ error: "Unknown action." }, { status: 400 });
   } catch (e) {
-    return fail(e);
+    return b.action === "onboarded" ? fail(e) : failAuth(e);
   }
 }
 

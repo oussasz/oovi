@@ -13,7 +13,7 @@ import "@/lib/desktop";
 import Face, { FaceStack } from "./Face";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
-import ConnectorSetup from "./ConnectorSetup";
+import ConnectorSetup, { ErrDetails } from "./ConnectorSetup";
 import { openSettings } from "./SettingsModal";
 
 type Tab = "connectors" | "skills" | "plugins";
@@ -604,7 +604,7 @@ export default function Marketplace() {
   /** One line under a connector's name: sign-in, error, or how many tools it has right now. */
   const statusLine = (s: Server) => {
     if (s.auth === "oauth" && !s.signedIn) return t("mk.notSignedIn");
-    if (s.status === "error") return s.error;
+    if (s.status === "error") return t("conn.unreachable", { name: s.name });
     if (s.tools.length) return t("mk.toolsCount", { count: s.tools.length });
     if (s.status === "connected") return t("conn.zeroTools");
     return t("mk.notStarted");
@@ -632,6 +632,7 @@ export default function Marketplace() {
                     {s.tools.length > 0 && <span className="cs-count">{t("conn.toolsShort", { count: s.tools.length })}</span>}
                   </b>
                   <p>{statusLine(s)}</p>
+                  {s.status === "error" && s.error && (s.auth !== "oauth" || s.signedIn) && <ErrDetails text={s.error} label={t("conn.errDetails")} />}
                   <p className={`cs-usedby${(s.bots ?? []).length ? "" : " none"}`}>{usedBy(s)}</p>
                   <div className="tags">
                     <label className="mini-check">
@@ -665,6 +666,11 @@ export default function Marketplace() {
                         {t("conn.disconnect")}
                       </button>
                     </>
+                  )}
+                  {s.status === "error" && s.auth !== "oauth" && (
+                    <button className="btn sm primary" disabled={!!busy} onClick={() => void run(`test-${s.id}`, async () => void (await api(`/api/mcp/${s.id}`, { method: "POST" })))}>
+                      {busy === `test-${s.id}` ? t("common.testing") : t("conn.testNow")}
+                    </button>
                   )}
                   <button className={`btn sm${open ? " on" : ""}`} aria-expanded={open} onClick={() => setSetupOpen(open ? null : s.id)}>
                     {t("conn.setup")}

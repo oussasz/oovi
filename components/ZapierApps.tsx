@@ -11,19 +11,26 @@ import Icon from "./Icon";
 
 type Status = { mode: "agentic" | "classic" | "none"; ready: string[]; summary: string; manageUrl: string | null };
 
-export default function ZapierApps({ serverId }: { serverId: string }) {
+export default function ZapierApps({ serverId, onReconnect }: { serverId: string; onReconnect?: () => void }) {
   const { t } = useI18n();
   const [st, setSt] = useState<Status | null>(null);
+  // Zapier's list couldn't be read (first load): said plainly with [Try again], Zapier's own words behind Details.
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [other, setOther] = useState("");
   const [opened, setOpened] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
     try {
       setSt(await api<Status>(`/api/mcp/${serverId}/zapier`));
+      setLoadErr(null);
     } catch (e) {
-      setMsg({ ok: false, text: (e as Error).message });
+      setLoadErr((e as Error).message || "");
+    } finally {
+      setLoading(false);
     }
   }, [serverId]);
   useEffect(() => void load(), [load]);
@@ -78,6 +85,29 @@ export default function ZapierApps({ serverId }: { serverId: string }) {
     }
   }
 
+  if (!st && loadErr !== null) {
+    return (
+      <div className="notice error small cs-msg" role="alert">
+        <b>{t("zap.noAnswer")}</b> {t("zap.noAnswerHint")}
+        <div className="cs-act">
+          <button type="button" className="btn sm primary" disabled={loading} onClick={() => void load()}>
+            {loading ? t("auth.oneMoment") : t("gate.tryAgain")}
+          </button>
+          {onReconnect && (
+            <button type="button" className="btn sm" disabled={loading} onClick={onReconnect}>
+              {t("conn.reconnect")}
+            </button>
+          )}
+        </div>
+        {loadErr && (
+          <details className="err-details">
+            <summary>{t("conn.errDetails")}</summary>
+            <code>{loadErr}</code>
+          </details>
+        )}
+      </div>
+    );
+  }
   if (!st) return <p className="note">{t("zap.loading")}</p>;
   if (st.mode === "none") return null;
   const ready = new Set(st.ready);
