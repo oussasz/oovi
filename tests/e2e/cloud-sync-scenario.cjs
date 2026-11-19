@@ -52,6 +52,7 @@ const lastUserText = (body) => {
 // The phone's message (a job) is still running when we look: its answer comes after a short pause.
 const slowFor = /PHONE/;
 
+const setupStore = { version: 0, items: null };
 /** The phone (or another device) adds work: what POST /jobs would store. */
 const queueJob = (chatId, kind, payload) => {
   const job = { id: `job-${cloud.jobs.length + 1}`, chatId, kind, payload, status: "queued", claimedBy: null, beats: 0 };
@@ -79,7 +80,15 @@ const site = http.createServer(async (req, res) => {
   if (p === "/api/v1/ai/status") return send(200, aiStatus);
   if (p === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null } });
   if (p === "/api/v1/catalog") return send(200, { items: [] });
-  if (p === "/api/v1/setup") return req.method === "GET" ? send(200, { version: 0, items: null }) : send(200, { version: 1 });
+  if (p === "/api/v1/setup") {
+    // The account's setup (bots, groups…), as the phone can change it: kept here so a bot added "on the phone" exists.
+    if (req.method === "GET") return send(200, { version: setupStore.version, items: setupStore.items });
+    const b = JSON.parse(raw || "{}");
+    if (b.baseVersion !== setupStore.version) return send(409, { error: "changed", code: "conflict" });
+    setupStore.items = b.items;
+    setupStore.version += 1;
+    return send(200, { version: setupStore.version });
+  }
   if (p === "/api/v1/ai/messages" && req.method === "POST") {
     const b = JSON.parse(raw);
     const refused = rules.refusal(b);
@@ -346,6 +355,17 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     const devs = (await api("GET", "/api/cloud?fresh=1")).j.remote?.devices || [];
     check("this computer is listed as an online device", devs.some((d) => d.kind === "desktop" && d.online && d.thisOne), JSON.stringify(devs));
     check("every request says which device it is, as W reads it (desktop:<id>), and job calls carry the device id", [...cloud.deviceHeaders].length === 1 && /^desktop:[a-f0-9]{16,}$/.test([...cloud.deviceHeaders][0]) && counts.badBodies === 0, JSON.stringify([...cloud.deviceHeaders]) + ` bad=${counts.badBodies}`);
+    // A bot added on the phone a moment ago, and a message to it right away: this computer fetches the account's
+    // setup first, then runs it (it must not end as "not on this computer").
+    {
+      const tpl = (await api("GET", "/api/bots")).j[0];
+      const nb = { ...tpl, id: "a1b2c3d4e5f6", name: "Phonebot" };
+      setupStore.items = { ...(setupStore.items || {}), [`bot:${nb.id}`]: nb };
+      setupStore.version += 1;
+      const nj = queueJob(`dm-${nb.id}`, "message", { text: "PHONE-newbot hello" });
+      await waitFor("the new bot's job done", () => nj.status === "done" || nj.status === "failed", 40_000);
+      check("a bot made on the phone moments ago: its first message is run here, not refused", nj.status === "done" && texts(onServer(`dm-${nb.id}`)).includes("REPLY PHONE-newbot"), `${nj.status} ${nj.error || ""}`);
+    }
     // Stop from the phone; a bad job is refused, not run.
     const stopJob = queueJob(dmO, "stop", {});
     const badJob = queueJob(dmO, "shell", { text: "rm -rf /" });

@@ -47,7 +47,8 @@ import { applyVaultConnector, removeServer, vaultConnectors } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { isRunning, onRunEnd, startRun, steerRun, stopRun, whenIdle } from "./runner";
 import { dataDir, loadSettings } from "./settings";
-import { deleteChat, getChat, ID_RE, listBots, listChats, onChatChange, saveChat } from "./store";
+import { deleteChat, getBot, getChat, ID_RE, listBots, listChats, onChatChange, saveChat } from "./store";
+import { syncSetup } from "./setup-sync";
 import type { Chat } from "./types";
 
 const API = "/api/v1/cloud";
@@ -631,6 +632,15 @@ async function runJob(job: Job): Promise<void> {
     if (!ID_RE.test(id) || !ji) return void (await done("failed", "bad_job"));
     // The phone's view may be newer than this computer's: bring the chat here first.
     await withChat(id, () => pullLocked(id).catch(() => "skip"));
+    // A bot or group made on the phone moments ago may not be on this computer yet: fetch the account's setup
+    // once, then look again (otherwise the phone's first message would end as "not on this computer").
+    const known = (c: ReturnType<typeof chatHere>) => (c ? c.memberIds.every((m) => !!getBot(m)) : id.startsWith("dm-") && !!getBot(id.slice(3)));
+    if (!known(chatHere(id))) {
+      await syncSetup().catch(() => {});
+      await withChat(id, () => pullLocked(id).catch(() => "skip"));
+    }
+    // A bot's own chat that was never opened on this computer has no file yet: it starts empty here, like in the app.
+    if (!chatHere(id) && id.startsWith("dm-") && getBot(id.slice(3))) getChat(id);
     const chat = chatHere(id);
     if (!chat || !travels(chat)) return void (await done("failed", "not_on_this_computer"));
     if (ji.kind === "stop") {
