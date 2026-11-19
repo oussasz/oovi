@@ -32,8 +32,8 @@ const page = (bg, img, pct) =>
   await shot(180, 180, 1, page(BG, logo, 82), "apple-touch-icon.png");
   for (const [w, h, dpr] of SPLASH) {
     const pct = (110 / w) * 100;
-    await shot(w, h, dpr, page("#FFFFFF", logo, pct), path.join("splash", `${w * dpr}x${h * dpr}.png`));
-    await shot(w, h, dpr, page("#000000", logoDark, pct), path.join("splash", `${w * dpr}x${h * dpr}-dark.png`));
+    await shot(w, h, dpr, page("#FBFAF7", logo, pct), path.join("splash", `${w * dpr}x${h * dpr}.png`));
+    await shot(w, h, dpr, page("#151513", logoDark, pct), path.join("splash", `${w * dpr}x${h * dpr}-dark.png`));
   }
   await browser.close();
   console.log("icons and launch screens written to", out);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { dmId } from "../_lib/core";
 import { Icon } from "./Icon";
-import { BotFace, ChatFace, Empty, LargeTitle, NavBar, OfflineBar, Section, Spinner, TabBar, usePullToRefresh } from "./kit";
+import { BotFace, ChatFace, Empty, SlimeTrio, LargeTitle, NavBar, OfflineBar, Section, Spinner, TabBar, usePullToRefresh } from "./kit";
 import { useM } from "./MobileApp";
 
 export function BotsScreen() {
@@ -44,7 +44,7 @@ export function BotsScreen() {
             <Spinner />
           </div>
         ) : !bots.length ? (
-          <Empty icon={<Icon name="bots" size={44} stroke={1.6} />} title={t("bots.title")} body={t("bots.empty")} />
+          <Empty art={<SlimeTrio mood="thinking" />} title={t("bots.title")} body={t("bots.empty")} />
         ) : (
           <>
             {main && <Section header={t("bots.main")}>{botRow(main)}</Section>}

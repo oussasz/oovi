@@ -6,8 +6,8 @@
   "start_url": "/m?source=pwa",
   "scope": "/m",
   "display": "standalone",
-  "background_color": "#FFFFFF",
-  "theme_color": "#FFFFFF",
+  "background_color": "#FBFAF7",
+  "theme_color": "#FBFAF7",
   "dir": "auto",
   "categories": ["productivity", "utilities"],
   "icons": [

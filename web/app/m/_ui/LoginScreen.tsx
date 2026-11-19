@@ -2,13 +2,12 @@
 
 // Sign in with the website's own sign-in (better-auth, lib/auth-client.ts): the same account and session as the
 // website. On an iPhone, an app added to the Home Screen keeps its own cookies, so it signs in once here.
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState, type FormEvent } from "react";
 import { authClient } from "@/lib/auth-client";
 import { safeMobileNext } from "../_lib/core";
 import { tap } from "../_lib/haptics";
-import { Spinner } from "./kit";
+import { SlimeTrio, Spinner } from "./kit";
 import { useM } from "./MobileApp";
 
 export function LoginScreen() {
@@ -47,7 +46,7 @@ export function LoginScreen() {
     <div className="m-screen m-screen--login">
       <main className="m-login">
         <div className="m-login__brand">
-          <Image src="/m/icon-192.png" alt="" width={84} height={84} priority />
+          <SlimeTrio mood="happy" size={132} />
           <h1>{t("login.title")}</h1>
           <p>{t("login.sub")}</p>
         </div>

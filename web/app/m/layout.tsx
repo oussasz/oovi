@@ -2,10 +2,14 @@
 // offline service worker (web/public/m/). It uses the website's sign-in and API; it never asks for or keeps an
 // API key. Pages are client screens: data comes only from the signed-in API calls, never from the HTML.
 import type { Metadata, Viewport } from "next";
+import { Tajawal } from "next/font/google";
 import { MobileApp } from "./_ui/MobileApp";
 import { ServiceWorker } from "./_ui/ServiceWorker";
 import { splashLinks } from "./_lib/splash";
 import "./m.css";
+
+// Nunito (the website's font) has no Arabic letters: Tajawal is its rounded, friendly match for Arabic.
+const arabic = Tajawal({ subsets: ["arabic"], weight: ["400", "500", "700", "800"], variable: "--font-ar", display: "swap" });
 
 // Title and the like only: Next streams metadata into <body> on pages rendered per request (the chat page), and
 // browsers look for the install tags in <head>. Those are rendered below (InstallTags): React puts them in <head>.
@@ -25,8 +29,8 @@ export const viewport: Viewport = {
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F2F2F7" },
-    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+    { media: "(prefers-color-scheme: light)", color: "#FBFAF7" },
+    { media: "(prefers-color-scheme: dark)", color: "#151513" },
   ],
 };
 
@@ -56,7 +60,9 @@ export default function MobileLayout({ children }: { children: React.ReactNode }
     <>
       <InstallTags />
       <script dangerouslySetInnerHTML={{ __html: PREPAINT }} />
-      <MobileApp>{children}</MobileApp>
+      <div className={arabic.variable}>
+        <MobileApp>{children}</MobileApp>
+      </div>
       <ServiceWorker />
     </>
   );

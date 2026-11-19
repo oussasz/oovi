@@ -78,11 +78,11 @@ export function SettingsScreen() {
         </Section>
 
         <Section header={t("settings.credits")} footer={t("settings.creditsNote")} id="credits-h">
-          <Row icon={<IconTile name="sparkle" color="#7A5AF8" />} title={t("settings.balance")} value={credits ? nf.format(credits.balance) : <Spinner size={16} />} />
+          <Row icon={<IconTile name="sparkle" color="var(--m-blob-lilac)" />} title={t("settings.balance")} value={credits ? nf.format(credits.balance) : <Spinner size={16} />} />
           {credits && credits.dailyLimit > 0 && (
-            <Row icon={<IconTile name="contrast" color="#5B8DEF" />} title={t("settings.today")} value={`${nf.format(credits.dailyUsed)} / ${nf.format(credits.dailyLimit)}`} />
+            <Row icon={<IconTile name="contrast" color="var(--m-blob-blue)" />} title={t("settings.today")} value={`${nf.format(credits.dailyUsed)} / ${nf.format(credits.dailyLimit)}`} />
           )}
-          {credits?.plan?.name && <Row icon={<IconTile name="check" color="#34C759" />} title={t("settings.plan")} value={credits.plan.name} />}
+          {credits?.plan?.name && <Row icon={<IconTile name="check" color="var(--m-blob-mint)" />} title={t("settings.plan")} value={credits.plan.name} />}
           {credits?.message && credits.state !== "ok" && <div className="m-row m-row--note">{credits.message}</div>}
           {credits?.links?.subscribe && <Row title={<span className="m-link">{t("settings.getMore")}</span>} href={credits.links.subscribe} external />}
         </Section>
@@ -92,7 +92,7 @@ export function SettingsScreen() {
             desktops.map((d) => (
               <Row
                 key={d.deviceId}
-                icon={<IconTile name="laptop" color="#8E8E93" />}
+                icon={<IconTile name="laptop" color="var(--m-blob-grey)" />}
                 title={d.name || t("settings.computer")}
                 value={
                   <span className={`m-device m-device--${d.online ? "online" : "offline"}`}>
@@ -103,14 +103,14 @@ export function SettingsScreen() {
               />
             ))
           ) : (
-            <Row icon={<IconTile name="laptop" color="#8E8E93" />} title={t("settings.noComputer")} />
+            <Row icon={<IconTile name="laptop" color="var(--m-blob-grey)" />} title={t("settings.noComputer")} />
           )}
-          <Row icon={<IconTile name="phone" color="#34C759" />} title={t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
+          <Row icon={<IconTile name="phone" color="var(--m-blob-mint)" />} title={t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
         </Section>
 
         <Section header={t("settings.sync")} footer={t("settings.syncNote")}>
           <Row
-            icon={<IconTile name="cloud" color="#0A84FF" />}
+            icon={<IconTile name="cloud" color="var(--m-blob-blue)" />}
             title={t("settings.syncChats")}
             value={sync === "loading" ? <Spinner size={16} /> : status?.enabled ? t("common.on") : t("common.off")}
           />
@@ -129,13 +129,13 @@ export function SettingsScreen() {
               <Row title={t("settings.lastSync")} value={status.lastSync ? agoShort(Date.parse(status.lastSync), now, lang) : t("settings.never")} />
             </>
           )}
-          <Row icon={<IconTile name="plug" color="#FF9500" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href="/m/connectors" />
+          <Row icon={<IconTile name="plug" color="var(--m-blob-yellow)" />} title={t("settings.connectors")} value={setup ? String(connectorsOn) : undefined} href="/m/connectors" />
         </Section>
 
         <Section header={t("settings.prefs")}>
-          <Row icon={<IconTile name="globe" color="#5856D6" />} title={t("settings.language")} value={langName} onClick={() => setSheet("lang")} chevron />
-          <Row icon={<IconTile name="contrast" color="#1C1C1E" />} title={t("settings.appearance")} value={lookName} onClick={() => setSheet("look")} chevron />
-          {!standalone && <Row icon={<IconTile name="plusSquare" color="#0A84FF" />} title={t("settings.install")} onClick={() => setInstall(true)} chevron />}
+          <Row icon={<IconTile name="globe" color="var(--m-blob-lilac)" />} title={t("settings.language")} value={langName} onClick={() => setSheet("lang")} chevron />
+          <Row icon={<IconTile name="contrast" color="var(--m-blob-yellow)" />} title={t("settings.appearance")} value={lookName} onClick={() => setSheet("look")} chevron />
+          {!standalone && <Row icon={<IconTile name="plusSquare" color="var(--m-blob-blue)" />} title={t("settings.install")} onClick={() => setInstall(true)} chevron />}
         </Section>
 
         <Section>

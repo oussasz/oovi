@@ -7,6 +7,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import FaceView, { FaceStack } from "@/components/Face";
+import { Sparkle } from "@/components/Doodles";
 import type { Mood } from "@/lib/faces";
 import { isUnread } from "../_lib/core";
 import { tap } from "../_lib/haptics";
@@ -83,25 +84,56 @@ export function NavBar({
   );
 }
 
+/** The screen's title, in oovi's heavy rounded type, with the website's little sparkle. */
 export function LargeTitle({ children }: { children: ReactNode }) {
-  return <h1 className="m-large">{children}</h1>;
+  return (
+    <h1 className="m-large">
+      {children}
+      <Sparkle className="m-large__spark" size={18} />
+    </h1>
+  );
+}
+
+/** One of the logo's soft pebbles, used behind icons and the active tab. */
+export const BLOB = "M50 17 C66 15 83 22 87 40 C91 58 86 80 66 88 C54 93 34 92 22 85 C10 77 9 58 14 44 C19 29 34 19 50 17 Z";
+export function Blob({ color, className }: { color: string; className?: string }) {
+  return (
+    <svg className={className} viewBox="8 12 84 84" aria-hidden focusable="false">
+      <path d={BLOB} fill={color} />
+    </svg>
+  );
+}
+
+/** The logo's three slimes (blue, yellow, coral), acting out a mood: empty states and sign-in. */
+const TRIO = [
+  { color: 0, shape: 0, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 0, top: 0, wear: 0 },
+  { color: 1, shape: 1, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 0, top: 0, wear: 0 },
+  { color: 2, shape: 3, hair: 0, eyes: 1, nose: 0, mouth: 0, cheeks: 0, top: 0, wear: 0 },
+];
+export function SlimeTrio({ mood = "idle", size = 120 }: { mood?: Mood; size?: number }) {
+  return (
+    <span className="m-trio" aria-hidden>
+      <FaceStack faces={TRIO} size={size} moods={[mood, mood, mood]} />
+    </span>
+  );
 }
 
 export function TabBar() {
   const { t, chats, seen, archived } = useM();
   const path = usePathname() ?? "/m";
   const unread = Object.values(chats).filter(({ chat }) => !chat.routine && !archived.includes(chat.id) && isUnread(chat, seen[chat.id])).length;
-  const tabs: { href: string; label: string; icon: IconName; on: boolean; badge?: number }[] = [
-    { href: "/m", label: t("tab.chats"), icon: "chats", on: path === "/m" || path.startsWith("/m/c/"), badge: unread },
-    { href: "/m/bots", label: t("tab.bots"), icon: "bots", on: path.startsWith("/m/bots") },
-    { href: "/m/settings", label: t("tab.settings"), icon: "settings", on: path.startsWith("/m/settings") },
+  const tabs: { href: string; label: string; icon: IconName; on: boolean; badge?: number; color: string }[] = [
+    { href: "/m", label: t("tab.chats"), icon: "chats", on: path === "/m" || path.startsWith("/m/c/") || path.startsWith("/m/archived"), badge: unread, color: "var(--m-blob-blue)" },
+    { href: "/m/bots", label: t("tab.bots"), icon: "bots", on: path.startsWith("/m/bots"), color: "var(--m-blob-yellow)" },
+    { href: "/m/settings", label: t("tab.settings"), icon: "settings", on: path.startsWith("/m/settings") || path.startsWith("/m/connectors"), color: "var(--m-blob-coral)" },
   ];
   return (
     <nav className="m-tabs" aria-label="oovi">
       {tabs.map((tb) => (
         <Link key={tb.href} href={tb.href} className={`m-tab${tb.on ? " is-on" : ""}`} aria-current={tb.on ? "page" : undefined} onClick={() => tap()}>
           <span className="m-tab__icon">
-            <Icon name={tb.icon} size={27} stroke={tb.on ? 2.1 : 1.8} />
+            {tb.on && <Blob color={tb.color} className="m-tab__blob" />}
+            <Icon name={tb.icon} size={25} stroke={tb.on ? 2.3 : 1.9} />
             {tb.badge ? <span className="m-badge" aria-label={`${tb.badge}`}>{tb.badge > 99 ? "99+" : tb.badge}</span> : null}
           </span>
           <span className="m-tab__label">{tb.label}</span>
@@ -127,10 +159,12 @@ export function Section({ header, footer, children, id }: { header?: ReactNode; 
   );
 }
 
+/** A settings icon on a pastel pebble (the logo's colors), drawn in ink. */
 export function IconTile({ name, color }: { name: IconName; color: string }) {
   return (
-    <span className="m-tile" style={{ background: color }}>
-      <Icon name={name} size={19} stroke={2.1} />
+    <span className="m-tile">
+      <Blob color={color} className="m-tile__blob" />
+      <Icon name={name} size={18} stroke={2.2} />
     </span>
   );
 }
@@ -382,12 +416,13 @@ export function usePullToRefresh(onRefresh: () => Promise<void> | void): ReactNo
   );
 }
 
+/** Three little pebbles hopping (oovi's "working"). With `progress` (pull to refresh) they grow as you pull. */
 export function Spinner({ progress, size = 22 }: { progress?: number; size?: number }) {
-  const n = 8;
+  const d = Math.max(6, Math.round(size / 3));
   return (
-    <span className={`m-spin${progress === undefined ? " is-busy" : ""}`} style={{ width: size, height: size }} role="progressbar" aria-busy="true">
-      {Array.from({ length: n }, (_, i) => (
-        <i key={i} style={{ transform: `rotate(${(360 / n) * i}deg)`, opacity: progress === undefined ? undefined : i / n < progress ? 0.15 + (0.85 * (i + 1)) / n : 0 }} />
+    <span className={`m-spin${progress === undefined ? " is-busy" : ""}`} style={{ height: size, gap: d / 2 }} role="progressbar" aria-busy="true" aria-label="…">
+      {[0, 1, 2].map((i) => (
+        <i key={i} style={{ width: d, height: d, transform: progress === undefined ? undefined : `scale(${Math.min(1, Math.max(0, progress * 3 - i))})` }} />
       ))}
     </span>
   );
@@ -506,10 +541,10 @@ export function SwipeRow({ lead = [], trail = [], children, onMore, moreLabel }:
 
 // ---------- empty states ----------
 
-export function Empty({ icon, title, body, children }: { icon?: ReactNode; title: string; body?: ReactNode; children?: ReactNode }) {
+export function Empty({ icon, art, title, body, children }: { icon?: ReactNode; art?: ReactNode; title: string; body?: ReactNode; children?: ReactNode }) {
   return (
     <div className="m-empty">
-      {icon && <div className="m-empty__icon">{icon}</div>}
+      {art ? <div className="m-empty__art">{art}</div> : icon && <div className="m-empty__icon">{icon}</div>}
       <h2>{title}</h2>
       {body && <p>{body}</p>}
       {children}

@@ -7,7 +7,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { chatPreview, chatTitle, isRunning, isWaiting, listTime, liveActivity, matchesQuery, runningEntry, sortChats, splitArchived, unreadCount, type ListRow } from "../_lib/core";
 import { Icon } from "./Icon";
-import { ActionSheet, ChatFace, Empty, LargeTitle, NavBar, OfflineBar, Spinner, SwipeRow, TabBar, usePullToRefresh } from "./kit";
+import { ActionSheet, ChatFace, Empty, LargeTitle, NavBar, OfflineBar, SlimeTrio, Spinner, SwipeRow, TabBar, usePullToRefresh } from "./kit";
 import { useM } from "./MobileApp";
 
 const tz = () => {
@@ -66,7 +66,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
             r.unread ? { label: t("chats.read"), icon: "read", color: "var(--m-blue)", onPress: () => m.markSeen(c.id) } : { label: t("chats.unread"), icon: "unread", color: "var(--m-blue)", onPress: () => m.markUnread(c.id) },
             ...(isArch ? [] : [{ label: r.pinned ? t("chats.unpin") : t("chats.pin"), icon: "pin" as const, color: "var(--m-orange)", onPress: () => m.togglePin(c) }]),
           ]}
-          trail={[{ label: isArch ? t("chats.unarchive") : t("chats.archive"), icon: "archive", color: "#6e6e73", onPress: () => m.toggleArchive(c.id) }]}
+          trail={[{ label: isArch ? t("chats.unarchive") : t("chats.archive"), icon: "archive", color: "var(--m-blob-grey)", onPress: () => m.toggleArchive(c.id) }]}
         >
           <Link href={`/m/c/${encodeURIComponent(c.id)}`} className="m-chat">
             <span className="m-chat__face" aria-hidden>
@@ -133,7 +133,7 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
     );
   } else if (sync === "off" || sync === "unavailable") {
     body = (
-      <Empty icon={<Icon name="cloud" size={44} stroke={1.6} />} title={t("sync.off.title")} body={sync === "off" ? t("sync.off.body") : t("sync.soon.body")}>
+      <Empty art={<SlimeTrio mood="sleeping" />} title={t("sync.off.title")} body={sync === "off" ? t("sync.off.body") : t("sync.soon.body")}>
         {sync === "off" && (
           <ol className="m-steps">
             <li>
@@ -162,10 +162,10 @@ export function ChatsScreen({ archivedView = false }: { archivedView?: boolean }
       </div>
     );
   } else if (sync === "error") {
-    body = <Empty icon={<Icon name="warn" size={40} stroke={1.6} />} title={t("common.error")} />;
+    body = <Empty art={<SlimeTrio mood="sad" />} title={t("common.error")} />;
   } else {
     body = (
-      <Empty icon={<Icon name="chats" size={44} stroke={1.6} />} title={t("chats.empty.title")} body={t("chats.empty.body")}>
+      <Empty art={<SlimeTrio mood="happy" />} title={t("chats.empty.title")} body={t("chats.empty.body")}>
         <Link href="/m/bots" className="m-btn m-btn--tinted">
           {t("chats.empty.cta")}
         </Link>

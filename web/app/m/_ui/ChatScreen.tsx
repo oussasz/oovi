@@ -24,10 +24,17 @@ import {
   userTick,
   type Lang,
 } from "../_lib/core";
+import { FACE_COLORS } from "@/lib/faces";
 import { tap } from "../_lib/haptics";
 import type { BotEntry, Chat, Entry, JobInfo, UserEntry } from "../_lib/types";
 
 type Reply = { id: string; who: string; text: string };
+
+/** Each bot's replies carry a wash of its own color (its face's color, the logo's pastels). */
+const botColor = (face: unknown): string => {
+  const i = Number((face as { color?: unknown } | undefined)?.color);
+  return FACE_COLORS[Number.isInteger(i) && i >= 0 && i < FACE_COLORS.length ? i : 0]!;
+};
 import { Composer } from "./Composer";
 import { Icon } from "./Icon";
 import { ActionSheet, BotFace, ChatFace, Empty, NavBar, Spinner } from "./kit";
@@ -364,7 +371,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
           <div className="m-msg__col">
             {text.trim() && (
               <Swipeable onMenu={() => setMenu(e)} onReply={canSend ? () => setReply(replyFor(e)) : undefined}>
-                <div className="m-bubble m-bubble--bot">
+                <div className="m-bubble m-bubble--bot" style={{ "--bot": botColor(b?.face) } as React.CSSProperties}>
                   <Markdown text={text} />
                   {!live && <Meta at={e.at} lang={lang} zone={tzName} t={t} />}
                 </div>

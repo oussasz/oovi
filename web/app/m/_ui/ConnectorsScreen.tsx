@@ -115,7 +115,7 @@ export function ConnectorsScreen() {
               );
               return c.inCloud ? (
                 <div className="m-row m-row--conn" key={c.id}>
-                  <Link href={`/m/connectors/${encodeURIComponent(c.id)}`} className="m-row__link" aria-label={`${c.name}, ${statusLine(c, t)}`}>
+                  <Link href={`/m/connectors/${encodeURIComponent(c.id)}`} className="m-row__link">
                     {row}
                     <Icon name="chevron" size={18} stroke={2.4} className="m-row__chev m-flip" />
                   </Link>
