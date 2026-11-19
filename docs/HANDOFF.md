@@ -1,3 +1,6 @@
+## 0.13.0 (released 2026-11-19, owner: "yes, deploy the website and release 0.13")
+Website deployed with the phone app (/m) and the web app (/app); desktop 0.13 = cloud sync (off by default), desktop visual refresh, Markdown tables in chat, phone jobs for new or never-opened bots. See the Cloud sections below.
+
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
 ## Desktop visual refresh (branch `desktop-refresh`, 2026-11-19, NOT RELEASED, nothing published)
