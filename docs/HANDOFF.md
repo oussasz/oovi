@@ -37,6 +37,17 @@ Zapier / morning check / Telegram problems "from the root" before 0.14.
   the computer is left to the computer's catch-up. Tables: `cloud_routine`, `cloud_job.kind` gains 'routine' (migrated
   in place). Test: cloud-integration-scenario section 5 (real website + Postgres + runner + desktop).
   NEEDS: website deploy + runner image update + desktop release, together.
+- **Pre-launch gap review (2026-11-19, owner: "look at every gap, UX and result quality, deeply")**: 3 audits (competitors,
+  UX, harness) then two fix teams. Harness: routine runs dated (no stale data as today's), "Not confirmed" covers
+  send_telegram/desktop/file actions and teammates' work, the done-check sees FAILED tool calls, a connector write with
+  no answer is never retried blindly, Zapier writes carry the time zone, routines reply in the language they were asked
+  in (synced). UX: credit/limit/sign-in errors translated with the next step on Telegram, phone and routine notices;
+  Telegram photo captions answered; desktop sign-in errors translated; Zapier page "didn't answer" state; connector errors
+  in plain words with Details; Telegram texts translated; RTL and onboarding fixes. Routines page: where each runs while
+  the computer is off; Telegram notice at its time when it waits for the computer. Cost still 169,983. All scenarios and
+  CI on 3 OS green (run 44558396550).
+  Not done yet (from the audits): phone Settings credits text is the website's English; spend-limit/busy errors keep the
+  bot's text; de/es/tr fall back to English for new keys; streaming replies on Telegram (sendMessageDraft).
 
 ## 0.13.1 (released 2026-11-19, owner: "yes, deploy the website and release 0.13.1")
 Bot pictures made with "Your picture" go to the account (POST /api/v1/avatars) so the phone, web and other computers show them. Website deployed: sign-in lands in /app, the account page is in /app Settings (real-auth check 12/12 on a throwaway database).
