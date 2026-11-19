@@ -437,7 +437,7 @@ export function leaderOf(chat: Chat, members: Bot[]): Bot | undefined {
 }
 
 /** A scheduled routine sent the message being worked on: nobody is watching the chat. */
-const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Your reply IS what the user receives: oovi delivers it to them by itself (a notification, the chat where they asked for it, and Telegram when set). So write the message itself, straight to the user (\"you\"), in the language the instruction asks for (otherwise the user's usual language), short and readable: never \"here is the reminder\", never a copy for them to send themselves, never \"I can't send it to you\". Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills.`;
+const ROUTINE_RUN = `This message comes from one of the user's scheduled routines: it runs on its own and the user isn't watching right now. Do the task completely, without asking questions; make sensible assumptions and say which. Your reply IS what the user receives: oovi delivers it to them by itself (a notification, the chat where they asked for it, and Telegram when set). So write the message itself, straight to the user (\"you\"), in the language the instruction asks for (otherwise the user's usual language), short and readable: never \"here is the reminder\", never a copy for them to send themselves, never \"I can't send it to you\". Only use actions that need the user's OK when the task truly requires them (the run then waits for the user). Don't save skills. Earlier runs above are past data: report only what you read in this run, and name any source that failed as not checked.`;
 
 /** A reply to an earlier message of this chat: the quote it carries (as the message read then). */
 function replyField(chat: Chat, replyTo: string | undefined, bots: Bot[]): { replyTo?: UserEntry["replyTo"] } {
@@ -530,7 +530,8 @@ function downLine(d: McpDown): string {
 }
 
 /** The answer to a call of a tool the bot doesn't have this turn. */
-function missingToolText(name: string, bot: Bot, down: McpDown[]): string {
+function missingToolText(name: string, bot: Bot, down: McpDown[], channel?: string): string {
+  if (name === "send_telegram" && channel === "telegram") return "Not needed: you're talking with the user on Telegram now; your reply goes there.";
   const d = down.find((x) => name.startsWith(x.prefix));
   if (d) return `Not run. ${downLine(d)}`;
   if (name.startsWith("mcp_")) return `There is no tool named ${name} among ${bot.name}'s tools right now. Use only the tools in your list.`;
@@ -835,6 +836,18 @@ function pdfMode(s: Settings): "anthropic" | "oovi" | "other" {
   return PROVIDERS[s.active]?.kind === "anthropic" ? "anthropic" : "other";
 }
 
+/** The language of the user's latest message; one with no clear language (a name, "ok") takes the one before it. */
+function userLanguage(chat: Chat): string | null {
+  for (const u of [...chat.entries].reverse().filter((e): e is UserEntry => e.kind === "user" && !e.via).slice(0, 6)) {
+    const l = replyLanguage(u.text);
+    if (l) return l;
+  }
+  return null;
+}
+
+/** An instruction that says which language to write in ("in English", "بالفرنسية"). */
+const NAMES_LANGUAGE = /\b(in|en)\s+(english|french|arabic|darija|anglais|français|francais|arabe)\b|بال(عربية|فرنسية|فرنساوية|إنجليزية|انجليزية|انجليزي|دارجة)/i;
+
 /** The conversation as this bot sees it. */
 function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" | "other" = "other", current?: BotEntry, note = ""): Msg[] {
   const out: Msg[] = [];
@@ -845,14 +858,10 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
   const recentUsers = new Set(chat.entries.filter((e) => e.kind === "user").slice(-FULL_FILE_MESSAGES).map((e) => e.id));
   // The user's latest message carries the language to write in, where the model reads it last.
   const latest = [...chat.entries].reverse().find((e): e is UserEntry => e.kind === "user" && !e.via);
-  // A message with no clear language (a name, a number, "ok"): the language of the user's message before it.
-  const writeIn = ((list) => {
-    for (const u of list) {
-      const l = replyLanguage(u.text);
-      if (l) return l;
-    }
-    return null;
-  })([...chat.entries].reverse().filter((e): e is UserEntry => e.kind === "user" && !e.via).slice(0, 6));
+  // A routine's run replies in the language the user asked for it in (its instruction is often written in
+  // English by the bot), unless the instruction names a language itself.
+  const routineLang = latest?.routine && !NAMES_LANGUAGE.test(latest.text) ? getRoutine(latest.routine)?.lang : undefined;
+  const writeIn = routineLang ?? userLanguage(chat);
   const hostedMax = hostedMaxInput();
   const zone = localTimeZone();
   for (let i = cut; i < chat.entries.length; i++) {
@@ -876,7 +885,8 @@ function viewFor(bot: Bot, chat: Chat, bots: Bot[], pdfs: "anthropic" | "oovi" |
       const during = e.steer ? `\n\n[oovi: the user wrote this while you were working. Take it into account from now on: it can change, correct or add to the task. Don't start over unless they ask.]` : "";
       const quoted = e.replyTo ? replyNote(e.replyTo) : "";
       // When it was sent (and after how long a silence): from saved times only, so it never changes and stays cached.
-      const at = e.routine || !e.at ? "" : `\n\n${timeNote(e.at, chat.entries[i - 1]?.at, zone)}`;
+      // A routine's run gets one too: yesterday's run must not read like today's.
+      const at = !e.at ? "" : `\n\n${timeNote(e.at, chat.entries[i - 1]?.at, zone)}`;
       out.push({ role: "user", content: group || e.via ? `[${who}]: ${quoted}${text}${own}${during}${at}${lang}` : `${quoted}${text}${own}${during}${at}${lang}`, ...(attachments ? { attachments } : {}) });
     }
     // A bot's own message: its steps, or just its text when it was written without a model call
@@ -1297,7 +1307,10 @@ async function* runBot(
         entry.text = last.text;
         entry.status = "done";
         // Says it sent, posted, booked or paid, with nothing in this turn that could have: marked for the user.
-        const claim = unconfirmedClaim(entry.text, entry.steps);
+        // In a group, what teammates did since the user's last message counts too (the leader reports their work).
+        const sinceUser = chat.entries.length - 1 - [...chat.entries].reverse().findIndex((e) => e.kind === "user");
+        const teamSteps = chat.kind === "group" ? chat.entries.slice(sinceUser + 1).flatMap((e) => (e.kind === "bot" && e.id !== entry.id ? e.steps : [])) : [];
+        const claim = unconfirmedClaim(entry.text, [...teamSteps, ...entry.steps]);
         if (claim) entry.unconfirmed = claim;
         else delete entry.unconfirmed;
         countUsage({ botReplies: 1 });
@@ -1520,7 +1533,7 @@ async function* runBot(
           // Asked for an on-demand tool's guide (or called it before reading the guide): lib/tool-defer.ts.
           results.push(useToolResult(c, tools));
         } else if (!tools.some((t) => t.name === c.name)) {
-          results.push({ id: c.id, name: c.name, content: DESK_TOOLS.has(c.name) ? deskToolMissing(c.name, s, bot) : missingToolText(c.name, bot, mcp.down), isError: true });
+          results.push({ id: c.id, name: c.name, content: DESK_TOOLS.has(c.name) ? deskToolMissing(c.name, s, bot) : missingToolText(c.name, bot, mcp.down, chat.pending?.channel), isError: true });
         } else if (decisions[c.id] === false) {
           results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
         } else if (
@@ -1593,7 +1606,7 @@ async function* runBot(
             if (decisions[c.id] === true && taskId) grantFolderNames(`${chat.id}|${taskId}`, c);
             results.push(await runComputerTool(c, chat, s));
           } else if (ROUTINE_TOOLS.has(c.name)) {
-            results.push(runRoutineTool(c, bot, { chatId: chat.id, fromTelegram: chat.pending?.channel === "telegram" }));
+            results.push(runRoutineTool(c, bot, { chatId: chat.id, fromTelegram: chat.pending?.channel === "telegram", lang: userLanguage(chat) ?? undefined }));
           } else if (SPECIALIST_TOOLS.has(c.name)) {
             results.push(runSpecialistTool(c, chat, bot, members, bots, answered?.items.find((it) => it.call.id === c.id)));
           } else if (c.name === USE_FOLDER_SPEC.name) {

@@ -87,7 +87,7 @@ export const viewOf = (r: Routine): RoutineView => {
 
 // ---------- validation ----------
 
-export type RoutineInput = { name: string; botId: string; prompt: string; schedule: RoutineSchedule; timezone: string; enabled: boolean; notifyTelegram: boolean; quiet: boolean; watch?: { url: string }; postTo?: string; remind?: boolean; postTelegram?: boolean };
+export type RoutineInput = { name: string; botId: string; prompt: string; schedule: RoutineSchedule; timezone: string; enabled: boolean; notifyTelegram: boolean; quiet: boolean; watch?: { url: string }; postTo?: string; remind?: boolean; postTelegram?: boolean; lang?: string };
 
 // Control characters out (newlines and tabs stay in the instruction).
 const cleanName = (v: unknown) =>

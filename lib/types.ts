@@ -366,6 +366,8 @@ export type Routine = {
   remind?: boolean;
   /** Asked from Telegram: the reminder or result goes back to Telegram too ("here" is where the user asked). */
   postTelegram?: boolean;
+  /** The language the user asked for it in (lib/text-locale.ts replyLanguage): its runs reply in it. */
+  lang?: string;
   /** Consecutive failed runs; 3 pauses the routine. */
   failures: number;
   /** Next scheduled time (ms), or null when paused. */

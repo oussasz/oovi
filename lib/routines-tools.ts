@@ -125,7 +125,7 @@ const when = (ms: number | null | undefined, tz: string) => {
 };
 
 /** Where the request came from: the chat (results and reminders are posted back there) and whether it came from Telegram. */
-export type RoutineOrigin = { chatId?: string; fromTelegram?: boolean };
+export type RoutineOrigin = { chatId?: string; fromTelegram?: boolean; lang?: string };
 
 /** A plain reminder: propose_routine with `reminder` and frequency once (no card, no AI run). */
 export const isReminder = (call: ToolCall) => call.name === "propose_routine" && typeof call.input.reminder === "string" && call.input.reminder.trim() !== "" && (call.input.frequency ?? "once") === "once";
@@ -179,7 +179,7 @@ export function runRoutineTool(call: ToolCall, self: Bot, origin: RoutineOrigin 
     const p0 = proposalOf(call, self);
     if (typeof p0 === "string") return bad(p0);
     // A one-time task reports back where it was asked; a recurring one too when asked from Telegram.
-    const p = { ...p0, ...(origin.chatId && p0.schedule.kind === "once" ? { postTo: origin.chatId } : {}), ...(origin.fromTelegram ? { notifyTelegram: true, postTelegram: true } : {}) };
+    const p = { ...p0, ...(origin.chatId && p0.schedule.kind === "once" ? { postTo: origin.chatId } : {}), ...(origin.fromTelegram ? { notifyTelegram: true, postTelegram: true } : {}), ...(origin.lang ? { lang: origin.lang } : {}) };
     const r = createRoutine(p);
     if (typeof r === "string") return bad(r);
     const phone = r.notifyTelegram

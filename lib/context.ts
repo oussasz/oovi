@@ -185,14 +185,17 @@ export function recallHistory(chat: Chat, bots: Bot[], query: string): string {
 export function activityLine(e: Chat["entries"][number]): string {
   if (e.kind !== "bot") return "";
   const done: string[] = [];
-  for (const st of e.steps) {
-    if (st.role !== "assistant") continue;
+  e.steps.forEach((st, k) => {
+    if (st.role !== "assistant") return;
+    const next = e.steps[k + 1];
     for (const c of st.toolCalls) {
       const i = c.input;
       const detail = [i.filename, i.path, i.url, i.query, i.title, i.name].find((v) => typeof v === "string" && v) as string | undefined;
-      done.push(detail ? `${c.name}(${detail.slice(0, 120)})` : c.name);
+      // A call whose result was an error is marked, so the done-check can't take a failed source for a read one.
+      const failed = next?.role === "tool" && next.results.some((r) => r.id === c.id && r.isError) ? " FAILED" : "";
+      done.push((detail ? `${c.name}(${detail.slice(0, 120)})` : c.name) + failed);
     }
-  }
+  });
   return done.length ? ` [tools: ${[...new Set(done)].slice(0, 15).join(", ")}]` : "";
 }
 
