@@ -1,6 +1,87 @@
 ## 0.13.0 (released 2026-11-19, owner: "yes, deploy the website and release 0.13")
 Website deployed with the phone app (/m) and the web app (/app); desktop 0.13 = cloud sync (off by default), desktop visual refresh, Markdown tables in chat, phone jobs for new or never-opened bots. See the Cloud sections below.
 
+## Android app (branch `android-app`, 2026-11-19, NOT RELEASED, nothing published, website NOT deployed)
+Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS soon; not a web app".
+- **What:** `mobile/`, a Capacitor 8 native shell around the phone app the website already serves
+  (https://oovi.conuron.com/m), so the two never drift: a website deploy updates the app's screens too. App id
+  `app.oovi.mobile`, name "oovi", Android 7+ (minSdk 24, target 36). The iPhone project is generated
+  (`mobile/ios/App`) but never built: steps in `mobile/IOS.md`.
+- **Native parts (Android, `mobile/android/app/src/main/java/app/oovi/mobile/`):**
+  - Links (`NavPolicy.java`, unit-tested): the phone app (`/m`, `/app`) and the account pages it needs (`/login`,
+    `/signup`, `/forgot-password`, `/reset-password`, `/verified`, `/api`) stay in the app; every other page,
+    other sites and connector sign-in pages open in the phone's browser as a Custom Tab (Google refuses sign-ins
+    inside an app's WebView); mail/phone/maps links go to their app; `javascript:`, `file:`, `content:`, `intent:`
+    are refused. Works with the website as deployed today (no web change needed).
+  - Connector sign-in: the service opens in a Custom Tab; it comes back there without the app's session, so the
+    website shows its "Yes, it's my account" page (held flow); back in the app, the app re-checks at once (it sends
+    "focus" on resume) and `/oauth/finish` completes it. Same flow as an iPhone Home Screen app; NOT tried on a phone.
+  - Offline: no network on a page load → the page built into the app (`mobile/src/offline.html` → `www/offline.html`,
+    logo inlined, ar/fr/en from the app's saved language or the phone's, light/dark), "Try again" and automatic retry
+    when the connection is back, to the page that failed (app pages only). The website's own error pages (404...)
+    show as they are. After the first visit the phone app's offline worker shows saved chats instead.
+  - Back button: closes an open sheet or menu first (event `ooviback`, needs the website deploy), then back in the
+    app; from the chat list or the sign-in screen the app goes to the background.
+  - Microphone: the first time, a short explanation (en/fr/ar, `res/values*/strings.xml`), then Android's question;
+    only oovi's own pages may use it. File picker: Capacitor's (photos and files say "coming soon" on the phone
+    anyway). No camera, location or contacts permission.
+  - Sign-in kept: WebView cookies, saved on pause. No backup of app data (the sign-in must not move to another phone).
+  - App Links: `https://oovi.conuron.com/m` and `/m/...` open the app once `web/public/.well-known/assetlinks.json`
+    lists the signing key (written by the workflow the first time, see below; needs a website deploy after).
+  - Status bar and safe areas: Capacitor's SystemBars (edge to edge; the page's own `env(safe-area-inset-*)`).
+  - Icons: adaptive icon (logo on white), splash = logo on paper (dark paper in dark mode). `node mobile/scripts/native-icons.cjs`.
+  - User agent ends with `ooviApp/1.0` (`web/lib/app-detect.ts`).
+- **Website (needs a deploy, owner says "deploy"):** `/download/android` (same proxy as the desktop files; if the newest
+  release has no APK yet, the newest release that has one, `web/lib/releases.ts`); the download page has an
+  "On your phone" card (Download for Android, 3 install steps, "iPhone: coming soon"), first on Android phones; on
+  /m in a browser on Android: "Get the Android app" card in the chat list (in place of the desktop card, hideable)
+  and in Settings (in place of "Add to Home Screen"); inside the app, no "Add to Home Screen"; Admin download charts
+  count Android. Screenshots: `docs/android/`.
+- **Builds (`.github/workflows/android.yml`):** on a published release (or Run workflow with a tag): signed
+  `oovi-<version>.apk` + `oovi-<version>.aab` attached to the release (versionCode = major×1,000,000 + minor×1,000 +
+  patch, `mobile/scripts/version.mjs`), also copied to the downloads repo; Run workflow without a tag = test build
+  under Artifacts. On every push to `android-app` that touches `mobile/`: debug build, unit tests, and the app opened
+  on an Android 14 emulator with screenshots (Artifacts "android-screens").
+- **Signing (no key ever in chat):** the owner adds one secret, `ANDROID_KEYSTORE_PASSWORD`. The first release run
+  creates the key (RSA 4096, 30 years), checks it, encrypts it with that password (AES-256, PBKDF2 600,000 rounds) as
+  `mobile/android/release.keystore.enc`, commits it with `assetlinks.json` to the release's branch, and only then
+  signs. Later runs decrypt it; a wrong password stops with the exact fix. The run log and summary print the
+  certificate's SHA-256. **If the password or that file is lost, phones can't update the app** (they must uninstall
+  first and lose the app's saved data): keep the password in a password manager.
+- **Push notifications: prepared, OFF.** The workflow adds `google-services.json` only when the secret
+  `GOOGLE_SERVICES_JSON` exists AND `@capacitor/push-notifications` is installed in `mobile/`. Still to build: the
+  plugin install + token registration on the phone, a website table for device tokens, and sending through Firebase
+  (FCM HTTP v1, a service-account key in Vercel) when a bot answers or needs an OK.
+- **Verified here:** Android SDK 36 installed in a scratch folder; debug build OK (4.4 MB); `NavPolicyTest` 6/6
+  (JUnit); a full release build signed with a THROWAWAY stand-in key exactly like the workflow (keytool → openssl
+  encrypt → decrypt identical; wrong password refused; `apksigner` shows the key's SHA-256; versionCode 13000 /
+  0.13.0; permissions: internet, microphone (+ audio settings); release APK 3.3 MB, AAB 3.2 MB); `npx tsc --noEmit`
+  root and web clean; unit tests 425 (424 pass, 1 skipped: the live YouTube test; new `mobile-native.test.mts` 5/5);
+  `npm run build` in web OK; `node tests/e2e/mobile-scenario.cjs` 127/127; new `node tests/e2e/native-web-scenario.cjs`
+  49/49 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
+  app, Back closes a sheet, /download/android, the offline page in 3 languages × light/dark, its retry never leaves
+  the app's pages, nothing loaded from the network). Suggest adding it to the release checks in CLAUDE.md (owner's file, not changed).
+- **NOT verified:** no emulator here (no hardware acceleration in this machine): the app was never opened on Android
+  by me; the emulator job on GitHub does it (see its screenshots). Not tried: a real phone, a connector sign-in round
+  trip in a Custom Tab, the microphone in the app, App Links verification (needs the real key + deploy), the release
+  workflow itself (needs the secret), the iPhone project.
+- **Not built:** share-to-oovi (sharing text or a photo from another app into a chat): it needs a "pick a chat"
+  screen on the website first; push notifications (above).
+
+### Owner steps (exact clicks)
+1. **Add the password (once):** https://github.com/oussasz/oovi/settings/secrets/actions → **New repository secret** →
+   Name `ANDROID_KEYSTORE_PASSWORD` → Secret: a long password you invent (16+ characters) → **Add secret**. Save the
+   same password in your password manager. Never paste it anywhere else.
+2. **Merge `android-app`** into your main branch when you're happy (the "Run workflow" button only appears for
+   workflows on the default branch).
+3. **First build (creates the key):** Actions → **Android app** → **Run workflow** → Use workflow from: `main`, tag
+   empty → **Run workflow**. When it's green: the run's page shows "Signing certificate SHA-256"; the key and
+   `assetlinks.json` are committed to main; the test APK is under **Artifacts** to try on your phone.
+4. **Each release:** publishing a release (or "Make a release") builds the APK by itself and attaches it. Then say
+   "deploy" so the website gets `/download/android` and `assetlinks.json`.
+5. **Try it on your phone:** on Android, open https://oovi.conuron.com/download → **Download for Android** → open the
+   file → allow your browser to install apps → **Install** → open oovi and sign in.
+
 # Hand-off: oovi 0.10.0 (released 2026-11-11)
 
 ## Desktop visual refresh (branch `desktop-refresh`, 2026-11-19, NOT RELEASED, nothing published)

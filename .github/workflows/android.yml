@@ -186,6 +186,20 @@ jobs:
       - name: Android SDK 36
         run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
 
+      # Push notifications (OFF): only when the owner has added a Firebase project's google-services.json as the
+      # GOOGLE_SERVICES_JSON secret AND the push plugin is installed (docs/HANDOFF.md, "Android app"). Without both,
+      # nothing changes.
+      - name: Firebase configuration (push notifications, only if set up)
+        env:
+          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+        run: |
+          if [ -n "$GOOGLE_SERVICES_JSON" ] && grep -q '"@capacitor/push-notifications"' mobile/package.json; then
+            printf '%s' "$GOOGLE_SERVICES_JSON" > mobile/android/app/google-services.json
+            echo "Push notifications: Firebase configuration added."
+          else
+            echo "Push notifications: off."
+          fi
+
       - name: Build the signed APK and AAB
         working-directory: mobile
         env:
