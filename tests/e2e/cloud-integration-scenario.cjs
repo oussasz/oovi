@@ -327,7 +327,7 @@ async function stopRunner() {
     const back = await waitFor("the computer marks the cloud's run", async () => {
       const r2 = (await app("GET", "/api/routines")).j;
       const one = (Array.isArray(r2) ? r2 : r2?.routines || []).find((x) => x.id === rid);
-      return one?.lastRun?.note && /cloud server/.test(one.lastRun.note) ? one : null;
+      return one?.lastRun?.note === "cloud" ? one : null;
     }, 60_000);
     check("the computer, back on, marks the run the cloud did (no second run)", !!back, JSON.stringify(back && back.lastRun));
     await sleep(8000); // a few more checks of the computer's routines
