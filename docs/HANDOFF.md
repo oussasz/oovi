@@ -73,8 +73,14 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
   59/59 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
   app, Back closes a sheet, /download/android, the offline page in 3 languages × light/dark, its retry never leaves
   the app's pages, nothing loaded from the network). Suggest adding it to the release checks in CLAUDE.md (owner's file, not changed).
-- **NOT verified:** no emulator here (no hardware acceleration in this machine): the app was never opened on Android
-  by me; the emulator job on GitHub does it (see its screenshots). Not tried: a real phone, a connector sign-in round
+- **Verified on an Android 14 emulator (GitHub, job "check", run 4 on 6c7580f):** the app opens the live sign-in
+  screen (light and dark, status bar and gesture bar right), Back on sign-in sends it to the background, a link to
+  https://oovi.conuron.com/m/settings opens the app (signed out → sign-in), with no network a fresh install shows the
+  built-in offline page (light and dark), and when the network comes back it reopens oovi by itself; no crash.
+  Screenshots: `docs/android/emulator-*.jpg`. Run 1 found the offline bug (fixed above); in run 1 the link shot
+  showed the home screen, in run 4 the app stayed in front at 2 s and 12 s (likely a timing fluke; watch it).
+  App Links verification on that emulator: "Error hosts: oovi.conuron.com" (expected: no assetlinks.json yet).
+- **NOT verified:** this machine has no emulator (no hardware acceleration). Not tried: a real phone, a connector sign-in round
   trip in a Custom Tab, the microphone in the app, App Links verification (needs the real key + deploy), the release
   workflow itself (needs the secret), the iPhone project.
 - **Not built:** share-to-oovi (sharing text or a photo from another app into a chat): it needs a "pick a chat"
