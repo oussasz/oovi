@@ -112,7 +112,7 @@ function approve(authUrl) {
 async function main() {
   // ---- database ----
   const mig = spawnSync(process.execPath, ["scripts/migrate.mjs"], { cwd: WEB, env: { ...process.env, DATABASE_URL: DB, DATABASE_URL_UNPOOLED: DB }, encoding: "utf8" });
-  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_oauth_flow, cloud_sync, cloud_vault/.test(mig.stdout), mig.stderr.slice(0, 300));
+  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_oauth_flow, cloud_routine, cloud_sync, cloud_vault/.test(mig.stdout), mig.stderr.slice(0, 300));
   await db.query(`DELETE FROM "user" WHERE id LIKE 'cloudtest_%'`);
   const A = await addUser("cloudtest_a", "a@cloud.test");
   const B = await addUser("cloudtest_b", "b@cloud.test");
