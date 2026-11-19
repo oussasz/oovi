@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { FRAME_CSP, FRAME_SANDBOX, framedHtml } from "../../lib/announcement-frame.ts";
+import { audienceLabel, paragraphs, parsePeople, peopleOf } from "../../web/lib/announcement-audience.ts";
 
 const root = new URL("../../", import.meta.url);
 const read = (p: string) => fs.readFileSync(new URL(p, root), "utf8").replace(/\r\n/g, "\n");
@@ -27,4 +28,33 @@ test("a body-only snippet gets a full page", () => {
 
 test("the website shows announcements in exactly the same frame as the app", () => {
   assert.equal(read("web/lib/announcement-frame.ts"), read("lib/announcement-frame.ts"));
+});
+
+test("chosen people: one address or several, typed any way; duplicates and bad ones are caught", () => {
+  const p = parsePeople(" Sara@Example.com,\nkarim@example.com ; sara@example.com <omar@example.com>\n not-an-address ");
+  assert.deepEqual(p.emails, ["sara@example.com", "karim@example.com", "omar@example.com"]);
+  assert.deepEqual(p.bad, ["not-an-address"]);
+  assert.deepEqual(parsePeople("").emails, []);
+  assert.deepEqual(peopleOf(""), []);
+  assert.deepEqual(peopleOf(p.emails.join(",")), p.emails);
+  assert.equal(audienceLabel(""), "Everyone");
+  assert.equal(audienceLabel("sara@example.com"), "sara@example.com");
+  assert.equal(audienceLabel("a@x.co,b@x.co,c@x.co"), "3 chosen people");
+});
+
+test("chosen people are matched by the whole address in the database queries (never by a part of it)", () => {
+  const lib = read("web/lib/announcements.ts");
+  assert.equal(lib.match(/= ANY\(string_to_array\(/g)?.length, 3, "the app's list, the email list and the email count");
+  assert.doesNotMatch(lib, /\bI?LIKE \$|position\(/);
+});
+
+test("news to everyone skips people who unsubscribed; a message to chosen people is ordinary mail", () => {
+  const lib = read("web/lib/announcements.ts");
+  assert.equal(lib.match(/\$2 = '' AND u\."emailVerified" = true AND COALESCE\(u\.oovi_status, 'active'\) <> 'blocked' AND u\.news_opt_out = false/g)?.length, 2, "the list and the count use the same rule");
+  // (what the email looks like is checked in a browser test with a mail sink: the template can't be loaded here)
+  const fn = read("web/lib/mail-templates.ts").split("export function personalMessage")[1]!.split("\nexport function")[0]!;
+  assert.match(fn, /esc\(p\)/, "the owner's words are escaped: shown as text, never run");
+  assert.doesNotMatch(fn, /unsub|List-Unsubscribe/i, "no news footer, no unsubscribe header");
+  assert.match(read("web/app/admin/announcements/actions.ts"), /a\.testEmail \? personalMessage\(p\.email, a\.title, paragraphs\(a\.message\)\) : announcementEmail\(a, p\)/);
+  assert.deepEqual(paragraphs("a\n\n\n b \n\n"), ["a", "b"]);
 });

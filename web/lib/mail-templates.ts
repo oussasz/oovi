@@ -229,6 +229,21 @@ export function pilotApproved(to: string, name: string, credits: number, days: n
   );
 }
 
+/**
+ * A message from the owner to chosen people (Admin > Announcements > "Only the people I choose"): an ordinary
+ * email in oovi's own look, with the owner's words as written. No news footer and no unsubscribe link: it is
+ * correspondence with one person about their account, not a mailing.
+ */
+export function personalMessage(to: string, subject: string, paras: string[]): Mail {
+  const html = (p: string) => `<span dir="auto" style="display:block;unicode-bidi:plaintext;">${esc(p).replace(/\n/g, "<br>")}</span>`;
+  const [first = "", ...rest] = paras;
+  return render(
+    { preheader: first.replace(/\s+/g, " ").slice(0, 110), title: subject, hello: html(first), blocks: rest.map((p) => ({ kind: "p" as const, text: html(p) })) },
+    to,
+    subject,
+  );
+}
+
 /** One short notice after the team corrected the address of an account (Admin > Users > Correct the email address). Nothing else is asked of the person. */
 export function emailChanged(to: string, name: string, from: string, now: string): Mail {
   return render(

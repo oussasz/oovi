@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireAdmin } from "@/lib/admin";
+import { audienceLabel } from "@/lib/announcement-audience";
 import { listAnnouncements } from "@/lib/announcements";
 import { Empty, PageHead, Section } from "@/components/admin/ui";
 import { fmtAgo, fmtInt } from "@/components/admin/format";
@@ -43,7 +44,7 @@ export default async function AdminAnnouncements() {
                       <Link href={`/admin/announcements/edit?id=${a.id}`}>{a.title}</Link>
                     </td>
                     <td>{[a.window && "Window", a.bar && "Bar", a.email && "Email"].filter(Boolean).join(", ")}</td>
-                    <td>{a.testEmail ? `Test: ${a.testEmail}` : "Everyone"}</td>
+                    <td>{audienceLabel(a.testEmail)}</td>
                     <td>
                       <span className={`adm-badge${a.status === "live" ? " on" : ""}`}>{a.status === "live" ? "Live" : a.status === "ended" ? "Ended" : "Draft"}</span>
                     </td>
