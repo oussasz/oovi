@@ -84,6 +84,44 @@ Node; with the runner as the Docker image it passed before the last 5 checks (ru
 - **Not checked:** a real theOovi, a real OAuth connector refreshed by the runner (the vault write-back path ran only
   against stand-ins), the phone app (part M) itself, the image on arm64, a real server or Azure.
 
+## Pay in app (branch `pay-in-app`, 2026-11-19, NOT DEPLOYED, NOT RELEASED)
+The owner removed the website account (contract 2026-11-19), so people pay from inside the app, like other desktop
+apps: the app asks the website for a single-use link tied to the signed-in account and opens it in the browser.
+- Website: `POST /api/v1/billing/link` (`web/app/api/v1/billing/link/route.ts`): `{kind:"checkout", plan?, cycle?}`
+  or `{kind:"portal"}` → `{url}` = `<site>/pay/<token>`. Signed-in session only (the desktop's Bearer token, or the
+  phone app's cookie from the site itself); the account comes from the session, never the body. Token: 32 random
+  bytes, only its SHA-256 stored (table `pay_links`, `web/lib/pay-links.ts`, also in `scripts/migrate.mjs`), works
+  once, 10 minutes, at most 10 per account per 10 minutes. Portal for an account without a subscription: 404
+  `no_subscription`. Plans checked against `web/lib/pricing-tiers.ts` (`web/lib/pay-core.ts`, pure).
+- `/pay/<token>` (`web/app/pay/[token]/page.tsx`, no sign-in, not indexed, no referrer): checkout = the plans with
+  Paddle's checkout for exactly that account (`customData.userId`, its email prefilled; a plan chosen in the app opens
+  by itself; after paying → `/pay/done`); portal = straight to that account's Paddle customer portal. Used or expired
+  link → a page in Arabic, French or English: "Open oovi and press Subscribe again".
+- Webhook: the account comes from the checkout's user id; it now also replaces a Paddle customer's link that
+  customer.created guessed from the typed email (`ensureCustomer` in `web/lib/billing.ts`). So a buyer who types
+  someone else's email can't credit them or open their billing portal.
+- `/api/v1/ai/status` adds `billing: {inApp: true, subscriber}`. `links.subscribe` and `links.pricing` still point to
+  `/pricing` for older apps; `/pricing` no longer sends anyone to sign in (it says to subscribe from the app; its free
+  card says "Download oovi"). NOT changed: `links.pilot` and `links.feedback` still open `/pilot` and `/feedback`,
+  which ask for a website sign-in (removed by the owner): to fix with the website removal work.
+- Desktop: `app/api/billing/link/route.ts` asks the website (`cloud()` with the account) and only accepts a link to
+  `<site>/pay/`; `PayButton` in `components/Credits.tsx` (credits popover, "out of credits" notice; subscribers get
+  "Manage subscription") opens it in the normal browser and reads the credits again when the window gets focus (and
+  15 s later). Settings > Profile shows "Manage subscription" for subscribers. 4 new texts in the 6 languages. Older
+  servers without `billing.inApp`: the old subscribe link, as before.
+- Phone (`web/app/m/_ui/SettingsScreen.tsx`, separate commit): Get more credits, Plans and Manage subscription call
+  the same API and open the link with `window.open` (falls back to the same tab); credits and billing read again on
+  return. The Android app must send that link to the system browser / Custom Tabs: NOT checked in the Android app.
+- Checked: `tests/unit/pay.test.mts` (3; it found a bug: a plan named `toString` passed, fixed with `Object.hasOwn`),
+  unit suite 422 pass / 1 skipped, tsc root and web clean, root app build and web build OK,
+  `web/scripts/test-pay.cjs` 33/33 on a throwaway PostgreSQL with the built site, a stand-in Paddle API
+  (`OOVI_PADDLE_API_TEST_BASE`, only a local http address is accepted) and signed webhooks: single use, expiry, made-up
+  token, the session's account only, another person's link never pays for the one who opens it, portal for a
+  non-subscriber, portal redirect with the subscriptions, ar/fr/en pages, credits land on the link's account and not
+  on the typed email, 10-links limit, no link in the server's logs.
+- NOT checked: the real Paddle checkout opening in a browser (needs Paddle's script and account), the buttons clicked in
+  the running desktop app or the Android app, Safari/Firefox. Store rules for later: `mobile/STORES.md`.
+
 ## Cloud W: website storage and API for cloud sync (branch `cloud-web`, 2026-11-18, NOT DEPLOYED, NOT RELEASED)
 Part W of `docs/CLOUD-BUILD.md` (the contract; what had to change is listed at its bottom). Nothing uses it until
 the desktop app (part A), the phone app (M) and the runner (R) are built. Deploying it alone changes nothing for

@@ -248,4 +248,8 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   do): pay from inside the app. The app asks the website for a short-lived, single-use payment link tied to the signed-in
   account and opens it in the browser (Paddle checkout / customer portal); no website sign-in. Later, inside apps sold
   through Google Play / the App Store, their own in-app payment rules apply (see mobile/STORES.md).
+- 2026-11-19, pay in app (built on branch `pay-in-app`): `POST /api/v1/billing/link {kind:"checkout", plan?, cycle?}
+  | {kind:"portal"}` → `{url, expiresIn}` (single use, 10 minutes); `/api/v1/ai/status` adds `billing: {inApp,
+  subscriber}`. Phone and desktop open the url in the system browser and read credits again on return. Details:
+  docs/HANDOFF.md "Pay in app".
 

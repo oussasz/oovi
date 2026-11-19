@@ -24,7 +24,7 @@ export function checkLinkRequest(body: unknown, prices: Record<string, { month: 
   const all = new Set(Object.values(prices).flatMap((p) => [p.month, p.year]));
   if (typeof b.priceId === "string") return all.has(b.priceId) ? { kind: "checkout", priceId: b.priceId } : "Unknown price.";
   if (b.plan === undefined || b.plan === null) return { kind: "checkout", priceId: null };
-  if (typeof b.plan !== "string" || !prices[b.plan]) return "Unknown plan.";
+  if (typeof b.plan !== "string" || !Object.hasOwn(prices, b.plan)) return "Unknown plan.";
   const cycle = b.cycle === undefined ? "month" : b.cycle;
   if (cycle !== "month" && cycle !== "year") return "cycle must be month or year.";
   return { kind: "checkout", priceId: prices[b.plan]![cycle] };
