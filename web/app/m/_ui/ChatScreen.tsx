@@ -155,6 +155,13 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const { t, lang, chats, bot, status, sync, online, outbox, loadChat, putChat, markSeen, job } = m;
   const cached = chats[chatId];
   const chat = cached?.chat;
+  // An out-of-credits reply offers "Get more credits" when the account has a way to pay: read the credits once
+  // if this phone hasn't yet (they are otherwise read on the Settings screen).
+  const needsCredits = !!chat?.entries.some((e) => e.kind === "bot" && e.status === "error" && (e.errorCode === "no_credits" || e.errorCode === "daily_limit"));
+  const { credits, loadCredits } = m;
+  useEffect(() => {
+    if (needsCredits && !credits) void loadCredits().catch(() => {});
+  }, [needsCredits, credits, loadCredits]);
   const version = cached?.version ?? 0;
   const [state, setState] = useState<"loading" | "ok" | "missing" | "error">(cached ? "ok" : "loading");
   const [jobs, setJobs] = useState<JobInfo[]>([]);
