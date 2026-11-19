@@ -1,4 +1,6 @@
-## Error handling sweep after 0.14.0 (2026-11-19, on next-version, NOT RELEASED)
+## Error handling sweep after 0.14.0 (2026-11-19) — RELEASED as 0.14.1 (owner: "yes releas and deploy")
+Released 2026-11-19: GitHub release v0.14.1 (Windows/Mac/Linux + Store appx + APK/AAB), update feeds 0.14.1, website
+deployed (assetlinks.json 200), runner image 0.14.1 loaded and healthy. Microsoft Store: the appx needs a Store submission (owner).
 Owner's report: Zapier "Missing argument values for required properties" (Google Tasks) got "the app isn't connected"
 advice and a useless problem email. Owner: look for the same kind of problem on Windows/Mac/Linux, every connector,
 every scenario. Three read-only audits (connectors with 73 real error formats, platforms, reports/scenarios), then fixes:
