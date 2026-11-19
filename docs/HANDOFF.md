@@ -1,3 +1,22 @@
+## Error handling sweep after 0.14.0 (2026-11-19, on next-version, NOT RELEASED)
+Owner's report: Zapier "Missing argument values for required properties" (Google Tasks) got "the app isn't connected"
+advice and a useless problem email. Owner: look for the same kind of problem on Windows/Mac/Linux, every connector,
+every scenario. Three read-only audits (connectors with 73 real error formats, platforms, reports/scenarios), then fixes:
+- lib/tool-error-core.ts: one classifier for every connector (JSON-RPC code, HTTP status, service reason codes, Node's
+  network code from `cause`, then words EN/FR/AR) + next step per kind; zapierNextStep moved here. Unit test table:
+  tests/unit/fixtures/tool-errors.json. tsconfig: allowImportingTsExtensions (pure modules import each other with .ts).
+- Connectors: no blind retry of a write that timed out/5xx; refused calls aren't "may have run"; key refused vs sign-in;
+  real network reason; install hint only for program connectors; no browser hint on connector errors; no pointless retry.
+- Reports: fixed-later = same tool+app+site (never an action to another target); connector user-side states not filed;
+  JSON readable; Not confirmed counts; more Darija/French "couldn't"; paths hidden on all systems; reviews mark fixed
+  errors; Telegram 400 refusals reported; Problems group the same error across sites, HTTP codes kept apart.
+- Platforms (lib/platform-errors-core.ts): certificate/antivirus = "tls" (translated, no retry, system CA store trusted
+  at start), real browser launch reason, cmd.exe UTF-8, locked files on delete, .git case, CRLF edits, XDG folders,
+  service 400/500 reported (busy only for 429/502/503/504/529); test harness fails fast on EADDRINUSE.
+- Cloud send_telegram works; missing tools explained without "enable"; help says how problem reports work.
+Not done: cloud runs don't send problem reports (proxy has no feedback route); lib/hosted.ts status-check "offline".
+All scenarios + CI 3 OS green (run 44592238362), cost 169,983.
+
 ## Fixes from the owner's 2026-11-19 problem list (on `next-version`, NOT RELEASED; website deployed with the web removal)
 Owner: "yes, push to main and deploy the website" (done: download-only website live, checked with curl). Then: fix the
 Zapier / morning check / Telegram problems "from the root" before 0.14.
