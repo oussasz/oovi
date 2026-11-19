@@ -29,6 +29,38 @@ export function SettingsScreen() {
   const [billingNote, setBillingNote] = useState<"none" | "unavailable" | null>(null);
   const [feedback, setFeedback] = useState(false);
   const [verify, setVerify] = useState<{ busy: boolean; text: string | null; error: boolean }>({ busy: false, text: null, error: false });
+  // Subscribe / Manage: a single-use payment link for this account from POST /api/v1/billing/link, opened in the
+  // phone's browser (the Android app sends _blank links to the system browser / Custom Tabs). Credits are read again
+  // when the person comes back.
+  const [paying, setPaying] = useState(false);
+  async function pay(kind: "checkout" | "portal") {
+    setPaying(true);
+    setBillingNote(null);
+    try {
+      const r = await fetch("/api/v1/billing/link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }), credentials: "same-origin" });
+      const j = (await r.json().catch(() => ({}))) as { url?: string; code?: string };
+      if (!r.ok || !j.url) {
+        setBillingNote(j.code === "no_subscription" ? "none" : "unavailable");
+        return;
+      }
+      if (!window.open(j.url, "_blank", "noopener")) window.location.href = j.url;
+      const again = () => {
+        void loadCredits?.();
+        void getAccount().then(setAcct, () => {});
+      };
+      window.addEventListener("focus", again, { once: true });
+      document.addEventListener("visibilitychange", function back() {
+        if (document.visibilityState === "visible") {
+          again();
+          document.removeEventListener("visibilitychange", back);
+        }
+      });
+    } catch {
+      setBillingNote("unavailable");
+    } finally {
+      setPaying(false);
+    }
+  }
   const ptr = usePullToRefresh(async () => {
     await Promise.all([refresh({ setup: true }), loadCredits()]);
   });
@@ -164,7 +196,7 @@ export function SettingsScreen() {
           {credits?.pilot?.public && credits.pilot.eligible && credits.pilot.status === null && (
             <Row title={<span className="m-link">{t("settings.pilot")}</span>} sub={t("settings.pilotAsk", { n: nf.format(credits.pilot.credits) })} onClick={() => void openPilot()} />
           )}
-          {credits?.links?.subscribe && <Row title={<span className="m-link">{t("settings.getMore")}</span>} href={credits.links.subscribe} external />}
+          {credits?.links?.subscribe && !acct?.billing && <Row title={<span className="m-link">{t("settings.getMore")}</span>} onClick={paying ? undefined : () => void pay("checkout")} />}
           <Row title={<span className="m-link">{t("settings.feedback")}</span>} onClick={() => setFeedback(true)} chevron />
         </Section>
 
@@ -186,24 +218,17 @@ export function SettingsScreen() {
           ) : acct.billing ? (
             <>
               <Row title={t("bill.status")} value={billStatus(acct.billing.status)} />
-              <form action="/api/billing/portal" method="post" className="m-row--form">
-                <input type="hidden" name="from" value="/m/settings" />
-                <button type="submit" className="m-row is-tap">
-                  <span className="m-row__icon">
-                    <IconTile name="sparkle" color="var(--m-blob-yellow)" />
-                  </span>
-                  <span className="m-row__main">
-                    <span className="m-row__title">{t("bill.manage")}</span>
-                    <span className="m-row__sub">{t("bill.manageSub")}</span>
-                  </span>
-                  <Icon name="share" size={18} stroke={2} className="m-row__chev" />
-                </button>
-              </form>
+              <Row
+                icon={<IconTile name="sparkle" color="var(--m-blob-yellow)" />}
+                title={t("bill.manage")}
+                sub={t("bill.manageSub")}
+                onClick={paying ? undefined : () => void pay("portal")}
+              />
             </>
           ) : (
             <>
               <div className="m-row m-row--note">{t("bill.free")}</div>
-              <Row title={<span className="m-link">{t("bill.plans")}</span>} href="/pricing" external />
+              <Row title={<span className="m-link">{t("bill.plans")}</span>} onClick={paying ? undefined : () => void pay("checkout")} />
             </>
           )}
         </Section>

@@ -252,3 +252,8 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   Bearer; same-host when an Origin is sent; 20 per 10 minutes) → `{url}`: a single-use link to `/pilot?t=<43-char
   token>`, valid 30 minutes, kept only as a SHA-256 hash (table `app_links`, `web/lib/app-links.ts`). The pilot form
   uses it once when the request is saved. Other purposes can be added there (payments may reuse the idea).
+- 2026-11-19, pay in app (built on branch `pay-in-app`): `POST /api/v1/billing/link {kind:"checkout", plan?, cycle?}
+  | {kind:"portal"}` → `{url, expiresIn}` (single use, 10 minutes); `/api/v1/ai/status` adds `billing: {inApp,
+  subscriber}`. Phone and desktop open the url in the system browser and read credits again on return. Details:
+  docs/HANDOFF.md "Pay in app".
+

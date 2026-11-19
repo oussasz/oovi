@@ -51,6 +51,62 @@ function untilReset(iso: string): { h: number; m: number } {
   return { h: Math.floor(ms / 3_600_000), m: Math.floor((ms % 3_600_000) / 60_000) };
 }
 
+/**
+ * Subscribe / Manage subscription. Servers that support it (status.billing.inApp): a single-use payment link for this
+ * account from oovi's website (app/api/billing/link), opened in the person's normal browser; no website sign-in.
+ * Back in oovi, the plan and credits are read again (at once and a little later: the payment can take a moment).
+ * Older servers: their subscribe link, as before.
+ */
+export function PayButton({ kind, status, primary = false }: { kind: "checkout" | "portal"; status: HostedStatus | null; primary?: boolean }) {
+  const { t } = useI18n();
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState("");
+  const label = kind === "portal" ? t("credits.manage") : t("credits.subscribe");
+  const cls = `btn ${primary ? "primary " : ""}sm`;
+  if (!status?.billing?.inApp) {
+    return kind === "checkout" && status?.links?.subscribe ? (
+      <a className={cls} href={status.links.subscribe} target="_blank" rel="noreferrer">
+        {label}
+      </a>
+    ) : null;
+  }
+  async function go() {
+    setBusy(true);
+    setErr("");
+    try {
+      const r = await fetch("/api/billing/link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind }) });
+      const j = (await r.json().catch(() => ({}))) as { url?: string; error?: string; code?: string };
+      if (!r.ok || !j.url) throw new Error(j.code === "no_subscription" ? t("credits.noSubscription") : j.error || t("credits.payFailed"));
+      window.open(j.url, "_blank", "noopener,noreferrer");
+      const refresh = () => void fetch("/api/credits?fresh=1", { cache: "no-store" }).then(refreshCredits, () => {});
+      window.addEventListener(
+        "focus",
+        () => {
+          refresh();
+          setTimeout(refresh, 15_000);
+        },
+        { once: true },
+      );
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : t("credits.payFailed"));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <>
+      <button type="button" className={cls} onClick={() => void go()} disabled={busy}>
+        {busy ? t("credits.opening") : label}
+      </button>
+      {err && (
+        <span className="credits-msg" role="alert">
+          {err}
+        </span>
+      )}
+    </>
+  );
+}
+
 /** Sends the email confirmation link again (free credits wait for it). */
 function ResendButton({ primary = false }: { primary?: boolean }) {
   const { t } = useI18n();
@@ -171,11 +227,7 @@ export function CreditsChip() {
               </div>
             )}
             <div className="credits-actions">
-              {status.links?.subscribe && (
-                <a className="btn primary sm" href={status.links?.subscribe} target="_blank" rel="noreferrer">
-                  {t("credits.subscribe")}
-                </a>
-              )}
+              {status.billing?.subscriber ? <PayButton kind="portal" status={status} /> : <PayButton kind="checkout" status={status} primary />}
               <button
                 type="button"
                 className="btn sm"
@@ -221,7 +273,6 @@ export function CreditsChip() {
 export function HostedNotice({ code, message }: { code: string; message?: string }) {
   const { t } = useI18n();
   const { status } = useHosted();
-  const links = status?.links;
   const reset = status ? untilReset(status.resetsAt) : null;
   const text =
     code === "no_credits"
@@ -245,11 +296,7 @@ export function HostedNotice({ code, message }: { code: string; message?: string
       )}
       {code !== "offline" && code !== "signed_out" && code !== "verify_email" && (
         <div className="credits-actions">
-          {code === "no_credits" && links?.subscribe && (
-            <a className="btn primary sm" href={links.subscribe} target="_blank" rel="noreferrer">
-              {t("credits.subscribe")}
-            </a>
-          )}
+          {code === "no_credits" && <PayButton kind="checkout" status={status} primary />}
           <button type="button" className="btn sm" onClick={() => openSettings("models")}>
             {t("credits.ownKey")}
           </button>

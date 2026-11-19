@@ -20,6 +20,8 @@ export type HostedStatus = {
   /** How many calls the server lets this account run at once. Missing from older servers: 3 (the server's default). */
   maxConcurrent?: number;
   links: { subscribe: string; pricing: string; pilot: string; feedback: string };
+  /** inApp: pay through a single-use link from POST /api/v1/billing/link (no website sign-in). subscriber: a subscription to manage. Missing from older servers. */
+  billing?: { inApp: boolean; subscriber: boolean };
   pilot: { open: boolean; eligible: boolean; public?: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
   /** theOovi's model can control the desktop (Claude's computer toolset). Missing from older servers: treated as yes. */
   desktop?: boolean;

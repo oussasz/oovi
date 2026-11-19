@@ -3144,3 +3144,7 @@ a.adm-item:hover b { text-decoration: underline; }
 .shared-body th { background: var(--surface-2); position: sticky; top: 0; }
 .shared-foot { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 18px; }
 @media (max-width: 600px) { .shared-page article { padding: 18px 16px 22px; } .shared-page h1 { font-size: 1.5rem; } }
+
+/* Payment pages opened from the app (/pay/<token>, /pay/done). */
+.pay-page { max-width: 1100px; }
+.pay-card { max-width: 520px; margin: 48px auto; padding: 28px 24px; }

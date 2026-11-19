@@ -392,6 +392,16 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS cloud_oauth_flow_user_idx ON cloud_oauth_flow (user_id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_id_idx ON cloud_oauth_flow (id);
   CREATE UNIQUE INDEX IF NOT EXISTS cloud_oauth_flow_hold_idx ON cloud_oauth_flow (hold_hash);
+  -- Payment links made for the app (keep in sync with lib/pay-links.ts PAY_DDL).
+  CREATE TABLE IF NOT EXISTS pay_links (
+    token_hash TEXT PRIMARY KEY,
+    user_id    TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
+    kind       TEXT NOT NULL CHECK (kind IN ('checkout', 'portal')),
+    price_id   TEXT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    used_at    TIMESTAMPTZ NULL
+  );
+  CREATE INDEX IF NOT EXISTS pay_links_user_idx ON pay_links (user_id, created_at);
   -- Marketplace pictures for bots' faces (keep in sync with lib/avatars.ts AVATAR_DDL).
   CREATE TABLE IF NOT EXISTS catalog_avatars (
     id         TEXT PRIMARY KEY,

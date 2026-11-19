@@ -22,10 +22,18 @@ type Props = {
   /** Cards shown before and after the paid plans, in the same grid. */
   leading?: ReactNode;
   trailing?: ReactNode;
+  /** Payment page opened from the app (/pay/<token>): open the checkout for this price at once. */
+  autoOpenPriceId?: string | null;
+  /** Where Paddle sends the buyer after paying (a path on this site). */
+  successPath?: string;
 };
 
-export function PaddlePricing({ config, tiers, country, email, userId, leading, trailing }: Props) {
-  const [cycle, setCycle] = useState<Cycle>("month");
+/** No website account any more (owner, 2026-11-19): people subscribe from inside the app. */
+const SUBSCRIBE_IN_APP = "To subscribe, open oovi on your computer or phone and press Subscribe: your plan is added to your account there.";
+
+export function PaddlePricing({ config, tiers, country, email, userId, leading, trailing, autoOpenPriceId, successPath = "/welcome" }: Props) {
+  const startCycle: Cycle = autoOpenPriceId && tiers.some((t) => t.priceId.year === autoOpenPriceId) ? "year" : "month";
+  const [cycle, setCycle] = useState<Cycle>(startCycle);
   const [paddle, setPaddle] = useState<Paddle>();
   const [prices, setPrices] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -71,20 +79,31 @@ export function PaddlePricing({ config, tiers, country, email, userId, leading, 
     };
   }, [paddle, country, tiers]);
 
-  function subscribe(tier: PricedTier) {
+  function open(priceId: string) {
     if (!paddle) return;
-    // Paid plans add credits to an oovi account, so the buyer signs in first.
+    // Paid plans add credits to an oovi account: only from the app's payment link (it knows the account).
     if (!userId) {
-      window.location.href = "/login?next=%2Fpricing";
+      setError(SUBSCRIBE_IN_APP);
       return;
     }
     paddle.Checkout.open({
-      items: [{ priceId: tier.priceId[cycle], quantity: 1 }],
+      items: [{ priceId, quantity: 1 }],
       ...(email ? { customer: { email } } : {}),
-      ...(userId ? { customData: { userId } } : {}),
-      settings: { displayMode: "overlay", variant: "one-page", successUrl: `${window.location.origin}/welcome` },
+      // The account the webhook credits (lib/billing.ts resolveUser): by this id, never by the email typed.
+      customData: { userId },
+      settings: { displayMode: "overlay", variant: "one-page", successUrl: `${window.location.origin}${successPath}` },
     });
   }
+  const subscribe = (tier: PricedTier) => open(tier.priceId[cycle]);
+
+  // Opened from the app for one plan: its checkout opens by itself once Paddle is ready.
+  const [autoOpened, setAutoOpened] = useState(false);
+  useEffect(() => {
+    if (!paddle || !autoOpenPriceId || autoOpened) return;
+    setAutoOpened(true);
+    open(autoOpenPriceId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paddle, autoOpenPriceId, autoOpened]);
 
   return (
     <>
