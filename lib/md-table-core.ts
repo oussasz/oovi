@@ -15,6 +15,24 @@ export function cellsOf(line: string): string[] {
   return l.split(/(?<!\\)\|/).map((c) => c.trim().replace(/\\\|/g, "|"));
 }
 
+const RTL_LETTER = /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFC]/g;
+const LETTER = /\p{L}/gu;
+
+/** Which way the columns run: right to left when most letters of the header are Arabic or Hebrew (the body rows
+ *  decide when the header has no letters). Links are skipped so a URL in a cell doesn't count. */
+export function tableDir(t: { header: string[]; rows: string[][] }): "rtl" | "ltr" {
+  const count = (cells: string[]) => {
+    const s = cells.join(" ").replace(/https?:\/\/\S+/g, "");
+    return { rtl: (s.match(RTL_LETTER) ?? []).length, all: (s.match(LETTER) ?? []).length };
+  };
+  let c = count(t.header);
+  if (!c.all) c = count(t.rows.flat());
+  return c.all > 0 && c.rtl * 2 > c.all ? "rtl" : "ltr";
+}
+
+/** GitHub's left/right alignment, made to follow the table's direction (left = where a row starts). */
+export const cellAlign = (a: "left" | "center" | "right" | null) => (a === "left" ? "start" : a === "right" ? "end" : a === "center" ? "center" : undefined);
+
 export function splitTables(text: string): MdSegment[] {
   const lines = text.split("\n");
   const out: MdSegment[] = [];

@@ -3,6 +3,8 @@
 // the bot editor. Seeds a throwaway data folder with sample chats; a stand-in for oovi's website; nothing leaves
 // this machine. Needs a build (npm run build). Run: node tests/e2e/desktop-shots.cjs <prefix> [outDir]
 // e.g. node tests/e2e/desktop-shots.cjs before
+// OOVI_SHOTS_TABLE=1: the bot's answer is a Markdown table (with a wide one) and only the chat is shot, checking how
+// tables look in a bubble (en/ar, light/dark; the English chat also gets an Arabic table and the Arabic one an English).
 const http = require("node:http");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -65,6 +67,12 @@ const TEXT = {
   },
 };
 
+const TABLE_ONLY = process.env.OOVI_SHOTS_TABLE === "1";
+const TABLE_ANSWER = {
+  en: "I found **3 hotels** in Oran:\n\n| Hotel | Price a night | Rating | Link |\n| :-- | --: | :-: | --- |\n| **Ibis Oran** | 9,800 DA | 4.1 | [booking](https://ibis.example/oran) |\n| Hotel Andalous | 11,200 DA | 4.3 | `ANDALOUS-21` |\n| Royal Oran | 11,900 DA | 4.6 | close to the seafront, free parking, breakfast included |\n\nThe same in Arabic, for your sister:\n\n| الفندق | السعر لليلة | التقييم |\n| --- | ---: | :-: |\n| إيبيس وهران | 9 800 دج | 4.1 |\n| رويال وهران | 11 900 دج | 4.6 |\n\nThe cheapest is **Ibis**. Shall I email them?",
+  ar: "وجدت **3 فنادق** في وهران:\n\n| الفندق | السعر لليلة | التقييم | الرابط |\n| --- | ---: | :-: | --- |\n| **إيبيس وهران** | 9 800 دج | 4.1 | [الحجز](https://ibis.example/oran) |\n| فندق الأندلس | 11 200 دج | 4.3 | `ANDALOUS-21` |\n| رويال وهران | 11 900 دج | 4.6 | قريب من الواجهة البحرية، موقف مجاني، الفطور مشمول |\n\nAnd in English for the hotel:\n\n| Hotel | Price | Rating |\n| :-- | --: | :-: |\n| Ibis Oran | 9,800 DA | 4.1 |\n| Royal Oran | 11,900 DA | 4.6 |\n\nالأرخص هو **إيبيس**. هل أرسل لهم بريدا؟",
+};
+
 const usage = { input: 1200, output: 160 };
 function seed(acc, bots, L) {
   const by = (n) => bots.find((b) => b.name === n);
@@ -83,7 +91,7 @@ function seed(acc, bots, L) {
     updatedAt: t0 + 20 * 60e3,
     entries: [
       { id: "u1", kind: "user", text: L.ask, at: t0 },
-      { id: "b1", kind: "bot", botId: oovi.id, at: t0 + 60e3, steps: [{ role: "assistant", text: "", toolCalls: [{ id: "toolu_t1", name: "work_table", input: { action: "write", table: L.table } }] }, { role: "tool", results: [{ id: "toolu_t1", name: "work_table", content: `Wrote 3 rows to "${L.table}".` }] }], text: L.answer, status: "done", usage, credits: 1.4, model: "theOovi" },
+      { id: "b1", kind: "bot", botId: oovi.id, at: t0 + 60e3, steps: [{ role: "assistant", text: "", toolCalls: [{ id: "toolu_t1", name: "work_table", input: { action: "write", table: L.table } }] }, { role: "tool", results: [{ id: "toolu_t1", name: "work_table", content: `Wrote 3 rows to "${L.table}".` }] }], text: TABLE_ONLY ? TABLE_ANSWER[L === TEXT.ar ? "ar" : "en"] : L.answer, status: "done", usage, credits: 1.4, model: "theOovi" },
       { id: "u2", kind: "user", text: L.yes, at: t0 + 15 * 60e3 },
       { id: "b2", kind: "bot", botId: oovi.id, at: t0 + 15 * 60e3 + 5e3, steps: [], text: "", status: "waiting", usage: { input: 0, output: 0 } },
     ],
@@ -160,6 +168,16 @@ async function run(lang) {
         const t = document.querySelector(".thread");
         if (t) t.scrollTop = t.scrollHeight;
       });
+      if (TABLE_ONLY) {
+        // The answer bubble, cut out, so the table is readable in the screenshot.
+        await sleep(700);
+        const el = page.locator(".bot-bubble").first();
+        await el.scrollIntoViewIfNeeded();
+        await el.screenshot({ path: path.join(OUT, `${PREFIX}-${lang}-${theme}-table.png`) });
+        await shot("chat-table");
+        await ctx.close();
+        continue;
+      }
       await shot("chat-approval");
       await go(`/c/${ids.group}`);
       await shot("group");

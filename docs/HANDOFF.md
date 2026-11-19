@@ -24,8 +24,11 @@ The desktop app now uses the phone/web app's look (web/app/m/m.css). No behaviou
   themes. Muted text passes 4.5:1 on paper, side bar, cards and fills.
 - **Not checked:** on Windows/Mac (fonts render differently; run the CI workflow), screens not in the list above
   (routines, group editor, onboarding visuals were only covered by their scenarios, not looked at), small windows.
-- **Noticed, not changed:** Markdown tables in a bot's reply show as raw `|` lines on the desktop (components/Rich.tsx
-  has no table rendering); the phone app draws them as tables.
+- **Done since:** Markdown tables in a bot's reply are drawn as tables on the desktop (components/Rich.tsx +
+  lib/md-table-core.ts, styles `.md-table` in app/globals.css). Never HTML from the text; cells keep links, bold, code,
+  mentions and maths. Columns run in the table's own language (`tableDir`: an Arabic table in the English app starts on
+  the right, and the reverse); `:--`/`--:` mean start/end of that order, like the phone; each cell has `dir="auto"` +
+  `unicode-bidi: plaintext`. Tests: tests/unit/md-table.test.mts. Look: `OOVI_SHOTS_TABLE=1 node tests/e2e/desktop-shots.cjs <prefix> <outDir>`.
 
 ## Cloud LIVE state (2026-11-19, owner said "deploy" and approved adding RUNNER_SECRET to Vercel)
 - Website deployed from branch cloud-integration (W + A + R + integration fixes): /api/v1/cloud live; RUNNER_SECRET set in

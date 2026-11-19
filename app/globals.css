@@ -1293,6 +1293,7 @@ html[lang="ar"] { --font: var(--font-arabic), var(--font-nunito), ui-rounded, sy
 /* Markdown tables in a chat reply (components/Rich.tsx): a real table, scrolls sideways when wide. */
 .md-table-wrap { display: block; max-width: 100%; overflow-x: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; white-space: normal; }
 .md-table { border-collapse: collapse; width: 100%; font-size: 14px; }
-.md-table th, .md-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: top; }
+/* Each cell reads in its own direction (dir="auto" + plaintext), like the bubbles; the table's column order follows its header (tableDir). */
+.md-table th, .md-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: top; unicode-bidi: plaintext; }
 .md-table th { font-weight: 700; background: var(--soft); white-space: nowrap; }
 .md-table tr:last-child td { border-bottom: 0; }

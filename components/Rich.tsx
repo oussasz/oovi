@@ -11,7 +11,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FACE_COLORS } from "@/lib/faces";
 import { ooviTarget, type OoviTarget } from "@/lib/oovi-links";
-import { splitTables } from "@/lib/md-table-core";
+import { cellAlign, splitTables, tableDir } from "@/lib/md-table-core";
 import type { Bot } from "@/lib/types";
 import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
@@ -80,12 +80,12 @@ export default function Rich({ text, bots = [], linkBots }: { text: string; bots
           x.kind === "text" ? (
             <RichInline key={i} text={x.text} bots={bots} linkBots={linkBots} />
           ) : (
-            <span key={i} className="md-table-wrap" role="region" tabIndex={0} aria-label="table">
+            <span key={i} className="md-table-wrap" role="region" tabIndex={0} aria-label="table" dir={tableDir(x)}>
               <table className="md-table">
                 <thead>
                   <tr>
                     {x.header.map((h, k) => (
-                      <th key={k} dir="auto" style={x.align[k] ? { textAlign: x.align[k]! } : undefined}>
+                      <th key={k} dir="auto" style={x.align[k] ? { textAlign: cellAlign(x.align[k]!) } : undefined}>
                         <RichInline text={h} bots={bots} linkBots={linkBots} />
                       </th>
                     ))}
@@ -95,7 +95,7 @@ export default function Rich({ text, bots = [], linkBots }: { text: string; bots
                   {x.rows.map((r, j) => (
                     <tr key={j}>
                       {r.map((c, k) => (
-                        <td key={k} dir="auto" style={x.align[k] ? { textAlign: x.align[k]! } : undefined}>
+                        <td key={k} dir="auto" style={x.align[k] ? { textAlign: cellAlign(x.align[k]!) } : undefined}>
                           <RichInline text={c} bots={bots} linkBots={linkBots} />
                         </td>
                       ))}
