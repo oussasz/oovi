@@ -232,4 +232,10 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   redirects to `/app/settings`; signed in, the site's main button is "Open oovi". Public pages unchanged.
 - 2026-11-19 (owner): native phone apps: an Android APK downloadable from the website for now, iOS later;
   "temporary until I get the Google Play dev and the Apple dev" accounts. Built store-ready (branch android-app).
+- 2026-11-19 (owner, main session, his words: "في الويب و الموبايل من المفروض الضغط على صورة البوت تظهر تعديل فيه، ازرار
+  اخرى ناقصة، زيد وش ناقص" = on the web and the mobile, tapping a bot's picture should open editing it; other buttons
+  are missing; add what's missing). So: a bot's face opens its editor, a group's face its group editor (saved through
+  the account setup, theOovi only, no model/key choice); every desktop chat/list feature that works without the
+  computer is added to phone and web; computer-only ones are shown disabled with "on your computer"; the audit table
+  goes in docs/HANDOFF.md "Cloud M".
 
