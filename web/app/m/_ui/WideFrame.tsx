@@ -10,7 +10,6 @@ import { inApp } from "../_lib/route";
 import { ChatsScreen } from "./ChatsScreen";
 import { PaneCtx, SlimeTrio, useWide } from "./kit";
 import { useM } from "./MobileApp";
-import { SettingsScreen } from "./SettingsScreen";
 
 function Pane({ className, children, label }: { className: string; children: ReactNode; label: string }) {
   const [el, setEl] = useState<HTMLElement | null>(null);
@@ -27,7 +26,7 @@ export function WideFrame({ children }: { children: ReactNode }) {
   const path = inApp(usePathname() ?? "");
   // Sign-in and the offline page stay one plain screen.
   if (!wide || path.startsWith("/login") || path.startsWith("/offline")) return <>{children}</>;
-  const main = path.startsWith("/c/") || path.startsWith("/connectors") ? children : path.startsWith("/settings") ? <SettingsScreen /> : null;
+  const main = path.startsWith("/c/") || path.startsWith("/connectors") || path.startsWith("/settings") ? children : null;
   return (
     <div className="m-wide">
       <Pane className="m-pane--list" label={t("tab.chats")}>

@@ -241,7 +241,7 @@ export default function PrivacyPage() {
         <li>
           to tell you about oovi news (a new expert, a new feature) in the App and by email. We note whether you saw
           or closed a piece of news in the App, so it isn’t shown again. You can stop news emails at any time with the
-          link at the bottom of each one or on your account page; emails about your account still come.
+          link at the bottom of each one or in Settings in the oovi web app; emails about your account still come.
         </li>
       </ul>
       <p>
@@ -277,7 +277,7 @@ export default function PrivacyPage() {
 
       <h2>10. Deleting your account</h2>
       <p>
-        You can delete your account at any time from your <Link href="/account">account page</Link>. This permanently
+        You can delete your account at any time from <Link href="/app/settings">Settings</Link> in the oovi web app. This permanently
         deletes your account data (email, name, profile photo, terms acceptance, sessions), your credits and their
         history, theOovi usage numbers, pilot requests, feedback, crash reports, your setup copy, your cloud sync data (synced
         chats, connector sign-ins, messages from your phone and the list of your devices) and your Telegram relay data

@@ -23,6 +23,8 @@ type Ctx = {
   setPrefs: (p: L.Prefs) => void;
   online: boolean;
   me: Me | null;
+  /** After the person changed their name or photo in Settings. */
+  updateMe: (m: Me) => void;
   status: CloudStatus | null;
   sync: SyncState;
   setup: PhoneSetup | null;
@@ -148,6 +150,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
     setConnectors(cn.views);
     vaultVersions.current = cn.versions;
     setReady(true);
+    // A new account (the website's sign-up sends it here with ?welcome=1).
+    if (new URLSearchParams(window.location.search).get("welcome") === "1") window.setTimeout(() => toast(translate(langRef.current, "acct.welcome")), 600);
     const on = () => setOnline(true);
     const off = () => setOnline(false);
     window.addEventListener("online", on);
@@ -457,6 +461,11 @@ export function MobileApp({ children }: { children: ReactNode }) {
 
   // Deleting a chat removes it on every device. A group is also removed from the account's setup (on the computer,
   // deleting a group's chat removes the group); a bot stays, its chat starts again on the next message.
+  const updateMe = useCallback((u: Me) => {
+    setMe(u);
+    L.saveMe(u);
+  }, []);
+
   const removeChat = useCallback(
     async (chatId: string) => {
       try {
@@ -605,8 +614,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
-    [lang, dir, t, prefs, setPrefs, online, me, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
+    [lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
   );
 
   return (

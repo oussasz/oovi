@@ -52,7 +52,7 @@ export function SignupForm({ next = null }: { next?: string | null }) {
       setCodeFor(email.trim().toLowerCase());
       return;
     }
-    router.replace(next ?? "/account?welcome=1");
+    router.replace(next ?? "/app?welcome=1");
     router.refresh();
   }
 
@@ -66,7 +66,7 @@ export function SignupForm({ next = null }: { next?: string | null }) {
     const j = r ? await r.json().catch(() => ({})) : {};
     setBusy(false);
     if (!r || !r.ok) return setError((j as { error?: string }).error || "Couldn't check the code. Please try again.");
-    router.replace(next ?? "/account?welcome=1");
+    router.replace(next ?? "/app?welcome=1");
     router.refresh();
   }
 

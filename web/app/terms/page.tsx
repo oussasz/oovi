@@ -37,7 +37,7 @@ export default function TermsPage() {
         <li>You need an oovi account to sign in to the App. Give us accurate information and keep it up to date.</li>
         <li>Keep your password safe. You’re responsible for activity that happens under your account.</li>
         <li>Tell us right away at <Ph>{CONTACT_EMAIL}</Ph> if you think someone else is using your account.</li>
-        <li>You can delete your account at any time from your account page.</li>
+        <li>You can delete your account at any time from Settings in the oovi web app.</li>
       </ul>
 
       <h2>3. Plans, payments and refunds</h2>
@@ -56,8 +56,8 @@ export default function TermsPage() {
         Buyer Terms</a>.
       </p>
       <p>
-        Plans renew automatically at the end of each period until you cancel. You can cancel at any time from your
-        account page; you keep your plan until the end of the period you paid for, and you aren’t charged again. You
+        Plans renew automatically at the end of each period until you cancel. You can cancel at any time from Settings
+        in the oovi web app; you keep your plan until the end of the period you paid for, and you aren’t charged again. You
         can ask for a full refund within 14 days of any payment, as explained in our{" "}
         <Link href="/refund">Refund Policy</Link>. If we change a plan’s price, we’ll tell you before it applies to
         your next payment.

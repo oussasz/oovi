@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = safeNext((await searchParams).next);
   const session = await getServerSession();
-  if (session) redirect(next ?? "/account");
+  if (session) redirect(next ?? "/app");
   return (
     <AuthShell>
       <h1>Welcome back</h1>

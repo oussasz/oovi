@@ -135,7 +135,7 @@ export default async function PricingPage() {
               <h3>What happens to unused credits?</h3>
               <p className="muted">
                 They stay in your balance. Monthly plan credits are added to what you already have. You can see your balance and
-                today’s usage on your account page and in the app.
+                today’s usage in Settings in the web app and in the app.
               </p>
             </div>
             {pilot.public && (

@@ -15,7 +15,7 @@ export default function RefundPage() {
       summary={
         <p>
           <b>The short version:</b> if a paid plan isn’t right for you, ask within 14 days of a payment and you get that
-          payment back in full. You can cancel at any time from your account page, and you keep your plan until the end of
+          payment back in full. You can cancel at any time from Settings in the oovi web app, and you keep your plan until the end of
           the period you paid for.
         </p>
       }
@@ -48,7 +48,7 @@ export default function RefundPage() {
 
       <h2>3. Cancelling</h2>
       <p>
-        You can cancel at any time on your <Link href="/account">account page</Link> (“Manage billing”). Your plan stays
+        You can cancel at any time in <Link href="/app/settings">Settings</Link> in the oovi web app (“Manage billing”). Your plan stays
         active until the end of the month or year you already paid for, then it isn’t renewed and you aren’t charged
         again. Cancelling on its own doesn’t refund the current period; ask for a refund as described above if you’re
         within 14 days of the payment.

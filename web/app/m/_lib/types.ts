@@ -132,7 +132,11 @@ export type Credits = {
   resetsAt: string;
   plan: { id: string; name: string };
   planUntil: string | null;
-  links: { subscribe: string; pricing: string };
+  links: { subscribe: string; pricing: string; pilot?: string; feedback?: string };
+  pilot?: { open: boolean; eligible: boolean; public: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
 };
+
+/** The account part of Settings (GET /api/v1/account). */
+export type Account = { emailVerified: boolean; askToVerify: boolean; billing: { status: string | null } | null; news: boolean };
 
 export type Me = { id: string; name: string; email: string; image: string | null };

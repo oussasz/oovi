@@ -22,7 +22,7 @@ export function LoginForm({ next = null }: { next?: string | null }) {
       setError(error.status === 429 ? "Too many attempts. Please wait a minute." : "Invalid email or password.");
       return;
     }
-    router.replace(next ?? "/account");
+    router.replace(next ?? "/app");
     router.refresh();
   }
 

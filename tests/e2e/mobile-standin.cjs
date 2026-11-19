@@ -128,7 +128,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [] };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0 };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -143,6 +143,11 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     state.setupConflicts = 0;
     state.setupPuts = 0;
     state.deletedChats = [];
+    state.password = "standin-pass";
+    state.account = { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true };
+    state.accountDeleted = false;
+    user.name = "Sam Tester";
+    user.image = null;
     state.vaultPuts = [];
     state.flows = [];
     state.oauthMode = "same";
@@ -303,7 +308,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     if (p === "/api/auth/get-session") return send(res, 200, signed(req) ? { session: { id: "s1", userId: user.id, expiresAt: new Date(Date.now() + 1e9).toISOString() }, user } : null);
     if (p === "/api/auth/sign-in/email" && req.method === "POST") {
       const b = (await readBody(req)) || {};
-      if (b.email === user.email && b.password === "standin-pass") {
+      if (b.email === user.email && b.password === state.password && !state.accountDeleted) {
         state.signedIn = true;
         return send(res, 200, { redirect: false, token: "t", user }, { "set-cookie": "standin=1; Path=/; HttpOnly; SameSite=Lax" });
       }
@@ -312,6 +317,48 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     if (p === "/api/auth/sign-out" && req.method === "POST") {
       state.signedIn = false;
       return send(res, 200, { success: true }, { "set-cookie": "standin=; Path=/; Max-Age=0" });
+    }
+    // ---- the account, as the website's Better Auth and account APIs answer (Settings → Account) ----
+    if (p === "/api/auth/change-password" && req.method === "POST") {
+      if (!signed(req)) return send(res, 401, { code: "UNAUTHORIZED", message: "Unauthorized" });
+      const b = (await readBody(req)) || {};
+      if (b.currentPassword !== state.password) return send(res, 400, { code: "INVALID_PASSWORD", message: "Invalid password" });
+      if (typeof b.newPassword !== "string" || b.newPassword.length < 8) return send(res, 400, { code: "PASSWORD_TOO_SHORT", message: "Password too short" });
+      state.password = b.newPassword;
+      state.pwChanges.push({ revokeOtherSessions: b.revokeOtherSessions === true });
+      return send(res, 200, { token: null, user });
+    }
+    if (p === "/api/auth/delete-user" && req.method === "POST") {
+      if (!signed(req)) return send(res, 401, { code: "UNAUTHORIZED", message: "Unauthorized" });
+      const b = (await readBody(req)) || {};
+      if (b.password !== state.password) return send(res, 400, { code: "INVALID_PASSWORD", message: "Invalid password" });
+      state.accountDeleted = true;
+      state.signedIn = false;
+      return send(res, 200, { success: true, message: "User deleted" }, { "set-cookie": "standin=; Path=/; Max-Age=0" });
+    }
+    if (p === "/api/v1/auth/send-verification" && req.method === "POST") {
+      if (!signed(req)) return send(res, 401, { error: "Not signed in." });
+      state.verifySent++;
+      res.writeHead(204);
+      return res.end();
+    }
+    // "Manage billing": the website's route answers 303 to Paddle's portal, or back to Settings with ?billing=none.
+    if (p === "/api/billing/portal" && req.method === "POST") {
+      const raw = await new Promise((r) => {
+        let t = "";
+        req.on("data", (d) => (t += d));
+        req.on("end", () => r(t));
+      });
+      const from = new URLSearchParams(raw).get("from");
+      const settings = from === "/m/settings" || from === "/app/settings" ? from : "/app/settings";
+      const to = !signed(req) ? `/login?next=${encodeURIComponent(settings)}` : state.account.billing ? "/__paddle/portal" : `${settings}?billing=none`;
+      if (to === "/__paddle/portal") state.portalOpened++;
+      res.writeHead(303, { location: to });
+      return res.end();
+    }
+    if (p === "/__paddle/portal") {
+      res.writeHead(200, { "content-type": "text/html" });
+      return res.end("<!doctype html><title>Paddle billing</title><h1>Stand-in Paddle customer portal</h1>");
     }
     if (p.startsWith("/api/v1/avatars/")) return send(res, 404, { error: "no picture" });
     // The public catalog (the real one needs the website's database): two published connectors, one hidden.
@@ -338,7 +385,27 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     const isApi = p.startsWith("/api/v1/");
     if (isApi && !signed(req)) return send(res, 401, { error: "Not signed in or session expired." });
 
-    if (p === "/api/v1/me") return send(res, 200, { user: { id: user.id, email: user.email, name: user.name, image: null, createdAt: user.createdAt } });
+    if (p === "/api/v1/me" && req.method === "PATCH") {
+      const b = await readBody(req);
+      if (!b) return send(res, 400, { error: "Invalid JSON body (or body too large)." });
+      if ("name" in b) {
+        if (typeof b.name !== "string" || !b.name.trim() || b.name.length > 80) return send(res, 400, { error: "Name must be 1-80 characters." });
+        user.name = b.name.trim();
+      }
+      if ("image" in b) {
+        if (b.image !== null && !/^data:image\/(png|jpeg|webp);base64,/.test(String(b.image))) return send(res, 400, { error: "Invalid image." });
+        user.image = b.image;
+      }
+      return send(res, 200, { user: { id: user.id, email: user.email, name: user.name, image: user.image, createdAt: user.createdAt } });
+    }
+    if (p === "/api/v1/me") return send(res, 200, { user: { id: user.id, email: user.email, name: user.name, image: user.image, createdAt: user.createdAt } });
+    if (p === "/api/v1/account" && req.method === "PATCH") {
+      const b = await readBody(req);
+      if (!b || typeof b.news !== "boolean") return send(res, 400, { error: "Send {news: true|false}." });
+      state.account.news = b.news;
+      return send(res, 200, { news: b.news });
+    }
+    if (p === "/api/v1/account") return send(res, 200, state.account);
     if (p === "/api/v1/setup" && req.method === "PUT") {
       const b = await readBody(req);
       if (!b || !Number.isInteger(b.baseVersion) || !b.items || typeof b.items !== "object") return send(res, 400, { error: "Invalid request." });

@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
+import { getAccount, resendVerification } from "../_lib/api";
 import { agoShort, bytesLabel, computerState, syncUse } from "../_lib/core";
+import type { Account } from "../_lib/types";
 import { Icon } from "./Icon";
-import { ActionSheet, IconTile, LargeTitle, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
+import { ActionSheet, IconTile, LargeTitle, MeAvatar, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
 import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
 import { base, to } from "../_lib/route";
@@ -21,9 +23,41 @@ export function SettingsScreen() {
   const [ios, setIos] = useState(false);
   const [prompt, setPrompt] = useState<BeforeInstall | null>(null);
   const [leaving, setLeaving] = useState(false);
+  // The account part (was the website's /account page): email confirmed, billing status. Paddle's way back adds
+  // ?billing=none|unavailable.
+  const [acct, setAcct] = useState<Account | null>(null);
+  const [billingNote, setBillingNote] = useState<"none" | "unavailable" | null>(null);
+  const [verify, setVerify] = useState<{ busy: boolean; text: string | null; error: boolean }>({ busy: false, text: null, error: false });
   const ptr = usePullToRefresh(async () => {
     await Promise.all([refresh({ setup: true }), loadCredits()]);
   });
+
+  useEffect(() => {
+    void getAccount()
+      .then(setAcct)
+      .catch(() => setAcct(null));
+    const q = new URLSearchParams(window.location.search);
+    const b = q.get("billing");
+    if (b === "none" || b === "unavailable") setBillingNote(b);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const billStatus = (st: string | null) => {
+    if (!st) return t("bill.st.none");
+    const known = ["active", "trialing", "past_due", "paused", "canceled"] as const;
+    const k = known.find((x) => x === st);
+    return k ? t(`bill.st.${k}`) : st;
+  };
+
+  const sendVerify = async () => {
+    setVerify({ busy: true, text: null, error: false });
+    try {
+      const r = await resendVerification();
+      setVerify({ busy: false, text: t(r === "sent" ? "acct.verifySent" : "acct.verifyDone"), error: false });
+    } catch (err) {
+      setVerify({ busy: false, text: (err as Error).message || t("acct.error"), error: true });
+    }
+  };
 
   useEffect(() => {
     void loadCredits();
@@ -65,29 +99,98 @@ export function SettingsScreen() {
         <OfflineBar />
 
         <Section>
-          <div className="m-row m-row--account">
-            <span className="m-avatar" aria-hidden>
-              {(me?.name || me?.email || "?").trim().slice(0, 1).toUpperCase()}
-            </span>
-            <span className="m-row__main">
-              <span className="m-row__title m-row__title--big" dir="auto">
+          <Row
+            icon={<MeAvatar size={56} />}
+            title={
+              <span className="m-row__title--big" dir="auto">
                 {me?.name || t("settings.account")}
               </span>
-              <span className="m-row__sub" dir="ltr">
-                {me?.email ?? ""}
-              </span>
-            </span>
-          </div>
+            }
+            sub={
+              <>
+                <span dir="ltr">{me?.email ?? ""}</span>
+                <span className="m-row__hint">{t("acct.sub")}</span>
+              </>
+            }
+            href={to("/settings/account")}
+          />
         </Section>
+
+        {acct?.askToVerify && (
+          <div className="m-verify" role="region" aria-label={t("acct.verifyTitle")}>
+            <b>{t("acct.verifyTitle")}</b>
+            <p>{t("acct.verifyBody", { email: me?.email ?? "" })}</p>
+            <button type="button" className="m-btn m-btn--fill m-btn--sm" onClick={() => void sendVerify()} disabled={verify.busy || (!!verify.text && !verify.error)}>
+              {verify.busy ? <Spinner size={16} /> : t("acct.verifyResend")}
+            </button>
+            {verify.text && (
+              <p className={verify.error ? "m-alert" : "m-okay"} role="status" style={{ marginTop: 10, marginBottom: 0 }}>
+                {verify.text}
+              </p>
+            )}
+          </div>
+        )}
 
         <Section header={t("settings.credits")} footer={t("settings.creditsNote")} id="credits-h">
           <Row icon={<IconTile name="sparkle" color="var(--m-blob-lilac)" />} title={t("settings.balance")} value={credits ? nf.format(credits.balance) : <Spinner size={16} />} />
           {credits && credits.dailyLimit > 0 && (
             <Row icon={<IconTile name="contrast" color="var(--m-blob-blue)" />} title={t("settings.today")} value={`${nf.format(credits.dailyUsed)} / ${nf.format(credits.dailyLimit)}`} />
           )}
-          {credits?.plan?.name && <Row icon={<IconTile name="check" color="var(--m-blob-mint)" />} title={t("settings.plan")} value={credits.plan.name} />}
+          {credits?.plan?.name && (
+            <Row
+              icon={<IconTile name="check" color="var(--m-blob-mint)" />}
+              title={t("settings.plan")}
+              sub={credits.planUntil ? t("settings.planUntil", { date: new Date(credits.planUntil).toLocaleDateString(lang === "ar" ? "ar-DZ-u-nu-latn" : lang === "fr" ? "fr-FR" : "en-US", { timeZone: "UTC", day: "numeric", month: "long", year: "numeric" }) }) : undefined}
+              value={credits.plan.name}
+            />
+          )}
           {credits?.message && credits.state !== "ok" && <div className="m-row m-row--note">{credits.message}</div>}
+          {credits?.pilot?.status === "pending" && <div className="m-row m-row--note">{t("settings.pilotPending")}</div>}
+          {credits?.pilot?.public && credits.pilot.eligible && credits.pilot.status === null && (
+            <Row title={<span className="m-link">{t("settings.pilot")}</span>} sub={t("settings.pilotAsk", { n: nf.format(credits.pilot.credits) })} href="/pilot" external />
+          )}
           {credits?.links?.subscribe && <Row title={<span className="m-link">{t("settings.getMore")}</span>} href={credits.links.subscribe} external />}
+          <Row title={<span className="m-link">{t("settings.feedback")}</span>} href="/feedback" external />
+        </Section>
+
+        <Section
+          header={t("bill.title")}
+          footer={
+            <>
+              {t("bill.note")}{" "}
+              <a href="/refund" target="_blank" rel="noopener noreferrer" className="m-link">
+                {t("bill.refund")}
+              </a>
+            </>
+          }
+          id="billing-h"
+        >
+          {billingNote && <div className="m-row m-row--note" role="status">{t(billingNote === "none" ? "bill.none" : "bill.unavailable")}</div>}
+          {acct === null ? (
+            <Row title={t("bill.status")} value={<Spinner size={16} />} />
+          ) : acct.billing ? (
+            <>
+              <Row title={t("bill.status")} value={billStatus(acct.billing.status)} />
+              <form action="/api/billing/portal" method="post" className="m-row--form">
+                <input type="hidden" name="from" value={`${base()}/settings`} />
+                <button type="submit" className="m-row is-tap">
+                  <span className="m-row__icon">
+                    <IconTile name="sparkle" color="var(--m-blob-yellow)" />
+                  </span>
+                  <span className="m-row__main">
+                    <span className="m-row__title">{t("bill.manage")}</span>
+                    <span className="m-row__sub">{t("bill.manageSub")}</span>
+                  </span>
+                  <Icon name="share" size={18} stroke={2} className="m-row__chev" />
+                </button>
+              </form>
+            </>
+          ) : (
+            <>
+              <div className="m-row m-row--note">{t("bill.free")}</div>
+              <Row title={<span className="m-link">{t("bill.plans")}</span>} href="/pricing" external />
+            </>
+          )}
         </Section>
 
         <Section header={t("settings.devices")} footer={comp.state === "none" ? t("settings.noComputerNote") : undefined}>

@@ -271,6 +271,21 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   removed from the setup (like deleting it on the computer); a bot with no chat has nothing to delete (its chat
   starts again). The person's picture (or initial) sits top right where the pen was, and opens Settings (Settings
   has a back button to Chats). Old `/m/bots` and `/app/bots` links land on the list.
+- THE WEBSITE OPENS THE WEB APP, THE ACCOUNT PAGE IS IN SETTINGS (owner, 2026-11-19, contract 160a66a): signing in
+  (website `/login`, `/signup`) lands on `/app` (a new account: `/app?welcome=1`, a "welcome" toast); signed in, the
+  site's header button says "Open oovi" → `/app`; `/account` redirects to `/app/settings` (keeps Paddle's
+  `?billing=none|unavailable`; `?welcome=1`). Everything the account page had is in Settings, with the same server
+  checks: the account row (picture, name, email) opens Settings → Account (`_ui/AccountScreen.tsx`: photo upload
+  /change/remove and name via `PATCH /api/v1/me`, email shown, password via Better Auth `changePassword` with the
+  current password and other devices signed out, News by email, delete account via Better Auth `deleteUser` with
+  the password, then the browser's copy is wiped and the home page says deleted). Settings itself: "Confirm your
+  email" with Send again (`/api/v1/auth/send-verification`, only when mail can be sent), theOovi credits (plan with
+  its end date, pilot request/pending, get more credits, send feedback), Billing (status; "Manage billing" posts to
+  `/api/billing/portal` → Paddle's portal, which now returns to the Settings it came from, `/app/settings` or
+  `/m/settings`, nothing else; free plan → See plans; Paddle note and refund policy). New `GET/PATCH
+  /api/v1/account` (signed in, own account only; billing status only, never Paddle ids; news on/off; same-host
+  check on PATCH). Wording on refund, privacy, terms, pricing, welcome, verified, pilot and unsubscribe pages now
+  points to Settings in the web app. The old account page's components were removed.
 - WEB VERSION (owner, 2026-11-19, contract 9e27545): the same app in any browser at `/app` (`web/app/app/`: its
   own layout, the pages re-export /m's; links go through `web/app/m/_lib/route.ts` so each version stays itself).
   Signed-in only: every API call checks the session; a signed-out visitor is sent to the website's sign-in page
@@ -281,7 +296,9 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   bottom) and on the right the open chat, Settings or a connector, or a quiet welcome; the open row is marked. A
   chat's header gives the name and who is in it (a bot's role, a group's members); a bot's message has its face at
   the top and a line with its name, its role and the time, like the computer; messages and the box sit in a column
-  of 820 px. Keyboard: Enter sends, Shift+Enter is a new line, Esc closes a
+  of 820 px. On a narrow window or a phone's browser `/app` is one column with the same web look (logo, picture,
+  "+ Group" / "+ Bot", Pinned / Groups / Bots), then the chat full width with a back button (not the phone app's
+  large titles). Keyboard: Enter sends, Shift+Enter is a new line, Esc closes a
   menu, then a reply, then the chat. On the web, Settings says "This browser".
 - The desktop app, suggested gently (same decision; `_ui/Desktop.tsx`, ar/fr/en): a small card in the chat list
   that can be hidden for good, a card in Settings, and under "This needs your computer" the owner's line ("The

@@ -25,7 +25,7 @@ import {
   type ListRow,
 } from "../_lib/core";
 import { tap } from "../_lib/haptics";
-import { inApp, to } from "../_lib/route";
+import { base, inApp, to } from "../_lib/route";
 import type { Chat } from "../_lib/types";
 import { NewBotSheet, NewGroupSheet } from "./Create";
 import { DesktopSuggestion } from "./Desktop";
@@ -41,7 +41,9 @@ const tz = () => {
   }
 };
 
-export function ChatsScreen({ archivedView = false, side = false }: { archivedView?: boolean; side?: boolean }) {
+// The web version (/app) always shows the sidebar look, also as one column on a narrow window (owner, 2026-11-19:
+// "a responsive web app, not the mobile one").
+export function ChatsScreen({ archivedView = false, side = base() === "/app" }: { archivedView?: boolean; side?: boolean }) {
   const m = useM();
   const { t, lang, chats, setup, sync, refresh, pins, seen, bot, refreshing, archived } = m;
   const router = useRouter();
@@ -278,7 +280,7 @@ export function ChatsScreen({ archivedView = false, side = false }: { archivedVi
 
   const startable = all.filter((r) => !archived.includes(r.chat.id));
   return (
-    <div className={`m-screen${side ? " m-screen--side" : ""}`}>
+    <div className={`m-screen${side ? " m-screen--side" : ""}${side && !archivedView ? " m-screen--sidelist" : ""}`}>
       {side && !archivedView ? (
         <header className="m-sidehead">
           <span className="m-sidehead__logo" aria-hidden>

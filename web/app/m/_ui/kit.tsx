@@ -238,7 +238,8 @@ export function BotFace({ face, size = 44, mood }: { face: Record<string, unknow
 export function MeAvatar({ size = 36 }: { size?: number }) {
   const { me } = useM();
   const [broken, setBroken] = useState(false);
-  const img = me?.image && /^https:\/\//.test(me.image) && !broken ? me.image : null;
+  // Their account photo: uploaded in Settings (a data URL, as the website keeps it) or from a sign-in provider.
+  const img = me?.image && /^(https:\/\/|data:image\/(png|jpeg|webp);base64,|\/api\/v1\/avatars\/)/.test(me.image) && !broken ? me.image : null;
   const letter = (me?.name || me?.email || "?").trim().slice(0, 1).toUpperCase();
   return (
     <span className="m-me" style={{ width: size, height: size, fontSize: size * 0.42 }} aria-hidden>

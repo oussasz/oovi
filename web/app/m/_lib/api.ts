@@ -4,7 +4,7 @@
 // kept here). The cloud API is the contract in docs/CLOUD-BUILD.md (/api/v1/cloud); bots and connectors come
 // from the account's setup (/api/v1/setup), credits from /api/v1/ai/status, voice notes from /api/v1/ai/transcribe.
 import type { PendingSignIn, VaultItem } from "./connectors";
-import type { Chat, ChatListItem, CloudStatus, Credits, JobInfo, JobPayload, Me } from "./types";
+import type { Account, Chat, ChatListItem, CloudStatus, Credits, JobInfo, JobPayload, Me } from "./types";
 
 export class ApiError extends Error {
   constructor(
@@ -198,3 +198,24 @@ export const removeFromSetup = (keys: string[]) =>
 
 /** Deletes a chat on every device (kept 30 days as a tombstone so the others remove it too). */
 export const deleteChat = (chatId: string) => call<{ version: number }>(`/api/v1/cloud/chats/${encodeURIComponent(chatId)}`, { method: "DELETE" });
+
+// ---------- the account (was the website's /account page; owner, 2026-11-19: it lives in Settings now) ----------
+
+export const getAccount = () => call<Account>("/api/v1/account");
+
+export const setNewsEmails = (news: boolean) => call<{ news: boolean }>("/api/v1/account", { method: "PATCH", json: { news } });
+
+/** Name or photo (a data URL, or null to remove it): the website's own PATCH /api/v1/me. */
+export async function patchMe(body: { name?: string; image?: string | null }): Promise<Me> {
+  const r = await call<{ user: Me }>("/api/v1/me", { method: "PATCH", json: body });
+  return r.user;
+}
+
+/** "Confirm your email" again: 204 sent, 200 already confirmed. */
+export async function resendVerification(): Promise<"sent" | "done"> {
+  const r = await fetch("/api/v1/auth/send-verification", { method: "POST", credentials: "same-origin" });
+  if (r.status === 204) return "sent";
+  if (r.ok) return "done";
+  const body: unknown = await r.json().catch(() => null);
+  throw new ApiError(r.status, (body as { error?: string } | null)?.error ?? `HTTP ${r.status}`, body);
+}

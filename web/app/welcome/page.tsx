@@ -16,10 +16,10 @@ export default async function WelcomePage() {
         Your payment went through. Paddle, our payment partner, has emailed your receipt{session ? ` to ${session.user.email}` : ""}.
       </p>
       <p className="fine" style={{ marginBottom: 16 }}>
-        Your plan shows on your account page. If it isn’t there within a few minutes, write to contact@conuron.com and we’ll sort it out.
+        Your plan shows in Settings in the oovi web app. If it isn’t there within a few minutes, write to contact@conuron.com and we’ll sort it out.
       </p>
-      <Link href={session ? "/account" : "/login?next=%2Faccount"} className="btn btn-dark btn-lg btn-block">
-        {session ? "Go to my account" : "Log in"}
+      <Link href={session ? "/app/settings" : "/login?next=%2Fapp%2Fsettings"} className="btn btn-dark btn-lg btn-block">
+        {session ? "Open my settings" : "Log in"}
       </Link>
     </AuthShell>
   );

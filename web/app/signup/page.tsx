@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export default async function SignupPage({ searchParams }: { searchParams: Promise<{ next?: string }> }) {
   const next = safeNext((await searchParams).next);
   const session = await getServerSession();
-  if (session) redirect(next ?? "/account");
+  if (session) redirect(next ?? "/app");
   return (
     <AuthShell>
       <h1>Create your account</h1>

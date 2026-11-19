@@ -17,7 +17,10 @@
 //      (not on the page, not in the phone's storage),
 //   K) no sideways scroll at 320 px on every screen, L) Arabic: right to left,
 //   M) offline: the app opens from the offline worker with the saved chats,
-//   N) sign out asks first, then clears the phone's copy.
+//   N) sign out asks first, then clears the phone's copy,
+//   X) the website: sign-in lands on /app, "Open oovi", /account → /app/settings (Paddle's ?billing kept), and every
+//      account action from Settings (confirm email, Manage billing, free plan, name, photo, password, news emails,
+//      delete account with its password); /app on a narrow window is one column with the web app's look.
 // With --shots, also writes the screenshots in docs/mobile/ (English and Arabic, light and dark).
 const fs = require("node:fs");
 const path = require("node:path");
@@ -144,7 +147,7 @@ async function main() {
     await page.goto(`${BASE}/m`);
     check("C unarchive brings it back", await until(async () => (await page.locator(".m-chats .m-chat__name", { hasText: "Studio" }).count()) === 1 && (await page.locator(".m-archrow").count()) === 0));
     await page.getByRole("link", { name: "Your profile and settings" }).click();
-    check("C the profile picture opens Settings", await until(() => page.url().endsWith("/m/settings") && page.getByText("phone.tester@example.test").isVisible()));
+    check("C the profile picture opens Settings", await until(() => page.url().endsWith("/m/settings") && page.getByText("phone.tester@example.test", { exact: true }).isVisible()));
     await page.getByRole("button", { name: "Chats" }).click();
     check("C …and Settings goes back to the chats", await until(() => page.url().endsWith("/m")));
 
@@ -465,6 +468,84 @@ async function main() {
     await page.getByRole("dialog").getByRole("button", { name: "Sign out" }).click();
     check("N signed out: back to sign-in", await until(() => page.url().includes("/m/login")));
     check("N the phone's copy is gone", (await page.evaluate(() => localStorage.getItem("oovi.m.chats"))) === null);
+
+    // ---------- X) the website after sign-in: the web app, and the account page inside its Settings ----------
+    {
+      const xctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-US" });
+      const x = await xctx.newPage();
+      const xerr = [];
+      x.on("pageerror", (e) => xerr.push(e.message));
+      S.signedIn = false;
+      await x.goto(`${BASE}/login`);
+      await x.fill("#email", "phone.tester@example.test");
+      await x.fill("#password", "standin-pass");
+      await x.click('button[type="submit"]');
+      check("X the website's sign-in lands on the web app (/app)", await until(() => x.url().endsWith("/app") && x.locator(".m-pane--list .m-chats").first().isVisible(), 15_000), x.url());
+      await x.goto(`${BASE}/`);
+      check("X signed in, the site's button says Open oovi → /app", await until(async () => (await x.locator(".nav-login").textContent()) === "Open oovi" && (await x.locator(".nav-login").getAttribute("href")) === "/app"));
+      await x.goto(`${BASE}/account`);
+      check("X /account goes to the web app's Settings", await until(() => x.url().endsWith("/app/settings") && x.locator(".m-pane--main").getByText("Manage billing").isVisible(), 15_000), x.url());
+      await x.goto(`${BASE}/account?billing=none`);
+      check("X …keeping Paddle's way back (?billing=none) and saying it", await until(() => x.url().endsWith("/app/settings?billing=none") && x.getByText(/couldn’t find a subscription/).isVisible()));
+      check("X Settings: subscription status and the confirm-email reminder", await until(async () => (await x.locator(".m-pane--main").getByText("Active", { exact: true }).isVisible()) && (await x.getByText("Confirm your email").isVisible())));
+      await x.getByRole("button", { name: "Send it again" }).click();
+      check("X confirm email: sent again", await until(() => S.verifySent === 1 && x.getByText(/Sent\. Check your inbox/).isVisible()));
+      await x.getByRole("button", { name: /Manage billing/ }).click();
+      check("X Manage billing opens Paddle's portal (the website's route, from Settings)", await until(() => x.url().endsWith("/__paddle/portal") && S.portalOpened === 1));
+      S.account.billing = null;
+      await x.goto(`${BASE}/app/settings`);
+      check("X no subscription: the free plan and See plans", await until(() => x.getByText("You’re on the free plan.", { exact: false }).isVisible()) && (await x.locator('.m-pane--main a[href="/pricing"]').isVisible()));
+      await x.locator('.m-pane--main a[href="/app/settings/account"]').first().click();
+      check("X Account opens beside the list", await until(() => x.url().endsWith("/app/settings/account") && x.locator(".m-pane--main").getByText("Delete account").first().isVisible()));
+      const nameBox = x.getByLabel("Name");
+      await nameBox.fill("Sam Writer");
+      await x.getByRole("button", { name: "Save", exact: true }).click();
+      check("X name saved (the website's PATCH /api/v1/me)", await until(() => sb.state && x.getByText("Saved.").isVisible()) && (await x.evaluate(() => JSON.parse(localStorage.getItem("oovi.m.me") || "{}").name)) === "Sam Writer");
+      const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC", "base64");
+      await x.locator('input[type="file"]').setInputFiles({ name: "me.png", mimeType: "image/png", buffer: png });
+      check("X photo uploaded, shown at once (also in the sidebar)", await until(async () => (await x.getByText("Profile photo updated.").isVisible()) && (await x.locator(".m-pane--list .m-profile img").count()) === 1));
+      await x.getByRole("button", { name: "Remove photo" }).click();
+      check("X photo removed", await until(async () => (await x.getByText("Profile photo removed.").isVisible()) && (await x.locator(".m-pane--list .m-profile img").count()) === 0));
+      await x.getByLabel("Current password").fill("not-it-at-all");
+      await x.getByLabel("New password").fill("new-pass-123");
+      await x.getByRole("button", { name: "Change password" }).click();
+      check("X password: a wrong current one is refused", await until(() => x.getByText("Your current password is incorrect.").isVisible()) && S.password === "standin-pass");
+      await x.getByLabel("Current password").fill("standin-pass");
+      await x.getByLabel("New password").fill("short");
+      await x.getByRole("button", { name: "Change password" }).click();
+      check("X password: too short is refused here", await until(() => x.getByText("at least 8 characters").isVisible()) && S.password === "standin-pass");
+      await x.getByLabel("New password").fill("new-pass-123");
+      await x.getByRole("button", { name: "Change password" }).click();
+      check("X password changed, other devices signed out", await until(() => x.getByText(/Password changed/).isVisible()) && S.password === "new-pass-123" && S.pwChanges.at(-1)?.revokeOtherSessions === true);
+      await x.getByRole("switch", { name: "News by email" }).click();
+      check("X news by email: off", await until(() => S.account.news === false));
+      await x.getByRole("button", { name: "Delete account" }).click();
+      await x.getByLabel("Enter your password to confirm").fill("standin-pass");
+      await x.getByRole("button", { name: "Permanently delete my account" }).click();
+      check("X delete: the password is asked (a wrong one is refused)", await until(() => x.getByText("That password is incorrect.").isVisible()) && !S.accountDeleted);
+      check("X no page errors on the account screens", xerr.length === 0, xerr.join(" | "));
+
+      // The web version on a narrow window: one column, the sidebar look, then the chat with a back button.
+      await x.setViewportSize({ width: 390, height: 844 });
+      await x.goto(`${BASE}/app`);
+      check("X narrow /app: one column, the web app's look (logo, picture, + Group / + Bot)", await until(async () => (await x.locator(".m-sidehead").isVisible()) && (await x.locator(".m-pane").count()) === 0 && (await x.locator(".m-adds").isVisible())));
+      await x.locator('a[href="/app/c/dm-oovi"]').first().click();
+      check("X narrow /app: the chat fills the window, with a back button", await until(() => x.url().endsWith("/app/c/dm-oovi") && x.locator(".m-nav__back").isVisible()));
+      await x.setViewportSize({ width: 320, height: 640 });
+      const xw = [];
+      for (const u of ["/app", "/app/settings", "/app/settings/account"]) {
+        await x.goto(BASE + u);
+        await sleep(700);
+        const w = await x.evaluate(() => document.documentElement.scrollWidth);
+        if (w > 320) xw.push(`${u}=${w}`);
+      }
+      check("X no sideways scroll at 320 px on the web app and its account screens", xw.length === 0, xw.join(" "));
+      await x.getByRole("button", { name: "Delete account" }).click();
+      await x.getByLabel("Enter your password to confirm").fill("new-pass-123");
+      await x.getByRole("button", { name: "Permanently delete my account" }).click();
+      check("X delete account: done, the browser's copy wiped, back to the home page", await until(() => S.accountDeleted && x.url().endsWith("/?deleted=1")) && (await x.evaluate(() => localStorage.getItem("oovi.m.chats"))) === null);
+      await xctx.close();
+    }
     check("N no page errors", errors.length === 0, errors.join(" | "));
     await ctx.close();
 
@@ -516,6 +597,7 @@ async function screenshots(browser, sb) {
         await sleep(500);
       });
       await shot("settings", "/m/settings");
+      await shot("account", "/m/settings/account");
       await shot("connectors", "/m/connectors");
       await shot("connector", "/m/connectors/gmail");
       await shot("connector-add", "/m/connectors/add");
@@ -541,11 +623,21 @@ async function screenshots(browser, sb) {
         if (!localStorage.getItem("oovi.m.seen")) localStorage.setItem("oovi.m.seen", JSON.stringify({ "dm-oovi": Date.now(), "dm-nova": Date.now(), "dm-rex": Date.now(), "dm-lina": Date.now(), studio: 0 }));
       }, [lang]);
       const wp = await wctx.newPage();
-      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["connectors", "/app/connectors"]]) {
+      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["account", "/app/settings/account"], ["connectors", "/app/connectors"]]) {
         await wp.goto(BASE + url);
         await wp.locator(".m-wide").first().waitFor({ timeout: 8000 }).catch(() => {});
         await sleep(1300);
         const file = path.join(SHOT_DIR, `web-${lang}-${scheme}-${name}.jpg`);
+        await wp.screenshot({ path: file, type: "jpeg", quality: 82 });
+        written.push(path.relative(ROOT, file));
+      }
+      // The web version on a narrow window (a phone's browser): one column, the web app's look.
+      await wp.setViewportSize({ width: 390, height: 844 });
+      for (const [name, url] of [["chats", "/app"], ["chat", "/app/c/dm-oovi"]]) {
+        await wp.goto(BASE + url);
+        await wp.locator(".m-screen").first().waitFor({ timeout: 8000 }).catch(() => {});
+        await sleep(1300);
+        const file = path.join(SHOT_DIR, `web-narrow-${lang}-${scheme}-${name}.jpg`);
         await wp.screenshot({ path: file, type: "jpeg", quality: 82 });
         written.push(path.relative(ROOT, file));
       }

@@ -2761,3 +2761,94 @@ html.m-kb-open .m-composer {
 .m-create .m-group {
   margin-inline: 0;
 }
+
+/* ---------- Settings → Account (the website's account page, moved here; owner 2026-11-19) ---------- */
+.m-photo {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--m-line);
+}
+.m-photo__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.m-form__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  padding: 12px 18px 14px;
+  border-top: 1px solid var(--m-line);
+}
+.m-form__foot .m-alert,
+.m-form__foot .m-okay {
+  flex: 1 1 100%;
+  margin: 0;
+}
+.m-form__text {
+  margin: 0;
+  padding: 14px 18px;
+  color: var(--m-ink-2);
+  font-size: 0.906rem;
+  line-height: 1.45;
+  border-bottom: 1px solid var(--m-line);
+}
+.m-okay {
+  margin: 0 0 14px;
+  padding: 12px 16px;
+  border-radius: var(--m-r-sm);
+  background: color-mix(in srgb, var(--m-blob-mint) 40%, var(--m-card));
+  color: var(--m-ink);
+  font-size: 0.941rem;
+  font-weight: 700;
+}
+.m-btn--plain {
+  background: transparent;
+  color: var(--m-ink) !important;
+}
+.m-btn--danger {
+  background: var(--m-red);
+  color: var(--m-paper) !important;
+}
+.m-verify {
+  margin: 0 16px 18px;
+  padding: 14px 16px;
+  border-radius: var(--m-r);
+  background: color-mix(in srgb, var(--m-blob-yellow) 30%, var(--m-card));
+  border: 1px solid color-mix(in srgb, var(--m-blob-yellow) 70%, var(--m-line));
+}
+.m-verify b {
+  display: block;
+  margin-bottom: 4px;
+}
+.m-verify p {
+  margin: 0 0 10px;
+  color: var(--m-ink-2);
+  font-size: 0.906rem;
+}
+.m-row--form {
+  margin: 0;
+}
+.m-row--form button {
+  width: 100%;
+  text-align: start;
+}
+
+/* The web version on a narrow window or a phone browser: one column, the sidebar look (not the phone app's). */
+.m-screen--sidelist:not(.m-pane .m-screen) {
+  padding-top: var(--m-top);
+}
+.m-screen--sidelist:not(.m-pane .m-screen) .m-main {
+  max-width: 720px;
+}
+.m-row__hint {
+  display: block;
+  margin-top: 2px;
+  white-space: normal;
+  color: var(--m-ink-2);
+  font-size: 0.8rem;
+}

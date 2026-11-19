@@ -68,7 +68,7 @@ export default async function PilotPage() {
             <Link href="/feedback" className="btn btn-dark btn-md">
               Send feedback
             </Link>
-            <Link href="/account" className="btn btn-light btn-md">
+            <Link href="/app/settings" className="btn btn-light btn-md">
               See your credits
             </Link>
           </div>
