@@ -1,5 +1,6 @@
 import { cleanSteps, replay } from "./replay";
-import { completeZapierRun, zapierNextStep } from "./zapier-core";
+import { completeZapierRun } from "./zapier-core";
+import { classifyToolError, nextStepFor, WRITE_TOOL, zapierNextStep } from "./tool-error-core";
 import { isReminder } from "./routines-tools";
 import { describeConnector, technicalDetail } from "./action-words-core";
 import { unbackedFact } from "./memory-evidence-core";
@@ -502,20 +503,33 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       try {
         r = await callMcpTool(call.name, zapier ? completeZapierRun(mcpToolOf(call.name) ?? "", input, localTimeZone()) : input);
       } catch (e) {
-        // Sent, but no answer (timeout, dropped connection): an action may have run. A blind retry would add
-        // the calendar event or send the email twice.
-        if (e instanceof McpNoAnswer && mcpToolKind(call.name) === "act") return fail(call, `${e.server} gave no answer in time (${e.message.slice(0, 120)}): this action may have run. Don't run it again; check with a read action first, or tell the user to check.`);
-        throw e;
+        if (!(e instanceof McpNoAnswer)) throw e;
+        // What kind of failure, from its protocol and network codes first (lib/tool-error-core.ts). Only no answer
+        // (a timeout, a connection closed mid-call) to an action means it may have run: a blind retry would add the
+        // event or send the email twice. A refused call (invalid params, no such tool, a sign-in) did not run.
+        const act = mcpToolKind(call.name) === "act";
+        const kind = classifyToolError(e.message, { write: act, rpcCode: e.rpcCode, causeCode: e.causeCode });
+        if (kind === "maybe-ran") return fail(call, `${e.server} gave no answer in time (${e.message.slice(0, 120)}): this action may have run. Don't run it again; check with a read action first, or tell the user to check.`);
+        const step = kind === "input" ? "Next step: the call was refused because of its inputs (or that tool doesn't exist): check the tool's parameters and call again once with corrected values." : nextStepFor(kind === "unknown" ? "network" : kind, e.server);
+        return fail(call, `${e.server}: ${e.message.slice(0, 300)}${e.causeCode ? ` (${e.causeCode})` : ""}\n${step}`);
       }
       if (!r) {
         const n = mcpServerNameOf(call.name);
         return fail(call, `Not run: ${n ?? "this connector"} couldn't be reached just now. Say in one short line which part you couldn't do because of it, and do everything else you can. Don't call it "not enabled" or ask the user to enable it.`);
       }
-      // Zapier often fails with no reason: say what usually causes it and what to do (lib/zapier-core.ts).
+      // Zapier often fails with no reason: say what usually causes it and what to do (lib/tool-error-core.ts).
       if (r.isError && zapier) {
         const own = mcpToolOf(call.name) ?? "";
         const body = r.content.replace(/^Result from[^\n]*\n/, "").replace(/^\(empty\)$/, "");
         return { id: call.id, name: call.name, content: `${r.content}\n${zapierNextStep(own, body)}`, isError: true };
+      }
+      // Other connectors: the kind of failure from the service's own error (a sign-in, a missing item, a rate limit,
+      // an action that may have run), with the next step that fits it. Unknown kinds keep the generic guidance.
+      if (r.isError) {
+        const body = r.content.replace(/^Result from[^\n]*\n/, "");
+        const kind = classifyToolError(body, { write: mcpToolKind(call.name) === "act" || WRITE_TOOL.test(mcpToolOf(call.name) ?? "") });
+        const step = kind === "unknown" || kind === "input" ? null : nextStepFor(kind, mcpServerNameOf(call.name) ?? "the service");
+        return { id: call.id, name: call.name, content: step ? `${r.content}\n${step}` : r.content, isError: true };
       }
       return { id: call.id, name: call.name, content: r.content, isError: r.isError };
     }
@@ -543,6 +557,13 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     if (hide.length) res.content = hideSecrets(res.content, hide);
     return res;
   } catch (e) {
+    // A connector's error never gets the browser's hints ("install Chrome…"): its own kind and next step.
+    if (call.name.startsWith("mcp_")) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const code = (e as { cause?: { code?: unknown } })?.cause?.code;
+      const kind = classifyToolError(msg, { causeCode: typeof code === "string" ? code : null });
+      return fail(call, `${msg.split("\n")[0]!.slice(0, 300)}${typeof code === "string" ? ` (${code})` : ""}\n${nextStepFor(kind === "unknown" ? "network" : kind, mcpServerNameOf(call.name) ?? "the service") ?? ""}`.trim());
+    }
     return fail(call, hint(e, settings));
   }
 }

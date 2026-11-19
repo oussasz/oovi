@@ -4,6 +4,7 @@
 // a fallback). Tools appear to bots as "mcp_<server>_<tool>". Unless a server
 // is marked trusted, every MCP call asks the user first.
 
+import { classifyToolError, type ErrKind } from "./tool-error-core";
 import { toolKind } from "./action-kind-core";
 import fs from "node:fs";
 import path from "node:path";
@@ -408,14 +409,17 @@ export async function testServer(id: string): Promise<{ ok: boolean; tools?: str
   } catch (e) {
     const msg = (e as Error).message || String(e);
     errors.set(id, msg);
-    return { ok: false, error: /ENOENT|not recognized|not found/i.test(msg) ? `${msg}. Is ${s.command} installed? Servers started with npx need Node.js (nodejs.org).` : msg };
+    // Only a connector that starts a program on this computer can be "not installed"; the hint names what it needs.
+    const missing = s.transport === "stdio" && /spawn \S+ ENOENT|ENOENT|is not recognized as an internal or external command|command not found|n'est pas reconnu/i.test(msg);
+    const needs = /^(uvx|uv)(\.exe)?$/i.test(s.command ?? "") ? "uvx comes with uv (docs.astral.sh/uv)" : /^(npx|node|npm)(\.cmd|\.exe)?$/i.test(s.command ?? "") ? "npx comes with Node.js (nodejs.org)" : `install ${s.command} first`;
+    return { ok: false, error: missing ? `${msg}. ${s.command} isn't installed on this computer (or oovi can't find it): ${needs}, then restart oovi.` : msg };
   }
 }
 
 const toolName = (s: McpServer, tool: string) => `mcp_${s.id.replace(/-/g, "_").slice(0, 18)}_${tool}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 
 /** A connector whose tools couldn't be loaded for this turn: why, and the tool names it had last time. */
-export type McpDown = { id: string; name: string; reason: string; prefix: string; signIn: boolean };
+export type McpDown = { id: string; name: string; reason: string; prefix: string; signIn: boolean; /** A key or token in its settings was refused (not a sign-in connector). */ keyRefused?: boolean; /** What the failure is (lib/tool-error-core.ts). */ kind?: ErrKind };
 
 /**
  * Before giving up on a sign-in connector the server refused: the account may hold newer sign-in data (the cloud
@@ -428,7 +432,7 @@ export function setSignInRefresher(fn: ((id: string) => Promise<boolean>) | null
   shared.__ooviSignInRefresher = fn;
 }
 
-const signInProblem = (msg: string) => /sign in again|Not signed in|unauthori[sz]ed|invalid_token|invalid_grant|\b401\b/i.test(msg);
+const signInProblem = (msg: string) => /sign in again|Not signed in|unauthori[sz]ed|invalid_token|invalid_grant|\b401\b/i.test(msg) || classifyToolError(msg) === "auth";
 /** Errors a second try can't fix (nothing changes between the two). */
 const noRetry = (msg: string) => /runs on the user's computer|Not signed in to .* yet|ENOENT|not recognized/i.test(msg);
 
@@ -479,9 +483,12 @@ export async function mcpToolsFor(ids: string[]): Promise<{ specs: ToolSpec[]; e
     } catch (e) {
       const msg = (e as Error).message || String(e);
       errors.set(s.id, msg);
-      const reason = msg.split("\n")[0]!.slice(0, 300);
+      // fetch says only "fetch failed": the real reason (a certificate, DNS, a refused connection) is in `cause`.
+      const code = (e as { cause?: { code?: unknown } })?.cause?.code;
+      const reason = `${msg.split("\n")[0]!.slice(0, 280)}${typeof code === "string" && !msg.includes(code) ? ` (${code})` : ""}`;
+      const kind = classifyToolError(reason, { causeCode: typeof code === "string" ? code : null });
       errs.push(`${s.name}: ${reason}`);
-      down.push({ id: s.id, name: s.name, reason, prefix: mcpPrefix(s.id), signIn: s.auth === "oauth" && signInProblem(msg) });
+      down.push({ id: s.id, name: s.name, reason, prefix: mcpPrefix(s.id), signIn: s.auth === "oauth" && signInProblem(msg), ...(s.auth !== "oauth" && kind === "auth" ? { keyRefused: true } : {}), kind });
     }
   }
   return { specs, errors: errs, down };
@@ -503,9 +510,16 @@ export const mcpServerNameOf = (name: string) => listServers().find((s) => name.
 /** A connector call that was sent but got no answer (timeout, connection dropped): it may have run. */
 export class McpNoAnswer extends Error {
   server: string;
+  /** The JSON-RPC code of the error (-32001 timed out, -32000 connection closed, -32602 invalid params…). */
+  rpcCode: number | null;
+  /** Node's network code, which fetch hides in `cause` ("fetch failed" → ECONNRESET, UNABLE_TO_GET_ISSUER_CERT_LOCALLY…). */
+  causeCode: string | null;
   constructor(server: string, cause: unknown) {
     super(cause instanceof Error ? cause.message : String(cause));
     this.server = server;
+    const c = cause as { code?: unknown; cause?: { code?: unknown } } | null;
+    this.rpcCode = typeof c?.code === "number" ? c.code : null;
+    this.causeCode = typeof c?.cause?.code === "string" ? c.cause.code : typeof c?.code === "string" ? c.code : null;
   }
 }
 

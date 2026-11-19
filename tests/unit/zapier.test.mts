@@ -1,7 +1,8 @@
 // oovi's Zapier page (lib/zapier-core.ts).
 import test from "node:test";
 import assert from "node:assert/strict";
-import { appArgs, appsIn, completeZapierRun, firstLink, zapierMode, zapierNextStep } from "../../lib/zapier-core.ts";
+import { appArgs, appsIn, completeZapierRun, firstLink, zapierMode } from "../../lib/zapier-core.ts";
+import { zapierNextStep } from "../../lib/tool-error-core.ts";
 
 test("inputs for a tool that names an app, from its schema", () => {
   assert.deepEqual(appArgs({ properties: { app: { type: "string" } }, required: ["app"] }, "Gmail"), { app: "Gmail" });

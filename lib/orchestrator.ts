@@ -524,9 +524,22 @@ function localDate(): string {
 /** A connector that couldn't be reached this turn, as the bot is told (the real reason, never "not enabled"). */
 function downLine(d: McpDown): string {
   const link = `oovi://marketplace/connector/${d.id}`;
+  // Why, in plain words, when the error itself is technical (a certificate, DNS, a program not installed).
+  const why =
+    d.kind === "cert"
+      ? " A security program or the company network on this computer is blocking its secure connection; retrying won't help."
+      : d.kind === "dns"
+        ? " This computer seems offline (its address couldn't be looked up)."
+        : d.kind === "install"
+          ? " A program it needs isn't installed on this computer."
+          : d.kind === "refused"
+            ? " The program behind it isn't running."
+            : "";
+  if (d.keyRefused)
+    return `${d.name} refused the key or token saved in its settings (${d.reason}). Its tools (${d.prefix}…) are not in your list this turn; don't call them. Tell the user in one short line that ${d.name}'s key needs updating, with the button [Open ${d.name}](${link}), then do everything else you can without it.`;
   return d.signIn
     ? `${d.name} is connected but its sign-in was refused just now (${d.reason}). Its tools (${d.prefix}…) are not in your list this turn; don't call them. Tell the user in one short line that ${d.name} needs to be reconnected once, with the button [Reconnect ${d.name}](${link}), then do everything else you can without it.`
-    : `${d.name} couldn't be reached just now (${d.reason}). Its tools (${d.prefix}…) are not in your list this turn; don't call them. Say in one short line which part you couldn't check because ${d.name} didn't answer, with [Open ${d.name}](${link}), and do everything else you can without it. Don't call it "not enabled" or "not connected" and don't ask the user to enable it: it is set up. If you try another way (a browser) and it needs a sign-in, offer the user the one step that signs it in (request_user_takeover, or the one-click card) in the same reply.`;
+    : `${d.name} couldn't be reached just now (${d.reason}).${why} Its tools (${d.prefix}…) are not in your list this turn; don't call them. Say in one short line which part you couldn't check because ${d.name} didn't answer, with [Open ${d.name}](${link}), and do everything else you can without it. Don't call it "not enabled" or "not connected" and don't ask the user to enable it: it is set up. If you try another way (a browser) and it needs a sign-in, offer the user the one step that signs it in (request_user_takeover, or the one-click card) in the same reply.`;
 }
 
 /** The answer to a call of a tool the bot doesn't have this turn. */

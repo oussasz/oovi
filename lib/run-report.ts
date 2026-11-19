@@ -10,16 +10,17 @@
 // Pure except reviewProblem (one model call).
 
 import type { BotEntry, Msg } from "./types";
+import { classifyToolError, NOT_A_BUG, readableError } from "./tool-error-core.ts";
 
 export type ProblemTag = "tool" | "failed" | "unmet";
 export type ProblemNote = { tag: ProblemTag; message: string; tool?: string; site?: string };
 
 /** Errors that are the normal flow, not a problem: the user said no, stopped or moved on. */
-const NORMAL_ERROR = /(declined this action|the user said no|cancel+ed: the user|stopped by the user|not run: waiting for the plan|must be called alone)/i;
+const NORMAL_ERROR = /(declined this action|the user said no|cancel+ed: the user|stopped by the user|not run: waiting for the plan|must be called alone|isn't a problem with oovi|couldn't be reached just now|not run: (it is )?the same call|not run: this exact call|another chat is using the (mouse|computer)|^not saved:|refused the key or token saved|has no internet connection right now)/i;
 
 /** A final answer that says the bot couldn't do it (English, French, Arabic, Darija). */
 export const COULD_NOT =
-  /\b(i (?:can(?:no|['’])t|could(?:n['’]t| not)|was(?:n['’]t| not) able|am (?:not able|unable)|wasn['’]t able)|unable to|not possible|wasn['’]t possible|impossible to)\b|je (?:ne (?:peux|pouvais|parviens|suis pas parvenu)|n['’]ai pas (?:pu|réussi|reussi))|impossible d['e]|(لم أتمكن|لم اتمكن|لا أستطيع|لا استطيع|لم أستطع|لم استطع|تعذر|تعذّر|ما قدرتش|ماقدرتش|ما نقدرش|مانقدرش|ما قدرناش|لا يمكنني|غير ممكن)/i;
+  /\b(i (?:can(?:no|['’])t|could(?:n['’]t| not)|was(?:n['’]t| not) able|am (?:not able|unable)|wasn['’]t able)|unable to|not possible|wasn['’]t possible|impossible to)\b|je (?:ne (?:peux|pouvais|parviens|suis pas parvenu)|n['’]ai pas (?:pu|réussi|reussi))|impossible d['e]|\b(i['’]?m not able|that didn['’]t work|it didn['’]t work)\b|je n['’]arrive pas|j['’]ai pas pu|ça n['’]a pas (?:marché|fonctionné)|\b(ma9dertch|manajemch|mana9derch|ma9edertch)\b|(لم أتمكن|لم اتمكن|لا أستطيع|لا استطيع|لم أستطع|لم استطع|تعذر|تعذّر|ما قدرتش|ماقدرتش|ما نقدرش|مانقدرش|ما قدرناش|لا يمكنني|غير ممكن|ما لقيتش|مالقيتش|ما نجمش|مانجمش|لم أجد|لا يمكن الوصول|ما خدمش|ماخدمش)/i;
 
 /**
  * Cleans a note before it leaves the computer: emails, phone and long numbers, file paths, quoted text,
@@ -30,7 +31,9 @@ export function cleanProblemNote(text: string, hide: string[] = []): string {
   for (const w of hide) if (w.length >= 3) t = t.replace(new RegExp(w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi"), "[user]");
   t = t.replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[email]");
   t = t.replace(/https?:\/\/([\w.-]+)[^\s)"']*/gi, "$1");
-  t = t.replace(/(?:[A-Za-z]:\\|\/(?:home|Users|tmp|var|root)\/)(?:[^"'\n]*?\.[A-Za-z0-9]{2,5}\b|[^\s"']+)/g, "[path]");
+  // Paths on Windows (C:\…, C:/…, \\server\…), macOS and Linux (/Users, /home, /Volumes, /media, /mnt, ~/…),
+  // names with spaces included (C:\Users\Ahmed Benali\… keeps no part of the name).
+  t = t.replace(/(?:[A-Za-z]:[\\/]|\\\\[\w.$-]+\\|~\/|\/(?:home|Users|tmp|var|root|Volumes|media|mnt|run\/media|opt|private)\/)(?:[^"'\n]*?\.[A-Za-z0-9]{2,5}\b|(?:[^\s"'\\/]+(?: [^\s"'\\/]+)*[\\/]?)+)/g, "[path]");
   t = t.replace(/["“«][^"”»]{12,}["”»]/g, "[text]");
   t = t.replace(/\+?\d[\d\s().-]{6,}\d/g, "[number]");
   t = t.slice(0, 300).trim();
@@ -52,7 +55,8 @@ function siteOf(input: Record<string, unknown> | undefined): string | undefined 
 /** First line, without the hints written for the bot ("Send less in one call: …"). */
 const shortError = (s: string) =>
   // A connector's answer starts with oovi's "Result from … MCP server (untrusted data…)" line: the error is after it.
-  (s.replace(/^Result from the "[^"]*" MCP server \(untrusted data[^\n]*\n/, "").split(/\n/).find((l) => l.trim()) ?? "").replace(/\s+/g, " ").trim().slice(0, 180);
+  // A JSON error is made readable ("403 insufficientPermissions: …"), so the report keeps the code and the reason.
+  readableError((s.replace(/^Result from the "[^"]*" MCP server \(untrusted data[^\n]*\n/, "").split(/\n/).find((l) => l.trim()) ?? "").trim()).replace(/\s+/g, " ").trim().slice(0, 180);
 
 /** The problems a finished run shows by itself: tool errors and turns that stopped with an error. No AI call. */
 export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): ProblemNote[] {
@@ -71,13 +75,26 @@ export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): P
     const results = (entry.steps as Msg[]).flatMap((s) => (s.role === "tool" ? s.results : []));
     const callInput = new Map((entry.steps as Msg[]).flatMap((s) => (s.role === "assistant" ? s.toolCalls.map((c) => [c.id, c.input] as const) : [])));
     // One Zapier tool serves every app: a later success counts only for the same app.
-    const appOf = (id: string) => String((callInput.get(id) as { app?: unknown } | undefined)?.app ?? "").toLowerCase();
-    const fixedLater = (r: (typeof results)[number]) => results.slice(results.indexOf(r) + 1).some((x) => x.name === r.name && !x.isError && appOf(x.id) === appOf(r.id));
+    // Fixed later = the same tool on the same target worked: the same Zapier app, or the same site; a read tool with
+    // neither. An action (send, create…) to some other target never hides a failed one.
+    const targetOf = (id: string) => {
+      const inp = callInput.get(id) as Record<string, unknown> | undefined;
+      return `${String(inp?.app ?? "").toLowerCase()}|${siteOf(inp) ?? ""}`;
+    };
+    const fixedLater = (r: (typeof results)[number]) => {
+      const target = targetOf(r.id);
+      if (target === "|" && /send|post|create|write|delete|update|reply|book|pay|upload|move|add|insert|publish/i.test(r.name)) return false;
+      return results.slice(results.indexOf(r) + 1).some((x) => x.name === r.name && !x.isError && targetOf(x.id) === target);
+    };
     for (const s of entry.steps as Msg[]) {
       if (s.role === "assistant") for (const c of s.toolCalls) inputs.set(c.id, c.input);
       else if (s.role === "tool") {
         for (const r of s.results) {
           if (!r.isError || NORMAL_ERROR.test(r.content) || fixedLater(r)) continue;
+          // The user's or the service's state, not oovi's bug: a deleted item, a rate limit, no right on it, no
+          // internet, a security program blocking connections, a program not installed (lib/tool-error-core.ts).
+          // Only for connectors: a website that refuses oovi's reader (403) is worth knowing, it groups by site.
+          if (r.name.startsWith("mcp_") && NOT_A_BUG.has(classifyToolError(shortError(r.content)))) continue;
           const site = siteOf(inputs.get(r.id));
           const message = cleanProblemNote(`${r.name} failed${site ? ` on ${site}` : ""}: ${shortError(r.content)}`, hide);
           add({ tag: "tool", message, tool: r.name, ...(site ? { site } : {}) });
@@ -85,7 +102,7 @@ export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): P
       }
     }
     // Account states (no credits, signed out, offline) are not bugs: the user is told what to do.
-    if (entry.status === "error" && entry.error && !entry.errorCode) {
+    if (entry.status === "error" && entry.error && !entry.errorCode && !["auth", "ratelimit", "dns", "cert", "network"].includes(classifyToolError(entry.error))) {
       add({ tag: "failed", message: cleanProblemNote(`A bot stopped with an error: ${shortError(entry.error)}`, hide) });
     }
   }
@@ -98,6 +115,8 @@ export function wentWrong(work: { entry: BotEntry }[], correcting: boolean): boo
   const last = work.at(-1)?.entry;
   if (!last) return false;
   if (last.status === "error" && !last.errorCode) return true;
+  // A reply that says it did something nothing in the work could have done ("Not confirmed").
+  if (last.unconfirmed) return true;
   return COULD_NOT.test(last.text.slice(0, 1500));
 }
 
