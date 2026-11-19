@@ -31,9 +31,18 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
   - Status bar and safe areas: Capacitor's SystemBars (edge to edge; the page's own `env(safe-area-inset-*)`).
   - Icons: adaptive icon (logo on white), splash = logo on paper (dark paper in dark mode). `node mobile/scripts/native-icons.cjs`.
   - User agent ends with `ooviApp/1.0` (`web/lib/app-detect.ts`).
+- **Store-ready from day one (owner, via the main session: the APK is temporary until Google Play and the App
+  Store):** same app id and key will be Play's (Play App Signing with our key, steps in `mobile/STORES.md`), AAB built
+  each release, target SDK 36, only internet + microphone permissions, Privacy policy and Terms links at the bottom of
+  the phone app's Settings, no APK/Android text inside oovi's app (so none in the iPhone app), iPhone usage texts for
+  microphone, camera and photos. When oovi is on Play: set `NEXT_PUBLIC_PLAY_STORE_URL` in Vercel and the website
+  switches to "Get it on Google Play" (`?apk=1` keeps the APK). `mobile/STORES.md`: Play Console listing, Data safety
+  answers, internal → closed → production; App Store Connect privacy answers.
 - **Website (needs a deploy, owner says "deploy"):** `/download/android` (same proxy as the desktop files; if the newest
   release has no APK yet, the newest release that has one, `web/lib/releases.ts`); the download page has an
-  "On your phone" card (Download for Android, 3 install steps, "iPhone: coming soon"), first on Android phones; on
+  "On your phone" card in the visitor's language (ar/fr/en): "Direct download for now: oovi will be on Google Play
+  soon", 3 install steps incl. "Install unknown apps", "Download for Android (APK)", "iPhone: coming soon"; first on
+  Android phones, not shown inside oovi's app; on
   /m in a browser on Android: "Get the Android app" card in the chat list (in place of the desktop card, hideable)
   and in Settings (in place of "Add to Home Screen"); inside the app, no "Add to Home Screen"; Admin download charts
   count Android. Screenshots: `docs/android/`.
@@ -58,7 +67,7 @@ Owner: "an APK app and an iOS app; the APK downloadable from the website, iOS so
   0.13.0; permissions: internet, microphone (+ audio settings); release APK 3.3 MB, AAB 3.2 MB); `npx tsc --noEmit`
   root and web clean; unit tests 425 (424 pass, 1 skipped: the live YouTube test; new `mobile-native.test.mts` 5/5);
   `npm run build` in web OK; `node tests/e2e/mobile-scenario.cjs` 127/127; new `node tests/e2e/native-web-scenario.cjs`
-  49/49 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
+  57/57 (download page on computer and phone, the Android card and its hiding, Settings, no install hints inside the
   app, Back closes a sheet, /download/android, the offline page in 3 languages × light/dark, its retry never leaves
   the app's pages, nothing loaded from the network). Suggest adding it to the release checks in CLAUDE.md (owner's file, not changed).
 - **NOT verified:** no emulator here (no hardware acceleration in this machine): the app was never opened on Android

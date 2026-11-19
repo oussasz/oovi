@@ -24,6 +24,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>oovi listens only while you record a voice note. Your voice is turned into text that you check before sending.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>oovi uses the camera only when you choose to take a photo to send in a chat.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>oovi opens your photos only when you choose one to send in a chat.</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>UIApplicationSceneManifest</key>

@@ -9,6 +9,14 @@ export const microsoftStoreUrl = (): string | null => {
   const v = process.env.NEXT_PUBLIC_MICROSOFT_STORE_URL?.trim();
   return v && /^https:\/\/(apps\.microsoft\.com|www\.microsoft\.com)\//.test(v) ? v : null;
 };
+/**
+ * oovi's Google Play page (https://play.google.com/store/apps/details?id=app.oovi.mobile). When set, /download/android
+ * opens Google Play instead of the APK (the APK stays at /download/android?apk=1 for phones without Play).
+ */
+export const playStoreUrl = (): string | null => {
+  const v = process.env.NEXT_PUBLIC_PLAY_STORE_URL?.trim();
+  return v && /^https:\/\/play\.google\.com\/store\/apps\/details\?id=app\.oovi\.mobile(&|$)/.test(v) ? v : null;
+};
 export type DownloadTarget = (typeof DOWNLOAD_TARGETS)[number];
 
 export function isDownloadTarget(v: string): v is DownloadTarget {

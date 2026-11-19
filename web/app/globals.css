@@ -3174,3 +3174,14 @@ a.adm-item:hover b { text-decoration: underline; }
 .phone-dl .alt {
   margin: 0;
 }
+.phone-dl__direct {
+  margin: 0 0 4px;
+  font-weight: 800;
+}
+.phone-dl[dir="rtl"] .steps {
+  padding-left: 0;
+  padding-right: 22px;
+}
+.phone-dl[dir="rtl"] .phone-dl__arrow {
+  transform: scaleX(-1);
+}

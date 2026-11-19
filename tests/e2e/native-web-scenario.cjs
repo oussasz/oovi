@@ -84,10 +84,11 @@ async function main() {
     await until(async () => (await cards.count()) === 2);
     check("A two cards: computer and phone", (await cards.count()) === 2);
     check("A on a computer the desktop chooser comes first", (await cards.first().locator(".seg").count()) === 1);
-    const android = page.getByRole("link", { name: /Download for Android/ });
+    const android = page.getByRole("link", { name: /Download for Android \(APK\)/ });
     check("A 'Download for Android' points to /download/android", (await android.getAttribute("href")) === "/download/android");
     check("A 'iPhone: coming soon'", await page.getByText("iPhone: coming soon").isVisible());
     check("A the install steps mention Install unknown apps", (await page.locator("#phone").innerText()).includes("install unknown apps"));
+    check("A it says it's a direct download for now", (await page.locator("#phone").innerText()).includes("Direct download for now"));
     await shot(page, "download-desktop");
     await ctx.close();
     ctx = await browser.newContext({ ...PIXEL, deviceScaleFactor: SHOTS ? 2 : PIXEL.deviceScaleFactor });
@@ -96,6 +97,22 @@ async function main() {
     check("A on an Android phone the phone card comes first", await until(async () => (await page.locator(".dl-cards > .card").first().locator("#phone").count()) === 1));
     check("A no sideways scroll on the phone", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
     await shot(page, "download-phone");
+    await ctx.close();
+    for (const [locale, words, dir] of [["fr-FR", "Télécharger pour Android (APK)", "ltr"], ["ar-DZ", "نزّل لأندرويد (APK)", "rtl"]]) {
+      ctx = await browser.newContext({ ...PIXEL, locale, deviceScaleFactor: SHOTS ? 2 : PIXEL.deviceScaleFactor });
+      page = await ctx.newPage();
+      await page.goto(`${BASE}/download`);
+      check(`A ${locale}: the phone card in the visitor's language`, await until(async () => (await page.locator("#phone").innerText()).includes(words)));
+      check(`A ${locale}: direction ${dir}`, (await page.locator("#phone").getAttribute("dir")) === dir);
+      if (dir === "rtl") await shot(page, "download-phone-ar");
+      await ctx.close();
+    }
+    ctx = await browser.newContext({ ...PIXEL, userAgent: NATIVE_UA });
+    page = await ctx.newPage();
+    await page.goto(`${BASE}/download`);
+    await page.locator(".dl-cards .seg").waitFor({ timeout: 8000 });
+    await sleep(500);
+    check("A inside oovi's app: no phone card (no APK text in the app)", (await page.locator("#phone").count()) === 0);
     await ctx.close();
 
     // ---------- B) /m in Chrome on Android ----------
@@ -146,6 +163,8 @@ async function main() {
     check("C Back closes the sheet (and is not passed on)", (await back()) === true);
     check("C ... the sheet is gone", await until(async () => (await page.locator('[role="dialog"]').count()) === 0));
     check("C ... still on Settings", page.url().endsWith("/m/settings"));
+    check("C Settings links the privacy policy (stores ask for it in the app)", (await page.getByRole("link", { name: "Privacy policy" }).getAttribute("href")) === "/privacy");
+    check("C ... and the terms", (await page.getByRole("link", { name: "Terms" }).getAttribute("href")) === "/terms");
     check("C no page errors", errors.length === 0, errors.join(" | "));
     await ctx.close();
 

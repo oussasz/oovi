@@ -159,6 +159,11 @@ export function SettingsScreen() {
         <p className="m-footer">
           <Icon name="sparkle" size={14} /> {t("settings.footer")}
         </p>
+        <p className="m-footer m-footer--links">
+          <a href="/privacy" target="_blank" rel="noopener">{t("settings.privacy")}</a>
+          <span aria-hidden> · </span>
+          <a href="/terms" target="_blank" rel="noopener">{t("settings.terms")}</a>
+        </p>
       </main>
 
       <ActionSheet
