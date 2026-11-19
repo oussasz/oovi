@@ -1699,6 +1699,11 @@ html.m-root[data-mtheme="dark"] .m-bubble--bot {
 html.m-root[data-mtheme="dark"] .m-meta .is-read {
   color: #4a63d6;
 }
+@media (prefers-color-scheme: dark) {
+  html.m-root[data-mtheme="auto"] .m-meta .is-read {
+    color: #4a63d6;
+  }
+}
 .m-bubble--out.is-failed .m-meta {
   color: var(--m-red);
 }
