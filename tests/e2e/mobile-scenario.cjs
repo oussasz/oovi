@@ -18,9 +18,10 @@
 //   K) no sideways scroll at 320 px on every screen, L) Arabic: right to left,
 //   M) offline: the app opens from the offline worker with the saved chats,
 //   N) sign out asks first, then clears the phone's copy,
-//   X) the website: sign-in lands on /app, "Open oovi", /account → /app/settings (Paddle's ?billing kept), and every
-//      account action from Settings (confirm email, Manage billing, free plan, name, photo, password, news emails,
-//      delete account with its password); /app on a narrow window is one column with the web app's look,
+//   X) the website has no web version and no account (owner, 2026-11-19): in an ordinary browser /m, /app, /login,
+//      /signup and /account go to /download, the header has no sign-in; the pages emails link to still open; in the
+//      app every account action from Settings (confirm email, Manage billing, free plan, name, photo, password, news
+//      emails, delete account), Join the pilot (single-use link), Send feedback, and creating an account in the app,
 //   Y) tap a face: bot editor (name rule, role, abilities, "Your picture", hide, delete; saved with a 409 merged
 //      again) and group editor (name, members, leader); the chat's tools (find, download Markdown, pin, the
 //      computer-only ones shown as such), message actions, effort and plan sent with a message, routines.
@@ -39,7 +40,11 @@ const BASE = `http://127.0.0.1:${PORT}`;
 const SHOTS_ONLY = process.argv.includes("--shots-only");
 const SHOTS = SHOTS_ONLY || process.argv.includes("--shots");
 const SHOT_DIR = path.join(ROOT, "docs", "mobile");
-const { defaultBrowserType: _ignored, ...IPHONE } = devices["iPhone 15"];
+// The phone app's pages open only inside oovi's Android app, whose web view adds "ooviApp/1.0" to the user agent
+// (mobile/capacitor.config.json on branch android-app): the phone and tablet here carry that marker.
+const { defaultBrowserType: _ignored, ...IPHONE_BASE } = devices["iPhone 15"];
+const IPHONE = { ...IPHONE_BASE, userAgent: `${IPHONE_BASE.userAgent} ooviApp/1.0` };
+const TABLET = { viewport: { width: 1440, height: 900 }, userAgent: "Mozilla/5.0 (Linux; Android 14; Pixel Tablet) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36 ooviApp/1.0" };
 
 let pass = 0;
 let fail = 0;
@@ -488,14 +493,14 @@ async function main() {
     check("Y …the routine's prompt never reaches the phone", !(await page.content()).includes("SECRET-ROUTINE-PROMPT") && !(await page.evaluate(() => Object.values(localStorage).join("\n"))).includes("SECRET-ROUTINE-PROMPT"));
     check("Y Marketplace link", (await page.locator('a[href="/experts"]').count()) === 1);
 
-    // ---------- W) the web version (/app): same app, two columns, keyboard, desktop suggestion ----------
+    // ---------- W) a tablet (the Android app on a wide screen): like the computer app, two columns, keyboard ----------
     {
-      const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-US" });
+      const wctx = await browser.newContext({ ...TABLET, locale: "en-US" });
       await wctx.addCookies([{ name: "standin", value: "1", url: BASE }]);
       const w = await wctx.newPage();
       const werr = [];
       w.on("pageerror", (e) => werr.push(e.message));
-      await w.goto(`${BASE}/app`);
+      await w.goto(`${BASE}/m`);
       check("W web: the sidebar like the computer's (Groups, Bots), a welcome on the right", await until(async () => (await w.locator(".m-pane--list .m-chats > li").count()) >= 4 && (await w.getByText("Pick a chat").isVisible()) && (await w.locator("#list-groups").isVisible()) && (await w.locator("#list-bots").isVisible())));
       check("W …with + Group and + Bot at the top", (await w.locator(".m-pane--list").getByRole("button", { name: "Group", exact: true }).isVisible()) && (await w.locator(".m-pane--list").getByRole("button", { name: "Bot", exact: true }).isVisible()));
       const card = w.locator(".m-desk--list");
@@ -504,12 +509,12 @@ async function main() {
       await w.reload();
       await until(() => w.locator(".m-pane--list .m-chats").first().isVisible());
       check("W hidden for good once hidden", (await w.locator(".m-desk--list").count()) === 0);
-      await w.locator('.m-pane--list a[href="/app/c/dm-oovi"]').click();
-      check("W a chat opens beside the list", await until(async () => w.url().endsWith("/app/c/dm-oovi") && (await w.locator(".m-pane--main .m-md table").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
-      check("W its row is marked open", (await w.locator('.m-pane--list a[aria-current="page"]').getAttribute("href")) === "/app/c/dm-oovi");
+      await w.locator('.m-pane--list a[href="/m/c/dm-oovi"]').click();
+      check("W a chat opens beside the list", await until(async () => w.url().endsWith("/m/c/dm-oovi") && (await w.locator(".m-pane--main .m-md table").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
+      check("W its row is marked open", (await w.locator('.m-pane--list a[aria-current="page"]').getAttribute("href")) === "/m/c/dm-oovi");
       await w.locator(".m-pane--list").getByRole("link", { name: "Edit Nova" }).click();
-      check("W a face in the sidebar opens the bot's editor beside the list", await until(() => w.url().endsWith("/app/bot/nova") && w.locator(".m-pane--main").getByLabel("Role", { exact: true }).isVisible()));
-      await w.goto(`${BASE}/app/c/dm-oovi`);
+      check("W a face in the sidebar opens the bot's editor beside the list", await until(() => w.url().endsWith("/m/bot/nova") && w.locator(".m-pane--main").getByLabel("Role", { exact: true }).isVisible()));
+      await w.goto(`${BASE}/m/c/dm-oovi`);
       await until(() => w.locator(".m-pane--main .m-md table").isVisible());
       check("W a bot's message: name, role and time above it, like on the computer", await w.locator(".m-pane--main .m-msg__who").first().textContent().then((x) => x.includes("Oovi")));
       const wbox = w.locator(".m-pane--main .m-composer textarea");
@@ -524,21 +529,21 @@ async function main() {
       await until(() => jobsOf("message").at(-1).status === "done", 10_000);
       await w.locator(".m-pane--main").click({ position: { x: 300, y: 120 } });
       await w.keyboard.press("Escape");
-      check("W Esc closes the chat", await until(() => w.url().endsWith("/app") && w.getByText("Pick a chat").isVisible()));
-      await w.goto(`${BASE}/app/c/dm-rex`);
+      check("W Esc closes the chat", await until(() => w.url().endsWith("/m") && w.getByText("Pick a chat").isVisible()));
+      await w.goto(`${BASE}/m/c/dm-rex`);
       const line = w.locator(".m-card--computer .m-desk--line");
       check("W 'needs your computer' says what the desktop app does, with Download", await until(() => line.isVisible()) && (await line.textContent()).includes("it works on your files") && (await line.locator("a").getAttribute("href")) === "/download");
       await w.locator(".m-pane--list").getByRole("link", { name: "Your profile and settings" }).click();
-      check("W the profile picture opens Settings beside the list: this browser, the desktop app section", await until(() => w.url().endsWith("/app/settings") && w.locator(".m-pane--main").getByText("This browser").isVisible()) && (await w.locator(".m-pane--main .m-desk--card").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible()));
-      await w.locator('.m-pane--main a[href="/app/connectors"]').click();
+      check("W the profile picture opens Settings beside the list: this phone, the desktop app section", await until(() => w.url().endsWith("/m/settings") && w.locator(".m-pane--main").getByText("This phone", { exact: true }).first().isVisible()) && (await w.locator(".m-pane--main .m-desk--card").isVisible()) && (await w.locator(".m-pane--list .m-chats").first().isVisible()));
+      await w.locator('.m-pane--main a[href="/m/connectors"]').click();
       check("W connectors open beside the list", await until(async () => (await w.locator(".m-pane--main .m-row--conn").count()) === 4 && (await w.locator(".m-pane--list .m-chats").first().isVisible())));
       check("W no sideways scroll at 1440 px", (await w.evaluate(() => document.documentElement.scrollWidth)) <= 1440);
       check("W no page errors", werr.length === 0, werr.join(" | "));
       await wctx.close();
-      const octx = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+      const octx = await browser.newContext({ ...TABLET });
       const o = await octx.newPage();
-      await o.goto(`${BASE}/app/settings`);
-      check("W signed out: the website's sign-in page, then back here", await until(() => o.url().includes("/login?next=%2Fapp%2Fsettings"), 10_000), o.url());
+      await o.goto(`${BASE}/m/settings`);
+      check("W signed out: the app's own sign-in, then back here", await until(() => o.url().includes("/m/login?next=%2Fm%2Fsettings"), 10_000), o.url());
       await octx.close();
     }
 
@@ -560,43 +565,70 @@ async function main() {
     check("N signed out: back to sign-in", await until(() => page.url().includes("/m/login")));
     check("N the phone's copy is gone", (await page.evaluate(() => localStorage.getItem("oovi.m.chats"))) === null);
 
-    // ---------- X) the website after sign-in: the web app, and the account page inside its Settings ----------
+    // ---------- X) no web version, no account on the website; the account inside the app ----------
     {
-      const xctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: "en-US" });
+      const plain = await browser.newContext({ viewport: { width: 1280, height: 800 }, locale: "en-US" });
+      const b = await plain.newPage();
+      const stays = [];
+      for (const u of ["/m", "/m/settings", "/m/c/dm-oovi", "/m/login", "/app", "/app/settings", "/app/c/dm-oovi", "/login", "/login?next=%2Fm", "/signup", "/account", "/account?billing=none"]) {
+        await b.goto(BASE + u).catch(() => {});
+        if (!new URL(b.url()).pathname.startsWith("/download")) stays.push(`${u}→${b.url()}`);
+      }
+      check("X an ordinary browser: the phone app, the web app, sign-in, sign-up and the account page go to the download page", stays.length === 0, stays.join(" "));
+      const swOk = (await fetch(`${BASE}/m/sw.js`)).ok && (await fetch(`${BASE}/m/manifest.webmanifest`)).ok;
+      check("X …the app's files stay reachable (offline worker, manifest)", swOk);
+      await b.goto(`${BASE}/download`);
+      const head = (await b.locator("header").first().textContent()) ?? "";
+      check("X the website's header has no Log in, Sign up, Account or Open oovi", (await b.locator(".nav-login").count()) === 0 && !/Log in|Sign up|Account|Open oovi/.test(head), head);
+      const kept = [];
+      for (const u of ["/forgot-password", "/privacy", "/terms", "/refund", "/feedback"]) {
+        const r = await b.goto(BASE + u);
+        if (!r || r.status() >= 400 || new URL(b.url()).pathname !== u) kept.push(`${u}=${r?.status()}→${b.url()}`);
+      }
+      check("X the pages emails link to still open (forgot password, privacy, terms, refund, feedback)", kept.length === 0, kept.join(" "));
+      await b.goto(`${BASE}/feedback`);
+      check("X /feedback without a website sign-in: send it from the app", await b.getByText("Send it from the oovi app").isVisible());
+      await plain.close();
+
+      const xctx = await browser.newContext({ ...IPHONE, locale: "en-US", deviceScaleFactor: 1 });
       const x = await xctx.newPage();
       const xerr = [];
       x.on("pageerror", (e) => xerr.push(e.message));
       S.signedIn = false;
-      await x.goto(`${BASE}/login`);
-      await x.fill("#email", "phone.tester@example.test");
-      await x.fill("#password", "standin-pass");
+      S.pilot = { open: true, eligible: true, public: true, status: null, credits: 500 };
+      await x.goto(`${BASE}/m/login`);
+      await x.fill('input[type="email"]', "phone.tester@example.test");
+      await x.fill('input[type="password"]', "standin-pass");
       await x.click('button[type="submit"]');
-      check("X the website's sign-in lands on the web app (/app)", await until(() => x.url().endsWith("/app") && x.locator(".m-pane--list .m-chats").first().isVisible(), 15_000), x.url());
-      await x.goto(`${BASE}/`);
-      check("X signed in, the site's button says Open oovi → /app", await until(async () => (await x.locator(".nav-login").textContent()) === "Open oovi" && (await x.locator(".nav-login").getAttribute("href")) === "/app"));
-      await x.goto(`${BASE}/account`);
-      check("X /account goes to the web app's Settings", await until(() => x.url().endsWith("/app/settings") && x.locator(".m-pane--main").getByText("Manage billing").isVisible(), 15_000), x.url());
-      await x.goto(`${BASE}/account?billing=none`);
-      check("X …keeping Paddle's way back (?billing=none) and saying it", await until(() => x.url().endsWith("/app/settings?billing=none") && x.getByText(/couldn’t find a subscription/).isVisible()));
-      check("X Settings: subscription status and the confirm-email reminder", await until(async () => (await x.locator(".m-pane--main").getByText("Active", { exact: true }).isVisible()) && (await x.getByText("Confirm your email").isVisible())));
+      check("X in the app: the app's own sign-in opens the chats", await until(() => x.url().endsWith("/m") && x.locator(".m-chats").first().isVisible(), 15_000), x.url());
+      await x.goto(`${BASE}/m/settings?billing=none`);
+      check("X Paddle's way back (?billing=none) is said in Settings", await until(() => x.getByText(/couldn’t find a subscription/).isVisible()));
+      check("X Settings: subscription status and the confirm-email reminder", await until(async () => (await x.getByText("Active", { exact: true }).isVisible()) && (await x.getByText("Confirm your email").isVisible())));
       await x.getByRole("button", { name: "Send it again" }).click();
       check("X confirm email: sent again", await until(() => S.verifySent === 1 && x.getByText(/Sent\. Check your inbox/).isVisible()));
+      const [pop] = await Promise.all([x.waitForEvent("popup", { timeout: 10_000 }).catch(() => null), x.getByText("Join the pilot").click()]);
+      check("X Join the pilot: opens the pilot page with a single-use link for this account", !!pop && S.appLinks.length === 1 && pop.url().includes(`/pilot?t=${S.appLinks[0].token}`), pop ? pop.url() : "no popup");
+      if (pop) await pop.close();
+      await x.getByRole("button", { name: /Send feedback/ }).click();
+      await x.getByRole("dialog").getByRole("radio", { name: "Improvement" }).click();
+      await x.getByRole("dialog").locator("textarea").fill("Please add dark mode to the charts");
+      await x.getByRole("dialog").getByRole("button", { name: "Send", exact: true }).click();
+      check("X Send feedback from the app (POST /api/v1/feedback, signed in)", await until(() => S.feedback.length === 1) && S.feedback[0].kind === "improvement" && S.feedback[0].message === "Please add dark mode to the charts");
       await x.getByRole("button", { name: /Manage billing/ }).click();
-      check("X Manage billing opens Paddle's portal (the website's route, from Settings)", await until(() => x.url().endsWith("/__paddle/portal") && S.portalOpened === 1));
+      check("X Manage billing opens Paddle's portal", await until(() => x.url().endsWith("/__paddle/portal") && S.portalOpened === 1));
       S.account.billing = null;
-      await x.goto(`${BASE}/app/settings`);
-      check("X no subscription: the free plan and See plans", await until(() => x.getByText("You’re on the free plan.", { exact: false }).isVisible()) && (await x.locator('.m-pane--main a[href="/pricing"]').isVisible()));
-      await x.locator('.m-pane--main a[href="/app/settings/account"]').first().click();
-      check("X Account opens beside the list", await until(() => x.url().endsWith("/app/settings/account") && x.locator(".m-pane--main").getByText("Delete account").first().isVisible()));
-      const nameBox = x.getByLabel("Name", { exact: true });
-      await nameBox.fill("Sam Writer");
+      await x.goto(`${BASE}/m/settings`);
+      check("X no subscription: the free plan and See plans", await until(() => x.getByText("You’re on the free plan.", { exact: false }).isVisible()) && (await x.locator('a[href="/pricing"]').count()) >= 1);
+      await x.locator('a[href="/m/settings/account"]').first().click();
+      check("X Settings → Account", await until(() => x.url().endsWith("/m/settings/account") && x.getByText("Delete account").first().isVisible()));
+      await x.getByLabel("Name", { exact: true }).fill("Sam Writer");
       await x.getByRole("button", { name: "Save", exact: true }).click();
-      check("X name saved (the website's PATCH /api/v1/me)", await until(() => sb.state && x.getByText("Saved.").isVisible()) && (await x.evaluate(() => JSON.parse(localStorage.getItem("oovi.m.me") || "{}").name)) === "Sam Writer");
+      check("X name saved (the website's PATCH /api/v1/me)", await until(() => x.getByText("Saved.").isVisible()) && (await x.evaluate(() => JSON.parse(localStorage.getItem("oovi.m.me") || "{}").name)) === "Sam Writer");
       const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAAEklEQVR4nGP4z8CAFWEXHbQSACj/P8Fu7N9hAAAAAElFTkSuQmCC", "base64");
       await x.locator('input[type="file"]').setInputFiles({ name: "me.png", mimeType: "image/png", buffer: png });
-      check("X photo uploaded, shown at once (also in the sidebar)", await until(async () => (await x.getByText("Profile photo updated.").isVisible()) && (await x.locator(".m-pane--list .m-profile img").count()) === 1));
+      check("X photo uploaded, shown at once", await until(async () => (await x.getByText("Profile photo updated.").isVisible()) && (await x.locator(".m-photo img").count()) === 1));
       await x.getByRole("button", { name: "Remove photo" }).click();
-      check("X photo removed", await until(async () => (await x.getByText("Profile photo removed.").isVisible()) && (await x.locator(".m-pane--list .m-profile img").count()) === 0));
+      check("X photo removed", await until(async () => (await x.getByText("Profile photo removed.").isVisible()) && (await x.locator(".m-photo img").count()) === 0));
       await x.getByLabel("Current password").fill("not-it-at-all");
       await x.getByLabel("New password").fill("new-pass-123");
       await x.getByRole("button", { name: "Change password" }).click();
@@ -610,31 +642,39 @@ async function main() {
       check("X password changed, other devices signed out", await until(() => x.getByText(/Password changed/).isVisible()) && S.password === "new-pass-123" && S.pwChanges.at(-1)?.revokeOtherSessions === true);
       await x.getByRole("switch", { name: "News by email" }).click();
       check("X news by email: off", await until(() => S.account.news === false));
+      await x.setViewportSize({ width: 320, height: 640 });
+      await sleep(400);
+      check("X no sideways scroll at 320 px on Account", (await x.evaluate(() => document.documentElement.scrollWidth)) <= 320);
+      await x.setViewportSize(IPHONE.viewport);
       await x.getByRole("button", { name: "Delete account" }).click();
       await x.getByLabel("Enter your password to confirm").fill("standin-pass");
       await x.getByRole("button", { name: "Permanently delete my account" }).click();
       check("X delete: the password is asked (a wrong one is refused)", await until(() => x.getByText("That password is incorrect.").isVisible()) && !S.accountDeleted);
-      check("X no page errors on the account screens", xerr.length === 0, xerr.join(" | "));
-
-      // The web version on a narrow window: one column, the sidebar look, then the chat with a back button.
-      await x.setViewportSize({ width: 390, height: 844 });
-      await x.goto(`${BASE}/app`);
-      check("X narrow /app: one column, the web app's look (logo, picture, + Group / + Bot)", await until(async () => (await x.locator(".m-sidehead").isVisible()) && (await x.locator(".m-pane").count()) === 0 && (await x.locator(".m-adds").isVisible())));
-      await x.locator('a[href="/app/c/dm-oovi"]').first().click();
-      check("X narrow /app: the chat fills the window, with a back button", await until(() => x.url().endsWith("/app/c/dm-oovi") && x.locator(".m-nav__back").isVisible()));
-      await x.setViewportSize({ width: 320, height: 640 });
-      const xw = [];
-      for (const u of ["/app", "/app/settings", "/app/settings/account"]) {
-        await x.goto(BASE + u);
-        await sleep(700);
-        const w = await x.evaluate(() => document.documentElement.scrollWidth);
-        if (w > 320) xw.push(`${u}=${w}`);
-      }
-      check("X no sideways scroll at 320 px on the web app and its account screens", xw.length === 0, xw.join(" "));
-      await x.getByRole("button", { name: "Delete account" }).click();
       await x.getByLabel("Enter your password to confirm").fill("new-pass-123");
       await x.getByRole("button", { name: "Permanently delete my account" }).click();
-      check("X delete account: done, the browser's copy wiped, back to the home page", await until(() => S.accountDeleted && x.url().endsWith("/?deleted=1")) && (await x.evaluate(() => localStorage.getItem("oovi.m.chats"))) === null);
+      check("X delete account: done, the phone's copy wiped", await until(() => S.accountDeleted && x.url().includes("/?deleted=1")) && (await x.evaluate(() => localStorage.getItem("oovi.m.chats"))) === null);
+
+      // Creating an account happens in the app now.
+      await x.goto(`${BASE}/m/login`);
+      await x.getByRole("button", { name: "Create one" }).click();
+      await x.getByLabel("Name").fill("Nadia");
+      await x.getByLabel("Email").fill("phone.tester@example.test".replace("phone.tester", "nadia"));
+      await x.getByLabel("Password").fill("short");
+      await x.getByRole("button", { name: "Create my account" }).click();
+      check("X sign-up in the app: the rules are said (8+ characters)", await until(() => x.getByRole("alert").filter({ hasText: "at least 8 characters" }).isVisible()) && S.signup === null);
+      await x.getByLabel("Password").fill("nadia-pass-1");
+      await x.getByRole("button", { name: "Create my account" }).click();
+      check("X …and the terms must be accepted", await until(() => x.getByRole("alert").filter({ hasText: "18 or older" }).isVisible()) && S.signup === null);
+      await x.getByRole("checkbox").check();
+      await x.getByRole("button", { name: "Create my account" }).click();
+      check("X sign-up sent with the terms' version, then the email code is asked", await until(() => !!S.signup && x.getByText("Check your email").isVisible()) && /\S/.test(S.signup.termsVersion));
+      await x.getByLabel("Code").fill("999999");
+      await x.getByRole("button", { name: "Confirm" }).click();
+      check("X a wrong code is refused", await until(() => x.getByRole("alert").isVisible()) && !S.emailCodeOk);
+      await x.getByLabel("Code").fill("123456");
+      await x.getByRole("button", { name: "Confirm" }).click();
+      check("X the right code opens the app, with a welcome", await until(() => S.emailCodeOk && x.url().endsWith("/m") && x.getByText("Your account is ready").isVisible(), 10_000), x.url());
+      check("X no page errors in the account flows", xerr.length === 0, xerr.join(" | "));
       await xctx.close();
     }
     check("N no page errors", errors.length === 0, errors.join(" | "));
@@ -717,29 +757,19 @@ async function screenshots(browser, sb) {
         S.signedIn = true;
       }
       await ctx.close();
-      // The web version, 1440 × 900.
-      const wctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, locale: lang === "ar" ? "ar-DZ" : "en-US", colorScheme: scheme });
+      // A tablet (the Android app on a wide screen), 1440 × 900: like the computer app.
+      const wctx = await browser.newContext({ ...TABLET, locale: lang === "ar" ? "ar-DZ" : "en-US", colorScheme: scheme });
       await wctx.addCookies([{ name: "standin", value: "1", url: BASE }]);
       await wctx.addInitScript(([l]) => {
         if (!localStorage.getItem("oovi.m.prefs")) localStorage.setItem("oovi.m.prefs", JSON.stringify({ lang: l, theme: "auto" }));
         if (!localStorage.getItem("oovi.m.seen")) localStorage.setItem("oovi.m.seen", JSON.stringify({ "dm-oovi": Date.now(), "dm-nova": Date.now(), "dm-rex": Date.now(), "dm-lina": Date.now(), studio: 0 }));
       }, [lang]);
       const wp = await wctx.newPage();
-      for (const [name, url] of [["chat", "/app/c/dm-oovi"], ["group", "/app/c/studio"], ["chats", "/app"], ["needs-computer", "/app/c/dm-rex"], ["settings", "/app/settings"], ["account", "/app/settings/account"], ["bot-editor", "/app/bot/nova"], ["group-editor", "/app/group/studio"], ["connectors", "/app/connectors"]]) {
+      for (const [name, url] of [["chat", "/m/c/dm-oovi"], ["group", "/m/c/studio"], ["chats", "/m"], ["settings", "/m/settings"], ["bot-editor", "/m/bot/nova"]]) {
         await wp.goto(BASE + url);
         await wp.locator(".m-wide").first().waitFor({ timeout: 8000 }).catch(() => {});
         await sleep(1300);
-        const file = path.join(SHOT_DIR, `web-${lang}-${scheme}-${name}.jpg`);
-        await wp.screenshot({ path: file, type: "jpeg", quality: 82 });
-        written.push(path.relative(ROOT, file));
-      }
-      // The web version on a narrow window (a phone's browser): one column, the web app's look.
-      await wp.setViewportSize({ width: 390, height: 844 });
-      for (const [name, url] of [["chats", "/app"], ["chat", "/app/c/dm-oovi"]]) {
-        await wp.goto(BASE + url);
-        await wp.locator(".m-screen").first().waitFor({ timeout: 8000 }).catch(() => {});
-        await sleep(1300);
-        const file = path.join(SHOT_DIR, `web-narrow-${lang}-${scheme}-${name}.jpg`);
+        const file = path.join(SHOT_DIR, `tablet-${lang}-${scheme}-${name}.jpg`);
         await wp.screenshot({ path: file, type: "jpeg", quality: 82 });
         written.push(path.relative(ROOT, file));
       }

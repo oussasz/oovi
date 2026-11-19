@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import Link from "next/link";
 import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { getServerSession } from "@/lib/session";
@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 export default async function FeedbackPage() {
   const session = await getServerSession();
-  if (!session) redirect("/login?next=/feedback");
   return (
     <>
       <SiteNav />
@@ -25,7 +24,23 @@ export default async function FeedbackPage() {
           </p>
         </div>
         <section className="card">
-          <FeedbackForm />
+          {session ? (
+            <FeedbackForm />
+          ) : (
+            // The website has no sign-in any more (owner, 2026-11-19): feedback is sent from the apps, signed in there.
+            <>
+              <h2>Send it from the oovi app</h2>
+              <p className="muted">
+                In the desktop app or the phone app, open Settings and tap “Send feedback”. It reaches us with your account, so we can answer.
+                You can also write to <a href="mailto:contact@conuron.com">contact@conuron.com</a>.
+              </p>
+              <div className="row-actions" style={{ marginTop: 16 }}>
+                <Link href="/download" className="btn btn-dark btn-md">
+                  Download oovi
+                </Link>
+              </div>
+            </>
+          )}
         </section>
       </main>
       <SiteFooter />

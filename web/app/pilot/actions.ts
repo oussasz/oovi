@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getServerSession } from "@/lib/session";
+import { userFor } from "@/lib/app-link-user";
+import { useAppLink } from "@/lib/app-links";
 import { getPilotConfig, pilotOpenFor } from "@/lib/ai-config";
 import { TEAM_SIZES } from "@/lib/team-sizes";
 import { rateLimit } from "@/lib/api";
@@ -17,9 +18,12 @@ export type PilotFormState = { ok?: boolean; errors?: string[] } | null;
 
 /** One request per account. Eligibility is checked here again, never trusted from the page. */
 export async function requestPilot(_prev: PilotFormState, fd: FormData): Promise<PilotFormState> {
-  const session = await getServerSession();
-  if (!session?.user) return { errors: ["Please log in again, then send your request."] };
-  const userId = session.user.id;
+  // The website's session, or the app's single-use link (checked here, used once when the request is saved).
+  const token = fdStr(fd, "t", 60) || undefined;
+  const user = await userFor(token, "pilot");
+  if (!user) return { errors: ["This link has expired. Open “Join the pilot” again from the oovi app."] };
+  const session = { user };
+  const userId = user.id;
   if (await isBlocked(userId)) return { errors: ["This account can’t take part in the pilot."] };
   if (!rateLimit(`pilot:${userId}`, 5, 10 * 60_000)) return { errors: ["Too many attempts. Please wait a few minutes and try again."] };
 
@@ -39,6 +43,7 @@ export async function requestPilot(_prev: PilotFormState, fd: FormData): Promise
   const useCase = summaryLine(answers);
   const roleLabel = labelOf(ROLES, answers.role);
 
+  if (user.via === "link" && (await useAppLink(token, "pilot")) !== userId) return { errors: ["This link has expired. Open “Join the pilot” again from the oovi app."] };
   try {
     // The answers go in their own column; if it can't be created right now the request is still saved without them.
     const withAnswers = await ensurePilotAnswers();
@@ -81,6 +86,5 @@ export async function requestPilot(_prev: PilotFormState, fd: FormData): Promise
     }),
   );
   revalidatePath("/pilot");
-  revalidatePath("/account");
   return { ok: true };
 }

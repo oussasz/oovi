@@ -35,9 +35,9 @@ export default async function VerifiedPage({ searchParams }: { searchParams: Pro
           </>
         ) : (
           <>
-            <p className="fine" style={{ marginBottom: 16 }}>Log in and you can send yourself a new link from Settings in the oovi web app.</p>
-            <Link href="/login?next=%2Faccount" className="btn btn-dark btn-lg btn-block">
-              Log in
+            <p className="fine" style={{ marginBottom: 16 }}>Sign in to the oovi app and send yourself a new link from Settings.</p>
+            <Link href="/download" className="btn btn-dark btn-lg btn-block">
+              Download oovi
             </Link>
           </>
         )}
@@ -58,10 +58,7 @@ export default async function VerifiedPage({ searchParams }: { searchParams: Pro
         Thanks! You can go back to the oovi app now: your free theOovi credits are ready to use.
       </p>
       <div className="stack-actions">
-        <Link href="/app" className="btn btn-dark btn-lg">
-          Open oovi
-        </Link>
-        <Link href="/download" className="btn btn-light btn-lg">
+        <Link href="/download" className="btn btn-dark btn-lg">
           Download oovi
         </Link>
       </div>

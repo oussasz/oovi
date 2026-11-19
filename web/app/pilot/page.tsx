@@ -4,7 +4,7 @@ import { SiteNav } from "@/components/SiteNav";
 import { SiteFooter } from "@/components/SiteFooter";
 import { getAiConfig, getPilotConfig, pilotOpenFor, planById } from "@/lib/ai-config";
 import { pool } from "@/lib/db";
-import { getServerSession } from "@/lib/session";
+import { userFor } from "@/lib/app-link-user";
 import { PilotForm } from "./PilotForm";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -24,8 +24,11 @@ const fmtDate = (d: string | Date) => dateFmt.format(typeof d === "string" ? new
 
 type Existing = { status: "pending" | "approved" | "rejected"; credits: number | null; created_at: Date };
 
-export default async function PilotPage() {
-  const [session, cfg, ai] = await Promise.all([getServerSession(), getPilotConfig(), getAiConfig()]);
+// Opened from the app with a single-use link (?t=…, lib/app-links.ts): the website has no sign-in any more.
+export default async function PilotPage({ searchParams }: { searchParams: Promise<{ t?: string }> }) {
+  const { t: token } = await searchParams;
+  const [user, cfg, ai] = await Promise.all([userFor(token, "pilot"), getPilotConfig(), getAiConfig()]);
+  const session = user ? { user } : null;
   const plan = await planById(cfg.plan);
   const name = ai.displayName;
   let existing: Existing | null = null;
@@ -43,14 +46,14 @@ export default async function PilotPage() {
   if (!session?.user) {
     body = (
       <>
-        <h2>Sign in to apply</h2>
-        <p className="muted">You need an oovi account created during the pilot period. It only takes a minute.</p>
+        <h2>Ask from the oovi app</h2>
+        <p className="muted">
+          Open oovi, sign in with an account created during the pilot period, then go to Settings and tap “Join the pilot”. It opens this
+          page for your account. {token ? "This link has expired or was already used: ask for a new one from the app." : ""}
+        </p>
         <div className="row-actions" style={{ marginTop: 16 }}>
-          <Link href="/login?next=/pilot" className="btn btn-dark btn-md">
-            Log in
-          </Link>
-          <Link href="/signup?next=/pilot" className="btn btn-light btn-md">
-            Create an account
+          <Link href="/download" className="btn btn-dark btn-md">
+            Download oovi
           </Link>
         </div>
       </>
@@ -65,11 +68,8 @@ export default async function PilotPage() {
             helping us improve oovi.
           </p>
           <div className="row-actions" style={{ marginTop: 16 }}>
-            <Link href="/feedback" className="btn btn-dark btn-md">
-              Send feedback
-            </Link>
-            <Link href="/app/settings" className="btn btn-light btn-md">
-              See your credits
+            <Link href="/download" className="btn btn-light btn-md">
+              Open oovi
             </Link>
           </div>
         </>
@@ -100,11 +100,7 @@ export default async function PilotPage() {
               <b>When it’s approved,</b> an email tells you and the credits appear in your account and in the app.
             </li>
             <li>
-              <b>While you wait,</b> keep trying oovi, and tell us what you notice on the{" "}
-              <Link href="/feedback" className="text-link">
-                feedback page
-              </Link>
-              .
+              <b>While you wait,</b> keep trying oovi, and tell us what you notice with “Send feedback” in the app.
             </li>
           </ol>
         </>
@@ -149,7 +145,7 @@ export default async function PilotPage() {
         <p className="muted" style={{ marginBottom: 18 }}>
           Signed in as {session.user.email}. Four quick steps, mostly taps. It helps us build what you need.
         </p>
-        <PilotForm />
+        <PilotForm token={user && token ? token : undefined} />
       </>
     );
   }
@@ -185,11 +181,7 @@ export default async function PilotPage() {
                 {plan.dailyLimit > 0 ? ` (up to ${fmt(plan.dailyLimit)} credits a day, reset at 00:00 UTC)` : ""}.
               </li>
               <li>
-                <b>Send us feedback</b> about problems and improvements, from the app or the{" "}
-                <Link href="/feedback" className="text-link">
-                  feedback page
-                </Link>
-                .
+                <b>Send us feedback</b> about problems and improvements, from the app (“Send feedback”).
               </li>
             </ol>
           </section>

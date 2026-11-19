@@ -27,7 +27,7 @@ export default async function ForgotPasswordPage() {
             Write to <a href={`mailto:${CONTACT_EMAIL}`}>{CONTACT_EMAIL}</a> from your account’s email address and we’ll help you get back in.
           </p>
           <p className="switch-line">
-            <Link href="/login">Back to log in</Link>
+            <Link href="/m/login">Back to the oovi app</Link>
           </p>
         </>
       )}

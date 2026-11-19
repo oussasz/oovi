@@ -44,9 +44,9 @@ export function ResetForm({ token }: { token: string }) {
           ✓
         </span>
         <h1>Password changed</h1>
-        <p className="sub">You’ve been signed out on your other devices. Log in with your new password.</p>
-        <Link href="/login" className="btn btn-dark btn-lg btn-block">
-          Log in
+        <p className="sub">You’ve been signed out on your other devices. Sign in to the oovi app with your new password.</p>
+        <Link href="/m/login" className="btn btn-dark btn-lg btn-block">
+          Back to the oovi app
         </Link>
       </>
     );

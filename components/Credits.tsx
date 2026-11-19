@@ -188,7 +188,20 @@ export function CreditsChip() {
               </button>
             </div>
             {showPilot && (
-              <a className="credits-link" href={status.links?.pilot} target="_blank" rel="noreferrer">
+              <a
+                className="credits-link"
+                href={status.links?.pilot}
+                target="_blank"
+                rel="noreferrer"
+                onClick={(e) => {
+                  // The website has no sign-in any more: the pilot page opens with a single-use link for this account.
+                  e.preventDefault();
+                  void fetch("/api/app-link", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ purpose: "pilot" }) })
+                    .then((r) => (r.ok ? (r.json() as Promise<{ url: string }>) : Promise.reject(new Error())))
+                    .then((j) => window.open(j.url, "_blank", "noopener"))
+                    .catch(() => window.open(status.links?.pilot, "_blank", "noopener"));
+                }}
+              >
                 {t("credits.pilot", { n: fmt((status.pilot?.credits ?? 0), tag) })} →
               </a>
             )}

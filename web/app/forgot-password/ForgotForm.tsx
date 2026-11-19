@@ -50,7 +50,7 @@ export function ForgotForm() {
           Use a different email
         </button>
         <p className="switch-line" style={{ marginTop: 4 }}>
-          Remembered it? <Link href="/login">Log in</Link>
+          Remembered it? <Link href="/m/login">Sign in in the oovi app</Link>
         </p>
       </div>
     );
@@ -83,7 +83,7 @@ export function ForgotForm() {
         </button>
       </form>
       <p className="switch-line">
-        Remembered it? <Link href="/login">Log in</Link>
+        Remembered it? <Link href="/m/login">Sign in in the oovi app</Link>
       </p>
     </>
   );

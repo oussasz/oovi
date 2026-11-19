@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { Logo } from "./Logo";
-import { NavAccount } from "./NavAccount";
 import { DownloadButton } from "./download/DownloadButton";
 
 export function SiteNav() {
@@ -23,7 +22,6 @@ export function SiteNav() {
           </li>
         </ul>
         <div className="nav-actions">
-          <NavAccount />
           <DownloadButton size="sm" className="nav-dl">
             <span className="hide-sm">Download oovi</span>
             <span className="show-sm">Download</span>

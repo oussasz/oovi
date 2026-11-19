@@ -251,9 +251,34 @@ Contract: `docs/CLOUD-BUILD.md` (runner additions in its "Changes" note). Plain 
   (it holds the same code as the desktop app) or private (token on the server); set RUNNER_SECRET on the website; then
   `infra/azure/create.sh` with the main session.
 - Admin > Announcements: "Only the people I choose" (website only, NEEDS A WEBSITE DEPLOY; not released). The audience is Everyone or a list the owner types (one address or up to 500, one per line; `web/lib/announcement-audience.ts`; kept in `announcements.test_email` joined by commas, matched by whole address with `= ANY(string_to_array(...))` in the app's list, the email list and the count). Owner's wish: chosen people get an ORDINARY email, not a news email: a plain-text message (new column `announcements.message`, added on first use and in `migrate.mjs`) sent in oovi's own layout with the owner's words as written and the title as subject (`personalMessage` in `web/lib/mail-templates.ts`), no news footer, no unsubscribe link or header. It goes to every chosen address that has an account, including people who unsubscribed from news, unconfirmed or blocked accounts (it is correspondence, the owner chose them); the editor lists who has no account (nothing sent) and whose address was never confirmed (may be mistyped). Everyone keeps the news email as before (HTML, unsubscribe, unsubscribed people skipped). The window and the bar in the app show only for the chosen people. "Send a test email" sends the same kind. Tested on a throwaway PostgreSQL with the built site and a local mail sink: a bad address refused with the list kept, a message required, 6 chosen (one unsubscribed, one unconfirmed, one with no account) -> 5 emails to exactly those five and none to an account that was not chosen, the title as subject, no List-Unsubscribe, HTML typed in the message shown as text, Arabic kept with dir=auto, pressing again sends nothing, one person only. Unit suite passes. Not tested: a real inbox, Safari/Firefox.
-## Cloud M: the phone app (branch `cloud-mobile`, built 2026-11-18/19, NOT MERGED, NOT DEPLOYED)
-Part M of `docs/CLOUD-BUILD.md`. An app people add to their Home Screen from the website (no store), in English,
-French and Arabic (right to left). It works once part W (the cloud API, branch `cloud-web`) is deployed and part A
+## Cloud M: the phone app (branch `cloud-mobile`, built 2026-11-18/19, NOT DEPLOYED)
+Part M of `docs/CLOUD-BUILD.md`. The phone app's pages, in English, French and Arabic (right to left).
+- NO WEB VERSION, NO ACCOUNT ON THE WEBSITE (owner, 2026-11-19, contract 8ab4a7d: "stop; cancel the web version
+  entirely; remove the account button; people can only download from the website; everything is in the app").
+  This replaces the web-version and account-page decisions below (kept for history). Done here:
+  - `web/next.config.mjs` redirects: `/app`, `/app/**`, `/login`, `/signup`, `/account`, `/account/**` → `/download`
+    (308); `/m` and its pages → `/download` unless the user agent has `ooviApp/` (the Android app's web view adds
+    `ooviApp/1.0`, `mobile/capacitor.config.json` on branch android-app); the app's files (offline worker, manifest,
+    icons, launch screens) stay reachable. `web/app/app`, `web/app/login`, `web/app/signup`, `web/app/account` and
+    the header's account button (`components/NavAccount.tsx`) were removed.
+  - Kept, with their links pointed at the app instead of the website's sign-in: forgot-password and reset-password
+    ("Back to the oovi app" → `/m/login`, which a browser turns into the download page), verified, unsubscribe,
+    privacy, terms, refund, pricing (its free card says "Get oovi, free" → /download), welcome (after a payment),
+    download, changelog, experts, the console. Wording: "Settings in the oovi app".
+  - Signing up happens in the apps: the phone's sign-in screen has "Create one" (name, email, 8+ character password,
+    18+ and the terms with `TERMS_VERSION`, the first-touch header, then the 6-digit email code), same calls as the
+    website's old form. The desktop already signs up in the app.
+  - Pilot and feedback without a website sign-in: `POST /api/v1/app-links {purpose:"pilot"}` (signed in, same-host,
+    rate-limited) answers a single-use link `/pilot?t=<token>` (`web/lib/app-links.ts`: only a SHA-256 of the token
+    is kept, 30 minutes, used once when the request is saved; table `app_links`). `/pilot` reads who it is for from
+    the website session or the link (`web/lib/app-link-user.ts`), and its form sends the token back; without either
+    it says to ask from the app. The phone's Settings "Join the pilot" and the desktop's credits panel
+    (`app/api/app-link`, `components/Credits.tsx`, falls back to the plain link for older websites) ask for it.
+    Feedback: the phone's Settings "Send feedback" posts to `/api/v1/feedback` (the desktop already does); `/feedback`
+    without a website session says to send it from the app.
+  - NOT changed (another session builds paying from the app): `app/pricing/PaddlePricing.tsx` still sends a
+    signed-out visitor to `/login?next=/pricing`, which now lands on /download; the phone's "Manage billing" posts to
+    `/api/billing/portal`, which now only returns to `/m/settings`. It works once part W (the cloud API, branch `cloud-web`) is deployed and part A
 (the desktop's sync) uploads chats; until then it shows "Not synced yet" with the 3 steps.
 - Look (owner, 2026-11-19: "a unique identity, not a copy of Apple"): the website's own language. Warm paper
   (#FBFAF7, dark #151513), Nunito in heavy weights (Tajawal for Arabic), ink-black pill buttons, white cards with
@@ -375,13 +400,15 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   `docs/CLOUD-BUILD.md`, "Changes to this file" (job payloads incl. `replyTo`).
 - Screenshots (iPhone 15 size, stand-in data, `docs/mobile/*.jpg`): `en-light-*`, `en-dark-*`, `ar-light-*`,
   `ar-dark-*` for chats, chat-approval, chat-live, needs-computer, group, new-bot, settings, connectors, connector,
-  connector-add; plus chat-composer-voice, not-synced and sign-in in light; the web version at 1440×900:
-  `web-{en,ar}-{light,dark}-{chat,group,chats,needs-computer,settings,connectors}.jpg`. Made with
+  connector-add; plus chat-composer-voice, not-synced and sign-in in light; a tablet (the Android app on a
+  wide screen) at 1440×900: `tablet-{en,ar}-{light,dark}-{chat,group,chats,settings,bot-editor}.jpg`. Made with
   `node tests/e2e/mobile-scenario.cjs --shots-only` (website built first).
 - Checked here (Linux, Chrome emulating an iPhone 15, the BUILT website behind a stand-in for W's API,
   `tests/e2e/mobile-standin.cjs`): `npx tsc --noEmit` (web and root) clean; unit tests 425 (424 pass, 1 skipped:
   the existing live YouTube test), of which the phone's `tests/unit/mobile-*.test.mts`; `npm run build` in web OK;
-  `node tests/e2e/mobile-scenario.cjs` 174/174, twice in a row (the website after sign-in and every account action;
+  `node tests/e2e/mobile-scenario.cjs` 182/182, twice in a row (an ordinary browser gets /download for /m, /app,
+  /login, /signup, /account; no account button; the kept pages open; in the app every account action, Join the pilot
+  through a single-use link, Send feedback, creating an account with the email code;
   tap a face: bot and group editors saved after a 409, picture, hide, delete; find, download, pin, the computer-only
   tools shown as such, effort and plan sent; routines; sign-in, sync off and API missing, list and counts, archive, pin,
   search, Markdown and safe links, approval → decision job, send → live status by long-poll → answer, ticks,
@@ -394,8 +421,8 @@ French and Arabic (right to left). It works once part W (the cloud API, branch `
   wipes the old copy, sign-out asks then wipes; the web version: the sidebar with Groups and Bots and + Group / + Bot,
   the open row, name/role/time above a bot's message, profile picture → Settings beside the list, Shift+Enter / Enter /
   Esc, the desktop suggestions and hiding the card, connectors beside the list, signed out → the website's sign-in);
-  `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100 and best practices 100 on all 14
-  screens tested (9 phone incl. the bot editor, 5 web incl. account and group editor), PWA 100 on the phone's 9 (the web version is not installable on purpose).
+  `node tests/e2e/mobile-lighthouse.cjs` (Lighthouse 11.7.1): accessibility 100, best practices 100 and PWA 100 on all 11 phone
+  screens tested (with the app's user agent), incl. Account, the bot and group editors (the web version is not installable on purpose).
 - NOT checked: a real iPhone or Android phone (Safari, Add to Home Screen, the keyboard, the microphone, Dynamic
   Type, safe areas: the emulation has none), the real cloud API on Vercel (W is not deployed), the real desktop
   sync (A), a real OAuth service, Firefox, a real Groq/OpenAI voice key.

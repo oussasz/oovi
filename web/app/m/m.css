@@ -3124,3 +3124,42 @@ a.m-msg__face:active {
 .m-flipv {
   transform: rotate(180deg);
 }
+.m-linkbtn {
+  display: inline-block;
+  min-height: 44px;
+  padding: 0 2px;
+  color: var(--m-link) !important;
+  font: inherit;
+  font-weight: 800;
+}
+.m-agree {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 4px 16px;
+  color: var(--m-ink-2);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+.m-agree input {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  accent-color: var(--m-ink);
+}
+.m-agree a {
+  color: var(--m-link) !important;
+  font-weight: 700;
+}
+.m-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.m-efield--card {
+  padding: 14px 16px;
+  border-radius: var(--m-r);
+  background: var(--m-card);
+  border: 1px solid var(--m-line);
+}

@@ -1,4 +1,4 @@
-// The account part of the web app's Settings (it was the website's /account page): whether the email is
+// The account part of the phone app's Settings (it was the website's /account page): whether the email is
 // confirmed (and an email can be sent), the Paddle subscription's status, and "News by email".
 // Signed in only; everything comes from the session's own account. Name, photo: PATCH /api/v1/me. Password and
 // deleting the account: Better Auth (current password asked). Billing: POST /api/billing/portal (Paddle).

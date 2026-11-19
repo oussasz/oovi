@@ -248,4 +248,7 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   do): pay from inside the app. The app asks the website for a short-lived, single-use payment link tied to the signed-in
   account and opens it in the browser (Paddle checkout / customer portal); no website sign-in. Later, inside apps sold
   through Google Play / the App Store, their own in-app payment rules apply (see mobile/STORES.md).
-
+- 2026-11-19, part M (website removal, 8ab4a7d): new `POST /api/v1/app-links {purpose: "pilot"}` (signed in, cookie or
+  Bearer; same-host when an Origin is sent; 20 per 10 minutes) → `{url}`: a single-use link to `/pilot?t=<43-char
+  token>`, valid 30 minutes, kept only as a SHA-256 hash (table `app_links`, `web/lib/app-links.ts`). The pilot form
+  uses it once when the request is saved. Other purposes can be added there (payments may reuse the idea).

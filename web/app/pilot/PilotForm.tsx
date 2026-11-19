@@ -70,7 +70,8 @@ function Choices({
   );
 }
 
-export function PilotForm() {
+/** token: the app's single-use link (lib/app-links.ts), sent with the answers; the server checks it again. */
+export function PilotForm({ token }: { token?: string }) {
   const [state, dispatch, pending] = useActionState<PilotFormState, FormData>(requestPilot, null);
   const [step, setStep] = useState(0);
   const [problems, setProblems] = useState<string[]>([]);
@@ -87,7 +88,7 @@ export function PilotForm() {
         </p>
         <h3>Thank you! Your request is in.</h3>
         <p className="muted">
-          We read every request by hand. You’ll see the result on this page and in your account, and an email tells you when it’s approved.
+          We read every request by hand. An email tells you when it’s approved, and the credits appear in the app.
         </p>
       </div>
     );
@@ -149,6 +150,7 @@ export function PilotForm() {
         startTransition(() => dispatch(fd));
       }}
     >
+      {token && <input type="hidden" name="t" value={token} />}
       <div className="pf-steps" aria-hidden="true">
         {STEPS.map((s, i) => (
           <span key={s} className={`pf-dot${i <= step ? " on" : ""}`} />

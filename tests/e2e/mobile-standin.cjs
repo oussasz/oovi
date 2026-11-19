@@ -129,7 +129,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0, avatars: {} };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0, avatars: {}, pilot: { open: false, eligible: false, public: false, status: null, credits: 0 }, appLinks: [], feedback: [], signup: null };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -149,6 +149,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
     state.accountDeleted = false;
     user.name = "Sam Tester";
     user.image = null;
+    user.email = "phone.tester@example.test";
     state.vaultPuts = [];
     state.flows = [];
     state.oauthMode = "same";
@@ -319,6 +320,33 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       state.signedIn = false;
       return send(res, 200, { success: true }, { "set-cookie": "standin=; Path=/; Max-Age=0" });
     }
+    // ---- creating an account in the app (the website has no sign-up page any more) ----
+    if (p === "/api/auth/sign-up/email" && req.method === "POST") {
+      const b = (await readBody(req)) || {};
+      if (b.email === user.email && !state.accountDeleted) return send(res, 422, { code: "USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL", message: "User already exists. Use another email." });
+      if (typeof b.name !== "string" || !b.name || typeof b.password !== "string" || b.password.length < 8 || typeof b.termsVersion !== "string") return send(res, 400, { message: "Invalid sign-up." });
+      state.signup = { name: b.name, email: b.email, termsVersion: b.termsVersion, ref: req.headers["x-oovi-ref"] || null };
+      user.email = b.email;
+      user.name = b.name;
+      state.password = b.password;
+      state.accountDeleted = false;
+      state.signedIn = true;
+      state.emailCodeOk = false;
+      return send(res, 200, { token: "t", user }, { "set-cookie": "standin=1; Path=/; HttpOnly; SameSite=Lax" });
+    }
+    if (p === "/api/v1/auth/verification") return send(res, 200, { required: true });
+    if (p === "/api/v1/auth/verify-email" && req.method === "POST") {
+      const b = (await readBody(req)) || {};
+      if (b.email !== user.email || b.code !== "123456") return send(res, 400, { error: "That code isn’t right. Check the email and try again." });
+      state.emailCodeOk = true;
+      return send(res, 200, { ok: true });
+    }
+    if (p === "/api/v1/auth/resend-code" && req.method === "POST") {
+      state.codesResent = (state.codesResent || 0) + 1;
+      res.writeHead(204);
+      return res.end();
+    }
+
     // ---- the account, as the website's Better Auth and account APIs answer (Settings → Account) ----
     if (p === "/api/auth/change-password" && req.method === "POST") {
       if (!signed(req)) return send(res, 401, { code: "UNAUTHORIZED", message: "Unauthorized" });
@@ -351,7 +379,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
         req.on("end", () => r(t));
       });
       const from = new URLSearchParams(raw).get("from");
-      const settings = from === "/m/settings" || from === "/app/settings" ? from : "/app/settings";
+      const settings = "/m/settings";
       const to = !signed(req) ? `/login?next=${encodeURIComponent(settings)}` : state.account.billing ? "/__paddle/portal" : `${settings}?billing=none`;
       if (to === "/__paddle/portal") state.portalOpened++;
       res.writeHead(303, { location: to });
@@ -422,6 +450,21 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       return send(res, 200, { news: b.news });
     }
     if (p === "/api/v1/account") return send(res, 200, state.account);
+    // A single-use link to a website page for this account (web/app/api/v1/app-links).
+    if (p === "/api/v1/app-links" && req.method === "POST") {
+      const b = await readBody(req);
+      if (!b || b.purpose !== "pilot") return send(res, 400, { error: "Unknown purpose." });
+      const token = require("node:crypto").randomBytes(32).toString("base64url");
+      state.appLinks.push({ purpose: b.purpose, token });
+      return send(res, 200, { url: `http://127.0.0.1:${port}/pilot?t=${token}` });
+    }
+    if (p === "/api/v1/feedback" && req.method === "POST") {
+      const b = await readBody(req);
+      if (!b || !["problem", "improvement", "other"].includes(b.kind) || typeof b.message !== "string" || b.message.trim().length < 5) return send(res, 400, { error: "Pick a type and write a few words." });
+      state.feedback.push({ kind: b.kind, message: b.message, platform: req.headers["x-oovi-platform"] || null });
+      res.writeHead(204);
+      return res.end();
+    }
     if (p === "/api/v1/setup" && req.method === "PUT") {
       const b = await readBody(req);
       if (!b || !Number.isInteger(b.baseVersion) || !b.items || typeof b.items !== "object") return send(res, 400, { error: "Invalid request." });
@@ -452,7 +495,7 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
         maxInputTokens: 100000,
         maxConcurrent: 2,
         links: { subscribe: "https://oovi.conuron.com/pricing", pricing: "https://oovi.conuron.com/pricing", pilot: "", feedback: "" },
-        pilot: { open: false, eligible: false, public: false, status: null, credits: 0 },
+        pilot: state.pilot,
         desktop: true,
       });
     if (p === "/api/v1/ai/transcribe" && req.method === "POST") {

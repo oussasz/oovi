@@ -15,6 +15,18 @@ const nextConfig = {
         destination: "https://oovi.conuron.com/:path",
         permanent: true,
       },
+      // Owner, 2026-11-19 (docs/CLOUD-BUILD.md, 8ab4a7d): no web version and no account on the website; everything
+      // is in the apps. The web app, sign-in, sign-up and the account page lead to the download page.
+      ...["/app", "/app/:path*", "/login", "/signup", "/account", "/account/:path*"].map((source) => ({ source, destination: "/download", permanent: true })),
+      // The phone app's pages open only inside oovi's Android app (its web view adds "ooviApp/<version>" to the user
+      // agent, mobile/capacitor.config.json on branch android-app). An ordinary browser goes to the download page.
+      // Files (the offline worker, icons, launch screens) stay reachable. Data is protected by sign-in anyway.
+      ...["/m", "/m/:path((?!.*\\.).*)"].map((source) => ({
+        source,
+        missing: [{ type: "header", key: "user-agent", value: ".*ooviApp/.*" }],
+        destination: "/download",
+        permanent: false,
+      })),
     ];
   },
   async headers() {

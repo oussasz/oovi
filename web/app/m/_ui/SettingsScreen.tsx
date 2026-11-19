@@ -9,7 +9,7 @@ import { Icon } from "./Icon";
 import { ActionSheet, IconTile, LargeTitle, MeAvatar, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
 import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
-import { base, to } from "../_lib/route";
+import { to } from "../_lib/route";
 
 type BeforeInstall = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
 
@@ -27,6 +27,7 @@ export function SettingsScreen() {
   // ?billing=none|unavailable.
   const [acct, setAcct] = useState<Account | null>(null);
   const [billingNote, setBillingNote] = useState<"none" | "unavailable" | null>(null);
+  const [feedback, setFeedback] = useState(false);
   const [verify, setVerify] = useState<{ busy: boolean; text: string | null; error: boolean }>({ busy: false, text: null, error: false });
   const ptr = usePullToRefresh(async () => {
     await Promise.all([refresh({ setup: true }), loadCredits()]);
@@ -41,6 +42,19 @@ export function SettingsScreen() {
     if (b === "none" || b === "unavailable") setBillingNote(b);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // "Join the pilot": the website has no sign-in any more, so the page opens with a single-use link for this account.
+  const openPilot = async () => {
+    m.toast(t("dk.pilotOpening"));
+    try {
+      const r = await fetch("/api/v1/app-links", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ purpose: "pilot" }) });
+      const j = (await r.json().catch(() => null)) as { url?: string } | null;
+      if (!r.ok || !j?.url || !j.url.startsWith(`${window.location.origin}/pilot?t=`)) throw new Error();
+      window.open(j.url, "_blank", "noopener");
+    } catch {
+      m.toast(t("dk.linkFailed"));
+    }
+  };
 
   const billStatus = (st: string | null) => {
     if (!st) return t("bill.st.none");
@@ -61,7 +75,8 @@ export function SettingsScreen() {
 
   useEffect(() => {
     void loadCredits();
-    setStandalone(window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
+    // Inside oovi's Android app (user agent "ooviApp/…") there is nothing to install.
+    setStandalone(/ooviApp\//.test(navigator.userAgent) || window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
     setIos(/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
     const h = (e: Event) => {
       e.preventDefault();
@@ -147,10 +162,10 @@ export function SettingsScreen() {
           {credits?.message && credits.state !== "ok" && <div className="m-row m-row--note">{credits.message}</div>}
           {credits?.pilot?.status === "pending" && <div className="m-row m-row--note">{t("settings.pilotPending")}</div>}
           {credits?.pilot?.public && credits.pilot.eligible && credits.pilot.status === null && (
-            <Row title={<span className="m-link">{t("settings.pilot")}</span>} sub={t("settings.pilotAsk", { n: nf.format(credits.pilot.credits) })} href="/pilot" external />
+            <Row title={<span className="m-link">{t("settings.pilot")}</span>} sub={t("settings.pilotAsk", { n: nf.format(credits.pilot.credits) })} onClick={() => void openPilot()} />
           )}
           {credits?.links?.subscribe && <Row title={<span className="m-link">{t("settings.getMore")}</span>} href={credits.links.subscribe} external />}
-          <Row title={<span className="m-link">{t("settings.feedback")}</span>} href="/feedback" external />
+          <Row title={<span className="m-link">{t("settings.feedback")}</span>} onClick={() => setFeedback(true)} chevron />
         </Section>
 
         <Section
@@ -172,7 +187,7 @@ export function SettingsScreen() {
             <>
               <Row title={t("bill.status")} value={billStatus(acct.billing.status)} />
               <form action="/api/billing/portal" method="post" className="m-row--form">
-                <input type="hidden" name="from" value={`${base()}/settings`} />
+                <input type="hidden" name="from" value="/m/settings" />
                 <button type="submit" className="m-row is-tap">
                   <span className="m-row__icon">
                     <IconTile name="sparkle" color="var(--m-blob-yellow)" />
@@ -211,7 +226,7 @@ export function SettingsScreen() {
           ) : (
             <Row icon={<IconTile name="laptop" color="var(--m-blob-grey)" />} title={t("settings.noComputer")} />
           )}
-          <Row icon={<IconTile name={base() === "/app" ? "globe" : "phone"} color="var(--m-blob-mint)" />} title={base() === "/app" ? t("settings.thisBrowser") : t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
+          <Row icon={<IconTile name="phone" color="var(--m-blob-mint)" />} title={t("settings.thisPhone")} value={<span className="m-device m-device--online"><i aria-hidden />{t("settings.online")}</span>} />
         </Section>
 
         <Section header={t("settings.sync")} footer={t("settings.syncNote")}>
@@ -310,6 +325,7 @@ export function SettingsScreen() {
         onClose={() => setSheet(null)}
         actions={[{ label: t("settings.signOut"), destructive: true, onPress: () => void signOut() }]}
       />
+      <FeedbackSheet open={feedback} onClose={() => setFeedback(false)} />
       <Sheet open={install} title={t("install.title")} onClose={() => setInstall(false)}>
         {prompt && !ios ? (
           <button
@@ -343,5 +359,58 @@ export function SettingsScreen() {
         )}
       </Sheet>
     </div>
+  );
+}
+
+/** Feedback from the phone, as the desktop app sends it (POST /api/v1/feedback, signed in): a problem or an idea. */
+function FeedbackSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t, toast } = useM();
+  const [kind, setKind] = useState<"problem" | "improvement" | "other">("problem");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const send = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/v1/feedback", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "x-oovi-platform": "android" }, body: JSON.stringify({ kind, message: message.trim() }) });
+      if (!r.ok) {
+        const j = (await r.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error || t("dk.feedback.failed"));
+      }
+      toast(t("dk.feedback.thanks"));
+      setMessage("");
+      onClose();
+    } catch (e) {
+      setError((e as Error).message || t("dk.feedback.failed"));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Sheet open={open} title={t("dk.feedback.title")} onClose={onClose} closeLabel={t("common.cancel")}>
+      <div className="m-create">
+        <p className="m-sheet__text">{t("dk.feedback.sub")}</p>
+        <div className="m-chips" role="radiogroup" aria-label={t("dk.feedback.kind")}>
+          {(["problem", "improvement", "other"] as const).map((k) => (
+            <button key={k} type="button" role="radio" aria-checked={kind === k} className={`m-chip${kind === k ? " is-on" : ""}`} onClick={() => setKind(k)}>
+              {t(`dk.feedback.${k}`)}
+            </button>
+          ))}
+        </div>
+        <label className="m-efield m-efield--card">
+          <span className="m-efield__label">{t("dk.feedback.message")}</span>
+          <textarea dir="auto" rows={5} maxLength={5000} value={message} placeholder={kind === "problem" ? t("dk.feedback.problemHint") : t("dk.feedback.ideaHint")} onChange={(e) => setMessage(e.target.value)} />
+        </label>
+        {error && (
+          <p className="m-alert" role="alert">
+            {error}
+          </p>
+        )}
+        <button type="button" className="m-btn m-btn--fill m-btn--wide m-btn--lg" disabled={busy || message.trim().length < 5} onClick={() => void send()}>
+          {busy ? <Spinner size={18} /> : t("dk.feedback.send")}
+        </button>
+      </div>
+    </Sheet>
   );
 }

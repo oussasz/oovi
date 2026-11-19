@@ -25,7 +25,7 @@ import {
   type ListRow,
 } from "../_lib/core";
 import { tap } from "../_lib/haptics";
-import { base, inApp, to } from "../_lib/route";
+import { inApp, to } from "../_lib/route";
 import type { Chat } from "../_lib/types";
 import { NewBotSheet, NewGroupSheet } from "./Create";
 import { DesktopSuggestion } from "./Desktop";
@@ -41,9 +41,7 @@ const tz = () => {
   }
 };
 
-// The web version (/app) always shows the sidebar look, also as one column on a narrow window (owner, 2026-11-19:
-// "a responsive web app, not the mobile one").
-export function ChatsScreen({ archivedView = false, side = base() === "/app" }: { archivedView?: boolean; side?: boolean }) {
+export function ChatsScreen({ archivedView = false, side = false }: { archivedView?: boolean; side?: boolean }) {
   const m = useM();
   const { t, lang, chats, setup, sync, refresh, pins, seen, bot, refreshing, archived } = m;
   const router = useRouter();

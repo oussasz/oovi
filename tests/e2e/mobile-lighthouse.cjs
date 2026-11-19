@@ -14,7 +14,9 @@ const WEB = path.join(ROOT, "web");
 const NEXT_PORT = 3482;
 const PORT = 3481;
 const BAR = { pwa: 0.9, accessibility: 0.95, "best-practices": 0.9 };
-const PAGES = ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login", "/app", "/app/c/studio", "/app/settings", "/app/settings/account", "/m/bot/rex", "/app/group/studio"];
+const PAGES = ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/settings", "/m/settings/account", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login", "/m/bot/rex", "/m/group/studio"];
+// The phone app's pages open only inside oovi's Android app (its web view adds "ooviApp/1.0"); others go to /download.
+const APP_UA = "Mozilla/5.0 (Linux; Android 11; moto g power (2022)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36 ooviApp/1.0";
 const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : require("playwright").chromium.executablePath());
 
 (async () => {
@@ -45,6 +47,7 @@ const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chrom
         `--output-path=${file}`,
         "--only-categories=pwa,accessibility,best-practices",
         "--form-factor=mobile",
+        `--emulated-user-agent=${APP_UA}`,
         `--extra-headers=${JSON.stringify({ Cookie: "standin=1" })}`,
         "--chrome-flags=--headless=new --no-sandbox",
       ], { env: { ...process.env, CHROME_PATH: chrome }, stdio: "inherit" });
@@ -57,8 +60,7 @@ const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chrom
     }
     const r = JSON.parse(fs.readFileSync(file, "utf8"));
     const scores = Object.fromEntries(Object.entries(r.categories).map(([k, c]) => [k, c.score]));
-    // The web version (/app) is not installable on purpose (installing is the phone's /m): no PWA bar there.
-    const low = Object.entries(BAR).filter(([k, min]) => scores[k] !== undefined && scores[k] < min && !(k === "pwa" && p.startsWith("/app")));
+    const low = Object.entries(BAR).filter(([k, min]) => scores[k] !== undefined && scores[k] < min);
     const failed = Object.values(r.audits).filter((a) => a.score !== null && a.score < 1 && a.scoreDisplayMode === "binary").map((a) => a.id);
     console.log(`${low.length ? "FAIL" : "PASS"} ${p} ${Object.entries(scores).map(([k, v]) => `${k} ${Math.round(v * 100)}`).join(", ")}${failed.length ? ` | not passed: ${failed.join(", ")}` : ""}`);
     if (low.length) bad++;

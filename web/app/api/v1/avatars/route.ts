@@ -1,5 +1,5 @@
 // POST {png: base64}: a picture the signed-in user gave one of their own bots (the app's "Your picture"), kept for
-// their phone, the web app and their other computers (lib/avatars.ts saveUserAvatar). Read back with
+// their phone and their other computers (lib/avatars.ts saveUserAvatar). Read back with
 // GET /api/v1/avatars/<id>, like the marketplace pictures.
 import { apiError, getRequestSession, rateLimit } from "@/lib/api";
 import { MAX_AVATAR_BYTES, isAvatarPng, saveUserAvatar } from "@/lib/avatars";

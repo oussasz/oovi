@@ -26,7 +26,7 @@ export default async function ResetPasswordPage({ searchParams }: { searchParams
           Get a new link
         </Link>
         <p className="switch-line">
-          Remembered it? <Link href="/login">Log in</Link>
+          Remembered it? <Link href="/m/login">Sign in in the oovi app</Link>
         </p>
       </AuthShell>
     );

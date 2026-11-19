@@ -1,4 +1,4 @@
-// "Manage billing" in the web app's Settings: opens the Paddle customer portal (payment method,
+// "Manage billing" in the phone app's Settings: opens the Paddle customer portal (payment method,
 // invoices, cancel) for the signed-in account. The Paddle customer is looked up from the session
 // on the server; nothing the browser sends decides whose portal opens.
 import { billingFor } from "@/lib/billing";
@@ -9,8 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const back = (req: Request, path: string) => Response.redirect(new URL(path, req.url), 303);
-// Where Settings is: the web app (/app/settings) or the phone app (/m/settings); nothing else.
-const SETTINGS = new Set(["/app/settings", "/m/settings"]);
+// Back to the phone app's Settings (the only place this form is; the website has no account page any more).
+const SETTINGS = new Set(["/m/settings"]);
 
 export async function POST(req: Request) {
   // Same-site form posts only.
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
 
   const form = await req.formData().catch(() => null);
   const from = String(form?.get("from") ?? "");
-  const settings = SETTINGS.has(from) ? from : "/app/settings";
+  const settings = SETTINGS.has(from) ? from : "/m/settings";
 
   const session = await getServerSession();
   if (!session) return back(req, `/login?next=${encodeURIComponent(settings)}`);

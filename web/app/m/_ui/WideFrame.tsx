@@ -1,7 +1,7 @@
 "use client";
 
-// One app that adapts: on a phone, one screen at a time (the route's page). On a wide screen (the web version at
-// /app, a tablet, a computer's browser) it reads like the computer app: a sidebar (logo, the person's picture,
+// One app that adapts: on a phone, one screen at a time (the route's page). On a wide screen (a tablet) it reads
+// like the computer app: a sidebar (logo, the person's picture,
 // "+ Group" / "+ Bot", search, Pinned, Groups and Bots) and the open chat, Settings or a connector beside it, or a
 // quiet welcome.
 import { usePathname } from "next/navigation";
