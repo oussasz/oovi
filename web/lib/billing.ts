@@ -95,12 +95,18 @@ async function resolveUser(c: PoolClient, customData: unknown, customerId: strin
   return rows[0]?.user_id ?? (await userByEmail(c, rows[0]?.email));
 }
 
-/** Make sure the customer row exists (a subscription can arrive before its customer.created). */
-async function ensureCustomer(c: PoolClient, customerId: string, userId: string | null) {
+/**
+ * Make sure the customer row exists (a subscription can arrive before its customer.created). `fromCheckout`: the
+ * account id came from the checkout itself (the app's payment link puts it in customData), so it replaces a link
+ * customer.created guessed from the email typed in Paddle's form (that could be another oovi account's address).
+ */
+async function ensureCustomer(c: PoolClient, customerId: string, userId: string | null, fromCheckout = false) {
   await c.query(
     `INSERT INTO customers (customer_id, user_id) VALUES ($1, $2)
-     ON CONFLICT (customer_id) DO UPDATE SET user_id = COALESCE(customers.user_id, EXCLUDED.user_id), updated_at = now()`,
-    [customerId, userId],
+     ON CONFLICT (customer_id) DO UPDATE SET
+       user_id = CASE WHEN $3 AND EXCLUDED.user_id IS NOT NULL THEN EXCLUDED.user_id ELSE COALESCE(customers.user_id, EXCLUDED.user_id) END,
+       updated_at = now()`,
+    [customerId, userId, fromCheckout],
   );
 }
 
@@ -143,7 +149,7 @@ export async function onSubscription(s: SubscriptionNotification): Promise<void>
   const plan = priceId ? planForPrice(priceId) : null;
   await inTx(async (c) => {
     const userId = await resolveUser(c, s.customData, s.customerId);
-    await ensureCustomer(c, s.customerId, userId);
+    await ensureCustomer(c, s.customerId, userId, !!userId && checkoutUserId(s.customData) === userId);
     const r = await c.query<{ user_id: string | null }>(
       `INSERT INTO subscriptions (subscription_id, customer_id, user_id, status, price_id, product_id, billing_interval,
                                   current_period_ends_at, scheduled_change_action, scheduled_change_at, paddle_updated_at)
@@ -295,7 +301,7 @@ async function grantPlan(t: TransactionNotification): Promise<void> {
   const creditsMc = userId ? plan.monthlyCredits * MC : 0;
 
   await inTx(async (c) => {
-    if (t.customerId) await ensureCustomer(c, t.customerId, userId);
+    if (t.customerId) await ensureCustomer(c, t.customerId, userId, !!userId && checkoutUserId(t.customData) === userId);
     const ins = await c.query(
       `INSERT INTO paddle_transactions (transaction_id, user_id, customer_id, subscription_id, price_id, plan_id, credits_mc, period_ends_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) ON CONFLICT (transaction_id) DO NOTHING`,

@@ -22,6 +22,9 @@ export function paddleApi(): Paddle | null {
   if (live ? key.startsWith("pdl_sdbx_") : key.startsWith("pdl_live_")) {
     throw new Error(`PADDLE_API_KEY is a ${live ? "sandbox" : "live"} key but NEXT_PUBLIC_PADDLE_ENV is "${process.env.NEXT_PUBLIC_PADDLE_ENV}".`);
   }
+  // Test only: a stand-in Paddle API on this machine (web/scripts/test-pay.cjs). Ignored unless it is a local http address.
+  const testBase = process.env.OOVI_PADDLE_API_TEST_BASE;
+  if (testBase && /^http:\/\/127\.0\.0\.1:\d+$/.test(testBase)) return new Paddle(key, { environment: testBase as Environment });
   return new Paddle(key, { environment });
 }
 

@@ -53,8 +53,8 @@ export default async function PricingPage() {
         <li>{dailyText(free?.dailyLimit ?? 0)}</li>
         <li>All oovi features</li>
       </ul>
-      <Link href="/signup" className="btn btn-light btn-md">
-        Create a free account
+      <Link href="/download" className="btn btn-light btn-md">
+        Download oovi
       </Link>
     </section>
   );

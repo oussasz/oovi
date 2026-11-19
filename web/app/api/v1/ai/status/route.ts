@@ -3,6 +3,7 @@ import { getAiConfig } from "@/lib/ai-config";
 import { supportsComputerToolset } from "@/lib/ai-tools";
 import { apiError, clientIp, getRequestSession, json } from "@/lib/api";
 import { creditStatus, isBlocked } from "@/lib/credits";
+import { billingFor } from "@/lib/billing";
 
 export const dynamic = "force-dynamic";
 
@@ -11,9 +12,20 @@ export async function GET(req: Request) {
   if (!session) return apiError("Not signed in or session expired.", 401);
   if (await isBlocked(session.user.id)) return json({ error: "This account has been blocked. Contact contact@conuron.com.", code: "blocked" }, 403);
   try {
-    const [status, cfg] = await Promise.all([creditStatus(session.user.id, session.user.createdAt, clientIp(req), !!session.user.emailVerified), getAiConfig()]);
+    const [status, cfg, billing] = await Promise.all([
+      creditStatus(session.user.id, session.user.createdAt, clientIp(req), !!session.user.emailVerified),
+      getAiConfig(),
+      billingFor(session.user.id).catch(() => null),
+    ]);
     // desktop: the hosted model can use Anthropic's computer toolset (the app offers desktop control only then).
-    return json({ ...status, desktop: supportsComputerToolset(cfg.model) || (!!cfg.backupModel && supportsComputerToolset(cfg.backupModel)) });
+    // billing.inApp: apps pay through POST /api/v1/billing/link (no website sign-in); subscriber: a Paddle
+    // subscription to manage (the app shows "Manage subscription"). links.subscribe/pricing stay for older apps:
+    // /pricing needs no sign-in (it says to subscribe from the app).
+    return json({
+      ...status,
+      desktop: supportsComputerToolset(cfg.model) || (!!cfg.backupModel && supportsComputerToolset(cfg.backupModel)),
+      billing: { inApp: true, subscriber: !!billing && billing.subscriptionIds.length > 0 },
+    });
   } catch (err) {
     console.error("credit status failed", err instanceof Error ? err.message : err);
     return apiError("Couldn't load your credits. Please try again.", 503);
