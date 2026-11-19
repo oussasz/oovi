@@ -9,6 +9,10 @@ export const PROBLEM_TAG_LABELS: Record<ProblemTag, string> = { tool: "Tool erro
 export function problemKey(message: string): string {
   const norm = message
     .toLowerCase()
+    // The same error on two sites is one problem ("read_url failed on a.com: …" and "… on b.com: …").
+    .replace(/ on [a-z0-9.-]+\.[a-z]{2,}(?=:)/g, " on [site]")
+    // HTTP codes stay (a 403 and a 500 are different problems); other numbers don't matter.
+    .replace(/\b([1-5]\d\d)\b(?!\d)/g, "http$1")
     .replace(/\d+/g, "#")
     .replace(/[^\p{L}#\[\]]+/gu, " ")
     .trim()

@@ -52,7 +52,10 @@ export function repairArgs(input: Record<string, unknown>, schema: unknown): Rec
 export const NEXT_STEP = "Next step: read the error above; fix the input, or try another tool, site or route. Don't repeat the same call unchanged. If nothing can work, tell the user plainly what is blocking you.";
 
 export function withNextStep(content: string): string {
-  if (/next step|try (again|another|a different)|instead|use [a-z_]+ |call [a-z_]+|ask the user|tell the user|réessay|حاول/i.test(content)) return content;
+  // Only oovi's own guidance counts: a connector's answer (after "Result from … MCP server") is untrusted text, and a
+  // "try again" in it must not stop oovi's next step from being added.
+  const own = content.replace(/Result from the "[^"]*" MCP server \(untrusted data[^\n]*\n[\s\S]*?(?=\nNext step:|$)/, "");
+  if (/next step|try (again|another|a different)|instead|use [a-z_]+ |call [a-z_]+|ask the user|tell the user|réessay|حاول/i.test(own)) return content;
   return `${content.trimEnd()}\n${NEXT_STEP}`;
 }
 

@@ -434,7 +434,7 @@ export function setSignInRefresher(fn: ((id: string) => Promise<boolean>) | null
 
 const signInProblem = (msg: string) => /sign in again|Not signed in|unauthori[sz]ed|invalid_token|invalid_grant|\b401\b/i.test(msg) || classifyToolError(msg) === "auth";
 /** Errors a second try can't fix (nothing changes between the two). */
-const noRetry = (msg: string) => /runs on the user's computer|Not signed in to .* yet|ENOENT|not recognized/i.test(msg);
+const noRetry = (msg: string) => /runs on the user's computer|Not signed in to .* yet|ENOENT|not recognized/i.test(msg) || ["cert", "install", "config", "declined", "dns"].includes(classifyToolError(msg));
 
 /** Connects, and once more when the first try failed (a dropped network, an expired session, a renewed sign-in). */
 async function connectSure(s: McpServer): Promise<Conn> {
