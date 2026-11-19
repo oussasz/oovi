@@ -93,3 +93,36 @@ test("a connector's error is reported by what it says, not by oovi's wrapper lin
   const [n] = runProblems([{ entry: entry as never }]);
   assert.match(n!.message, /mcp_zapier_execute_zapier_read_action failed: Invalid input: expected record/);
 });
+
+test("a tool error the bot fixed itself in the same turn is not reported (owner, 2026-11-19: Google Tasks via Zapier)", () => {
+  const zap = "mcp_zapier_execute_zapier_read_action";
+  const fixed = entry({
+    steps: [
+      { role: "assistant", text: "", toolCalls: [{ id: "1", name: zap, input: {} }] },
+      { role: "tool", results: [{ id: "1", name: zap, content: '{"isError":true,"error":"Missing argument values for required properties: task_list (Task List)"}', isError: true }] },
+      { role: "assistant", text: "", toolCalls: [{ id: "2", name: zap, input: {} }] },
+      { role: "tool", results: [{ id: "2", name: zap, content: "Tasks: prepare ppt", isError: false }] },
+    ],
+  });
+  assert.equal(runProblems([{ entry: fixed }]).length, 0);
+  const notFixed = entry({
+    steps: [
+      { role: "assistant", text: "", toolCalls: [{ id: "1", name: zap, input: {} }] },
+      { role: "tool", results: [{ id: "1", name: zap, content: "Missing argument values for required properties: task_list", isError: true }] },
+    ],
+  });
+  assert.equal(runProblems([{ entry: notFixed }]).length, 1);
+});
+
+test("a later success for another Zapier app doesn't hide a failure that wasn't fixed", () => {
+  const zap = "mcp_zapier_execute_zapier_read_action";
+  const e = entry({
+    steps: [
+      { role: "assistant", text: "", toolCalls: [{ id: "1", name: zap, input: { app: "Google Tasks" } }] },
+      { role: "tool", results: [{ id: "1", name: zap, content: "Missing argument values for required properties: task_list", isError: true }] },
+      { role: "assistant", text: "", toolCalls: [{ id: "2", name: zap, input: { app: "Gmail" } }] },
+      { role: "tool", results: [{ id: "2", name: zap, content: "3 emails", isError: false }] },
+    ],
+  });
+  assert.equal(runProblems([{ entry: e }]).length, 1);
+});

@@ -57,3 +57,10 @@ test("a Zapier run gets its required plain-words fields, and params as an object
   const other = { app: "gmail" };
   assert.equal(completeZapierRun("enable_zapier_action", other), other);
 });
+
+test("Zapier's 'missing required properties' (a dynamic list) is an input problem, not a connection one", () => {
+  const n = zapierNextStep("execute_zapier_read_action", '{"isError":true,"error":"Missing argument values for required properties: task_list (Task List), show_completed (Display Completed Tasks). task_list is a dynamic enum — call list_choices first"}');
+  assert.match(n, /inputs were wrong/);
+  assert.match(n, /Zapier's error/);
+  assert.doesNotMatch(n, /isn't connected/);
+});

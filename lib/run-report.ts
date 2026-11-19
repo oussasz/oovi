@@ -66,11 +66,18 @@ export function runProblems(work: { entry: BotEntry }[], hide: string[] = []): P
   };
   for (const { entry } of work) {
     const inputs = new Map<string, Record<string, unknown>>();
+    // A tool that failed and then worked later in the same turn: the bot fixed it itself (e.g. it fetched the list a
+    // Zapier action needed and called it again). Not a problem for the developers.
+    const results = (entry.steps as Msg[]).flatMap((s) => (s.role === "tool" ? s.results : []));
+    const callInput = new Map((entry.steps as Msg[]).flatMap((s) => (s.role === "assistant" ? s.toolCalls.map((c) => [c.id, c.input] as const) : [])));
+    // One Zapier tool serves every app: a later success counts only for the same app.
+    const appOf = (id: string) => String((callInput.get(id) as { app?: unknown } | undefined)?.app ?? "").toLowerCase();
+    const fixedLater = (r: (typeof results)[number]) => results.slice(results.indexOf(r) + 1).some((x) => x.name === r.name && !x.isError && appOf(x.id) === appOf(r.id));
     for (const s of entry.steps as Msg[]) {
       if (s.role === "assistant") for (const c of s.toolCalls) inputs.set(c.id, c.input);
       else if (s.role === "tool") {
         for (const r of s.results) {
-          if (!r.isError || NORMAL_ERROR.test(r.content)) continue;
+          if (!r.isError || NORMAL_ERROR.test(r.content) || fixedLater(r)) continue;
           const site = siteOf(inputs.get(r.id));
           const message = cleanProblemNote(`${r.name} failed${site ? ` on ${site}` : ""}: ${shortError(r.content)}`, hide);
           add({ tag: "tool", message, tool: r.name, ...(site ? { site } : {}) });
