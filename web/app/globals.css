@@ -3148,3 +3148,44 @@ a.adm-item:hover b { text-decoration: underline; }
 /* Payment pages opened from the app (/pay/<token>, /pay/done). */
 .pay-page { max-width: 1100px; }
 .pay-card { max-width: 520px; margin: 48px auto; padding: 28px 24px; }
+
+/* ---------- Download page: the phone apps ---------- */
+.dl-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.phone-dl__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.phone-dl__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%;
+  background: color-mix(in srgb, var(--mint) 70%, var(--surface));
+  color: var(--ink);
+}
+.phone-dl__title {
+  margin: 0 0 2px;
+  font-size: 20px;
+  font-weight: 900;
+}
+.phone-dl .alt {
+  margin: 0;
+}
+.phone-dl__direct {
+  margin: 0 0 4px;
+  font-weight: 800;
+}
+.phone-dl[dir="rtl"] .steps {
+  padding-left: 0;
+  padding-right: 22px;
+}
+.phone-dl[dir="rtl"] .phone-dl__arrow {
+  transform: scaleX(-1);
+}

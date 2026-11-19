@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">oovi</string>
+    <string name="title_activity_main">oovi</string>
+    <string name="package_name">app.oovi.mobile</string>
+    <string name="custom_url_scheme">app.oovi.mobile</string>
+    <string name="mic_title">Use the microphone for voice notes?</string>
+    <string name="mic_body">oovi listens only while you record a voice note. Your voice is turned into text that you check before sending. Android will ask you next.</string>
+    <string name="mic_continue">Continue</string>
+    <string name="mic_not_now">Not now</string>
+</resources>

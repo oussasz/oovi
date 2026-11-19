@@ -56,7 +56,7 @@ jobs:
         run: |
           mkdir work
           gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir work \
-            --pattern "*.dmg" --pattern "*.exe" --pattern "*.exe.blockmap" --pattern "*.AppImage" --pattern "*.deb" --pattern "latest*.yml"
+            --pattern "*.dmg" --pattern "*.exe" --pattern "*.exe.blockmap" --pattern "*.AppImage" --pattern "*.deb" --pattern "latest*.yml" --pattern "*.apk"
           ls -lh work
           # The real release notes, so the public copy matches what the website shows.
           gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md

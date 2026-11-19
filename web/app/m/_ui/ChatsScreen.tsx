@@ -28,7 +28,7 @@ import { tap } from "../_lib/haptics";
 import { inApp, to } from "../_lib/route";
 import type { Chat } from "../_lib/types";
 import { NewBotSheet, NewGroupSheet } from "./Create";
-import { DesktopSuggestion } from "./Desktop";
+import { AndroidAppSuggestion, DesktopSuggestion, useAndroidBrowser } from "./Desktop";
 import { Icon } from "./Icon";
 import { ActionSheet, ChatFace, Empty, LargeTitle, MeAvatar, NavBar, OfflineBar, Sheet, SlimeTrio, Spinner, SwipeRow, usePullToRefresh } from "./kit";
 import { useM } from "./MobileApp";
@@ -50,6 +50,7 @@ export function ChatsScreen({ archivedView = false, side = false }: { archivedVi
   const [ask, setAsk] = useState<Chat | null>(null);
   const [adding, setAdding] = useState<"bot" | "group" | null>(null);
   const [picking, setPicking] = useState(false);
+  const android = useAndroidBrowser();
   // On a wide screen the open chat is beside the list: its row is marked.
   const here = inApp(usePathname() ?? "");
   const openId = (() => {
@@ -312,7 +313,7 @@ export function ChatsScreen({ archivedView = false, side = false }: { archivedVi
         {adds}
         {search}
         <OfflineBar />
-        {!side && !archivedView && all.length > 0 && <DesktopSuggestion variant="list" />}
+        {!side && !archivedView && all.length > 0 && (android ? <AndroidAppSuggestion /> : <DesktopSuggestion variant="list" />)}
         {body}
         {side && !archivedView && all.length > 0 && <DesktopSuggestion variant="list" />}
       </main>

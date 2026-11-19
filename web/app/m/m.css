@@ -3163,3 +3163,7 @@ a.m-msg__face:active {
   background: var(--m-card);
   border: 1px solid var(--m-line);
 }
+
+/* Privacy policy and terms under Settings (also what app stores ask for inside the app). */
+.m-footer--links { margin-top: -8px; }
+.m-footer--links a { color: inherit; text-decoration: underline; text-underline-offset: 2px; display: inline-block; padding: 12px 4px; }

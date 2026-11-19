@@ -1,0 +1,19 @@
+{
+  "name": "oovi-mobile",
+  "private": true,
+  "version": "0.13.0",
+  "description": "oovi's phone apps (Android, iOS): a native Capacitor shell around the phone app at https://oovi.conuron.com/m",
+  "scripts": {
+    "sync": "cap sync",
+    "icons": "node scripts/native-icons.cjs",
+    "apk:debug": "cap sync android && cd android && ./gradlew assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "8.6.2",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/ios": "8.6.2"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "8.6.2"
+  }
+}

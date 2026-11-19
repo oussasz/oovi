@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="oovi_paper">#FBFAF7</color>
+    <color name="colorPrimary">#171717</color>
+    <color name="colorPrimaryDark">#FBFAF7</color>
+    <color name="colorAccent">#4A63D6</color>
+</resources>

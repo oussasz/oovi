@@ -127,3 +127,13 @@ export function LaptopIcon({ size = 20 }: P) {
     </svg>
   );
 }
+
+/** A phone (the Android and iPhone apps). */
+export function PhoneIcon({ size = 18, className }: P) {
+  return (
+    <svg viewBox="0 0 24 24" width={size} height={size} className={className} aria-hidden fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="6" y="2.5" width="12" height="19" rx="3" />
+      <path d="M10.5 18.5h3" />
+    </svg>
+  );
+}

@@ -7,7 +7,8 @@ import { agoShort, bytesLabel, computerState, routineWhen, syncUse } from "../_l
 import type { Account } from "../_lib/types";
 import { Icon } from "./Icon";
 import { ActionSheet, IconTile, LargeTitle, MeAvatar, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
-import { DesktopSuggestion } from "./Desktop";
+import { DesktopSuggestion, useAndroidBrowser } from "./Desktop";
+import { isNativeApp } from "@/lib/app-detect";
 import { useM } from "./MobileApp";
 import { to } from "../_lib/route";
 
@@ -20,6 +21,7 @@ export function SettingsScreen() {
   const [sheet, setSheet] = useState<"lang" | "look" | "signout" | null>(null);
   const [install, setInstall] = useState(false);
   const [standalone, setStandalone] = useState(true);
+  const android = useAndroidBrowser();
   const [ios, setIos] = useState(false);
   const [prompt, setPrompt] = useState<BeforeInstall | null>(null);
   const [leaving, setLeaving] = useState(false);
@@ -107,8 +109,8 @@ export function SettingsScreen() {
 
   useEffect(() => {
     void loadCredits();
-    // Inside oovi's Android app (user agent "ooviApp/…") there is nothing to install.
-    setStandalone(/ooviApp\//.test(navigator.userAgent) || window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
+    // oovi's phone app counts as installed: no "Add to Home Screen" there.
+    setStandalone(isNativeApp(navigator.userAgent) || window.matchMedia("(display-mode: standalone)").matches || (navigator as unknown as { standalone?: boolean }).standalone === true);
     setIos(/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
     const h = (e: Event) => {
       e.preventDefault();
@@ -308,7 +310,11 @@ export function SettingsScreen() {
         <Section header={t("settings.prefs")}>
           <Row icon={<IconTile name="globe" color="var(--m-blob-lilac)" />} title={t("settings.language")} value={langName} onClick={() => setSheet("lang")} chevron />
           <Row icon={<IconTile name="contrast" color="var(--m-blob-yellow)" />} title={t("settings.appearance")} value={lookName} onClick={() => setSheet("look")} chevron />
-          {!standalone && <Row icon={<IconTile name="plusSquare" color="var(--m-blob-blue)" />} title={t("settings.install")} onClick={() => setInstall(true)} chevron />}
+          {android ? (
+            <Row icon={<IconTile name="phone" color="var(--m-blob-mint)" />} title={t("settings.getAndroid")} onClick={() => window.open("/download#phone", "_blank", "noopener")} chevron />
+          ) : (
+            !standalone && <Row icon={<IconTile name="plusSquare" color="var(--m-blob-blue)" />} title={t("settings.install")} onClick={() => setInstall(true)} chevron />
+          )}
         </Section>
 
         <div className="m-section">
@@ -321,6 +327,11 @@ export function SettingsScreen() {
 
         <p className="m-footer">
           <Icon name="sparkle" size={14} /> {t("settings.footer")}
+        </p>
+        <p className="m-footer m-footer--links">
+          <a href="/privacy" target="_blank" rel="noopener">{t("settings.privacy")}</a>
+          <span aria-hidden> · </span>
+          <a href="/terms" target="_blank" rel="noopener">{t("settings.terms")}</a>
         </p>
       </main>
 

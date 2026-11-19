@@ -437,6 +437,17 @@ export function MobileApp({ children }: { children: ReactNode }) {
     };
   }, [ready, onLogin, refreshConnectors]);
 
+  // oovi's Android app: the phone's Back button first closes an open sheet or menu (mobile/, MainActivity "ooviback").
+  useEffect(() => {
+    const back = (e: Event) => {
+      if (!document.querySelector('[role="dialog"]')) return;
+      e.preventDefault();
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    };
+    window.addEventListener("ooviback", back);
+    return () => window.removeEventListener("ooviback", back);
+  }, []);
+
   // ---------- pins and unread ----------
   const togglePin = useCallback((chat: Chat) => {
     setPins((p) => {

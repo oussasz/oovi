@@ -1,0 +1,90 @@
+<!doctype html>
+<!-- Shown by the oovi app when the website can't be reached (no network, airplane mode, server down).
+     Built into the app (mobile/scripts/native-icons.cjs writes www/offline.html with the logo inlined): it must
+     not load anything from the network. The page to try again is window.OOVI_RETRY (set by the app) or comes after "#". -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<title>oovi</title>
+<style>
+  :root { --paper:#fbfaf7; --ink:#171717; --ink2:#6b6a63; --card:#fff; --line:#e9e6de; --btn:#171717; --on:#fff; --focus:#4a63d6; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --paper:#151513; --ink:#f3f1ea; --ink2:#a9a79e; --card:#1e1e1b; --line:#2e2d29; --btn:#f3f1ea; --on:#151513; --focus:#a9bcf7; }
+    :root:not([data-theme="light"]) .logo-light { display:none } :root:not([data-theme="light"]) .logo-dark { display:block }
+  }
+  :root[data-theme="dark"] { --paper:#151513; --ink:#f3f1ea; --ink2:#a9a79e; --card:#1e1e1b; --line:#2e2d29; --btn:#f3f1ea; --on:#151513; --focus:#a9bcf7; }
+  :root[data-theme="dark"] .logo-light { display:none } :root[data-theme="dark"] .logo-dark { display:block }
+  * { box-sizing:border-box }
+  html, body { margin:0; height:100%; background:var(--paper); color:var(--ink);
+    font-family: "Nunito", system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans Arabic", sans-serif; }
+  body { display:grid; place-items:center; padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); }
+  main { width:100%; max-width:360px; text-align:center }
+  .logo-dark { display:none }
+  img { width:88px; height:88px; margin:0 auto 20px }
+  h1 { font-size:1.5rem; font-weight:900; margin:0 0 8px; letter-spacing:-.01em }
+  p { font-size:1rem; line-height:1.5; color:var(--ink2); margin:0 0 28px }
+  button { appearance:none; border:0; border-radius:999px; background:var(--btn); color:var(--on); font:inherit;
+    font-weight:800; font-size:1.0625rem; min-height:48px; padding:12px 28px; min-width:180px; cursor:pointer; }
+  button:active { transform:scale(.97) }
+  button:focus-visible { outline:3px solid var(--focus); outline-offset:3px }
+  button[disabled] { opacity:.6 }
+  .hint { font-size:.875rem; margin:18px 0 0 }
+  [dir="rtl"] body, [dir="rtl"] main { font-family: "Tajawal", "Noto Sans Arabic", system-ui, sans-serif }
+</style>
+</head>
+<body>
+<main>
+  <img class="logo-light" alt="" src="__LOGO__">
+  <img class="logo-dark" alt="" src="__LOGO_DARK__">
+  <h1 id="t"></h1>
+  <p id="b"></p>
+  <button id="retry" type="button"></button>
+  <p class="hint" id="h" aria-live="polite"></p>
+</main>
+<script>
+(function () {
+  var WORDS = {
+    en: { t: "Can’t reach oovi", b: "Check that your phone is connected to the internet, then try again.", r: "Try again", w: "Trying…", h: "oovi opens by itself when the connection is back." },
+    fr: { t: "Impossible de joindre oovi", b: "Vérifiez que votre téléphone est connecté à Internet, puis réessayez.", r: "Réessayer", w: "Connexion…", h: "oovi s’ouvrira tout seul quand la connexion reviendra." },
+    ar: { t: "تعذّر الوصول إلى oovi", b: "تأكد من أن هاتفك متصل بالإنترنت، ثم أعد المحاولة.", r: "أعد المحاولة", w: "جارٍ المحاولة…", h: "سيُفتح oovi تلقائيًا عند عودة الاتصال." }
+  };
+  // The app's own language choice (saved by the phone app) first, then the phone's.
+  var lang = "en";
+  try {
+    var prefs = JSON.parse(localStorage.getItem("oovi.m.prefs") || "{}") || {};
+    var saved = prefs.lang && prefs.lang !== "auto" ? prefs.lang : "";
+    var pick = saved || (navigator.languages && navigator.languages[0]) || navigator.language || "en";
+    if (prefs.theme === "light" || prefs.theme === "dark") document.documentElement.setAttribute("data-theme", prefs.theme);
+    pick = String(pick).slice(0, 2).toLowerCase();
+    if (WORDS[pick]) lang = pick;
+  } catch (e) {}
+  var w = WORDS[lang];
+  document.documentElement.lang = lang;
+  document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+  document.getElementById("t").textContent = w.t;
+  document.getElementById("b").textContent = w.b;
+  document.getElementById("h").textContent = w.h;
+  var btn = document.getElementById("retry");
+  btn.textContent = w.r;
+
+  // Only a page of the app itself, never another site.
+  var target = "/m";
+  // Set by the app (OoviWebViewClient), or after "#" (tests).
+  var asked = typeof window.OOVI_RETRY === "string" ? window.OOVI_RETRY : "";
+  if (!asked) { try { asked = decodeURIComponent((location.hash || "").slice(1)); } catch (e) { asked = ""; } }
+  if (/^\/(m|app|login|signup|forgot-password|reset-password)(\/[^\s]*)?(\?[^\s]*)?$/.test(asked) && asked.indexOf("//") === -1) target = asked;
+
+  function go() {
+    btn.disabled = true;
+    btn.textContent = w.w;
+    location.replace(target);
+    setTimeout(function () { btn.disabled = false; btn.textContent = w.r; }, 4000);
+  }
+  btn.addEventListener("click", go);
+  window.addEventListener("online", go);
+})();
+</script>
+</body>
+</html>
