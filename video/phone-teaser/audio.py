@@ -1,7 +1,9 @@
 # Sound for the phone teaser: vibration, notification tones, the lift, the reveal, a soft pad. Reads the same timeline as the picture.
-import json, subprocess, numpy as np, wave
+import json, subprocess, sys, numpy as np, wave
 SR = 48000
-T = json.load(open("config.json"))["timeline"]
+CFG = sys.argv[1] if len(sys.argv) > 1 else "teaser.json"
+OUT = sys.argv[2] if len(sys.argv) > 2 else "out/mix.wav"
+T = json.load(open(CFG))["timeline"]
 N = int(T["total"] * SR)
 L = np.zeros(N); R = np.zeros(N)
 rng = np.random.default_rng(7)
@@ -66,8 +68,8 @@ put(whoosh(0.9), T["dim"] - 0.55, 1.1); put(boom(), T["flip"], 0.85); put(whoosh
 put(tone(880.0, 1.2, 3, 0.15), T["flip"] + 0.42, 0.16)
 put(boom(1.2), T["line2"], 0.6); put(tone(1174.7, 1.6, 2.5, 0.2), T["line2"] + 0.02, 0.2); put(tone(1760.0, 1.6, 2.5, 0.2), T["line2"] + 0.02, 0.12)
 D = [146.83, 220.0, 293.66, 349.23, 440.0]; F = [174.61, 261.63, 349.23, 440.0, 523.25]
-put(pad(D, T["end"] - T["dim"] + 0.8, 1.0, 1.2), T["dim"], 0.5)
-put(pad(F, T["total"] - T["end"], 0.6, 1.6), T["end"], 0.55)
+put(pad(D, min(T["end"], T["total"]) - T["dim"] + 0.8, 1.0, 1.2), T["dim"], 0.5)
+if T["end"] < T["total"]: put(pad(F, T["total"] - T["end"], 0.6, 1.6), T["end"], 0.55)
 put(whoosh(0.5), T["end"] - 0.35, 0.5)
 for k, f in enumerate([698.46, 880.0, 1046.5]): put(tone(f, 1.8, 2.2, 0.15), T["end"] + 0.25 + 0.14 * k, 0.16, pan=(k - 1) * 0.3)
 
@@ -75,5 +77,5 @@ st = np.stack([L, R], 1); st /= max(1e-9, np.abs(st).max()) * 1.1
 end = int(0.5 * SR); st[-end:] *= np.linspace(1, 0, end)[:, None]
 with wave.open("out/raw.wav", "wb") as w:
     w.setnchannels(2); w.setsampwidth(2); w.setframerate(SR); w.writeframes((st * 32767).astype("<i2").tobytes())
-subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "out/raw.wav", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000", "out/mix.wav"], check=True)
-print("out/mix.wav")
+subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", "out/raw.wav", "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", "-ar", "48000", OUT], check=True)
+print(OUT)

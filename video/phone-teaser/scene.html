@@ -5,10 +5,10 @@
 <style>
   @font-face { font-family: "Inter"; src: url("../expert-intro/fonts/inter-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: 1080px; height: 1080px; overflow: hidden; background: #000; }
+  html, body { width: 1080px; height: 1920px; overflow: hidden; background: #000; }
   body { font-family: "Inter", "Noto Color Emoji", sans-serif; -webkit-font-smoothing: antialiased; }
   #stage { position: absolute; inset: 0; overflow: hidden; }
-  #bg { position: absolute; inset: -12px; width: 1104px; height: 1104px; object-fit: cover; }
+  #bg { position: absolute; inset: 0; width: 1080px; height: 1920px; }
   .abs { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
 
   /* the phone's own screen, mapped onto the glass */
@@ -18,7 +18,7 @@
   #screen .date { position: absolute; left: 0; right: 0; top: 122px; text-align: center; color: #fff; font-weight: 500; font-size: 22px; opacity: .8; }
   #screen .bar { position: absolute; left: 128px; right: 128px; bottom: 12px; height: 6px; border-radius: 3px; background: #fff; opacity: .7; }
   #spill { position: absolute; inset: 0; mix-blend-mode: screen; opacity: 0;
-    background: radial-gradient(420px 300px at 560px 640px, rgba(96,118,230,.34), rgba(96,118,230,0) 70%); }
+    background: radial-gradient(420px 300px at 560px 1240px, rgba(96,118,230,.34), rgba(96,118,230,0) 70%); }
   #beam { position: absolute; inset: 0; mix-blend-mode: screen; }
 
   /* the notification stack that leaves the screen */
@@ -40,29 +40,30 @@
 
   #dim { position: absolute; inset: 0; background: #0b0c14; opacity: 0; }
   .line { position: absolute; left: 0; right: 0; text-align: center; color: #fff; font-weight: 800; letter-spacing: -2.4px; white-space: nowrap; }
-  #l1 { top: 566px; font-size: 76px; opacity: 0; color: rgba(255,255,255,.78); font-weight: 600; }
-  #l2 { top: 668px; font-size: 118px; opacity: 0; }
+  #l1 { top: 960px; font-size: 76px; opacity: 0; color: rgba(255,255,255,.78); font-weight: 600; }
+  #l2 { top: 1056px; font-size: 118px; opacity: 0; }
   #l2 em { font-style: normal; color: #FFD25A; }
   #end { position: absolute; inset: 0; opacity: 0; }
-  #lockup { position: absolute; left: 0; right: 0; top: 300px; display: flex; justify-content: center; align-items: center; gap: 22px; }
+  #lockup { position: absolute; left: 0; right: 0; top: 640px; display: flex; justify-content: center; align-items: center; gap: 22px; }
   #lockup img { width: 150px; height: 150px; }
   #lockup span { font-size: 150px; font-weight: 800; letter-spacing: -7px; color: #fff; }
-  #e1 { position: absolute; left: 0; right: 0; top: 520px; text-align: center; color: #fff; font-size: 54px; font-weight: 700; letter-spacing: -1.4px; line-height: 1.22; }
+  #e1 { position: absolute; left: 0; right: 0; top: 870px; text-align: center; color: #fff; font-size: 54px; font-weight: 700; letter-spacing: -1.4px; line-height: 1.22; }
   #e1 span { color: rgba(255,255,255,.72); font-weight: 500; }
-  #pill { position: absolute; left: 50%; top: 742px; transform: translateX(-50%); padding: 24px 52px; border-radius: 60px; background: #FFD25A; color: #14151A; font-size: 40px; font-weight: 800; letter-spacing: -.8px; white-space: nowrap; }
+  #pill { position: absolute; left: 50%; top: 1100px; transform: translateX(-50%); padding: 24px 52px; border-radius: 60px; background: #FFD25A; color: #14151A; font-size: 40px; font-weight: 800; letter-spacing: -.8px; white-space: nowrap; }
 </style>
 </head>
 <body>
 <div id="stage">
   <img id="bg" alt="">
   <div id="spill"></div>
+  <div style="position:absolute;inset:0;background:linear-gradient(180deg,rgba(8,10,20,.42) 0,rgba(8,10,20,0) 22%,rgba(8,10,20,0) 72%,rgba(8,10,20,.9) 87%,rgba(8,10,20,.97) 100%)"></div>
   <div id="screen" class="abs">
     <div class="date">Thursday, 19 November</div>
     <div class="clock">9:41</div>
     <div class="bar"></div>
   </div>
   <div id="dim"></div>
-  <svg id="beam" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+  <svg id="beam" viewBox="0 0 1080 1920" xmlns="http://www.w3.org/2000/svg">
     <defs><linearGradient id="gBeam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#8ea0ff" stop-opacity=".5"/><stop offset="1" stop-color="#8ea0ff" stop-opacity="0"/></linearGradient></defs>
     <polygon id="beam-p" points="" fill="url(#gBeam)"/>
   </svg>
@@ -70,16 +71,6 @@
     <div class="card" id="c1">
       <div id="ava">
         <img id="ava-face" src="assets/abdelaziz-head.png" alt="">
-        <svg id="ava-bot" viewBox="480 610 360 360" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <radialGradient id="gYellow" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#FFE79A"/><stop offset=".55" stop-color="#FFD25A"/><stop offset="1" stop-color="#F2B632"/></radialGradient>
-          </defs>
-          <rect x="480" y="610" width="360" height="360" fill="#FFF3CF"/>
-          <circle cx="660" cy="820" r="168" fill="url(#gYellow)"/>
-          <g fill="none" stroke="#14151A" stroke-width="7" stroke-linecap="round"><path d="M598 736 Q616 718 634 736"/><path d="M716 740 Q736 720 756 740"/></g>
-          <g fill="rgba(255,255,255,.18)" stroke="#14151A" stroke-width="8" stroke-linejoin="round"><rect x="564" y="690" width="108" height="86" rx="30"/><rect x="684" y="694" width="112" height="90" rx="30"/><path d="M672 728 Q678 722 684 730" fill="none"/><path d="M564 720 L548 714" fill="none"/><path d="M796 724 L812 718" fill="none"/></g>
-          <path d="M672 774 q7 9 15 0" stroke="#14151A" stroke-width="6" fill="none" stroke-linecap="round"/>
-        </svg>
       </div>
       <div class="label" id="lab">Message</div>
       <div class="when">now</div>
@@ -149,6 +140,7 @@ window.seek = async function (t) {
   if (n !== frameNo) { frameNo = n; const im = $("bg"); im.src = `footage/f${String(n).padStart(4, "0")}.jpg`; await im.decode(); }
 
   const reveal = inout(P(t, T.dim, 0.7)), endP = inout(P(t, T.end, 0.6));
+  $("bg").style.transform = `scale(${1 + reveal * 0.04})`;
   $("bg").style.filter = `blur(${reveal * 9}px) brightness(${1 - reveal * 0.1})`;
   $("dim").style.opacity = reveal * 0.52 + endP * 0.2;
 
@@ -182,12 +174,9 @@ window.seek = async function (t) {
   $("c2").style.opacity = clamp(p2 * 3);
   $("c2").style.transform = `translateY(${(1 - back(p2)) * -70}px) scale(${lerp(0.86, 1, back(p2))})`;
 
-  // the reveal: his picture turns over into the bot, the label becomes oovi, an "AI" tag lands next to his name
-  const flip = inout(P(t, T.flip, 0.55));
-  $("ava-face").style.transform = `perspective(600px) rotateY(${flip * 180}deg)`;
-  $("ava-bot").style.transform = `perspective(600px) rotateY(${flip * 180 - 180}deg)`;
-  $("lab").innerHTML = flip > 0.5 ? "<b>oovi</b>" : "Message";
-  const tag = P(t, T.flip + 0.35, 0.4);
+  // the reveal: the label becomes oovi and an "AI" tag lands next to his name (his picture stays)
+  const tag = C.tag ? P(t, T.flip + 0.2, 0.4) : 0;
+  $("lab").innerHTML = C.tag && t >= T.flip + 0.2 ? "<b>oovi</b>" : "Message";
   $("ai").style.transform = `scale(${tag <= 0 ? 0 : back(tag)})`;
   $("ai").style.opacity = clamp(tag * 4);
 

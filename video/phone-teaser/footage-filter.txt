@@ -1,0 +1,1 @@
+[0]crop=2160:2160:0:0,scale=1080:1080:flags=lanczos,split=3[m][a][b];[a]crop=1080:290:0:0,vflip,scale=1080:600,gblur=sigma=14[top];[b]crop=1080:50:0:1030,scale=1080:240,gblur=sigma=26[bot];[top][m][bot]vstack=inputs=3
