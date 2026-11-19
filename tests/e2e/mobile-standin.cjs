@@ -129,7 +129,7 @@ function fixtures(lang, now = Date.now()) {
  * state: {signedIn, sync, chats{id:{version, chat, deleted, updatedAt}}, jobs[], devices[], requests[]}.
  */
 function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDelayMs = 900 }) {
-  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0, avatars: {}, pilot: { open: false, eligible: false, public: false, status: null, credits: 0 }, appLinks: [], feedback: [], signup: null };
+  const state = { signedIn: false, sync: true, statusMissing: false, items: {}, chats: {}, jobs: [], devices: [], requests: [], waiters: new Set(), lang, transcribe: "ok", setupVersion: 7, setupConflicts: 0, setupPuts: 0, deletedChats: [], password: "standin-pass", account: { emailVerified: false, askToVerify: true, billing: { status: "active" }, news: true }, verifySent: 0, pwChanges: [], accountDeleted: false, portalOpened: 0, payLinks: [], avatars: {}, pilot: { open: false, eligible: false, public: false, status: null, credits: 0 }, appLinks: [], feedback: [], signup: null };
   const user = { id: "u-standin", email: "phone.tester@example.test", name: "Sam Tester", image: null, emailVerified: true, createdAt: new Date(Date.now() - 400 * H).toISOString(), updatedAt: new Date().toISOString() };
 
   const load = (l) => {
@@ -384,6 +384,20 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
       if (to === "/__paddle/portal") state.portalOpened++;
       res.writeHead(303, { location: to });
       return res.end();
+    }
+    // Pay from inside the app (web/app/api/v1/billing/link): a single-use payment link, opened in the browser.
+    if (p === "/api/v1/billing/link" && req.method === "POST") {
+      if (!signed(req)) return send(res, 401, { error: "Sign in to oovi first." });
+      const b = (await readBody(req)) || {};
+      if (b.kind === "portal" && !state.account.billing) return send(res, 404, { error: "This account has no subscription to manage yet.", code: "no_subscription" });
+      if (b.kind !== "portal" && b.kind !== "checkout") return send(res, 400, { error: "Unknown kind." });
+      state.payLinks.push(b.kind);
+      if (b.kind === "portal") state.portalOpened++;
+      return send(res, 200, { url: b.kind === "portal" ? "/__paddle/portal" : "/__paddle/checkout", expiresIn: 600 });
+    }
+    if (p === "/__paddle/checkout") {
+      res.writeHead(200, { "content-type": "text/html" });
+      return res.end("<!doctype html><title>Paddle checkout</title><h1>Stand-in Paddle checkout</h1>");
     }
     if (p === "/__paddle/portal") {
       res.writeHead(200, { "content-type": "text/html" });

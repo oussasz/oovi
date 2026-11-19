@@ -45,7 +45,11 @@ export function SettingsScreen() {
         setBillingNote(j.code === "no_subscription" ? "none" : "unavailable");
         return;
       }
-      if (!window.open(j.url, "_blank", "noopener")) window.location.href = j.url;
+      // window.open with "noopener" always returns null, so open plainly and cut the link back to this page; only a
+      // blocked popup (null) falls back to going there in this window.
+      const w = window.open(j.url, "_blank");
+      if (w) w.opener = null;
+      else window.location.href = j.url;
       const again = () => {
         void loadCredits?.();
         void getAccount().then(setAcct, () => {});

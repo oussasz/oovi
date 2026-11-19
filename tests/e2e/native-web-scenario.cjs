@@ -115,27 +115,18 @@ async function main() {
     check("A inside oovi's app: no phone card (no APK text in the app)", (await page.locator("#phone").count()) === 0);
     await ctx.close();
 
-    // ---------- B) /m in Chrome on Android ----------
+    // ---------- B) /m in Chrome on Android: the phone screens open only inside oovi's app (owner, 2026-11-19), ----------
+    // so a browser lands on the download page, at the Android card.
     ctx = await signedIn(browser, PIXEL.userAgent);
     page = await ctx.newPage();
     const errors = [];
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`${BASE}/m`);
-    const card = page.locator("aside.m-desk", { hasText: "Get the Android app" });
-    check("B the chat list suggests the Android app", await until(() => card.isVisible(), 10_000));
-    check("B ... in place of the desktop card", (await page.locator("aside.m-desk", { hasText: "oovi on your computer" }).count()) === 0);
-    check("B its button opens the download page at the phone card", (await card.getByRole("link").getAttribute("href")) === "/download#phone");
-    await shot(page, "m-android-card");
-    await card.getByRole("button", { name: "Hide this" }).click();
-    check("B × hides it", await until(async () => (await card.count()) === 0));
-    await page.reload();
-    await page.locator(".m-chats > li").first().waitFor({ timeout: 10_000 });
-    await sleep(500);
-    check("B ... for good", (await card.count()) === 0);
+    check("B /m in Chrome on Android goes to the download page", await until(() => new URL(page.url()).pathname === "/download", 10_000), page.url());
+    check("B ... which shows the Android card", await until(() => page.locator("#phone").isVisible(), 10_000));
+    await shot(page, "m-android-browser-download");
     await page.goto(`${BASE}/m/settings`);
-    await page.getByText("Get the Android app").first().waitFor({ timeout: 10_000 }).catch(() => {});
-    check("B Settings: 'Get the Android app'", await page.getByText("Get the Android app").first().isVisible());
-    check("B Settings: no 'Add to Home Screen' on Android", (await page.getByText("Add to Home Screen").count()) === 0);
+    check("B /m/settings too", await until(() => new URL(page.url()).pathname === "/download", 10_000), page.url());
     check("B no page errors", errors.length === 0, errors.join(" | "));
     await ctx.close();
 
