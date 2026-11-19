@@ -35,6 +35,7 @@ const status = { state: "ok", message: null, displayName: "theOovi", balance: 99
 const reply = (text) => ({ id: "msg_mock", type: "message", role: "assistant", model: "theOovi", content: [{ type: "text", text }], stop_reason: "end_turn", usage: { input_tokens: 100, output_tokens: 40 }, oovi: live() });
 const textOf = (m) => (Array.isArray(m.content) ? m.content.filter((b) => b.type === "text").map((b) => b.text).join(" ") : String(m.content || ""));
 const calls = [];
+const bodies = [];
 const hooks = { registered: [], events: [], asked: [] };
 
 http
@@ -69,6 +70,7 @@ http
         if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
         const last = textOf((b.messages || []).filter((m) => m.role === "user").at(-1) || {});
         calls.push(last);
+        bodies.push(b);
         const msgs = b.messages || [];
         const lastMsg = msgs.at(-1) || {};
         const hasResult = Array.isArray(lastMsg.content) && lastMsg.content.some((x) => x.type === "tool_result");
@@ -203,6 +205,16 @@ const until = async (fn, ms = 75_000) => {
   }, 120_000);
   check("E) the reminder arrives in the chat where it was asked", !!got);
   check("E) the reminder costs no model call", calls.length === before2, `${calls.length - before2} calls`);
+
+  // G: after the reminder, the next message tells the bot when each message was sent and that past
+  // reminders are closed (owner's chat: "did you turn the oven off?" in every reply, 12 hours later).
+  const sentBefore = bodies.length;
+  await api("POST", `/api/chats/${dm}/run`, { text: "VPS-ASK free vps for first year" });
+  await until(async () => !(await api("GET", `/api/chats/${dm}`)).j.running && bodies.length > sentBefore, 20_000);
+  const vb = bodies.slice(sentBefore).find((x) => /VPS-ASK/.test(JSON.stringify(x.messages)));
+  const users = (vb?.messages || []).filter((m) => m.role === "user" && /REMIND-APP|VPS-ASK/.test(textOf(m)));
+  check("G) every message of the user carries the time it was sent", users.length === 2 && users.every((m) => /\[oovi: sent \w{3}, \d\d\/\d\d\/\d{4}, \d\d:\d\d/.test(textOf(m))), users.map((m) => textOf(m).slice(0, 120)).join(" | "));
+  check("G) the bot is told that past reminders and earlier topics stay closed", /earlier topics \(a past reminder/.test(JSON.stringify(vb?.system ?? "")));
 
   // F: a one-time task asked in the chat: its result is posted back in that chat, written to the user.
   await api("POST", `/api/chats/${dm}/run`, { text: "LATER-TASK in a minute tell me the news" });
