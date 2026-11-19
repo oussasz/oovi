@@ -77,7 +77,8 @@ async function startJobServer(job, dir, token) {
     HOME: dir,
     LANG: "C.UTF-8",
     NODE_ENV: "production",
-    TZ: timeZoneOf(job.timezone),
+    // The user's time zone: the phone sends it with each job (web/app/m/_ui/MobileApp.tsx).
+    TZ: timeZoneOf(job.timezone ?? job.payload?.timeZone),
     PORT: String(await freePort()),
     OOVI_DATA: dir,
     OOVI_STANDALONE: STANDALONE,

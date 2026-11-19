@@ -36,7 +36,13 @@ export function claimedAction(text: string): string | null {
  * verb, clicks and typing in a browser or on the computer, uploads, sending a file. Reading and searching
  * never count.
  */
-const ACTS = /^(click|type|browser_steps|upload_file|send_file_to_user|send_screenshot|open_app|manage_window|computer|desktop_|work_export|create_document|create_spreadsheet|create_presentation|create_image|write_file|edit_file|run_command|propose_routine|message_group|vm_run)$|^mcp_.*(send|post|create|publish|reply|book|pay|submit|message|mail|tweet|comment|share|upload|delete|update|add|insert|schedule|invite|order)/i;
+const ACTS = /^(click|type|browser_steps|upload_file|send_file_to_user|send_screenshot|open_app|manage_window|computer|desktop_|work_export|create_document|create_spreadsheet|create_presentation|create_image|write_file|edit_file|run_command|propose_routine|message_group|vm_run)$/i;
+/**
+ * A connector tool acts unless its name says it only looks: services name their actions in many ways
+ * ("execute_zapier_write_action", "set_mood", "move_card"), their reads mostly the same few ways.
+ */
+const READS = /(^|_)(list|get|search|read|find|inspect|fetch|query|lookup|describe|view|show|count|status|check|preview|download|export)(_|s?$)/i;
+const acts = (name: string) => ACTS.test(name) || (name.startsWith("mcp_") && !READS.test(name.replace(/^mcp_[a-z0-9]+_/i, "")));
 
 export function actedIn(steps: Msg[]): boolean {
   for (let i = 0; i < steps.length; i++) {
@@ -44,7 +50,7 @@ export function actedIn(steps: Msg[]): boolean {
     if (m.role !== "assistant") continue;
     const next = steps[i + 1];
     for (const c of m.toolCalls) {
-      if (!ACTS.test(c.name)) continue;
+      if (!acts(c.name)) continue;
       const r = next?.role === "tool" ? next.results.find((x) => x.id === c.id) : undefined;
       if (r && !r.isError) return true;
     }

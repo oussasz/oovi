@@ -35,7 +35,10 @@ async function answer(body) {
   const msgs = body.messages || [];
   const tools = (body.tools || []).map((t) => t.name);
   const read = tools.find((t) => /execute_zapier_read_action$/.test(t));
-  if (!lastTool(msgs)) return reply([{ type: "tool_use", id: `toolu_${Date.now()}`, name: read, input: { app: "gmail", action: "find_email", instructions: "latest invoice" } }], "tool_use");
+  // Zapier down (check G): the model still reaches for the tool it remembers.
+  if (seen.down && !seen.downUser) seen.downUser = JSON.stringify(msgs.at(-1) || {});
+  if (seen.down) seen.downSystem = typeof body.system === "string" ? body.system : (body.system || []).map((x) => x.text || "").join("");
+  if (!lastTool(msgs)) return reply([{ type: "tool_use", id: `toolu_${Date.now()}`, name: read || seen.remembered, input: { app: "gmail", action: "find_email", instructions: "latest invoice" } }], "tool_use");
   const last = msgs.at(-1);
   seen.result = (last.content || []).filter((x) => x.type === "tool_result").map((x) => (typeof x.content === "string" ? x.content : JSON.stringify(x.content))).join("\n");
   return reply([{ type: "text", text: "READ-DONE" }], "end_turn");
@@ -50,6 +53,10 @@ async function answer(body) {
       let raw = "";
       req.on("data", (c) => (raw += c));
       req.on("end", async () => {
+        if (seen.down) {
+          res.writeHead(503, { "content-type": "text/plain" });
+          return res.end("Service Unavailable");
+        }
         const server = new McpServer({ name: "zapier", version: "1.0.0" });
         server.registerTool("inspect_zapier_actions", { description: "List enabled actions" }, async () => ({ content: [{ type: "text", text: (seen.provisioned ? "Enabled actions:\\n- gmail_find_email (Gmail)\\n- GoogleCalendarCLIAPI find_event (Google Calendar)\\n- slack_send_channel_message (Slack)" : "Enabled actions:\\n- gmail_find_email (Gmail)").split("\\n").filter((l) => !(seen.removed || []).some((a) => l.includes(`(${a})`))).join("\\n") }] }));
         server.registerTool("disable_zapier_action", { description: "Disable an app's actions", inputSchema: { app: z.string(), action: z.string().optional() } }, async (a) => {
@@ -197,6 +204,17 @@ const check = (name, ok, detail = "") => {
   check("D) a Zapier action failing with no reason: the bot is told what usually causes it and what to do", /Zapier gave no reason\. Next step:/.test(seen.result || "") && /Your apps/.test(seen.result || ""), (seen.result || "").slice(0, 300));
   const helpText = JSON.stringify(seen.bodies.at(-1)?.tools || []);
   check("D) the bot is not told to paste Zapier links", /don't paste Zapier links/.test(seen.result || ""));
+  // G) Zapier stops answering (owner, 2026-11-19: "isn't enabled for Oovi" though it was connected): the bot is told
+  // the real reason, never "not enabled", and not to call it again; its call gets the same reason back.
+  seen.remembered = `mcp_${id.replace(/-/g, "_")}_execute_zapier_read_action`;
+  seen.down = true;
+  seen.result = "";
+  await api("POST", `/api/mcp/${id}`); // the Test button: drops the connection, so the next turn connects again
+  await run(dm, { text: "find my latest invoice in gmail again" });
+  check("G) Zapier down: the bot's instructions say it couldn't be reached and why, not 'not enabled'", /Zapier couldn't be reached just now \(/.test(seen.downSystem || "") && /don't call them/.test(seen.downSystem || ""), (seen.downSystem || "").match(/Zapier couldn.{0,200}/)?.[0] || "no line");
+  check("G) ... and a call it makes anyway gets the reason back, with the button to open Zapier", /^Not run\. Zapier couldn't be reached just now/.test(seen.result || "") && !/isn't enabled/.test(seen.result || "") && /oovi:\/\/marketplace\/connector\//.test(seen.result || ""), (seen.result || "").slice(0, 300));
+  check("G) ... no OK card for a call that can't run, and the note on the message doesn't say 'use its tools'", !/use its tools/.test(seen.downUser || "") && /didn't answer just now/.test(seen.downUser || ""), (seen.downUser || "").match(/Gmail works[^\]]{0,120}/)?.[0] || "");
+  seen.down = false;
 
   log(`${results.filter((x) => x.ok).length}/${results.length} checks passed`);
   server.kill();

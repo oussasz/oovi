@@ -294,6 +294,14 @@ const check = (name, ok, detail = "") => {
   await fetch(`${BASE}/api/chats/dm-${mainId}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "TGSEND send me hello on my Telegram now" }) }).then((r) => r.text());
   await waitFor((m) => sent.indexOf(m) >= n8 && /TG-HELLO/.test(m.text), 30_000, "telegram message from the app");
   check("a bot asked in the app sends the message to the user's Telegram (built-in, no connector)", (seen.tgTools || []).includes("send_telegram") && sent.slice(n8).some((m) => /TG-HELLO from your bot/.test(m.text)));
+  // Owner, 2026-11-19: whatever reaches Telegram also shows in the app (here: after the bot's own reply, once).
+  let dmTg = null;
+  for (let i = 0; i < 60; i++) {
+    dmTg = await (await fetch(`${BASE}/api/chats/dm-${mainId}`)).json();
+    if (dmTg.entries.some((e) => e.kind === "bot" && e.text === "TG-HELLO from your bot")) break;
+    await sleep(250);
+  }
+  check("what the bot sent to Telegram is also in the chat in the app, once", dmTg.entries.filter((e) => e.kind === "bot" && e.text === "TG-HELLO from your bot").length === 1 && dmTg.entries.some((e) => e.kind === "bot" && e.text === "TGSEND-DONE"), dmTg.entries.slice(-3).map((e) => `${e.kind}:${(e.text || "").slice(0, 40)}`).join(" | "));
 
   // "Replace the old list": the table holds only the new rows (add would only fill empty cells).
   const n10 = sent.length;
@@ -308,9 +316,10 @@ const check = (name, ok, detail = "") => {
   await waitFor((m) => sent.indexOf(m) >= n9 && /REMIND-SET/.test(m.text), 30_000, "reminder set");
   const callsBefore = seen.model || 0;
   const rem = await waitFor((m) => sent.indexOf(m) >= n9 && /⏰ طفي الفرن REMIND-OVEN/.test(m.text), 120_000, "reminder on Telegram");
+  await sleep(2000); // a late second copy would show by now
   const dmRem = await (await fetch(`${BASE}/api/chats/dm-${mainId}`)).json();
   check("a reminder asked from Telegram comes back on Telegram, set without a card", (seen.remindTools || []).includes("propose_routine") && !!rem);
-  check("the reminder is also in the chat in the app, and cost no model call", dmRem.entries.some((e) => e.kind === "bot" && /⏰ طفي الفرن REMIND-OVEN/.test(e.text)) && (seen.model || 0) === callsBefore, `${(seen.model || 0) - callsBefore} calls`);
+  check("the reminder is also in the chat in the app, once, and cost no model call", dmRem.entries.filter((e) => e.kind === "bot" && /طفي الفرن REMIND-OVEN/.test(e.text)).length === 1 && (seen.model || 0) === callsBefore, `${(seen.model || 0) - callsBefore} calls`);
 
   check("the bot is told to write the user's name exactly as given", /Oussama/.test(seen.system) && /exactly as written/.test(seen.system));
 

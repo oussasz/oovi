@@ -414,13 +414,61 @@ export async function testServer(id: string): Promise<{ ok: boolean; tools?: str
 
 const toolName = (s: McpServer, tool: string) => `mcp_${s.id.replace(/-/g, "_").slice(0, 18)}_${tool}`.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 64);
 
+/** A connector whose tools couldn't be loaded for this turn: why, and the tool names it had last time. */
+export type McpDown = { id: string; name: string; reason: string; prefix: string; signIn: boolean };
+
+/**
+ * Before giving up on a sign-in connector the server refused: the account may hold newer sign-in data (the cloud
+ * runner or another computer renewed it). Set by lib/cloud-sync.ts; answers whether something newer was applied.
+ */
+// Kept on globalThis: the server's parts (each API route, the startup code) can each load their own copy of this
+// file, and the one that registers it (lib/cloud-sync.ts, at startup) isn't the one the bots run in.
+const shared = globalThis as typeof globalThis & { __ooviSignInRefresher?: ((id: string) => Promise<boolean>) | null };
+export function setSignInRefresher(fn: ((id: string) => Promise<boolean>) | null): void {
+  shared.__ooviSignInRefresher = fn;
+}
+
+const signInProblem = (msg: string) => /sign in again|Not signed in|unauthori[sz]ed|invalid_token|invalid_grant|\b401\b/i.test(msg);
+/** Errors a second try can't fix (nothing changes between the two). */
+const noRetry = (msg: string) => /runs on the user's computer|Not signed in to .* yet|ENOENT|not recognized/i.test(msg);
+
+/** Connects, and once more when the first try failed (a dropped network, an expired session, a renewed sign-in). */
+async function connectSure(s: McpServer): Promise<Conn> {
+  // A new connection to a sign-in connector: take the account's newer sign-in first, if there is one (a few seconds
+  // at most; without the account it goes on with what is here).
+  const refresher = shared.__ooviSignInRefresher;
+  if (s.auth === "oauth" && !conns.has(s.id) && refresher) {
+    const pulled = await Promise.race([refresher(s.id).catch(() => false), new Promise<boolean>((r) => setTimeout(() => r(false), 4000))]);
+    if (pulled) s = getServer(s.id) ?? s;
+  }
+  try {
+    return await connect(s);
+  } catch (e) {
+    const msg = (e as Error)?.message || String(e);
+    if (noRetry(msg)) throw e;
+    await disconnect(s.id);
+    if (signInProblem(msg) && s.auth === "oauth") {
+      const refresher = shared.__ooviSignInRefresher;
+      const newer = refresher ? await refresher(s.id).catch(() => false) : false;
+      if (!newer) throw e;
+    } else {
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+    return await connect(getServer(s.id) ?? s);
+  }
+}
+
+/** The tool-name start of a connector's tools (mcp_<id>_), as toolName makes them. */
+export const mcpPrefix = (id: string) => `mcp_${id.replace(/-/g, "_").slice(0, 18)}_`.replace(/[^a-zA-Z0-9_-]/g, "_");
+
 /** Tool specs for the given servers (connects on first use). */
-export async function mcpToolsFor(ids: string[]): Promise<{ specs: ToolSpec[]; errors: string[] }> {
+export async function mcpToolsFor(ids: string[]): Promise<{ specs: ToolSpec[]; errors: string[]; down: McpDown[] }> {
   const specs: ToolSpec[] = [];
   const errs: string[] = [];
+  const down: McpDown[] = [];
   for (const s of listServers().filter((x) => x.enabled && ids.includes(x.id))) {
     try {
-      const c = await connect(s);
+      const c = await connectSure(s);
       for (const t of c.tools) {
         specs.push({
           name: toolName(s, t.name),
@@ -431,10 +479,12 @@ export async function mcpToolsFor(ids: string[]): Promise<{ specs: ToolSpec[]; e
     } catch (e) {
       const msg = (e as Error).message || String(e);
       errors.set(s.id, msg);
-      errs.push(`${s.name}: ${msg.split("\n")[0]}`);
+      const reason = msg.split("\n")[0]!.slice(0, 300);
+      errs.push(`${s.name}: ${reason}`);
+      down.push({ id: s.id, name: s.name, reason, prefix: mcpPrefix(s.id), signIn: s.auth === "oauth" && signInProblem(msg) });
     }
   }
-  return { specs, errors: errs };
+  return { specs, errors: errs, down };
 }
 
 function resolve(name: string): { server: McpServer; tool: string } | null {
@@ -450,7 +500,7 @@ export const mcpServerOf = (name: string) => resolve(name)?.server;
 export async function callMcpTool(name: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean } | null> {
   const r = resolve(name);
   if (!r) return null;
-  const c = await connect(r.server);
+  const c = await connectSure(r.server);
   const res = (await c.client.callTool({ name: r.tool, arguments: args }, undefined, { timeout: 120_000 })) as {
     content?: { type: string; text?: string; resource?: { uri?: string; text?: string } }[];
     isError?: boolean;

@@ -43,7 +43,7 @@ import {
 } from "./cloud-sync-core";
 import { secretsToHide } from "./logins";
 import { connectorBots, setConnectorBots, turnOnForMain } from "./connectors";
-import { applyVaultConnector, removeServer, vaultConnectors } from "./mcp";
+import { applyVaultConnector, removeServer, setSignInRefresher, vaultConnectors } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { isRunning, onRunEnd, startRun, steerRun, stopRun, whenIdle } from "./runner";
 import { dataDir, loadSettings } from "./settings";
@@ -600,6 +600,25 @@ async function syncVault(): Promise<void> {
   writeState({ vault: marks, ...(removedNames.length ? { removed: { names: removedNames.slice(0, 10), at: Date.now() } } : {}) });
 }
 
+/**
+ * The account's copy of one sign-in connector, applied here when its sign-in is newer: the cloud runner (or another
+ * computer) renewed it while this computer was off. Using the old copy would send a retired refresh key, which the
+ * service refuses (and may then cancel the new one too). Called by lib/mcp.ts before opening such a connector and
+ * once more when the service refuses the sign-in.
+ */
+export async function pullSignIn(id: string): Promise<boolean> {
+  if (!active() || !/^[a-z0-9][a-z0-9-]{0,40}$/.test(id)) return false;
+  const r = await call<{ version: number; data?: VaultItem }>("GET", `/vault/${encodeURIComponent(id)}`);
+  const got = r?.data;
+  if (!got?.oauth?.tokens || typeof r.version !== "number") return false;
+  const local = localVault().get(id);
+  if ((got.oauth.signedInAt ?? 0) <= (local?.oauth?.signedInAt ?? 0)) return false;
+  if (!(await applyFromVault(id, got, !local))) return false;
+  const now = localVault().get(id);
+  if (now) writeState({ vault: { ...(readState().vault ?? {}), [id]: { version: r.version, hash: vaultHash(now) } } });
+  return true;
+}
+
 // ---------- the desktop worker (jobs from the phone) ----------
 
 /** A claimed job (web/lib/cloud-types.ts ClaimedJob). */
@@ -814,6 +833,7 @@ export async function setCloudSync(on: boolean): Promise<{ ok: boolean; problem?
 export function startCloudSync(): void {
   if (rt.started) return;
   rt.started = true;
+  setSignInRefresher(pullSignIn);
   onChatChange((id) => {
     countsCache = null;
     schedulePush(id);

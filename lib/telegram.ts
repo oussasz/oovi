@@ -27,7 +27,7 @@ import { dataDir, decryptSecret, encryptSecret, loadSettings } from "./settings"
 import { cloud, CloudError, sessionToken } from "./account";
 import { resolveLocale } from "./i18n";
 import { localeOfText } from "./text-locale";
-import { dmId, getChat, listBots, listChats } from "./store";
+import { dmId, getChat, listBots, listChats, newId, saveChat } from "./store";
 import { mainBot } from "./team";
 import { approvalCommand, canApprove, cleanLabel, parseChatId, planAnswer, routeUpdate, yesNo, type TgDetected, type TgLink, type TgMessage, type TgUpdate } from "./telegram-links";
 import { telegramUploadRequest } from "./telegram-upload";
@@ -197,6 +197,29 @@ export async function sendToMainChat(text: string): Promise<boolean> {
   const s = read();
   if (!token(s) || !s.chatId) return false;
   deliver(s.chatId, text);
+  // What reaches the user's Telegram also shows in the app (owner, 2026-11-19): in the main bot's chat, the one this
+  // Telegram chat talks to, unless that chat already has it.
+  void mirrorInApp(text).catch((e) => console.error("[telegram] copy in the app:", (e as Error).message));
+  return true;
+}
+
+const sameText = (t: string) => plainText(t).replace(/\s+/g, " ").trim();
+
+/** A message sent to the user's Telegram, written in the main bot's chat too (after a run holding it ends). */
+export async function mirrorInApp(text: string): Promise<boolean> {
+  const bot = mainBot();
+  if (!bot || !text.trim()) return false;
+  const id = dmId(bot.id);
+  if (isRunning(id)) await whenIdle(id, 10 * 60_000);
+  const chat = getChat(id);
+  if (!chat || isRunning(id)) return false;
+  // A routine's result starts with its own title line ("⏰ name:"), worded differently in the app: compare the body.
+  const body = /^⏰/.test(text) && text.includes("\n") ? text.slice(text.indexOf("\n") + 1) : text;
+  const want = sameText(body).slice(0, 300);
+  if (chat.entries.slice(-40).some((e) => e.kind === "bot" && sameText(e.text ?? "").includes(want))) return false;
+  const entry: BotEntry = { id: newId(), kind: "bot", botId: bot.id, at: Date.now(), steps: [], text, status: "done", usage: { input: 0, output: 0 } };
+  chat.entries.push(entry);
+  saveChat(chat);
   return true;
 }
 

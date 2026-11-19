@@ -1,3 +1,32 @@
+## Fixes from the owner's 2026-11-19 problem list (on `next-version`, NOT RELEASED; website deployed with the web removal)
+Owner: "yes, push to main and deploy the website" (done: download-only website live, checked with curl). Then: fix the
+Zapier / morning check / Telegram problems "from the root" before 0.14.
+- **Connectors never vanish silently** (`lib/mcp.ts` connectSure + mcpToolsFor `down`, `lib/orchestrator.ts` downLine /
+  missingToolText): a connection that fails is tried once more; a sign-in the service refused first takes the account's
+  newer copy. If it still fails the bot is told "<name> couldn't be reached just now (<reason>)", not to call it, and to
+  say so in one line with an [Open/Reconnect] button; a call made anyway answers the same (was: "The tool isn't enabled
+  for Oovi", which made the bot tell the owner to enable Zapier). No OK card for a tool that can't run. The note on the
+  message no longer says "use its tools" for a connector that didn't answer (`lib/capabilities.ts`).
+  Test: zapier-scenario G (stand-in Zapier answering 503).
+- **Shared sign-in (computer + cloud server)**: before opening a sign-in connector, the computer takes the account's
+  newer sign-in (`pullSignIn`, lib/cloud-sync.ts), and again when the service refuses it. Why: the cloud server renewed
+  Zapier's sign-in at 10:54 (its log: one job, 2 connectors) while the computer was off; at 12:51 the computer answered
+  Telegram with the old key before its regular sync. The hook lives on globalThis (each Next.js route bundle has its own
+  copy of lib/mcp.ts; a module variable was invisible to the bots: found by the test). Test: cloud-sync-scenario
+  "a sign-in renewed elsewhere" (fails without the fix, checked).
+- **Telegram and the app show the same**: everything sent with sendToMainChat (send_telegram, routine results,
+  reminders) is also written in the main bot's chat unless it is already there (`mirrorInApp`, lib/telegram.ts).
+  send_telegram isn't offered while the user writes from Telegram to the main bot (the reply goes there anyway: no
+  double messages). Tests: telegram-scenario (copy once; reminder once).
+  NOT FOUND: why the 12:51 long reply in Telegram is missing in the app chat; asked the owner for a screenshot.
+- **Time zone on the cloud server**: runner/index.mjs read `job.timezone`, which nothing set (every cloud job ran in
+  UTC: the 15:30 meeting first went in at a wrong hour). The phone sends its zone with every job (web/app/m/_lib/api.ts
+  postJob); the runner uses `job.payload.timeZone`. The bot's "Today is" date is the local date.
+- **"Not confirmed" on a real connector action**: lib/receipts-core.ts counted only connector tools named with
+  send/post/create…; Zapier's `execute_zapier_write_action` wasn't. Now any connector tool counts unless its name says it
+  only reads (list/get/search/read/inspect…). Unit test added.
+- Open, proposed to the owner: running routines on the cloud server when the computer is off (#87).
+
 ## 0.13.1 (released 2026-11-19, owner: "yes, deploy the website and release 0.13.1")
 Bot pictures made with "Your picture" go to the account (POST /api/v1/avatars) so the phone, web and other computers show them. Website deployed: sign-in lands in /app, the account page is in /app Settings (real-auth check 12/12 on a throwaway database).
 

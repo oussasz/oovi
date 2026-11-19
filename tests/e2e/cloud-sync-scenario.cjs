@@ -33,6 +33,7 @@ const check = (name, ok, detail = "") => {
 };
 
 // ---------- the stand-in website ----------
+let lastTools = [];
 const cloud = { enabled: false, limit: 100 * 1024 * 1024, maxChat: 4 * 1024 * 1024, deviceHeaders: new Set(), chats: new Map(), vault: new Map(), jobs: [], devices: new Map(), lastSync: null };
 const sentBodies = []; // every request body the app sent to the website
 // What sync sent (the model's own requests carry the chat the user is having with theOovi: not sync).
@@ -94,6 +95,7 @@ const site = http.createServer(async (req, res) => {
     const refused = rules.refusal(b);
     if (refused) return send(400, { error: refused });
     if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
+    lastTools = (b.tools || []).map((t) => t.name);
     const text = lastUserText(b);
     if (slowFor.test(text)) await sleep(2500);
     const said = (text.match(/(HELLO-\w+|PHONE-\w+|SCOUT-\w+|LOCAL-\w+|TEAM-\w+|GONE-\w+|BIG-\w+)/g) || []).at(-1) || "ok";
@@ -159,7 +161,8 @@ const site = http.createServer(async (req, res) => {
       return send(200, { version: cur.version + 1 });
     }
   }
-  if (r === "/vault" && req.method === "GET") return send(200, { items: [...cloud.vault.entries()].map(([connectorId, v]) => ({ connectorId, version: v.version, updatedAt: nowIso() })), pending: [] });
+  // cloud.staleList: the list still shows these versions (as if this computer's regular sync hadn't run yet).
+  if (r === "/vault" && req.method === "GET") return send(200, { items: [...cloud.vault.entries()].map(([connectorId, v]) => ({ connectorId, version: cloud.staleList?.[connectorId] ?? v.version, updatedAt: nowIso() })), pending: [] });
   if ((m = r.match(/^\/vault\/([\w-]+)$/))) {
     const cur = cloud.vault.get(m[1]);
     if (req.method === "GET") return cur ? send(200, { connectorId: m[1], version: cur.version, data: cur.data }) : send(404, err("not_found", "Not in the cloud."));
@@ -440,6 +443,51 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
     st = (await api("GET", "/api/cloud")).j;
     check("removed on the phone: removed here, no question, and Settings > Sync says so", !mine && !botsNow.some((b) => (b.tools.mcp || []).includes("phone-notion")) && st.removedConnectors.includes("Phone Notion"), JSON.stringify(st.removedConnectors));
     check("…while the connector made here stays", (await api("GET", "/api/mcp")).j.some((x) => x.id === conn.j.id) && cloud.vault.has(conn.j.id));
+
+    // ---- a sign-in renewed elsewhere while this computer was off (owner, 2026-11-19: Zapier "isn't enabled" after the
+    // cloud server renewed it): this computer takes the account's newer sign-in before connecting, instead of failing ----
+    const zapSeen = [];
+    const signin = await new Promise((resolve) => {
+      const { McpServer } = require("@modelcontextprotocol/sdk/server/mcp.js");
+      const { StreamableHTTPServerTransport } = require("@modelcontextprotocol/sdk/server/streamableHttp.js");
+      const srv = http.createServer((req, res) => {
+        let raw = "";
+        req.on("data", (c) => (raw += c));
+        req.on("end", async () => {
+          zapSeen.push(`${req.method} ${req.url} ${String(req.headers.authorization || "-").slice(0, 30)}`);
+          if (req.headers.authorization !== "Bearer renewed-token-2") {
+            res.writeHead(401, { "content-type": "application/json" });
+            return res.end('{"error":"invalid_token"}');
+          }
+          const server = new McpServer({ name: "zap", version: "1.0.0" });
+          server.registerTool("execute_zapier_read_action", { description: "Run a read action" }, async () => ({ content: [{ type: "text", text: "ok" }] }));
+          const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined });
+          res.on("close", () => {
+            transport.close();
+            server.close();
+          });
+          await server.connect(transport);
+          await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+        });
+      });
+      srv.listen(3391, "127.0.0.1", () => resolve(srv));
+    });
+    const zapData = (token, at) => ({ name: "Cloud Zap", transport: "http", url: "http://127.0.0.1:3391/mcp", auth: "oauth", oauth: { tokens: { access_token: token, token_type: "Bearer" }, signedInAt: at }, enabled: true, trusted: false, bots: [oovi.id] });
+    cloud.vault.set("cloud-zap", { version: 1, data: zapData("old-token-1", Date.now() - 60_000) });
+    await syncNow();
+    // Renewed on the cloud server; this computer hasn't synced since.
+    cloud.vault.set("cloud-zap", { version: 2, data: zapData("renewed-token-2", Date.now()) });
+    cloud.staleList = { "cloud-zap": 1 };
+    lastTools = [];
+    const zapHere = (await api("GET", "/api/mcp")).j.find((x) => x.id === "cloud-zap");
+    const ooviMcp = (await api("GET", "/api/bots")).j.find((b) => b.id === oovi.id).tools.mcp;
+    await say(dmO, "HELLO-zap check my mail");
+    const zapAfter = (await api("GET", "/api/mcp")).j.find((x) => x.id === "cloud-zap");
+    check("a sign-in renewed elsewhere: taken from the account before connecting, the connector's tools are there", lastTools.some((t) => /^mcp_cloud_zap_execute_zapier_read_action$/.test(t)), JSON.stringify({ after: zapAfter && { at: zapAfter.signedInAt, status: zapAfter.status, error: zapAfter.error }, before: zapHere && zapHere.signedInAt, tools: lastTools.filter((t) => t.startsWith("mcp_")), zapSeen: zapSeen.slice(0, 12) }));
+    signin.close();
+    cloud.staleList = null;
+    cloud.vault.delete("cloud-zap");
+    await syncNow();
 
     // ---- turned off on another device (the account answers sync_off): stops here, keeps the chats ----
     cloud.enabled = false;

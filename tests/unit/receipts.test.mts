@@ -25,3 +25,14 @@ test("a claim with an action behind it is confirmed; without, it is marked", () 
   assert.equal(unconfirmedClaim(text, turn("click")), null);
   assert.equal(unconfirmedClaim("Here is your summary.", []), null);
 });
+
+test("a connector's write action counts (Zapier's execute_zapier_write_action); its reads don't", () => {
+  // Owner's report, 2026-11-19: an event added through Zapier was marked "Not confirmed".
+  const text = "تمت إضافة Workshop en ligne Open Innovation إلى تقويمك. I scheduled it for 15:30.";
+  assert.ok(claimedAction(text));
+  assert.equal(unconfirmedClaim(text, turn("mcp_zapier_execute_zapier_write_action")), null);
+  assert.equal(unconfirmedClaim(text, turn("mcp_life_os_set_mood")), null);
+  for (const read of ["mcp_zapier_execute_zapier_read_action", "mcp_zapier_inspect_zapier_actions", "mcp_life_os_list_events", "mcp_gcal_get_event", "mcp_notion_search"]) {
+    assert.ok(unconfirmedClaim(text, turn(read)), read);
+  }
+});

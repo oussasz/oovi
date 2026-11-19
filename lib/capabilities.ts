@@ -172,14 +172,14 @@ export function capabilitiesPrompt({ bot, members, allBots, group, request, turn
       const installed = have(c.name);
       if (installed) {
         const on = mine.has(installed.id);
-        hits.push({ score: n, key: c.id, line: `${c.name} is installed and ${on ? "on for you: use its tools" : "NOT on for you (see above)"}.` });
+        hits.push({ score: n, key: c.id, line: `${c.name} is installed and ${!on ? "NOT on for you (see above)" : installed.status === "error" ? "on for you, but it didn't answer just now (see above)" : "on for you: use its tools"}.` });
       } else if (c.soon && hub) {
         const h = have(hub.name);
         hits.push({
           score: n,
           key: hub.id,
           line: h
-            ? `${c.name} works through ${hub.name}, which is installed and ${mine.has(h.id) ? "on for you: use its tools" : "NOT on for you (see above)"}.`
+            ? `${c.name} works through ${hub.name}, which is installed and ${!mine.has(h.id) ? "NOT on for you (see above)" : h.status === "error" ? "on for you, but it didn't answer just now (see above)" : "on for you: use its tools"}.`
             : `${c.name} has no direct connector yet; it works through ${hub.name}: [Connect ${hub.name}](oovi://marketplace/connector/${hub.id}).`,
         });
       } else if (!c.soon) {

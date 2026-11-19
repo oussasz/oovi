@@ -80,8 +80,20 @@ export async function getChat(chatId: string, signal?: AbortSignal): Promise<{ c
   return { chatId: r.chatId, version: r.version, chat: r.chat };
 }
 
+/** This phone's time zone (IANA name), or nothing when the browser doesn't say. */
+function phoneTimeZone(): string | undefined {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return typeof tz === "string" && tz.length <= 64 ? tz : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+// The phone's own time zone goes with every job: the cloud server runs it in the user's local time (a meeting "at
+// 15:30" is 15:30 where the user is, not on the server: runner/index.mjs).
 export const postJob = (chatId: string, job: JobPayload) =>
-  call<{ jobId: string }>("/api/v1/cloud/jobs", { method: "POST", json: { chatId, kind: job.kind, payload: job.payload } });
+  call<{ jobId: string }>("/api/v1/cloud/jobs", { method: "POST", json: { chatId, kind: job.kind, payload: { ...job.payload, ...(phoneTimeZone() ? { timeZone: phoneTimeZone() } : {}) } } });
 
 export type ChatEvent = { changed: boolean; version: number; deleted: boolean; jobs: JobInfo[]; now: string | null };
 
