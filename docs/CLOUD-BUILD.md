@@ -238,4 +238,14 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   the account setup, theOovi only, no model/key choice); every desktop chat/list feature that works without the
   computer is added to phone and web; computer-only ones are shown disabled with "on your computer"; the audit table
   goes in docs/HANDOFF.md "Cloud M".
+- 2026-11-19 (owner, main session, his words: "توقف نلغو نسخة الويب نهائيا و حتا زر الحساب نلغوه ميقدرش يشوف معلومات حسابو من
+  الويب يقدر يحمل فقط و كلش في التطبيق سواء ديسكتوب او موبايل طبق" = stop; cancel the web version entirely; remove the
+  account button; nobody sees account info on the website, they can only download; everything is in the app, desktop or
+  mobile; apply). Replaces the 2026-11-19 web-app decisions above. /app removed (→ /download); /m only inside oovi's
+  Android app (ordinary browsers → /download); no login/sign-up/account on the website (email-link pages stay: reset
+  password, verified, unsubscribe; plus privacy, terms, refund, pricing as info, download, changelog, experts, admin).
+- 2026-11-19 (owner, asked how to pay without a website account: "i think for me 1", after asking to follow what others
+  do): pay from inside the app. The app asks the website for a short-lived, single-use payment link tied to the signed-in
+  account and opens it in the browser (Paddle checkout / customer portal); no website sign-in. Later, inside apps sold
+  through Google Play / the App Store, their own in-app payment rules apply (see mobile/STORES.md).
 
