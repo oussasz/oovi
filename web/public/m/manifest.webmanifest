@@ -1,0 +1,22 @@
+{
+  "id": "/m",
+  "name": "oovi",
+  "short_name": "oovi",
+  "description": "Your oovi bots on your phone: chats, live work and approvals.",
+  "start_url": "/m?source=pwa",
+  "scope": "/m",
+  "display": "standalone",
+  "background_color": "#FBFAF7",
+  "theme_color": "#FBFAF7",
+  "dir": "auto",
+  "categories": ["productivity", "utilities"],
+  "icons": [
+    { "src": "/m/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/m/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Bots", "short_name": "Bots", "url": "/m/bots", "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Settings", "short_name": "Settings", "url": "/m/settings", "icons": [{ "src": "/m/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

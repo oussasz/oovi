@@ -196,3 +196,22 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   needs the computer: "The desktop app does more: it works on your files, uses your computer and its browser,
   runs local connectors, and lets you use your own AI keys." with a Download button to the website's download page.
 
+- 2026-11-18, part M (phone app, branch `cloud-mobile`): details the contract left open, written down so W, A and R
+  build the same thing. Why: the phone had to send jobs and read their state; these are the shapes it sends and
+  reads (its stand-in, `tests/e2e/mobile-standin.cjs`, follows them). Nothing above was changed.
+  - `POST /jobs` payloads mirror the desktop's `POST /api/chats/<id>/run` body, so the desktop can pass them on as
+    they are: `message` → `{text, entryId}` (entryId: the phone's id for the user entry; keep it as the entry's
+    `id` so the phone stops showing its own copy); `decision` → `{decisions: {callId: boolean}}` (approval card),
+    or `{answers: string[] | null}` (question cards), or `{planDecision: {approve, items}}` (a plan); `stop` → `{}`.
+  - `GET /events?chatId&after` answers `{chatId, version, chat?}` (chat included when version > after; the phone
+    fetches `GET /chats/<id>` when it is missing), `404` when the chat is unknown or deleted.
+  - Optional `GET /jobs?chatId=…` → `{jobs: [{jobId, kind, status, createdAt}]}` (newest few). The phone shows
+    "This needs your computer" from a `needs_computer` job, and "your message waits" for a `queued` one while no
+    computer is online. Without it (404) the phone still works.
+  - The runner's "This needs your computer" reply is a bot entry with `errorCode: "needs_computer"` (the phone
+    shows the banner from it even without `GET /jobs`).
+  - Cloud calls from the phone carry `x-oovi-device: phone:<id>` (W may record it in `cloud_device`); `/status`
+    devices may carry a `name` ("Home PC"), shown in the phone's Settings.
+  - A bot set to "on this computer only" carries `local: true` in its setup item (`bot:<id>`, `GET /api/v1/setup`):
+    the phone marks it and shows no message box for it. The phone reads bots, groups and connectors from
+    `/api/v1/setup` (connectors: name and on/off only).
