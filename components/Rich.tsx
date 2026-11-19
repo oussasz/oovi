@@ -11,6 +11,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FACE_COLORS } from "@/lib/faces";
 import { ooviTarget, type OoviTarget } from "@/lib/oovi-links";
+import { splitTables } from "@/lib/md-table-core";
 import type { Bot } from "@/lib/types";
 import Icon from "./Icon";
 import { openSettings } from "./SettingsModal";
@@ -70,6 +71,47 @@ function OoviLink({ label, target }: { label: string; target: OoviTarget }) {
 
 /** bots: colour @mentions. linkBots: bots that oovi://bot/<name> links may open (defaults to bots). */
 export default function Rich({ text, bots = [], linkBots }: { text: string; bots?: Bot[]; linkBots?: Bot[] }) {
+  // Markdown tables in a reply are drawn as tables (lib/md-table-core.ts); each cell keeps links, bold, code…
+  const segs = text.includes("|") ? splitTables(text) : null;
+  if (segs && segs.some((x) => x.kind === "table"))
+    return (
+      <>
+        {segs.map((x, i) =>
+          x.kind === "text" ? (
+            <RichInline key={i} text={x.text} bots={bots} linkBots={linkBots} />
+          ) : (
+            <span key={i} className="md-table-wrap" role="region" tabIndex={0} aria-label="table">
+              <table className="md-table">
+                <thead>
+                  <tr>
+                    {x.header.map((h, k) => (
+                      <th key={k} dir="auto" style={x.align[k] ? { textAlign: x.align[k]! } : undefined}>
+                        <RichInline text={h} bots={bots} linkBots={linkBots} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {x.rows.map((r, j) => (
+                    <tr key={j}>
+                      {r.map((c, k) => (
+                        <td key={k} dir="auto" style={x.align[k] ? { textAlign: x.align[k]! } : undefined}>
+                          <RichInline text={c} bots={bots} linkBots={linkBots} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </span>
+          ),
+        )}
+      </>
+    );
+  return <RichInline text={text} bots={bots} linkBots={linkBots} />;
+}
+
+function RichInline({ text, bots = [], linkBots }: { text: string; bots?: Bot[]; linkBots?: Bot[] }) {
   // Markdown headings ("## Title") read as bold lines instead of showing the # marks.
   const parts = text.replace(/^#{1,6}[ \t]+(.+?)[ \t]*#*$/gm, (_, h: string) => (h.includes("**") ? h : `**${h}**`)).split(FULL);
   return (

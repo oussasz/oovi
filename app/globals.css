@@ -1290,3 +1290,9 @@ html[lang="ar"] { --font: var(--font-arabic), var(--font-nunito), ui-rounded, sy
 .cloud-ask .plain-list { margin-block: 10px 14px; }
 .sync-meter { display: block; width: 100%; max-width: 360px; margin-top: 6px; accent-color: var(--text); }
 .card .plain-list + .card-h { margin-top: 14px; }
+/* Markdown tables in a chat reply (components/Rich.tsx): a real table, scrolls sideways when wide. */
+.md-table-wrap { display: block; max-width: 100%; overflow-x: auto; margin: 8px 0; border: 1px solid var(--border); border-radius: 12px; white-space: normal; }
+.md-table { border-collapse: collapse; width: 100%; font-size: 14px; }
+.md-table th, .md-table td { padding: 7px 12px; border-bottom: 1px solid var(--border); text-align: start; vertical-align: top; }
+.md-table th { font-weight: 700; background: var(--soft); white-space: nowrap; }
+.md-table tr:last-child td { border-bottom: 0; }
