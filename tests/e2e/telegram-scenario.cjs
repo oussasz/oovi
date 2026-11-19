@@ -333,12 +333,12 @@ const check = (name, ok, detail = "") => {
   const nP = sent.length;
   updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, photo: [{ file_id: "p1", width: 90, height: 90 }], caption: "PHOTO-CAPTION شنو هذا؟" } });
   await waitFor((m) => sent.indexOf(m) >= nP && /CAPTION-READ|photos or files|الصور أو الملفات|photos ni les fichiers/.test(m.text), 30_000, "caption reply");
-  check("a photo's caption is read as the message (not \"text messages only\")", sent.slice(nP).some((m) => /CAPTION-READ/.test(m.text)) && /PHOTO-CAPTION/.test(seen.caption || "") && /A photo came with this message/.test(seen.caption || ""), (seen.caption || "").slice(0, 160));
+  check("a photo's caption is read as the message (not \"text messages only\")", sent.slice(nP).some((m) => /CAPTION-READ/.test(m.text)) && /PHOTO-CAPTION/.test(seen.caption || "") && /وصلت صورة مع هذه الرسالة على تيليغرام/.test(seen.caption || ""), (seen.caption || "").slice(0, 160));
   // A photo with no words: said plainly what works instead.
   const nQ = sent.length;
   updates.push({ update_id: nextUpdate++, message: { message_id: nextUpdate, date: Math.floor(Date.now() / 1000), chat: { id: USER_CHAT, type: "private", first_name: "Oussama" }, from: { id: USER_CHAT, first_name: "Oussama" }, photo: [{ file_id: "p2", width: 90, height: 90 }] } });
   const noFile = await waitFor((m) => sent.indexOf(m) >= nQ, 30_000, "photo without words");
-  check("a photo without words gets a plain reply naming what works (text and voice)", /photos or files from Telegram yet|الصور أو الملفات من تيليغرام|photos ni les fichiers venant de Telegram/.test(noFile?.text || "") && !/text messages for now/.test(noFile?.text || ""), noFile?.text);
+  check("a photo without words gets a plain reply naming what works (text and voice), in the user's language (Arabic)", /الصور أو الملفات من تيليغرام/.test(noFile?.text || "") && !/text messages for now/.test(noFile?.text || ""), noFile?.text);
 
   // Out of credits while the user writes in Darija: the reason and the next step in Arabic, not the website's English.
   const nC = sent.length;

@@ -710,11 +710,12 @@ async function answerRoutine(tok: string, chatId: number, text: string): Promise
 
 /**
  * A photo or file came with the words: the bot is told it couldn't be opened, so it doesn't answer as if it saw it.
- * (A note like the "[name on Telegram]" label: what the user wrote stays first.)
+ * What the user wrote stays first, and the note is in the same language (it must not change the reply's language).
  */
 function withAttachmentNote(m: TgMessage, text: string): string {
   if (!text || m.text || !(m.photo?.length || m.document || m.video)) return text;
-  return `${text}\n\n[${m.photo?.length ? "A photo" : m.video ? "A video" : "A file"} came with this message on Telegram; oovi can't open it from Telegram yet.]`;
+  const tr = translatorFor(text);
+  return `${text}\n\n[${tr(m.photo?.length ? "tg.notePhoto" : m.video ? "tg.noteVideo" : "tg.noteFile")}]`;
 }
 
 /** A message from a Telegram chat linked to an oovi group (already checked: linked, and addressed to the bot). */

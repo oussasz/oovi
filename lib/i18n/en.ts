@@ -1985,6 +1985,9 @@ const en = {
   "conn.errDetails": "Details",
   "onb.teamIdeasFailed": "Couldn't load team ideas. Try again or skip.",
   "onb.nameRule": "Letters and numbers only, one word.",
+  "tg.notePhoto": "A photo came with this message on Telegram; oovi can't open it from Telegram yet.",
+  "tg.noteVideo": "A video came with this message on Telegram; oovi can't open it from Telegram yet.",
+  "tg.noteFile": "A file came with this message on Telegram; oovi can't open it from Telegram yet.",
 } as const;
 
 export type Key = keyof typeof en;

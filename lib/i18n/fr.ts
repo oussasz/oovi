@@ -1966,6 +1966,9 @@ const fr: Dict = {
   "conn.errDetails": "Détails",
   "onb.teamIdeasFailed": "Impossible de charger les idées d'équipe. Réessayez ou passez.",
   "onb.nameRule": "Lettres et chiffres seulement, en un seul mot.",
+  "tg.notePhoto": "Une photo accompagnait ce message sur Telegram ; oovi ne peut pas encore l'ouvrir depuis Telegram.",
+  "tg.noteVideo": "Une vidéo accompagnait ce message sur Telegram ; oovi ne peut pas encore l'ouvrir depuis Telegram.",
+  "tg.noteFile": "Un fichier accompagnait ce message sur Telegram ; oovi ne peut pas encore l'ouvrir depuis Telegram.",
 };
 
 export default fr;
