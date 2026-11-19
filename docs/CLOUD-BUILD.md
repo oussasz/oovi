@@ -223,3 +223,13 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   - A bot set to "on this computer only" carries `local: true` in its setup item (`bot:<id>`, `GET /api/v1/setup`):
     the phone marks it and shows no message box for it. The phone reads bots, groups and connectors from
     `/api/v1/setup` (connectors: name and on/off only).
+- 2026-11-19 (owner, in the main session, his words: "و في الويب لازم بعد تسجيل الدخول في بلاصت ما كانت تظهر الحساب تظهر
+  التطبيق في الويب مش موبايل لكن تطبيق ويب ريسبونسيف و تاع معلومات الحساب تنتقل للإعدادات" = on the web, after
+  sign-in, show the web app instead of the account page; a responsive web app, not the mobile one; the account
+  information moves to Settings). So: sign-in lands on `/app`; `/app` is responsive (two columns wide, one column
+  narrow); everything on the account page (profile, password, plan/credits/billing, usage, email preferences, sign
+  out, delete account) moves into `/app` Settings with the same server actions and security checks; `/account`
+  redirects to `/app/settings`; signed in, the site's main button is "Open oovi". Public pages unchanged.
+- 2026-11-19 (owner): native phone apps: an Android APK downloadable from the website for now, iOS later;
+  "temporary until I get the Google Play dev and the Apple dev" accounts. Built store-ready (branch android-app).
+
