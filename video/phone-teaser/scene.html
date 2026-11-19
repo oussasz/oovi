@@ -1,0 +1,203 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  @font-face { font-family: "Inter"; src: url("../expert-intro/fonts/inter-latin.woff2") format("woff2"); font-weight: 100 900; font-style: normal; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1080px; height: 1080px; overflow: hidden; background: #000; }
+  body { font-family: "Inter", "Noto Color Emoji", sans-serif; -webkit-font-smoothing: antialiased; }
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  #bg { position: absolute; inset: -12px; width: 1104px; height: 1104px; object-fit: cover; }
+  .abs { position: absolute; left: 0; top: 0; transform-origin: 0 0; }
+
+  /* the phone's own screen, mapped onto the glass */
+  #screen { width: 390px; height: 844px; border-radius: 46px; overflow: hidden; mix-blend-mode: screen; opacity: 0;
+    background: radial-gradient(120% 80% at 30% 0%, #5a6fd0 0%, #2a2f6e 38%, #141634 70%, #0a0b1c 100%); }
+  #screen .clock { position: absolute; left: 0; right: 0; top: 150px; text-align: center; color: #fff; font-weight: 300; font-size: 104px; letter-spacing: -3px; opacity: .92; }
+  #screen .date { position: absolute; left: 0; right: 0; top: 122px; text-align: center; color: #fff; font-weight: 500; font-size: 22px; opacity: .8; }
+  #screen .bar { position: absolute; left: 128px; right: 128px; bottom: 12px; height: 6px; border-radius: 3px; background: #fff; opacity: .7; }
+  #spill { position: absolute; inset: 0; mix-blend-mode: screen; opacity: 0;
+    background: radial-gradient(420px 300px at 560px 640px, rgba(96,118,230,.34), rgba(96,118,230,0) 70%); }
+  #beam { position: absolute; inset: 0; mix-blend-mode: screen; }
+
+  /* the notification stack that leaves the screen */
+  #stack { width: 760px; height: 330px; }
+  .card { position: absolute; left: 0; width: 760px; border-radius: 40px; background: rgba(248,249,252,.97);
+    box-shadow: 0 1px 0 #fff inset, 0 3px 0 #d5d9e2, 0 6px 0 #c3c8d3, 0 9px 0 #b2b8c5; color: #14151A; }
+  #c1 { top: 0; height: 176px; }
+  #c2 { top: 196px; height: 124px; transform-origin: 50% 0; }
+  .label { position: absolute; left: 150px; top: 22px; font-size: 19px; font-weight: 600; letter-spacing: 1.6px; color: #7b8292; text-transform: uppercase; }
+  .label b { font-weight: 700; color: #14151A; letter-spacing: 0; text-transform: none; font-size: 21px; }
+  .when { position: absolute; right: 34px; top: 22px; font-size: 20px; color: #8a90a0; font-weight: 500; }
+  .name { position: absolute; left: 150px; top: 54px; font-size: 34px; font-weight: 700; letter-spacing: -.6px; white-space: nowrap; }
+  .msg { position: absolute; left: 150px; top: 104px; font-size: 30px; font-weight: 450; color: #2a2d38; letter-spacing: -.3px; white-space: nowrap; }
+  #c2 .msg { left: 40px; top: 42px; }
+  #ai { display: inline-block; vertical-align: 5px; margin-left: 12px; padding: 4px 12px 5px; border-radius: 10px; background: #14151A; color: #FFD25A; font-size: 19px; font-weight: 800; letter-spacing: 1px; transform-origin: 0 50%; }
+  #ava { position: absolute; left: 30px; top: 34px; width: 100px; height: 100px; }
+  #ava > * { position: absolute; inset: 0; width: 100px; height: 100px; border-radius: 50%; backface-visibility: hidden; }
+  #ava img { object-fit: contain; padding: 7px 5px 3px; background: #FFE9A8; }
+
+  #dim { position: absolute; inset: 0; background: #0b0c14; opacity: 0; }
+  .line { position: absolute; left: 0; right: 0; text-align: center; color: #fff; font-weight: 800; letter-spacing: -2.4px; white-space: nowrap; }
+  #l1 { top: 566px; font-size: 76px; opacity: 0; color: rgba(255,255,255,.78); font-weight: 600; }
+  #l2 { top: 668px; font-size: 118px; opacity: 0; }
+  #l2 em { font-style: normal; color: #FFD25A; }
+  #end { position: absolute; inset: 0; opacity: 0; }
+  #lockup { position: absolute; left: 0; right: 0; top: 300px; display: flex; justify-content: center; align-items: center; gap: 22px; }
+  #lockup img { width: 150px; height: 150px; }
+  #lockup span { font-size: 150px; font-weight: 800; letter-spacing: -7px; color: #fff; }
+  #e1 { position: absolute; left: 0; right: 0; top: 520px; text-align: center; color: #fff; font-size: 54px; font-weight: 700; letter-spacing: -1.4px; line-height: 1.22; }
+  #e1 span { color: rgba(255,255,255,.72); font-weight: 500; }
+  #pill { position: absolute; left: 50%; top: 742px; transform: translateX(-50%); padding: 24px 52px; border-radius: 60px; background: #FFD25A; color: #14151A; font-size: 40px; font-weight: 800; letter-spacing: -.8px; white-space: nowrap; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="bg" alt="">
+  <div id="spill"></div>
+  <div id="screen" class="abs">
+    <div class="date">Thursday, 19 November</div>
+    <div class="clock">9:41</div>
+    <div class="bar"></div>
+  </div>
+  <div id="dim"></div>
+  <svg id="beam" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+    <defs><linearGradient id="gBeam" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#8ea0ff" stop-opacity=".5"/><stop offset="1" stop-color="#8ea0ff" stop-opacity="0"/></linearGradient></defs>
+    <polygon id="beam-p" points="" fill="url(#gBeam)"/>
+  </svg>
+  <div id="stack" class="abs">
+    <div class="card" id="c1">
+      <div id="ava">
+        <img id="ava-face" src="assets/abdelaziz-head.png" alt="">
+        <svg id="ava-bot" viewBox="480 610 360 360" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <radialGradient id="gYellow" cx="38%" cy="30%" r="80%"><stop offset="0" stop-color="#FFE79A"/><stop offset=".55" stop-color="#FFD25A"/><stop offset="1" stop-color="#F2B632"/></radialGradient>
+          </defs>
+          <rect x="480" y="610" width="360" height="360" fill="#FFF3CF"/>
+          <circle cx="660" cy="820" r="168" fill="url(#gYellow)"/>
+          <g fill="none" stroke="#14151A" stroke-width="7" stroke-linecap="round"><path d="M598 736 Q616 718 634 736"/><path d="M716 740 Q736 720 756 740"/></g>
+          <g fill="rgba(255,255,255,.18)" stroke="#14151A" stroke-width="8" stroke-linejoin="round"><rect x="564" y="690" width="108" height="86" rx="30"/><rect x="684" y="694" width="112" height="90" rx="30"/><path d="M672 728 Q678 722 684 730" fill="none"/><path d="M564 720 L548 714" fill="none"/><path d="M796 724 L812 718" fill="none"/></g>
+          <path d="M672 774 q7 9 15 0" stroke="#14151A" stroke-width="6" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="label" id="lab">Message</div>
+      <div class="when">now</div>
+      <div class="name"><span id="nm"></span><span id="ai">AI</span></div>
+      <div class="msg" id="m1"></div>
+    </div>
+    <div class="card" id="c2"><div class="msg" id="m2"></div></div>
+  </div>
+  <div class="line" id="l1"></div>
+  <div class="line" id="l2"></div>
+  <div id="end">
+    <div id="lockup"><img src="../expert-intro/assets/mark.png" alt=""><span>oovi</span></div>
+    <div id="e1"></div>
+    <div id="pill"></div>
+  </div>
+</div>
+<script>
+// Every frame is a pure function of time: window.seek(t) draws second t. render.cjs calls it frame by frame.
+const C = window.CONFIG, T = C.timeline;
+window.DURATION = T.total;
+const $ = (id) => document.getElementById(id);
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const P = (t, start, dur) => clamp((t - start) / dur);
+const cubic = (p) => 1 - Math.pow(1 - p, 3);
+const inout = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+const back = (p) => { const c = 1.9; return 1 + (c + 1) * Math.pow(p - 1, 3) + c * Math.pow(p - 1, 2); };
+const lerp = (a, b, p) => a + (b - a) * p;
+
+$("nm").textContent = C.name; $("m1").textContent = C.messages[0]; $("m2").textContent = C.messages[1];
+$("l1").textContent = C.reveal[0]; $("l2").innerHTML = C.reveal[1];
+$("e1").innerHTML = C.end.lines[0] + "<br><span>" + C.end.lines[1] + "</span>"; $("pill").textContent = C.end.site;
+
+// maps the rectangle (0,0)-(w,h) onto four screen points (top-left, top-right, bottom-right, bottom-left)
+function homography(w, h, q) {
+  const src = [[0, 0], [w, 0], [w, h], [0, h]], A = [], b = [];
+  for (let i = 0; i < 4; i++) {
+    const [x, y] = src[i], [u, v] = q[i];
+    A.push([x, y, 1, 0, 0, 0, -u * x, -u * y]); b.push(u);
+    A.push([0, 0, 0, x, y, 1, -v * x, -v * y]); b.push(v);
+  }
+  for (let i = 0; i < 8; i++) {           // Gauss-Jordan
+    let m = i; for (let r = i + 1; r < 8; r++) if (Math.abs(A[r][i]) > Math.abs(A[m][i])) m = r;
+    [A[i], A[m]] = [A[m], A[i]]; [b[i], b[m]] = [b[m], b[i]];
+    for (let r = 0; r < 8; r++) if (r !== i) { const f = A[r][i] / A[i][i]; for (let c = i; c < 8; c++) A[r][c] -= f * A[i][c]; b[r] -= f * b[i]; }
+  }
+  return b.map((v, i) => v / A[i][i]);
+}
+const css = (H) => `matrix3d(${H[0]},${H[3]},0,${H[6]},${H[1]},${H[4]},0,${H[7]},0,0,1,0,${H[2]},${H[5]},0,1)`;
+const apply = (H, x, y) => { const d = H[6] * x + H[7] * y + 1; return [(H[0] * x + H[1] * y + H[2]) / d, (H[3] * x + H[4] * y + H[5]) / d]; };
+
+const SW = 390, SH = 844, KW = 760, KH = 330;
+const HS = homography(SW, SH, C.screenQuad);
+$("screen").style.transform = css(HS);
+// where the stack sits while it is still a banner on the glass
+const B = C.banner, bh = B.w * KH / KW;
+const onGlass = (dy) => [[B.x, B.y + dy], [B.x + B.w, B.y + dy], [B.x + B.w, B.y + dy + bh], [B.x, B.y + dy + bh]].map(([x, y]) => apply(HS, x, y));
+// where it floats once it has left the screen
+function floating(cx, cy, w, rot, lean) {
+  const h = w * KH / KW, r = rot * Math.PI / 180, c = Math.cos(r), s = Math.sin(r);
+  return [[-w / 2 + lean, -h / 2], [w / 2 - lean, -h / 2], [w / 2, h / 2], [-w / 2, h / 2]].map(([x, y]) => [cx + x * c - y * s, cy + x * s + y * c]);
+}
+
+let frameNo = -1;
+window.seek = async function (t) {
+  // the real footage, one frame per rendered frame
+  const n = Math.min(C.frames, 1 + Math.round(t * C.fps));
+  if (n !== frameNo) { frameNo = n; const im = $("bg"); im.src = `footage/f${String(n).padStart(4, "0")}.jpg`; await im.decode(); }
+
+  const reveal = inout(P(t, T.dim, 0.7)), endP = inout(P(t, T.end, 0.6));
+  $("bg").style.filter = `blur(${reveal * 9}px) brightness(${1 - reveal * 0.1})`;
+  $("dim").style.opacity = reveal * 0.52 + endP * 0.2;
+
+  // the screen wakes up: a quick flash, then it settles
+  const on = P(t, T.on, 0.22), settle = P(t, T.on + 0.22, 0.5);
+  const lit = cubic(on) * (1 - 0.14 * settle) * (1 - 0.55 * reveal);
+  $("screen").style.opacity = lit * 0.95;
+  $("spill").style.opacity = lit * 0.9;
+
+  // the banner drops in on the glass, then lifts out towards the viewer
+  const drop = cubic(P(t, T.banner, 0.35));
+  const lift = P(t, T.lift, 0.75), L = lift <= 0 ? 0 : back(lift);
+  const bob = Math.sin((t - T.lift) * 1.9) * 5 * clamp(lift), sway = Math.sin((t - T.lift) * 1.3 + 1) * 0.5 * clamp(lift);
+  const up = inout(P(t, T.dim, 0.8));
+  const F = C.float;
+  const a = onGlass((1 - drop) * -60), b = floating(F.cx, lerp(F.cy, F.cyReveal, up) + bob, lerp(F.w, F.wReveal, up), lerp(F.rot, 0, up) + sway, lerp(F.lean, 0, up));
+  const q = a.map((p, i) => [lerp(p[0], b[i][0], L), lerp(p[1], b[i][1], L)]);
+  const st = $("stack");
+  st.style.transform = css(homography(KW, KH, q));
+  const out = P(t, T.cardOut, 0.35);
+  st.style.opacity = P(t, T.banner, 0.18) * (1 - out);
+  st.style.filter = `drop-shadow(0 ${lerp(0, 34, clamp(L))}px ${lerp(0, 38, clamp(L))}px rgba(8,10,24,${0.42 * clamp(L)}))`;
+
+  // a faint cone of light between the glass and the card while it is in the air
+  const g = onGlass(0), beamO = clamp(lift) * (1 - reveal) * 0.55 * (0.85 + 0.15 * Math.sin(t * 9));
+  $("beam-p").setAttribute("points", [g[3], g[2], q[2], q[3]].map((p) => p.join(",")).join(" "));
+  $("beam").style.opacity = beamO;
+
+  // the second message
+  const p2 = P(t, T.msg2, 0.42);
+  $("c2").style.opacity = clamp(p2 * 3);
+  $("c2").style.transform = `translateY(${(1 - back(p2)) * -70}px) scale(${lerp(0.86, 1, back(p2))})`;
+
+  // the reveal: his picture turns over into the bot, the label becomes oovi, an "AI" tag lands next to his name
+  const flip = inout(P(t, T.flip, 0.55));
+  $("ava-face").style.transform = `perspective(600px) rotateY(${flip * 180}deg)`;
+  $("ava-bot").style.transform = `perspective(600px) rotateY(${flip * 180 - 180}deg)`;
+  $("lab").innerHTML = flip > 0.5 ? "<b>oovi</b>" : "Message";
+  const tag = P(t, T.flip + 0.35, 0.4);
+  $("ai").style.transform = `scale(${tag <= 0 ? 0 : back(tag)})`;
+  $("ai").style.opacity = clamp(tag * 4);
+
+  const line = (id, at) => { const p = P(t, at, 0.5), e = cubic(p); $(id).style.opacity = e * (1 - out); $(id).style.transform = `translateY(${(1 - e) * 46}px) scale(${lerp(0.96, 1, e)})`; };
+  line("l1", T.line1); line("l2", T.line2);
+
+  $("end").style.opacity = endP;
+  const e = (id, d) => { const p = cubic(P(t, T.end + d, 0.6)); $(id).style.opacity = p; $(id).style.translate = `0 ${(1 - p) * 30}px`; };
+  e("lockup", 0); e("e1", 0.25); e("pill", 0.55);
+};
+</script>
+</body>
+</html>

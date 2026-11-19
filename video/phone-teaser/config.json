@@ -1,0 +1,65 @@
+{
+  "name": "Abdelaziz Benkirat",
+  "messages": [
+    "Your startup idea? We need to talk.",
+    "Bring proof. I'll bring the coffee. ☕"
+  ],
+  "reveal": [
+    "That wasn't Abdelaziz.",
+    "It was his <em>AI</em>."
+  ],
+  "end": {
+    "lines": [
+      "Abdelaziz Benkirat, startup coach.",
+      "Now an AI you can talk to."
+    ],
+    "site": "oovi.conuron.com"
+  },
+  "fps": 24,
+  "frames": 324,
+  "screenQuad": [
+    [
+      182,
+      500
+    ],
+    [
+      507,
+      397
+    ],
+    [
+      950,
+      735
+    ],
+    [
+      520,
+      945
+    ]
+  ],
+  "banner": {
+    "x": 14,
+    "y": 330,
+    "w": 362
+  },
+  "float": {
+    "cx": 560,
+    "cy": 262,
+    "w": 800,
+    "rot": -5,
+    "lean": 16,
+    "cyReveal": 330,
+    "wReveal": 790
+  },
+  "timeline": {
+    "total": 13,
+    "on": 0.6,
+    "banner": 0.85,
+    "lift": 1.55,
+    "msg2": 4.0,
+    "dim": 6.4,
+    "flip": 6.6,
+    "line1": 7.0,
+    "line2": 7.8,
+    "cardOut": 9.5,
+    "end": 9.8
+  }
+}
