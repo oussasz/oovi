@@ -99,3 +99,11 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
 - 2026-11-18 (owner): the phone app must feel like WhatsApp / Messenger: a chat list first, bubbles, the usual
   composer (text, voice, attach), long-press menu on a message (reply, copy), swipe to reply, ticks/typing-like
   status while the bot works, unread counts, archive/pin by swipe. Familiar, never strange; Apple-style polish.
+- 2026-11-19 (owner): a WEB version too, the same app as the phone (same code, same API), in any browser at
+  `/app` on the website (the phone keeps `/m`, or both share one route that adapts): signed-in only (every page
+  and API call checks the session; signed out → sign-in page), wide screens get a two-column layout (chat list +
+  chat), like WhatsApp Web / Messenger on the web. theOovi only, like the phone. Everywhere (phone and web) oovi
+  suggests the desktop app, never pushy: a short card in the chat list and in Settings, and a line when something
+  needs the computer: "The desktop app does more: it works on your files, uses your computer and its browser,
+  runs local connectors, and lets you use your own AI keys." with a Download button to the website's download page.
+
