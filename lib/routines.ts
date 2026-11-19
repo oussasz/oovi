@@ -277,6 +277,8 @@ export function importRoutines(raw: unknown[]): number {
         enabled,
         notifyTelegram: r.notifyTelegram === true,
         ...((r as { quiet?: unknown }).quiet === true ? { quiet: true } : {}),
+        // The language its results are written in (set when it was asked for): the same on every computer and in the cloud.
+        ...(typeof (r as { lang?: unknown }).lang === "string" && (r as { lang: string }).lang.length <= 200 && !/[\u0000-\u001f]/.test((r as { lang: string }).lang) ? { lang: (r as { lang: string }).lang } : {}),
         ...(typeof (r as { watch?: { url?: unknown } }).watch?.url === "string" && /^https?:\/\//i.test((r as { watch: { url: string } }).watch.url) ? { watch: { url: (r as { watch: { url: string } }).watch.url.slice(0, 2000) } } : {}),
         createdAt: typeof r.createdAt === "number" ? r.createdAt : now,
         updatedAt: now,
