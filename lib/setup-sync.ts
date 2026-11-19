@@ -13,6 +13,7 @@
 
 import { randomBytes } from "node:crypto";
 import fs from "node:fs";
+import { sendOwnAvatars } from "./avatars";
 import path from "node:path";
 import { cloud, CloudError, sessionToken } from "./account";
 import { cleanFace } from "./faces";
@@ -188,6 +189,8 @@ async function run(): Promise<SyncResult> {
       const merged = uniqueBotNames(mergeSetup(local, remoteItems, state?.base ?? null), remoteItems);
       await applySetup(collectSetup(), merged);
       if (restored && !fs.existsSync(onboardingFile())) fs.writeFileSync(onboardingFile(), JSON.stringify({ restored: true, at: Date.now() }));
+      // Pictures made on this computer go to the account first, so other devices find the face they point to.
+      await sendOwnAvatars(Object.entries(merged).filter(([k]) => k.startsWith("bot:")).map(([, b]) => (b as { face?: { image?: string } })?.face?.image ?? "").filter(Boolean)).catch(() => {});
       let version = remote.version;
       if (itemHash(merged) !== itemHash(remoteItems)) {
         try {

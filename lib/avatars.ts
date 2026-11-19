@@ -4,7 +4,8 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { cloudUrl } from "./account";
+import crypto from "node:crypto";
+import { cloud, cloudUrl } from "./account";
 import { IMAGE_ID } from "./faces";
 import { dataDir } from "./settings";
 
@@ -43,4 +44,46 @@ export async function avatarPng(id: string): Promise<Buffer | null> {
   })();
   pending.set(id, job);
   return job;
+}
+
+// ---------- the user's own pictures, kept on their account (phone, web, other computers) ----------
+
+const sentFile = () => path.join(dir(), "sent.json");
+function sentIds(): Set<string> {
+  try {
+    return new Set(JSON.parse(fs.readFileSync(sentFile(), "utf8")) as string[]);
+  } catch {
+    return new Set();
+  }
+}
+
+/**
+ * Sends the pictures these bots use that are only on this computer (made with "Your picture") to the account, once
+ * each, so the phone, the web app and other computers show the same face. Best effort: offline, it tries next time.
+ */
+export async function sendOwnAvatars(ids: string[]): Promise<void> {
+  const sent = sentIds();
+  let changed = false;
+  for (const id of [...new Set(ids)]) {
+    if (!IMAGE_ID.test(id) || sent.has(id)) continue;
+    let png: Buffer;
+    try {
+      png = fs.readFileSync(path.join(dir(), `${id}.png`));
+    } catch {
+      continue; // a marketplace picture not downloaded here, or gone: nothing to send
+    }
+    // Only pictures made on this computer (their id is the sha256 of the bytes); marketplace ones are already there.
+    if (crypto.createHash("sha256").update(png).digest("hex").slice(0, 32) !== id || !isAvatarPng(png)) continue;
+    try {
+      await cloud<{ id: string }>("/api/v1/avatars", { method: "POST", auth: true, body: { png: png.toString("base64") } });
+      sent.add(id);
+      changed = true;
+    } catch {
+      break; // signed out or offline: next sync
+    }
+  }
+  if (changed) {
+    fs.mkdirSync(dir(), { recursive: true });
+    fs.writeFileSync(sentFile(), JSON.stringify([...sent].slice(-1000)));
+  }
 }

@@ -40,3 +40,22 @@ export async function getAvatar(id: string): Promise<Buffer | null> {
   const { rows } = await pool.query("SELECT png FROM catalog_avatars WHERE id = $1", [id]);
   return rows[0] ? (rows[0].png as Buffer) : null;
 }
+
+/**
+ * A picture a user gave one of their own bots (the app's "Your picture"): kept so their phone, the web app and
+ * their other computers show it too. Its id is the app's own (sha256 of the bytes, first 32 hex), so a bot's
+ * face means the same picture everywhere. At most MAX_USER_AVATARS per account.
+ */
+export const MAX_USER_AVATARS = 200;
+export async function saveUserAvatar(png: Buffer, userId: string): Promise<{ id: string } | "full"> {
+  await ensureTable();
+  const id = createHash("sha256").update(png).digest("hex").slice(0, 32);
+  const by = `user:${userId}`;
+  const { rows } = await pool.query("SELECT count(*)::int AS n FROM catalog_avatars WHERE created_by = $1", [by]);
+  if (Number(rows[0]?.n ?? 0) >= MAX_USER_AVATARS) {
+    const had = await pool.query("SELECT 1 FROM catalog_avatars WHERE id = $1", [id]);
+    if (!had.rowCount) return "full";
+  }
+  await pool.query("INSERT INTO catalog_avatars (id, png, created_by) VALUES ($1, $2, $3) ON CONFLICT (id) DO NOTHING", [id, png, by]);
+  return { id };
+}
