@@ -6,7 +6,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 const root = path.resolve(import.meta.dirname, "../..");
-const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
+// Windows checkouts may turn line ends into CRLF: compare the text, not the line-end style.
+const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8").replace(/\r\n/g, "\n");
 
 test("setup.sh installs exactly infra/docker-compose.yml", () => {
   const setup = read("infra/setup.sh");

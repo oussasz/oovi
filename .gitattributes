@@ -1,0 +1,5 @@
+# Scripts and files that run on Linux servers keep Linux line ends, even in a Windows checkout.
+*.sh text eol=lf
+runner/Dockerfile text eol=lf
+.dockerignore text eol=lf
+infra/** text eol=lf
