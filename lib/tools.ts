@@ -401,7 +401,9 @@ async function snapshotResult(call: ToolCall, sess: Session, offset: number, wit
 function hint(e: unknown, s: Settings): string {
   const msg = e instanceof Error ? e.message : String(e);
   let extra = "";
-  if (/Executable doesn't exist|is not found|not found at|Failed to launch/i.test(msg)) {
+  // "Install a browser" only when none is installed; a browser that is installed but refused to start (its profile in
+  // use, a policy, a snap package) keeps its own reason (lib/browser.ts says which).
+  if (/Executable doesn't exist|is not found|not found at|Failed to launch/i.test(msg) && !/SingletonLock|profile|in use|already running|existing browser session|policy|snap|permission denied/i.test(msg)) {
     extra = `\nThe local browser (${s.browser.channel}) could not start. Install Microsoft Edge or Google Chrome, pick "chromium" and run \`npx playwright install chromium\`, or switch to Docker mode in Settings.`;
   } else if (s.browser.mode === "docker" && /connect|ECONNREFUSED|WebSocket/i.test(msg)) {
     extra = `\nCould not reach the sandbox browser at ${s.browser.wsEndpoint}. Start it with \`docker compose up -d\`.`;

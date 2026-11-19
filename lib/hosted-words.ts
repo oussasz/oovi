@@ -33,6 +33,8 @@ export function hostedErrorText(tr: Tr, code: string | undefined, opts: { away?:
       return tr("credits.verifyTitle");
     case "offline":
       return tr("credits.offlineTitle");
+    case "tls":
+      return tr("credits.tlsTitle");
     default:
       return null;
   }

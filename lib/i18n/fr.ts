@@ -691,6 +691,7 @@ const fr: Dict = {
   "credits.offline": "Vous êtes hors ligne. Voici les derniers chiffres connus.",
   "credits.outTitle": "Vous avez utilisé tous vos crédits theOovi. Abonnez-vous pour en avoir plus, ou ajoutez votre propre API key pour continuer.",
   "credits.limitTitle": "Vous avez atteint la limite de sécurité du jour. Elle protège vos crédits d'une tâche qui s'emballe et se remet à zéro dans {h} h {m} min. Pour continuer tout de suite, utilisez votre propre API key.",
+  "credits.tlsTitle": "Un logiciel de sécurité (antivirus) ou le réseau de votre entreprise bloque la connexion sécurisée d'oovi, donc theOovi n'a pas pu répondre. Autorisez oovi dans ce logiciel (ou demandez à votre service informatique), et vérifiez la date et l'heure de cet ordinateur.",
   "credits.offlineTitle": "Pas de connexion Internet, theOovi n'a pas pu répondre. Vos discussions sont en sécurité sur cet ordinateur. Renvoyez le message une fois reconnecté.",
   "credits.signedOut": "Vous êtes déconnecté. Reconnectez-vous pour utiliser theOovi.",
   "offline.banner": "Vous êtes hors ligne. Vos discussions et fichiers sont en sécurité sur cet ordinateur ; les bots qui ont besoin d'Internet refonctionneront dès votre retour en ligne.",

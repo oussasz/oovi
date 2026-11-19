@@ -707,6 +707,7 @@ const en = {
   "credits.offline": "You're offline. These are the last known numbers.",
   "credits.outTitle": "You've used all your theOovi credits. Subscribe for more credits, or add your own API key to keep going.",
   "credits.limitTitle": "You've reached today's safety limit. It protects your credits from a runaway task and resets in {h} h {m} min. To keep going now, use your own API key.",
+  "credits.tlsTitle": "A security program (antivirus) or your company network is blocking oovi's secure connection, so theOovi couldn't answer. Allow oovi in that program (or ask your IT team), and check this computer's date and time.",
   "credits.offlineTitle": "No internet connection, so theOovi couldn't answer. Your chats are safe on this computer. Send the message again when you're back online.",
   "credits.signedOut": "You're signed out. Sign in again to use theOovi.",
   "offline.banner": "You're offline. Your chats and files are safe on this computer; bots that need the internet will work again when you're back online.",

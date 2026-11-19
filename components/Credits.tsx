@@ -281,6 +281,8 @@ export function HostedNotice({ code, message }: { code: string; message?: string
         ? t("credits.limitTitle", { h: reset?.h ?? 0, m: reset?.m ?? 0 })
         : code === "offline"
           ? t("credits.offlineTitle")
+          : code === "tls"
+            ? t("credits.tlsTitle")
           : code === "signed_out"
             ? t("credits.signedOut")
             : code === "verify_email"
@@ -294,7 +296,7 @@ export function HostedNotice({ code, message }: { code: string; message?: string
           <ResendButton primary />
         </div>
       )}
-      {code !== "offline" && code !== "signed_out" && code !== "verify_email" && (
+      {code !== "offline" && code !== "tls" && code !== "signed_out" && code !== "verify_email" && (
         <div className="credits-actions">
           {code === "no_credits" && <PayButton kind="checkout" status={status} primary />}
           <button type="button" className="btn sm" onClick={() => openSettings("models")}>
