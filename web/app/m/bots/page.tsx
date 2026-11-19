@@ -1,8 +1,6 @@
-import type { Metadata } from "next";
-import { BotsScreen } from "../_ui/BotsScreen";
+import { redirect } from "next/navigation";
 
-export const metadata: Metadata = { title: "Bots" };
-
+// Bots are in the chat list now (owner, 2026-11-19); old links land there.
 export default function Page() {
-  return <BotsScreen />;
+  redirect("/m");
 }

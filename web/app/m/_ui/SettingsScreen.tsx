@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { authClient } from "@/lib/auth-client";
 import { agoShort, bytesLabel, computerState, syncUse } from "../_lib/core";
 import { Icon } from "./Icon";
-import { ActionSheet, IconTile, LargeTitle, NavBar, OfflineBar, Row, Section, Sheet, Spinner, TabBar, usePullToRefresh } from "./kit";
+import { ActionSheet, IconTile, LargeTitle, NavBar, OfflineBar, Row, Section, Sheet, Spinner, usePullToRefresh, useWide } from "./kit";
 import { DesktopSuggestion } from "./Desktop";
 import { useM } from "./MobileApp";
 import { base, to } from "../_lib/route";
@@ -13,6 +13,7 @@ type BeforeInstall = Event & { prompt: () => Promise<void>; userChoice: Promise<
 
 export function SettingsScreen() {
   const m = useM();
+  const wide = useWide();
   const { t, lang, me, status, sync, credits, loadCredits, prefs, setPrefs, refresh, setup, connectors } = m;
   const [sheet, setSheet] = useState<"lang" | "look" | "signout" | null>(null);
   const [install, setInstall] = useState(false);
@@ -56,8 +57,8 @@ export function SettingsScreen() {
   };
 
   return (
-    <div className="m-screen m-screen--tabs m-screen--grouped">
-      <NavBar title={t("settings.title")} large />
+    <div className="m-screen m-screen--grouped">
+      <NavBar title={t("settings.title")} large back={wide ? undefined : { href: to(), label: t("tab.chats") }} />
       <main className="m-main">
         {ptr}
         <LargeTitle>{t("settings.title")}</LargeTitle>
@@ -152,7 +153,6 @@ export function SettingsScreen() {
           <Icon name="sparkle" size={14} /> {t("settings.footer")}
         </p>
       </main>
-      <TabBar />
 
       <ActionSheet
         open={sheet === "lang"}

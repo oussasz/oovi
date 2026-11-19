@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Empty, SlimeTrio, TabBar } from "./kit";
+import { Empty, SlimeTrio } from "./kit";
 import { useM } from "./MobileApp";
 import { to } from "../_lib/route";
 
@@ -9,7 +9,7 @@ import { to } from "../_lib/route";
 export function OfflineScreen() {
   const { t } = useM();
   return (
-    <div className="m-screen m-screen--tabs">
+    <div className="m-screen">
       <main className="m-main m-main--center">
         <Empty art={<SlimeTrio mood="sleeping" />} title={t("offline.title")} body={t("offline.body")}>
           <Link href={to()} className="m-btn m-btn--tinted">
@@ -17,7 +17,6 @@ export function OfflineScreen() {
           </Link>
         </Empty>
       </main>
-      <TabBar />
     </div>
   );
 }

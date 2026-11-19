@@ -234,14 +234,15 @@ export function isUnread(chat: Chat, seenAt: number | undefined): boolean {
 
 export type ListRow = { chat: Chat; pinned: boolean; unread: boolean; at: number };
 
-/** Pinned first (in pin order), then newest first. Routine chats and empty chats with no name stay out. */
+/** Pinned first (in pin order), then newest first, chats not started yet last. Routine chats stay out. */
 export function sortChats(chats: Chat[], pins: string[], seen: Record<string, number>): ListRow[] {
   const rows = chats
-    .filter((c) => !c.routine && (c.entries.length > 0 || c.kind === "group"))
+    .filter((c) => !c.routine)
     .map((c) => ({ chat: c, pinned: pins.includes(c.id) || (c.pinned === true && !pins.includes(`-${c.id}`)), unread: isUnread(c, seen[c.id]), at: lastShownEntry(c)?.at ?? c.updatedAt }));
   return rows.sort((a, b) => {
     if (a.pinned !== b.pinned) return a.pinned ? -1 : 1;
     if (a.pinned && b.pinned) return pins.indexOf(a.chat.id) - pins.indexOf(b.chat.id);
+    if (!a.chat.entries.length !== !b.chat.entries.length) return a.chat.entries.length ? -1 : 1;
     return b.at - a.at;
   });
 }
@@ -453,4 +454,66 @@ export function bubbleTime(at: number, lang: Lang, timeZone = "UTC"): string {
 /** A short quote of a message for a reply ("Nova: Here are the 3…"). */
 export function quoteOf(text: string, max = 90): string {
   return plainPreview(text, max);
+}
+
+// ---------- one list: chats, bots and groups (owner, 2026-11-19: no separate Bots screen) ----------
+
+/**
+ * Every chat the phone has, plus a row for each bot and group of the account that has no chat yet (it starts on the
+ * first message), so the list is the only place to go. Hidden bots and routine chats stay out. A row with no
+ * messages sorts after the others; `fresh` marks it.
+ */
+export function chatsWithEveryone(chats: Chat[], setup: PhoneSetup | null): Chat[] {
+  const have = new Set(chats.map((c) => c.id));
+  const out = [...chats];
+  for (const g of setup?.groups ?? []) {
+    if (have.has(g.id) || !g.memberIds.length) continue;
+    out.push({ id: g.id, kind: "group", name: g.name, memberIds: g.memberIds, ...(g.leadId ? { leadId: g.leadId } : {}), createdAt: 0, updatedAt: 0, entries: [] });
+  }
+  for (const b of setup?.bots ?? []) {
+    const id = dmId(b.id);
+    if (b.hidden || have.has(id)) continue;
+    out.push({ id, kind: "direct", name: b.name, memberIds: [b.id], createdAt: 0, updatedAt: 0, entries: [] });
+  }
+  return out;
+}
+
+export const isFresh = (c: Chat) => c.entries.length === 0;
+
+/** A bot's name is one word (it is used for @mentions, like on the computer). */
+export function botNameProblem(name: string, taken: string[]): "empty" | "oneWord" | "taken" | null {
+  const n = name.trim();
+  if (!n) return "empty";
+  if (!/^[\p{L}\p{N}_-]{1,30}$/u.test(n)) return "oneWord";
+  if (taken.some((t) => t.toLowerCase() === n.toLowerCase())) return "taken";
+  return null;
+}
+
+/** A new bot as the account's setup keeps it (the desktop's lib/setup-sync.ts reads it and adds the bot). */
+export function newBotItem(input: { name: string; role: string; face: Record<string, unknown> }, now: number): Record<string, unknown> {
+  const name = input.name.trim().slice(0, 30);
+  const role = input.role.trim().slice(0, 80);
+  return {
+    name,
+    role,
+    instructions: `You are ${name}${role ? `, ${role}` : ""}. Help the user clearly and simply, in their language.`,
+    face: input.face,
+    tools: { web: true, browser: false },
+    createdAt: now,
+  };
+}
+
+/** A new group: its members, the first one leads (like the computer's default). */
+export function newGroupItem(input: { name: string; memberIds: string[] }, now: number): Record<string, unknown> | null {
+  const memberIds = [...new Set(input.memberIds)].slice(0, 12);
+  const name = input.name.trim().slice(0, 60);
+  if (!name || !memberIds.length) return null;
+  return { name, memberIds, leadId: memberIds[0], orchestrate: true, createdAt: now };
+}
+
+/** An id like the desktop's (lib/store.ts newId): 12 letters and digits. */
+export function setupId(rand: () => number = Math.random): string {
+  let s = "";
+  for (let i = 0; i < 12; i++) s += "0123456789abcdef"[Math.floor(rand() * 16)];
+  return s;
 }

@@ -196,6 +196,14 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
   needs the computer: "The desktop app does more: it works on your files, uses your computer and its browser,
   runs local connectors, and lets you use your own AI keys." with a Download button to the website's download page.
 
+- 2026-11-19, part M (owner's review: one list, no Bots tab): the phone and /app add bots and groups by writing the
+  account's setup (`GET` then `PUT /api/v1/setup` with `baseVersion`; on 409 read again and add again), with the
+  computer's own item shapes (`bot:<12 hex>` {name, role, instructions, face, tools {web, browser}, createdAt};
+  `group:<12 hex>` {name, memberIds, leadId = first member, orchestrate: true, createdAt}); the computer sets them up
+  at its next setup sync, and a group's chat id is its id (as in `lib/setup-sync.ts`). Deleting a chat calls
+  `DELETE /chats/<chatId>`; deleting a group also removes `group:<id>` from the setup (like on the computer). Part A:
+  a `POST /jobs` message can arrive for a bot or group the computer has not set up yet (it was added from the phone
+  a moment ago); applying the setup first, then running the job, makes it work.
 - 2026-11-18, part M (phone app, branch `cloud-mobile`): details the contract left open, written down so W, A and R
   build the same thing. Why: the phone had to send jobs and read their state; these are the shapes it sends and
   reads (its stand-in, `tests/e2e/mobile-standin.cjs`, follows them). Nothing above was changed.

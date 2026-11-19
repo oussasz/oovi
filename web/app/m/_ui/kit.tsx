@@ -4,16 +4,15 @@
 // lists, action sheets, sheets, swipe actions, pull to refresh, toasts. Sizes are in rem (they follow the phone's
 // text size on iPhone, see m.css) and every touch target is at least 44 pt.
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createContext, useCallback, useContext, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import FaceView, { FaceStack } from "@/components/Face";
 import { Sparkle } from "@/components/Doodles";
 import type { Mood } from "@/lib/faces";
-import { isUnread } from "../_lib/core";
 import { tap } from "../_lib/haptics";
 import { Icon, type IconName } from "./Icon";
 import { canGoBack, useM } from "./MobileApp";
-import { inApp, to } from "../_lib/route";
+import { to } from "../_lib/route";
 
 // ---------- scrolling ----------
 
@@ -142,39 +141,6 @@ export function SlimeTrio({ mood = "idle", size = 120 }: { mood?: Mood; size?: n
   );
 }
 
-export function TabBar({ rail = false }: { rail?: boolean }) {
-  const pane = usePane();
-  const { t, chats, seen, archived } = useM();
-  const path = inApp(usePathname() ?? "/m");
-  const unread = Object.values(chats).filter(({ chat }) => !chat.routine && !archived.includes(chat.id) && isUnread(chat, seen[chat.id])).length;
-  const tabs: { href: string; label: string; icon: IconName; on: boolean; badge?: number; color: string }[] = [
-    { href: to(), label: t("tab.chats"), icon: "chats", on: path === "" || path.startsWith("/c/") || path.startsWith("/archived"), badge: unread, color: "var(--m-blob-blue)" },
-    { href: to("/bots"), label: t("tab.bots"), icon: "bots", on: path.startsWith("/bots"), color: "var(--m-blob-yellow)" },
-    { href: to("/settings"), label: t("tab.settings"), icon: "settings", on: path.startsWith("/settings") || path.startsWith("/connectors"), color: "var(--m-blob-coral)" },
-  ];
-  // In the wide layout the rail replaces the phone's tab bar.
-  if (pane && !rail) return null;
-  return (
-    <nav className={rail ? "m-tabs m-rail" : "m-tabs"} aria-label="oovi">
-      {rail && (
-        <span className="m-rail__logo" aria-hidden>
-          <SlimeTrio size={40} />
-        </span>
-      )}
-      {tabs.map((tb) => (
-        <Link key={tb.href} href={tb.href} className={`m-tab${tb.on ? " is-on" : ""}`} aria-current={tb.on ? "page" : undefined} onClick={() => tap()}>
-          <span className="m-tab__icon">
-            {tb.on && <Blob color={tb.color} className="m-tab__blob" />}
-            <Icon name={tb.icon} size={25} stroke={tb.on ? 2.3 : 1.9} />
-            {tb.badge ? <span className="m-badge" aria-label={`${tb.badge}`}>{tb.badge > 99 ? "99+" : tb.badge}</span> : null}
-          </span>
-          <span className="m-tab__label">{tb.label}</span>
-        </Link>
-      ))}
-    </nav>
-  );
-}
-
 // ---------- lists ----------
 
 export function Section({ header, footer, children, id }: { header?: ReactNode; footer?: ReactNode; children: ReactNode; id?: string }) {
@@ -268,6 +234,19 @@ export function BotFace({ face, size = 44, mood }: { face: Record<string, unknow
   return <FaceView face={(face ?? {}) as Record<string, unknown>} size={size} mood={mood} />;
 }
 
+/** The signed-in person's picture (their account photo, or their initial on a pastel pebble). */
+export function MeAvatar({ size = 36 }: { size?: number }) {
+  const { me } = useM();
+  const [broken, setBroken] = useState(false);
+  const img = me?.image && /^https:\/\//.test(me.image) && !broken ? me.image : null;
+  const letter = (me?.name || me?.email || "?").trim().slice(0, 1).toUpperCase();
+  return (
+    <span className="m-me" style={{ width: size, height: size, fontSize: size * 0.42 }} aria-hidden>
+      {img ? <img src={img} alt="" width={size} height={size} referrerPolicy="no-referrer" onError={() => setBroken(true)} /> : letter}
+    </span>
+  );
+}
+
 export function ChatFace({ faces, size = 52, mood }: { faces: (Record<string, unknown> | object)[]; size?: number; mood?: Mood }) {
   if (faces.length <= 1) return <BotFace face={faces[0]} size={size} mood={mood} />;
   return <FaceStack faces={faces as Record<string, unknown>[]} size={size} />;
@@ -351,7 +330,7 @@ export function ActionSheet({ open, title, message, actions, onClose }: { open: 
 }
 
 /** A card that slides up from the bottom, with a grabber and a title. */
-export function Sheet({ open, title, onClose, children }: { open: boolean; title: string; onClose: () => void; children: ReactNode }) {
+export function Sheet({ open, title, onClose, children, closeLabel }: { open: boolean; title: string; onClose: () => void; children: ReactNode; closeLabel?: string }) {
   const { t } = useM();
   const ref = useDialogFocus(open, onClose);
   const id = useId();
@@ -362,8 +341,8 @@ export function Sheet({ open, title, onClose, children }: { open: boolean; title
         <div className="m-sheet__grab" aria-hidden />
         <div className="m-sheet__head">
           <h2 id={id}>{title}</h2>
-          <button type="button" className="m-sheet__done" onClick={onClose}>
-            {t("common.done")}
+          <button type="button" className={`m-sheet__done${closeLabel ? " is-quiet" : ""}`} onClick={onClose}>
+            {closeLabel ?? t("common.done")}
           </button>
         </div>
         <div className="m-sheet__body">{children}</div>

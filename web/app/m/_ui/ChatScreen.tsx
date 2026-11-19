@@ -169,7 +169,15 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   const dmBotId = chatId.startsWith("dm-") ? chatId.slice(3) : null;
   const dmBot = dmBotId ? bot(dmBotId) : undefined;
   const isNewDm = !chat && !!dmBot && dmId(dmBot.id) === chatId;
-  const view: Chat | undefined = chat ?? (isNewDm && dmBot ? { id: chatId, kind: "direct", name: dmBot.name, memberIds: [dmBot.id], createdAt: 0, updatedAt: 0, entries: [] } : undefined);
+  // A group added from the phone (or one with no messages yet) opens the same way.
+  const newGroup = !chat && !isNewDm ? m.setup?.groups.find((g) => g.id === chatId && g.memberIds.length) : undefined;
+  const view: Chat | undefined =
+    chat ??
+    (isNewDm && dmBot
+      ? { id: chatId, kind: "direct", name: dmBot.name, memberIds: [dmBot.id], createdAt: 0, updatedAt: 0, entries: [] }
+      : newGroup
+        ? { id: chatId, kind: "group", name: newGroup.name, memberIds: newGroup.memberIds, ...(newGroup.leadId ? { leadId: newGroup.leadId } : {}), createdAt: 0, updatedAt: 0, entries: [] }
+        : undefined);
 
   const title = view ? chatTitle(view, (id) => bot(id)?.name) || "oovi" : "";
   const members = (view?.memberIds ?? []).map((id) => bot(id));
@@ -305,7 +313,9 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   // ---------- header ----------
   const activity = running ? liveActivity(running, lang) : null;
-  const sub = activity ? activity.label : computer.state === "online" ? t("chat.computerOn") : null;
+  // The web version's header reads like the computer's: who is in the chat (a bot's role, a group's members).
+  const who = view?.kind === "group" ? members.map((b) => b?.name).filter(Boolean).join(", ") : members[0]?.role || "";
+  const sub = activity ? activity.label : wide && who ? who : computer.state === "online" ? t("chat.computerOn") : null;
   const center = view ? (
     <span className="m-chathead">
       <span className="m-chathead__face" aria-hidden>
@@ -375,17 +385,31 @@ export function ChatScreen({ chatId }: { chatId: string }) {
     const act = live ? liveActivity(e, lang) : null;
     const next = entries[i + 1];
     const lastOfRun = !next || next.kind !== "bot" || next.botId !== e.botId;
-    const showName = view?.kind === "group" && (i === 0 || entries[i - 1]?.kind !== "bot" || (entries[i - 1] as BotEntry).botId !== e.botId);
+    const firstOfRun = i === 0 || entries[i - 1]?.kind !== "bot" || (entries[i - 1] as BotEntry).botId !== e.botId;
+    const showName = !wide && view?.kind === "group" && firstOfRun;
     if (!text.trim() && !live && e.status !== "error" && e.status !== "stopped") return null;
+    // On a wide screen (the web version) messages read like the computer's: the face at the top, then a line with
+    // the bot's name, its role and the time; on a phone, WhatsApp's way (face at the end of a run, name in groups).
     return (
       <div className="m-msg m-msg--bot" key={e.id}>
         {stamp(e.at)}
         {showName && <div className="m-msg__name">{name}</div>}
-        <div className="m-msg__row">
+        <div className={`m-msg__row${wide ? " m-msg__row--top" : ""}`}>
           <span className="m-msg__face" aria-hidden>
-            {lastOfRun ? <BotFace face={b?.face} size={30} mood={act?.mood} /> : null}
+            {(wide ? firstOfRun : lastOfRun) ? <BotFace face={b?.face} size={wide ? 38 : 30} mood={act?.mood} /> : null}
           </span>
           <div className="m-msg__col">
+            {wide && firstOfRun && (
+              <div className="m-msg__who">
+                <b dir="auto">{name}</b>
+                {b?.role && (
+                  <span className="m-msg__role" dir="auto">
+                    {b.role}
+                  </span>
+                )}
+                <time>{bubbleTime(e.at, lang, tzName)}</time>
+              </div>
+            )}
             {text.trim() && (
               <Swipeable onMenu={() => setMenu(e)} onReply={canSend ? () => setReply(replyFor(e)) : undefined}>
                 <div className="m-bubble m-bubble--bot" style={{ "--bot": botColor(b?.face) } as React.CSSProperties}>

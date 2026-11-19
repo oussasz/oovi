@@ -14,7 +14,7 @@ const WEB = path.join(ROOT, "web");
 const NEXT_PORT = 3482;
 const PORT = 3481;
 const BAR = { pwa: 0.9, accessibility: 0.95, "best-practices": 0.9 };
-const PAGES = ["/m", "/m/c/dm-oovi", "/m/bots", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login", "/app", "/app/c/dm-oovi", "/app/settings"];
+const PAGES = ["/m", "/m/c/dm-oovi", "/m/c/studio", "/m/settings", "/m/connectors", "/m/connectors/gmail", "/m/connectors/add", "/m/login", "/app", "/app/c/studio", "/app/settings"];
 const chrome = process.env.CHROME_PATH || (fs.existsSync("/opt/pw-browsers/chromium") ? "/opt/pw-browsers/chromium" : require("playwright").chromium.executablePath());
 
 (async () => {
