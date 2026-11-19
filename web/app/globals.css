@@ -3144,3 +3144,33 @@ a.adm-item:hover b { text-decoration: underline; }
 .shared-body th { background: var(--surface-2); position: sticky; top: 0; }
 .shared-foot { text-align: center; color: var(--muted); font-size: 0.85rem; margin-top: 18px; }
 @media (max-width: 600px) { .shared-page article { padding: 18px 16px 22px; } .shared-page h1 { font-size: 1.5rem; } }
+
+/* ---------- Download page: the phone apps ---------- */
+.dl-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+.phone-dl__head {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+.phone-dl__icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 46% 54% 50% 50% / 52% 46% 54% 48%;
+  background: color-mix(in srgb, var(--mint) 70%, var(--surface));
+  color: var(--ink);
+}
+.phone-dl__title {
+  margin: 0 0 2px;
+  font-size: 20px;
+  font-weight: 900;
+}
+.phone-dl .alt {
+  margin: 0;
+}

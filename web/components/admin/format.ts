@@ -70,6 +70,7 @@ export const TARGET_LABELS: Record<string, string> = {
   windows: "Windows",
   "linux-deb": "Linux (.deb)",
   "linux-appimage": "Linux (AppImage)",
+  android: "Android",
 };
 
 /** Series colors from the site palette (they adapt to dark mode). */
@@ -79,6 +80,7 @@ export const TARGET_COLORS: Record<string, string> = {
   windows: "var(--coral)",
   "linux-deb": "var(--yellow, #f2c94c)",
   "linux-appimage": "var(--ok, #3aa76d)",
+  android: "var(--mint, #bbd8c4)",
 };
 
 export function countryName(code: string): string {

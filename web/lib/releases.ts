@@ -1,4 +1,4 @@
-export const DOWNLOAD_TARGETS = ["mac-arm64", "mac-intel", "windows", "linux-deb", "linux-appimage"] as const;
+export const DOWNLOAD_TARGETS = ["mac-arm64", "mac-intel", "windows", "linux-deb", "linux-appimage", "android"] as const;
 
 /**
  * oovi's Microsoft Store page (e.g. https://apps.microsoft.com/detail/9N...). When set, "Download for
@@ -126,6 +126,9 @@ export async function updateFileUrl(name: string): Promise<string | null> {
   return found ? assetLink(found.src, found.asset) : null;
 }
 
+/** The Android app attached to a release by .github/workflows/android.yml. */
+export const ANDROID_APK = /^oovi-\d+\.\d+\.\d+\.apk$/i;
+
 function matchAsset(target: DownloadTarget, assets: ReleaseAsset[]): ReleaseAsset | undefined {
   const find = (re: RegExp) => assets.find((a) => re.test(a.name));
   switch (target) {
@@ -139,6 +142,8 @@ function matchAsset(target: DownloadTarget, assets: ReleaseAsset[]): ReleaseAsse
       return find(/^oovi[-_][\d.]+[-_].*\.deb$/i);
     case "linux-appimage":
       return find(/^oovi-[\d.]+.*\.AppImage$/i);
+    case "android":
+      return find(ANDROID_APK);
   }
 }
 
@@ -149,7 +154,7 @@ export type GithubDownloads = {
 };
 let countsCache: { at: number; data: GithubDownloads } | null = null;
 
-const emptyTargets = (): Record<DownloadTarget, number> => ({ "mac-arm64": 0, "mac-intel": 0, windows: 0, "linux-deb": 0, "linux-appimage": 0 });
+const emptyTargets = (): Record<DownloadTarget, number> => ({ "mac-arm64": 0, "mac-intel": 0, windows: 0, "linux-deb": 0, "linux-appimage": 0, android: 0 });
 
 /**
  * Installer download counts as GitHub counts them, for every release of the
@@ -183,11 +188,17 @@ export async function githubDownloadCounts(): Promise<GithubDownloads | null> {
   }
 }
 
-/** URL of the latest installer for this platform, or null if none is available. */
+/**
+ * URL of the latest installer for this platform, or null if none is available. The Android app is built by its own
+ * workflow after the release is published: until it is attached (or if that build failed), the newest release that
+ * has one is used, so the button never breaks.
+ */
 export async function resolveDownloadUrl(target: DownloadTarget): Promise<string | null> {
   for (const src of sources()) {
     try {
-      const asset = matchAsset(target, (await latestRelease(src.repo, src.token)).assets ?? []);
+      const latest = await latestRelease(src.repo, src.token);
+      let asset = matchAsset(target, latest.assets ?? []);
+      if (!asset && target === "android") asset = newestAsset(target, await releasesOf(src));
       const url = asset ? await assetLink(src, asset) : null;
       if (url) return url;
     } catch (err) {
@@ -195,4 +206,22 @@ export async function resolveDownloadUrl(target: DownloadTarget): Promise<string
     }
   }
   return null;
+}
+
+/** The first matching file in releases listed newest first. */
+export function newestAsset(target: DownloadTarget, releases: Release[]): ReleaseAsset | undefined {
+  for (const r of releases) {
+    if (r.draft || r.prerelease) continue;
+    const a = matchAsset(target, r.assets ?? []);
+    if (a) return a;
+  }
+  return undefined;
+}
+
+async function releasesOf(src: Source): Promise<Release[]> {
+  const hit = listCache.get(src.repo);
+  if (hit && Date.now() - hit.at < CACHE_MS) return hit.releases;
+  const res = await fetch(`https://api.github.com/repos/${src.repo}/releases?per_page=20`, { headers: ghHeaders(src.token), cache: "no-store" });
+  if (!res.ok) throw new Error(`GitHub releases list for ${src.repo} failed: ${res.status}`);
+  return ((await res.json()) as Release[]).filter((r) => !r.draft && !r.prerelease);
 }

@@ -11,6 +11,7 @@ const res = path.join(mobile, "android", "app", "src", "main", "res");
 const ios = path.join(mobile, "ios", "App", "App", "Assets.xcassets");
 const dataUri = (file) => `data:image/png;base64,${fs.readFileSync(file).toString("base64")}`;
 const logo = dataUri(path.join(root, "build", "icon.png"));
+const mark = dataUri(path.join(root, "web", "public", "mark.png")); // the logo without the icon's white tile
 const logoDark = dataUri(path.join(root, "web", "public", "mark-dark.png"));
 const PAPER = "#FBFAF7";
 const PAPER_DARK = "#151513";
@@ -46,14 +47,14 @@ const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
     await shot(layer, layer, page("transparent", logo, 56), path.join(dir, "ic_launcher_foreground.png"), true);
   }
   // Launch screen logo (Android): shown centred on paper by drawable/splash.xml, light and dark.
-  await shot(288, 288, page("transparent", logo, 100), path.join(res, "drawable-nodpi", "splash_logo.png"), true);
+  await shot(288, 288, page("transparent", mark, 100), path.join(res, "drawable-nodpi", "splash_logo.png"), true);
   await shot(288, 288, page("transparent", logoDark, 100), path.join(res, "drawable-night-nodpi", "splash_logo.png"), true);
 
   // iOS: the App Store icon (no transparency) and the launch image, light and dark.
   await shot(1024, 1024, page("#FFFFFF", logo, 84), path.join(ios, "AppIcon.appiconset", "AppIcon-512@2x.png"));
   const S = 2732;
-  await shot(S, S, page(PAPER, logo, (330 / S) * 100), path.join(ios, "Splash.imageset", "splash-2732x2732.png"));
-  await shot(S, S, page(PAPER, logo, (330 / S) * 100), path.join(ios, "Splash.imageset", "splash-2732x2732-1.png"));
+  await shot(S, S, page(PAPER, mark, (330 / S) * 100), path.join(ios, "Splash.imageset", "splash-2732x2732.png"));
+  await shot(S, S, page(PAPER, mark, (330 / S) * 100), path.join(ios, "Splash.imageset", "splash-2732x2732-1.png"));
   await shot(S, S, page(PAPER_DARK, logoDark, (330 / S) * 100), path.join(ios, "Splash.imageset", "splash-2732x2732-2.png"));
   await browser.close();
 
@@ -69,7 +70,7 @@ const DENSITIES = { mdpi: 1, hdpi: 1.5, xhdpi: 2, xxhdpi: 3, xxxhdpi: 4 };
   };
   const html = fs
     .readFileSync(path.join(mobile, "src", "offline.html"), "utf8")
-    .replace("__LOGO__", await small(logo))
+    .replace("__LOGO__", await small(mark))
     .replace("__LOGO_DARK__", await small(logoDark));
   fs.writeFileSync(path.join(mobile, "www", "offline.html"), html);
   console.log("native icons, launch screens and www/offline.html written");
