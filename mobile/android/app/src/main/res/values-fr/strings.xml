@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="mic_title">Utiliser le micro pour les notes vocales ?</string>
+    <string name="mic_body">oovi écoute seulement pendant que vous enregistrez une note vocale. Votre voix devient un texte que vous relisez avant l’envoi. Android va vous demander ensuite.</string>
+    <string name="mic_continue">Continuer</string>
+    <string name="mic_not_now">Plus tard</string>
+</resources>

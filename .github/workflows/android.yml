@@ -1,0 +1,245 @@
+# Builds oovi's Android app (mobile/, Capacitor) on GitHub's machines.
+#
+#   Release: publish a GitHub Release (tag like v0.14.0), or Actions -> "Android app" -> Run workflow with that tag.
+#            Builds a signed oovi-<version>.apk (and oovi-<version>.aab for a later Play Store), attaches them to the
+#            release; the website's /download/android then serves the APK.
+#   Test:    Run workflow with no tag: the signed APK lands under the run's "Artifacts" only.
+#   Check:   every push to the android-app branch that changes mobile/: a debug build, the unit tests, and the app
+#            opened on an Android emulator with screenshots (Artifacts: android-screens). No key, no secret.
+#
+# Signing, without a key ever being pasted anywhere: the owner adds ONE repository secret, ANDROID_KEYSTORE_PASSWORD
+# (a password he invents, typed only into GitHub). The first release run creates the signing key, encrypts it with
+# that password (mobile/android/release.keystore.enc) and commits it, with web/public/.well-known/assetlinks.json
+# (lets https://oovi.conuron.com/m/... links open the app). Later runs decrypt it. Keep the password safe: every
+# update of the app must be signed with the same key, and the key can only be opened with that password.
+name: Android app
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the APK to (e.g. v0.14.0). Empty: a test build under Artifacts only"
+        required: false
+        default: ""
+  release:
+    types: [published]
+  push:
+    branches: [android-app]
+    paths: ["mobile/**", ".github/workflows/android.yml"]
+
+permissions:
+  contents: write # attach the APK to the release; commit the encrypted key the first time
+
+jobs:
+  # ---------- push: build and look at it on an emulator ----------
+  check:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Android SDK 36
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Build (debug) and unit tests
+        working-directory: mobile
+        run: |
+          npm ci
+          npx cap sync android
+          cd android && ./gradlew --no-daemon testDebugUnitTest assembleDebug
+      - name: Enable the emulator's hardware acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Open the app on an emulator (Android 14) and take screenshots
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          script: bash mobile/scripts/emulator-check.sh mobile/android/app/build/outputs/apk/debug/app-debug.apk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: android-screens
+          retention-days: 7
+          path: |
+            shots/*.png
+            mobile/android/app/build/reports/tests/
+          if-no-files-found: warn
+
+  # ---------- release: signed APK + AAB ----------
+  release:
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    concurrency:
+      group: android-signing-key # never two runs creating a key at the same time
+      cancel-in-progress: false
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - name: Check the signing password is set up
+        env:
+          OOVI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$OOVI_KEYSTORE_PASSWORD" ]; then
+            echo "::error::The ANDROID_KEYSTORE_PASSWORD secret is missing. Add it on GitHub: this repository -> Settings -> Secrets and variables -> Actions -> New repository secret. Name: ANDROID_KEYSTORE_PASSWORD. Secret: a long password you invent (at least 16 characters) and keep in your password manager. Then run this workflow again."
+            exit 1
+          fi
+          if [ ${#OOVI_KEYSTORE_PASSWORD} -lt 16 ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD is shorter than 16 characters. Replace it with a longer one (Settings -> Secrets and variables -> Actions) BEFORE the first Android build: it protects the app's signing key."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Version from the tag
+        id: version
+        run: |
+          if [ -n "$TAG" ]; then
+            node mobile/scripts/version.mjs "$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # Test build: the version in mobile/package.json, marked as a test.
+            v=$(node -p "require('./mobile/package.json').version")
+            node mobile/scripts/version.mjs "$v" | sed "s/^name=.*/name=$v-test.$GITHUB_RUN_NUMBER/" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      - name: Signing key (open it, or create it the first time)
+        env:
+          OOVI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          GIT_BRANCH: ${{ github.event_name == 'release' && github.event.release.target_commitish || github.ref_name }}
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          set -euo pipefail
+          ENC=mobile/android/release.keystore.enc
+          KS="$RUNNER_TEMP/release.keystore"
+          if [ -f "$ENC" ]; then
+            if ! openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$ENC" -out "$KS" -pass env:OOVI_KEYSTORE_PASSWORD 2>/dev/null \
+               || ! keytool -list -keystore "$KS" -storepass:env OOVI_KEYSTORE_PASSWORD -alias oovi > /dev/null 2>&1; then
+              echo "::error::ANDROID_KEYSTORE_PASSWORD doesn't open the saved signing key ($ENC). Put back the password used for the first Android build (Settings -> Secrets and variables -> Actions -> ANDROID_KEYSTORE_PASSWORD -> Update). Never delete $ENC: phones only accept updates signed with that key."
+              exit 1
+            fi
+            echo "Signing key opened."
+          else
+            # First run: create the key, save it encrypted to the branch, and only then use it.
+            if [ "$REF_TYPE" = "tag" ] && [ "${{ github.event_name }}" != "release" ]; then
+              echo "::error::No signing key yet. Run this workflow from a branch (Use workflow from: main), not from a tag, so the new key can be saved."
+              exit 1
+            fi
+            if ! git ls-remote --exit-code --heads origin "$GIT_BRANCH" > /dev/null; then
+              echo "::error::No signing key yet, and '$GIT_BRANCH' is not a branch to save it to. Run Actions -> Android app -> Run workflow from your main branch once (no tag needed), then publish the release again."
+              exit 1
+            fi
+            echo "No signing key yet: creating one (RSA 4096, valid 30 years)."
+            keytool -genkeypair -storetype PKCS12 -keystore "$KS" -alias oovi -keyalg RSA -keysize 4096 -validity 10958 \
+              -dname "CN=oovi, O=oovi" -storepass:env OOVI_KEYSTORE_PASSWORD -keypass:env OOVI_KEYSTORE_PASSWORD
+            openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -in "$KS" -out "$RUNNER_TEMP/key.enc" -pass env:OOVI_KEYSTORE_PASSWORD
+            # Prove the encrypted copy opens before relying on it.
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -in "$RUNNER_TEMP/key.enc" -out "$RUNNER_TEMP/check.keystore" -pass env:OOVI_KEYSTORE_PASSWORD
+            cmp "$KS" "$RUNNER_TEMP/check.keystore"
+            rm -f "$RUNNER_TEMP/check.keystore"
+            FP=$(keytool -list -v -keystore "$KS" -storepass:env OOVI_KEYSTORE_PASSWORD -alias oovi | sed -n 's/^.*SHA256: *//p' | head -1)
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git fetch origin "$GIT_BRANCH"
+            git checkout -B save-key "origin/$GIT_BRANCH"
+            cp "$RUNNER_TEMP/key.enc" "$ENC"
+            mkdir -p web/public/.well-known
+            node mobile/scripts/assetlinks.mjs "$FP" > web/public/.well-known/assetlinks.json
+            git add "$ENC" web/public/.well-known/assetlinks.json
+            git commit -m "Android signing key (encrypted with ANDROID_KEYSTORE_PASSWORD) and assetlinks.json"
+            if ! git push origin "HEAD:$GIT_BRANCH"; then
+              echo "::error::Couldn't save the new signing key to '$GIT_BRANCH' (protected branch, or it moved). Nothing was signed. Run the workflow again."
+              exit 1
+            fi
+            git checkout -
+            echo "New signing key saved to $GIT_BRANCH ($ENC). The website serves the new assetlinks.json after its next deploy."
+          fi
+          echo "OOVI_KEYSTORE_FILE=$KS" >> "$GITHUB_ENV"
+          FP=$(keytool -list -v -keystore "$KS" -storepass:env OOVI_KEYSTORE_PASSWORD -alias oovi | sed -n 's/^.*SHA256: *//p' | head -1)
+          echo "Signing certificate SHA-256 fingerprint: $FP"
+          echo "### Signing certificate SHA-256: \`$FP\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f web/public/.well-known/assetlinks.json ] && ! grep -q "$FP" web/public/.well-known/assetlinks.json; then
+            echo "::warning::web/public/.well-known/assetlinks.json doesn't list this key's fingerprint, so links won't open the app. Expected: $(node mobile/scripts/assetlinks.mjs "$FP" | tr -d '\n')"
+          fi
+
+      - name: Android SDK 36
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" > /dev/null
+
+      - name: Build the signed APK and AAB
+        working-directory: mobile
+        env:
+          OOVI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          npm ci
+          npx cap sync android
+          cd android
+          ./gradlew --no-daemon testReleaseUnitTest assembleRelease bundleRelease \
+            -PooviVersionCode=${{ steps.version.outputs.code }} -PooviVersionName=${{ steps.version.outputs.name }}
+
+      - name: Check the signature and name the files
+        env:
+          OOVI_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          V: ${{ steps.version.outputs.name }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          APK=mobile/android/app/build/outputs/apk/release/app-release.apk
+          AAB=mobile/android/app/build/outputs/bundle/release/app-release.aab
+          [ -f "$APK" ] || { echo "::error::No signed APK was built (is the key passed to Gradle?)"; exit 1; }
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/36.* | tail -1)
+          "$BT/apksigner" verify --print-certs "$APK" | tee signer.txt
+          WANT=$(keytool -list -v -keystore "$OOVI_KEYSTORE_FILE" -storepass:env OOVI_KEYSTORE_PASSWORD -alias oovi | sed -n 's/^.*SHA256: *//p' | head -1 | tr -d ':' | tr 'A-F' 'a-f')
+          grep -qi "SHA-256 digest: $WANT" signer.txt || { echo "::error::The APK isn't signed with oovi's key"; exit 1; }
+          cp "$APK" "out/oovi-$V.apk"
+          cp "$AAB" "out/oovi-$V.aab"
+          ls -lh out
+          rm -f "$OOVI_KEYSTORE_FILE"
+
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: oovi-android-${{ steps.version.outputs.name }}
+          retention-days: 7
+          path: out/*
+
+      - name: Attach to the release
+        if: env.TAG != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "$TAG" out/*.apk out/*.aab --repo "$GITHUB_REPOSITORY" --clobber
+
+      # The public downloads repo (used by the website when it has no token for this repo). If the desktop build
+      # hasn't created that release yet, "Publish to downloads" copies the APK later (it looks for *.apk too).
+      - name: Copy the APK to the downloads repo
+        if: env.TAG != ''
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.DOWNLOADS_TOKEN }}
+        run: |
+          if [ -z "$GH_TOKEN" ]; then echo "No DOWNLOADS_TOKEN: skipped."; exit 0; fi
+          if gh release view "$TAG" --repo oussasz/oovi-downloads > /dev/null 2>&1; then
+            gh release upload "$TAG" out/*.apk --repo oussasz/oovi-downloads --clobber
+          else
+            echo "The downloads repo has no $TAG release yet; Publish to downloads will copy the APK."
+          fi

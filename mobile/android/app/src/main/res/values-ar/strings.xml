@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="mic_title">استخدام الميكروفون للرسائل الصوتية؟</string>
+    <string name="mic_body">لا يستمع oovi إلا أثناء تسجيلك لرسالة صوتية. يتحوّل صوتك إلى نص تراجعه قبل الإرسال. سيطلب منك Android الإذن بعد ذلك.</string>
+    <string name="mic_continue">متابعة</string>
+    <string name="mic_not_now">ليس الآن</string>
+</resources>

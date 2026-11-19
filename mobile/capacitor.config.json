@@ -1,0 +1,29 @@
+{
+  "appId": "app.oovi.mobile",
+  "appName": "oovi",
+  "webDir": "www",
+  "appendUserAgent": "ooviApp/1.0",
+  "backgroundColor": "#FBFAF7",
+  "server": {
+    "url": "https://oovi.conuron.com/m",
+    "errorPath": "offline.html",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": false,
+    "webContentsDebuggingEnabled": false,
+    "loggingBehavior": "none"
+  },
+  "ios": {
+    "contentInset": "never",
+    "limitsNavigationsToAppBoundDomains": false,
+    "scrollEnabled": true
+  },
+  "plugins": {
+    "SystemBars": {
+      "insetsHandling": "native",
+      "initialViewportFitValueHint": "cover"
+    }
+  }
+}

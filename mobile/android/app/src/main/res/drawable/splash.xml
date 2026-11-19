@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Launch screen before Android 12: the oovi logo on paper (dark paper in dark mode, drawable-night). -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/oovi_paper" />
+    <item android:gravity="center" android:width="120dp" android:height="120dp" android:drawable="@drawable/splash_logo" />
+</layer-list>
