@@ -378,6 +378,12 @@ async function flushOutbox(): Promise<void> {
             if (code === 400 || code === 403) {
               console.error(`[telegram] dropped a message to ${item.chatId}: ${(e as Error).message}`);
               dropped.add(item.id);
+              // 400 is oovi's fault (the message was empty or malformed): a problem for the team, never its text.
+              // 403 is the user's choice (they blocked the bot or left): nothing to fix.
+              if (code === 400) {
+                const why = String((e as Error).message ?? "").replace(/\s+/g, " ").slice(0, 160);
+                void import("./tool-notes").then((m) => m.sendProblems([{ tag: "tool", tool: "telegram", message: `Telegram refused a message from oovi (400): ${why}` }])).catch(() => {});
+              }
             } else {
               blocked.add(item.chatId);
               failed.set(item.id, Date.now() + BACKOFF[Math.min(item.attempts, BACKOFF.length - 1)]!);
