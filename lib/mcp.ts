@@ -497,14 +497,29 @@ function resolve(name: string): { server: McpServer; tool: string } | null {
 
 export const mcpServerOf = (name: string) => resolve(name)?.server;
 
+/** The connector a mcp_ tool name belongs to, by its prefix (also when its tools aren't loaded right now). */
+export const mcpServerNameOf = (name: string) => listServers().find((s) => name.startsWith(mcpPrefix(s.id)))?.name;
+
+/** A connector call that was sent but got no answer (timeout, connection dropped): it may have run. */
+export class McpNoAnswer extends Error {
+  server: string;
+  constructor(server: string, cause: unknown) {
+    super(cause instanceof Error ? cause.message : String(cause));
+    this.server = server;
+  }
+}
+
 export async function callMcpTool(name: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean } | null> {
   const r = resolve(name);
   if (!r) return null;
   const c = await connectSure(r.server);
-  const res = (await c.client.callTool({ name: r.tool, arguments: args }, undefined, { timeout: 120_000 })) as {
-    content?: { type: string; text?: string; resource?: { uri?: string; text?: string } }[];
-    isError?: boolean;
-  };
+  let res: { content?: { type: string; text?: string; resource?: { uri?: string; text?: string } }[]; isError?: boolean };
+  try {
+    res = (await c.client.callTool({ name: r.tool, arguments: args }, undefined, { timeout: 120_000 })) as typeof res;
+  } catch (e) {
+    // The call was sent: it may have run even though no answer came back (lib/tools.ts says so for actions).
+    throw new McpNoAnswer(r.server.name, e);
+  }
   const text = (res.content ?? [])
     .map((x) => (x.type === "text" ? (x.text ?? "") : x.type === "resource" ? (x.resource?.text ?? `[resource ${x.resource?.uri ?? ""}]`) : `[${x.type}]`))
     .join("\n");

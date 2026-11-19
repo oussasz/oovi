@@ -53,13 +53,16 @@ export function zapierNextStep(tool: string, errorText: string): string {
   const isRun = /execute_zapier_(read|write)_action/.test(tool);
   // The inputs were wrong (a field missing, params sent as text, a date in the wrong form).
   if (e && /invalid (input|param|argument|value)|expected (record|object|string|number|array)|received (string|undefined|null)|required (field|param|property)|is required|missing (required|field|param)|validation|must be (an? )?(object|string|number|array|valid)|unrecognized key|bad request|400\b|unprocessable/i.test(e))
-    return `Next step: the inputs were wrong, not the connection. Call inspect_zapier_actions with this app and action to get its exact fields, then call ${isRun ? "it" : tool} again once with: app, action, instructions (in plain words, e.g. "find the events in my main calendar from 2026-11-18 00:00 to 23:59"), output (what you want back), and params only as an object with the field names inspect showed (never as JSON text). When unsure of a field, leave it out of params and say it in instructions: Zapier fills it in. If it fails again the same way, stop and tell the user what you could not get.`;
+    return `Next step: the inputs were wrong, not the connection. Call inspect_zapier_actions with this app and action to get its exact fields, then call ${isRun ? "it" : tool} again once with: app, action, instructions (in plain words with exact dates, e.g. "find the events in my main calendar on <YYYY-MM-DD> from 00:00 to 23:59"), output (what you want back), and params only as an object with the field names inspect showed (never as JSON text). When unsure of a field, leave it out of params and say it in instructions: Zapier fills it in. If it fails again the same way, stop and tell the user what you could not get.`;
+  // A write with no reason: it may have gone through. Trying again blindly can add the event or send the email twice.
+  if (!e && /execute_zapier_write_action/.test(tool))
+    return `Zapier gave no reason. Next step: this action may have run anyway. Don't run it again before checking with a read action (find the event, email or row it should have made). If it isn't there, the app may not be connected or the action not turned on: call inspect_zapier_actions to see what is on, then try once more. If the app is missing, tell the user in one short line to add it in oovi: Marketplace > Zapier > "Your apps" (one click per app); don't paste Zapier links unless they ask.`;
   // The app or the action isn't connected / turned on.
   return `${e ? "" : "Zapier gave no reason. "}Next step: this usually means the app isn't connected in Zapier yet, or this action isn't turned on. Call inspect_zapier_actions to see what is on (or auto_provision_mcp to turn on the apps already connected in Zapier), then try again once. If the app is missing, tell the user in one short line to add it in oovi: Marketplace > Zapier > "Your apps" (one click per app); don't paste Zapier links unless they ask.`;
 }
 
 /** A Zapier action call with its required plain-words fields filled when the bot left them out (Zapier refuses the call otherwise). */
-export function completeZapierRun(tool: string, input: Record<string, unknown>): Record<string, unknown> {
+export function completeZapierRun(tool: string, input: Record<string, unknown>, timeZone?: string): Record<string, unknown> {
   if (!/execute_zapier_(read|write)_action$/.test(tool) || !input || typeof input !== "object") return input;
   const out = { ...input };
   if (typeof out.params === "string" && out.params.trim().startsWith("{")) {
@@ -75,6 +78,8 @@ export function completeZapierRun(tool: string, input: Record<string, unknown>):
     const p = out.params && typeof out.params === "object" ? Object.entries(out.params as Record<string, unknown>).map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`).join("; ") : "";
     out.instructions = `Run the ${String(out.action ?? "action")} action in ${String(out.app ?? "the app")}${p ? ` with ${p}` : ""}.`;
   }
+  // A write's times are the user's local times (Zapier otherwise reads "15:30" in its own zone, often UTC).
+  if (timeZone && /write_action$/.test(tool) && !String(out.instructions).includes(timeZone)) out.instructions = `${String(out.instructions).trim()} Times are in ${timeZone}.`;
   if (!has("output")) out.output = "All the useful fields of the results (titles, dates, people, links, ids).";
   return out;
 }

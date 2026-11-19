@@ -25,6 +25,20 @@ test("a failed action tells the bot what to do, and not to paste links", () => {
   assert.match(n, /Your apps/);
 });
 
+test("a write that failed with no reason says to check before running it again (no double event or email)", () => {
+  const n = zapierNextStep("execute_zapier_write_action", "");
+  assert.match(n, /^Zapier gave no reason\. Next step: this action may have run anyway\. Don't run it again before checking/);
+  assert.doesNotMatch(n, /then try again once/);
+  assert.doesNotMatch(zapierNextStep("execute_zapier_read_action", "bad request"), /2026-/, "no fixed example date");
+});
+
+test("a write's instructions carry the user's time zone; a read's don't", () => {
+  const w = completeZapierRun("execute_zapier_write_action", { app: "google_calendar", action: "create_event", instructions: "Add Workshop on 2026-11-20 at 15:30" }, "Africa/Algiers");
+  assert.equal(w.instructions, "Add Workshop on 2026-11-20 at 15:30 Times are in Africa/Algiers.");
+  const r = completeZapierRun("execute_zapier_read_action", { app: "gmail", action: "find_email", instructions: "my last email", output: "subject" }, "Africa/Algiers");
+  assert.equal(r.instructions, "my last email");
+});
+
 test("a wrong-input error says to inspect the action's fields, not to reconnect the app", () => {
   const n = zapierNextStep("execute_zapier_read_action", 'Invalid input: expected record, received string at "params"');
   assert.match(n, /inputs were wrong, not the connection/);

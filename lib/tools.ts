@@ -10,7 +10,8 @@ import path from "node:path";
 import { checkUrl, downloadsDir, getSession, peekSession, takeDownloads, type Session } from "./browser";
 import { cleanText, consumeUserUse, isControlled, MAX_REASON, requestTakeover, waitWhileControlled } from "./browser-live";
 import type { ToolSpec } from "./llm";
-import { callMcpTool, mcpServerOf, mcpToolKind, mcpToolOf } from "./mcp";
+import { callMcpTool, McpNoAnswer, mcpServerNameOf, mcpServerOf, mcpToolKind, mcpToolOf } from "./mcp";
+import { localTimeZone } from "./routines-schedule";
 import { applyMemory } from "./memory";
 import { searchWithNote } from "./search";
 import { getSkill, listSkills, markUsed, readReplay, saveSkill } from "./skills";
@@ -497,8 +498,19 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
     if (call.name.startsWith("mcp_")) {
       const server = mcpServerOf(call.name);
       const zapier = !!server && /zapier/i.test(`${server.name} ${server.url ?? ""}`);
-      const r = await callMcpTool(call.name, zapier ? completeZapierRun(mcpToolOf(call.name) ?? "", input) : input);
-      if (!r) return fail(call, "That MCP tool isn't available right now.");
+      let r: Awaited<ReturnType<typeof callMcpTool>>;
+      try {
+        r = await callMcpTool(call.name, zapier ? completeZapierRun(mcpToolOf(call.name) ?? "", input, localTimeZone()) : input);
+      } catch (e) {
+        // Sent, but no answer (timeout, dropped connection): an action may have run. A blind retry would add
+        // the calendar event or send the email twice.
+        if (e instanceof McpNoAnswer && mcpToolKind(call.name) === "act") return fail(call, `${e.server} gave no answer in time (${e.message.slice(0, 120)}): this action may have run. Don't run it again; check with a read action first, or tell the user to check.`);
+        throw e;
+      }
+      if (!r) {
+        const n = mcpServerNameOf(call.name);
+        return fail(call, `Not run: ${n ?? "this connector"} couldn't be reached just now. Say in one short line which part you couldn't do because of it, and do everything else you can. Don't call it "not enabled" or ask the user to enable it.`);
+      }
       // Zapier often fails with no reason: say what usually causes it and what to do (lib/zapier-core.ts).
       if (r.isError && zapier) {
         const own = mcpToolOf(call.name) ?? "";
