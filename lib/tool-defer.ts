@@ -101,11 +101,23 @@ export function splitGuide(content: string): { guide: string; rest: string } {
  * description and parameters): the bot learns the details from its first use, with no call spent asking.
  * `history`: the conversation so far (a guide already there isn't given twice).
  */
-export function withFirstGuide(r: ToolResult, spec: ToolSpec, history: Msg[]): ToolResult {
-  if (!(spec.name in DIRECT)) return r;
-  const open = guideOpen(spec.name);
-  if (history.some((m) => m.role === "tool" && m.results.some((x) => x.content.startsWith(open)))) return r;
-  return { ...r, content: `${open}\n${spec.name}: ${spec.description}\n\nParameters (JSON schema): ${JSON.stringify(spec.parameters)}\n${GUIDE_END}\n${r.content}` };
+export function withFirstGuide(r: ToolResult, spec: ToolSpec, history: Msg[], extra?: { key: string; text: string } | null): ToolResult {
+  const given = (key: string) => history.some((m) => m.role === "tool" && m.results.some((x) => x.content.includes(guideOpen(key))));
+  // Guidance about a group of tools (the browser, the work files): with the first result of any of them.
+  const more = extra && !given(extra.key) ? extra : null;
+  if (spec.name in DIRECT) {
+    const own = !given(spec.name);
+    if (!own && !more) return r;
+    // An error keeps the tool's own guide (it says how to call it), not the guidance about using its results.
+    if (r.isError && !own) return r;
+    const parts = [
+      ...(own ? [guideOpen(spec.name), `${spec.name}: ${spec.description}`, `Parameters (JSON schema): ${JSON.stringify(spec.parameters)}`] : []),
+      ...(more && !r.isError ? [...(more.key !== spec.name || !own ? [guideOpen(more.key)] : []), more.text] : []),
+    ];
+    return { ...r, content: `${parts.join("\n")}\n${GUIDE_END}\n${r.content}` };
+  }
+  if (!more || r.isError) return r;
+  return { ...r, content: `${guideOpen(more.key)}\n${more.text}\n${GUIDE_END}\n${r.content}` };
 }
 
 /** Whether this tool is sent on demand, among these tools. */
@@ -137,8 +149,8 @@ export function deferTools(tools: ToolSpec[]): Deferral {
 }
 
 /** The guide a bot gets the first time it reaches for an on-demand tool. */
-export function guideText(t: ToolSpec): string {
-  return `${guideOpen(t.name)}\n${t.name}: ${t.description}\n\nParameters (JSON schema) for use_tool's \`input\`:\n${JSON.stringify(t.parameters)}\n\nNow call use_tool with name "${t.name}" and \`input\` filled in.\n${GUIDE_END}`;
+export function guideText(t: ToolSpec, extra = ""): string {
+  return `${guideOpen(t.name)}\n${t.name}: ${t.description}${extra ? `\n${extra}` : ""}\n\nParameters (JSON schema) for use_tool's \`input\`:\n${JSON.stringify(t.parameters)}\n\nNow call use_tool with name "${t.name}" and \`input\` filled in.\n${GUIDE_END}`;
 }
 
 /** The guide of this tool is in the conversation as sent, whole (an older one that was shortened doesn't count). */
@@ -198,11 +210,11 @@ export function wrapHistory(messages: Msg[], d: Deferral): Msg[] {
 }
 
 /** The answer to a `use_tool` call that was not turned into a real call: the guide, or what went wrong. */
-export function useToolResult(c: ToolCall, tools: ToolSpec[]): ToolResult {
+export function useToolResult(c: ToolCall, tools: ToolSpec[], extraOf: (name: string) => string = () => ""): ToolResult {
   const target = String(c.input.name ?? "").trim();
   const spec = tools.find((t) => t.name === target);
   const listed = tools.filter((t) => onDemand(tools, t.name)).map((t) => t.name);
   if (!spec) return { id: c.id, name: c.name, content: `There is no tool named "${target}". use_tool gives: ${listed.join(", ") || "nothing here"}.`, isError: true };
   if (!onDemand(tools, target)) return { id: c.id, name: c.name, content: `${target} is in your tool list: call it directly, not through use_tool.`, isError: true };
-  return { id: c.id, name: c.name, content: guideText(spec) };
+  return { id: c.id, name: c.name, content: guideText(spec, extraOf(target)) };
 }

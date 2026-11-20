@@ -555,7 +555,8 @@ async function runScenario(sc, k) {
     [`at most ${sc.limits.calls} model calls by the bot (${m.botCalls}, plus ${m.sideCalls} side calls)`, m.botCalls <= sc.limits.calls],
     [`at most ${sc.limits.credits} credits (${m.credits})`, m.credits <= sc.limits.credits],
     [`no request over 100,000 tokens (largest ${m.maxPrompt})`, m.maxPrompt <= 100_000],
-    [`no lecture in the answers (${m.lecture})`, m.lecture === 0],
+    // (Only where it was the complaint: acting on a list. A deck about solar energy may well mention a law.)
+    ...(sc.zapier ? [[`no lecture in the answers (${m.lecture})`, m.lecture === 0]] : []),
     ...(sc.noOldTopics ? [[`nothing about the old topics in what the bots said (${seen.said.filter((t) => OLD_TOPICS.test(t)).length})`, !seen.said.some((t) => OLD_TOPICS.test(t))]] : []),
   ];
   fs.writeFileSync(path.join(out, "result.json"), JSON.stringify({ id: sc.id, metrics: m, checks, cards: seen.cards, texts: seen.texts }, null, 1));

@@ -140,3 +140,25 @@ test("the first result of a one-step tool carries its guide, once: no round trip
   assert.equal(parts.rest, "3 added.");
   assert.deepEqual(splitGuide("plain"), { guide: "", rest: "plain" });
 });
+
+test("guidance about a group of tools comes with the first result of any of them, once (it used to sit in every request)", async () => {
+  const { withFirstGuide, guideText, splitGuide } = await import("../../lib/tool-defer.ts");
+  const open = { name: "open_url", description: "Open a page.", parameters: { type: "object", properties: { url: {} } } };
+  const extra = { key: "browser", text: "Element numbers come from the latest list." };
+  const first = withFirstGuide({ id: "1", name: "open_url", content: "PAGE" }, open as never, [], extra);
+  assert.equal(first.content, "[guide:browser]\nElement numbers come from the latest list.\n[/guide]\nPAGE");
+  const click = { name: "click", description: "Click.", parameters: { type: "object", properties: {} } };
+  const later = withFirstGuide({ id: "2", name: "click", content: "CLICKED" }, click as never, [{ role: "tool" as const, results: [first] }], extra);
+  assert.equal(later.content, "CLICKED");
+  // A one-step tool: its own guide and its group's guidance in one block.
+  const table = { name: "work_table", description: "Tables.", parameters: { type: "object", properties: {} } };
+  const t = withFirstGuide({ id: "3", name: "work_table", content: "3 added." }, table as never, [], { key: "work_table", text: "The Canvas shows it." });
+  assert.match(t.content, /^\[guide:work_table\]\nwork_table: Tables\./);
+  assert.match(splitGuide(t.content).guide, /The Canvas shows it\.\n\[\/guide\]$/);
+  assert.equal(splitGuide(t.content).rest, "3 added.");
+  // A guide asked for first (a tool whose first call is the deliverable) carries its extra guidance too.
+  assert.match(guideText({ name: "create_image", description: "Designs.", parameters: {} } as never, "It does not draw."), /Designs\.\nIt does not draw\./);
+  // An error is not the place for a guide about how to use the result.
+  const failed = withFirstGuide({ id: "4", name: "open_url", content: "No such page", isError: true }, open as never, [], extra);
+  assert.equal(failed.content, "No such page");
+});

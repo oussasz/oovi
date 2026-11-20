@@ -185,14 +185,20 @@ export function findWorkTable(chatId: string, wanted: string): { name: string; c
 
 /** For every bot's instructions: what the team already has. */
 export function workPrompt(_chatId: string, group: boolean, fromMain = false): string[] {
-  return [
-    "",
-    `Work files${fromMain ? " (the same ones as the main assistant who gave this task: what it already found is in them, and what you add it sees at once; add to its table, don't start another)" : group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where.`,
-    "The Canvas: every work_table and work_notes page shows in the Canvas beside the chat, opened at that page as you write it. The user may call it the Canvas, \"كانفاس\", \"الكانفا\" or even \"Canva\": that is this Canvas, not the Canva design site (canva.com) unless they name the site or ask for a Canva design. Tables, plans, drafts and reports go in the Canvas FIRST. Make a file (work_export, create_document, create_spreadsheet, create_presentation) only when the user asks for a file, a download, an attachment or to send it; then make the one format they asked for (a table can go in a Word document when they want a document), never the same thing twice in two formats. When they ask about a page, read it again with work_table read or work_notes read (the pages are listed with their message) before answering or changing it.",
-    "Sources for a list: a row needs a source, not a perfect one. A detail you read on any page (a directory, a listing, a map's results, a search result) goes into the table, with that page in the Source column; when you couldn't also see it on the item's own page, write \"to confirm\" in a Status column. Don't hold a found row back while you look for a better source, and never ask the user to copy from a page what a page shows. Only what you read nowhere stays empty. If the user asked for stricter proof, follow the user.",
-    "One deliverable, one file: when you change something you already delivered (a list, a report), deliver it again under the same file name (work_export again, or the same filename): the user's file is updated, not copied. Never make copies named FINAL, v2, UPDATED, CORRECT or similar unless the user asks for a separate copy, and never rebuild a list by retyping it.",
-  ];
+  return ["", `Work files${fromMain ? " (the same ones as the main assistant who gave this task: what it already found is in them, and what you add it sees at once; add to its table, don't start another)" : group ? " (shared by the whole team in this chat)" : ""}: work_table for lists and work_notes for long text. Anything long (a list, findings, a draft, a detailed report) goes into a work file, not into the chat: the chat message stays short and says what you added and where.`];
 }
+
+/**
+ * What a bot needs to know once it works with the work files: it comes with its first work_table or
+ * work_notes result (lib/tool-defer.ts withFirstGuide), not with every request of every conversation.
+ */
+export const WORK_GUIDE = [
+  "The Canvas: every work_table and work_notes page shows in the Canvas beside the chat, opened at that page as you write it. The user may call it the Canvas, \"كانفاس\", \"الكانفا\" or even \"Canva\": that is this Canvas, not the Canva design site (canva.com) unless they name the site or ask for a Canva design. Tables, plans, drafts and reports go in the Canvas FIRST. Make a file (work_export, create_document, create_spreadsheet, create_presentation) only when the user asks for a file, a download, an attachment or to send it; then make the one format they asked for (a table can go in a Word document when they want a document), never the same thing twice in two formats. When they ask about a page, read it again with work_table read or work_notes read (the pages are listed with their message) before answering or changing it.",
+  "Sources for a list: a row needs a source, not a perfect one. A detail you read on any page (a directory, a listing, a map's results, a search result) goes into the table, with that page in the Source column; when you couldn't also see it on the item's own page, write \"to confirm\" in a Status column. Don't hold a found row back while you look for a better source, and never ask the user to copy from a page what a page shows. Only what you read nowhere stays empty. If the user asked for stricter proof, follow the user.",
+].join("\n");
+
+/** The same for delivering: with the first work_export result. */
+export const DELIVER_GUIDE = "One deliverable, one file: when you change something you already delivered (a list, a report), deliver it again under the same file name (work_export again, or the same filename): the user's file is updated, not copied. Never make copies named FINAL, v2, UPDATED, CORRECT or similar unless the user asks for a separate copy, and never rebuild a list by retyping it.";
 
 /** What the work files hold right now (changes as rows are added): told with the user's message, not in the instructions. */
 export function workNow(chatId: string): string[] {
