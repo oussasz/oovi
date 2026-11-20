@@ -1,4 +1,17 @@
-## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`; WEBSITE DEPLOYED, runner image and desktop app NOT)
+## 0.15.0 (released 2026-11-20 23:00 UTC, owner: "أصدر النسخة")
+Harness v2 and the cloud work below, from branch `harness-v2`; `main` = tag `v0.15.0` = ba3b43c. Before it: the
+Windows, Mac and Linux run passed on that commit (Actions run 44831153130), and on the 0.15.0 build the real model
+did the bulk email (923/923), a plain question and a computer-off question. How: `main` moved forward to the commit,
+"Make a release" (tag, target main, notes in the What's-new template), then "Build desktop apps" on ref `v0.15.0`
+with tag `v0.15.0` and "Android app" on `main` with the same tag (a release made by a workflow starts neither by
+itself). Checked after: 12 files on the release as for 0.14.0; `oovi-downloads` has v0.15.0; `/updates/latest*.yml`
+say 0.15.0 and the Linux AppImage's checksum matches its update file; every download target serves its 0.15.0 file;
+`/changelog` shows the four sections. Not checked: an installed app updating itself, and the installers opened on
+Windows or a Mac. The website was deployed from the same branch an hour earlier (0b80bfd; nothing in `web/` changed
+since). Left to the owner: the Microsoft Store package (`oovi-Store-0.15.0.appx`, docs/STORE-LISTING.md). The push
+to `main` also built ghcr.io/oussasz/oovi-runner:latest from 0.15.0; the Azure VM still runs its old local image.
+
+## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`; website deployed, desktop app released as 0.15.0, runner image on the VM NOT updated)
 The owner: "the phone app says the computer must be on even for simple messages: what is the VPS for? Check it,
 audit it against best practice, make sure it syncs right."
 
