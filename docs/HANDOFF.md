@@ -1,4 +1,4 @@
-## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`, NOT DEPLOYED, NOT RELEASED)
+## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`; WEBSITE DEPLOYED, runner image and desktop app NOT)
 The owner: "the phone app says the computer must be on even for simple messages: what is the VPS for? Check it,
 audit it against best practice, make sure it syncs right."
 
@@ -39,8 +39,20 @@ together (cloud-integration), cloud-sync 40/40, sync 15/15, phone scenario 185/1
 (`node start.mjs`, port 55432, user/password postgres); `TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/oovi_test`.
 The phone scenario needs `NODE_PATH=/home/oussasz/dev online/oovi/lab/pw-shim/node_modules` (playwright-core + Brave).
 
-**Order to deploy (each needs the owner's yes):** 1) website (safe with the old runner: every change is backward
-compatible; tables migrate themselves); 2) runner image from `harness-v2` (built where Docker and the Azure CLI are:
+**Website deployed (2026-11-20 22:35 UTC, owner: "انشر الموقع"):** production is `harness-v2` at 0b80bfd (Vercel
+deployment dpl_A4iPDUi8LhkWgwM2bzmJgoKLgmX5; the one before, 0.14.1 from `main`, is dpl_2JQjEwhxzAKUdV5huxKgPLkKvE6r and
+can be rolled back to). Deployed from GitHub through the Vercel connector, not the CLI: `create_deployment` with
+`gitSource {type: github, org: oussasz, repo: oovi, ref, sha}`, `projectSettings {rootDirectory: "web", framework:
+"nextjs"}`, `target: "production"` (a preview first, without `target`, to see the build pass). Not checked: whether
+that left "web" as the project's root folder for later CLI deploys from `web/`. Checked live after it: `/status` has
+`server {online: true}` (the old runner's claims filled `cloud_runner`: the tables migrated themselves); a phone-style
+message with the computer off was answered by the old runner ("54", job `done`, 4.71 credits), so the key's new
+scope doesn't lock the live runner out; the phone bundle carries the new wording and not the old sentence; Admin >
+Overview shows "Cloud server: Up"; no runtime errors in the hour after. Still slow until the runner image is
+rebuilt: the old runner took that message about 35 s after it was sent (its 30 s idle look). The Windows, Mac and
+Linux run on 0b80bfd passed (Actions run 44826736090).
+
+**Still to deploy (each needs the owner's yes):** 1) website: done, above; 2) runner image from `harness-v2` (built where Docker and the Azure CLI are:
 not this machine), better once through the "Runner image" workflow to ghcr.io with `RUNNER_IMAGE` switched on the
 VM, so the 6-hour update works from then on; 3) the desktop release.
 
