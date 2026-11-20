@@ -34,16 +34,26 @@ tested on the real model.
 - **Memory**: the summary is background ("Past requests" with how each ended, "Still waiting" at most 3 lines; no more
   "Open items" kept forever) and says so where the bot reads it. A job that stopped is taken up again only by a short
   go-on message (`lib/resume-core.ts`), not by any message within 24 hours.
+- **Cards that settle things**: a batch whose filter leaves rows out says so on its card ("163 rows are left out by the
+  filter (Statut ≠ Refusé)") and, when the card holds that one batch, offers "All N, nothing left out" (the bot's filter
+  is dropped; `Approval.batchAll`, refused by the server for a card with several batches: found by the evals, where it
+  sent two different texts to everyone). The bot's own doubt goes in the batch's `note`, shown on the card. An address
+  that appears nowhere (the user's messages and files, what was read, memory) always shows its card with a warning
+  and no "allow for this chat", in Auto mode too (`lib/recipients-core.ts`); the user's attached files count as read.
 - **Evals on the real model** (`tests/evals/run.cjs`, results in its output folder): graded on what happened (who got
   the email, cards, questions, model calls, credits), with the owner's session behind a proxy that lets only model
-  calls through. The scripted e2e scenarios stay for the plumbing.
-Measured (real model, 2026-11-20): bulk-all 923/923 sent, 0 invented, 0 questions, 2 bot calls, 5.7 credits (cold cache)
-/ 2.4 (warm); bulk-filter 151/151, 2.3 credits; one email with Gmail not connected: 2 cards, 5 bot calls, 4.9 credits,
-no second message from the user (0.14.1: 14 calls, 3 cards, a link, "connecté", 7.4 credits).
+  calls through and a stand-in Zapier (nothing is sent). Scenarios: bulk-all, bulk-all-refused, bulk-filter,
+  old-topics (a seeded history with an old "Open items" summary and an unfinished job), single-connect.
+  `EVAL_SERVER=<another build's .next/standalone>` runs them against another build (how 0.14.1 was measured).
+  The scripted e2e scenarios stay for the plumbing; the ones that matched prompt wording were updated.
+MEASURED_BLOCK
 Not done: the prompt's fixed part is still about 27,000 tokens (3.4 credits each time the cache is cold: the next thing
-to cut, with evals for research/list jobs first); for_each_row runs connector tools only (not browser or desktop
+to cut, with evals for research/list/team jobs first); for_each_row runs connector tools only (not browser or desktop
 actions); a batch stops at a daily limit and is finished by asking again (no automatic next-day run); the connect card
-was checked against the stand-in, not against Zapier itself; website/hosted server unchanged.
+and Zapier's state note were checked against the stand-in, not against Zapier itself (its real answers may read
+differently: check once with a real account before release); "old topics coming back" was not reproduced on 0.14.1
+with a seeded history, so that fix is by construction (summary, resume rule), not by measurement; website/hosted
+server unchanged; nothing pushed or released.
 
 ## Error handling sweep after 0.14.0 (2026-11-19, on next-version, NOT RELEASED)
 Owner's report: Zapier "Missing argument values for required properties" (Google Tasks) got "the app isn't connected"
