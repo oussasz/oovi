@@ -199,7 +199,8 @@ async function runScenario(sc, k) {
           // The card to connect an app: the user connects it on the page that opens (here, a few seconds later).
           if (sc.connectsAfterMs && p.approval.items.some((it) => it.call.name === "connect_app")) setTimeout(() => void fetch(`http://127.0.0.1:${ZAP}/state?connected=1&enabled=1`).catch(() => {}), sc.connectsAfterMs);
           // A user who said "everyone" and sees a narrowed batch presses "all of them" (one press, no new message).
-          const all = !!sc.saidEveryone && p.approval.items.some((it) => it.batchAll);
+          // Only where the card shows that button: one batch on the card, and once.
+          const all = !!sc.saidEveryone && !seen.pressedAll && p.approval.items.length === 1 && !!p.approval.items[0].batchAll;
           if (all) seen.pressedAll = (seen.pressedAll || 0) + 1;
           await post({ decisions: Object.fromEntries(p.approval.items.map((it) => [it.call.id, true])), ...(all ? { batchAll: true } : {}) });
         } else if (p.planReview) {

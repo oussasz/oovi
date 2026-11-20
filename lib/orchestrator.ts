@@ -2109,7 +2109,10 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     }
   } else if (input.decisions && chat.pending?.approval) {
     const answered = chat.pending.approval;
-    if (input.batchAll) answered.batchAll = true;
+    // "All of them" only means something for a card with ONE batch: with several (the bot wrote one text per
+    // group of rows), dropping the filters would send every text to everyone. The card doesn't offer it then,
+    // and a request that asks for it anyway is taken as a plain OK.
+    if (input.batchAll && answered.items.length === 1 && answered.items[0]!.batchAll) answered.batchAll = true;
     const e = chat.entries.find((x) => x.id === answered.entryId);
     // Asked on Telegram, answered here: the user still waits on Telegram, so the reply goes there too.
     if (!input.channel && chat.pending.channel === "telegram" && chat.pending.telegramChatId !== undefined && e) {
