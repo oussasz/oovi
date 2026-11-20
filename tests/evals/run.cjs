@@ -45,8 +45,8 @@ function oldHistory(botId) {
   const entries = [
     user("u0001", "شغل أغنية في يوتوب", 1),
     bot("b0001", "باش نشغل أغنية في يوتوب نحتاج نتحكم في المتصفح تاعك. أي أغنية تحب؟", 1),
-    user("u0002", "دير بوست فيسبوك على مشروع m3ak", 30),
-    bot("b0002", "واش تحب نكتب في البوست؟ أعطيني النقاط الأساسية وأنا نكتبو.", 30),
+    user("u0002", "دير ستوري انستغرام على مشروع m3ak", 30),
+    bot("b0002", "واش تحب نكتب في الستوري؟ أعطيني النقاط الأساسية وأنا نكتبها.", 30),
     user("u0003", "خليها من بعد", 31),
     bot("b0003", "ماشي، كي تحب.", 31),
     user("u0004", "شحال الساعة في طوكيو درك؟", 2000),
@@ -61,14 +61,18 @@ function oldHistory(botId) {
       "## Done so far", "- Nothing was completed.",
       "## Open items",
       "- Play a song on YouTube: the user asked; the assistant asked which song; no answer yet.",
-      "- Facebook post about the m3ak project: waiting for the user's key points.",
+      "- Instagram story about the m3ak project: waiting for the user's key points.",
       "- No clear instruction was given for the YouTube channel.",
     ].join("\n"),
   };
-  return { entries, summary };
+  // A job that stopped before its goal an hour ago (the Stop button, a target not reached): for a day, the
+  // released version read ANY next message as "go on with it".
+  const openJob = { goal: "Collect 50 YouTube cooking channels with their subscriber counts", by: botId, table: "YouTube channels", target: 50, at: Date.now() - 3600_000 };
+  return { entries, summary, openJob };
 }
 
-const OLD_TOPICS = /youtube|يوتوب|يوتيوب|facebook|فيسبوك|فايسبوك|m3ak|أغنية|اغنية|chanson|song|طوكيو|tokyo/i;
+// (Nothing here may also be a word of the leads workbook: "Facebook" is in its notes column.)
+const OLD_TOPICS = /youtube|يوتوب|يوتيوب|instagram|انستغرام|إنستغرام|m3ak|أغنية|اغنية|chanson|song|طوكيو|tokyo|cooking|طبخ/i;
 
 const SCENARIOS = [
   {
@@ -161,8 +165,8 @@ async function runScenario(sc, k) {
     if (sc.seed) {
       // getChat reads the file each time: an earlier conversation is put there before the first message.
       const now = (await api("GET", `/api/chats/${chat}`)).j;
-      const { entries, summary } = sc.seed(main.botId);
-      fs.writeFileSync(path.join(data, "accounts", uid, "chats", `${chat}.json`), JSON.stringify({ id: chat, kind: "direct", name: "", memberIds: [main.botId], leadId: main.botId, createdAt: now.createdAt, updatedAt: Date.now(), entries, summary }));
+      const { entries, summary, openJob } = sc.seed(main.botId);
+      fs.writeFileSync(path.join(data, "accounts", uid, "chats", `${chat}.json`), JSON.stringify({ id: chat, kind: "direct", name: "", memberIds: [main.botId], leadId: main.botId, createdAt: now.createdAt, updatedAt: Date.now(), entries, summary, openJob }));
     }
     const post = async (body) => { const r = await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); await r.text(); };
     const idle = async () => { for (let i = 0; i < 3600; i++) { const c = (await api("GET", `/api/chats/${chat}`)).j; if (c && !c.running) return c; await sleep(500); } throw new Error("the run didn't end in 30 minutes"); };
