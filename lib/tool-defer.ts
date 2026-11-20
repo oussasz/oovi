@@ -30,6 +30,9 @@ export const DEFERRED: Record<string, string> = {
  * whose first call IS the deliverable (a deck, a designed image) stays in DEFERRED: its guide comes first.
  */
 export const DIRECT: Record<string, string> = {
+  read_rows: "work on a table without loading it (an attached Excel or CSV file, or a work table): chosen rows (filter is a list like [{\"column\":\"City\",\"op\":\"=\",\"value\":\"Alger\"}], with only the columns you need), counts and sums per group (group_by, values), or a part of it copied into a work table to deliver as a file (save_to_table)",
+  edit_attachment: "make an edited copy of a file the user attached (Word, PowerPoint, Excel, text): replacements, cells and formulas; the original is never changed",
+  recall_history: "search the full saved history of this conversation for an exact detail that is no longer in view (a number, a name, a link, a file)",
   work_table: "the team's shared tables in this chat: any list you build or keep (prospects, contacts, products, sources, tasks). Actions: add, replace, read, update, remove, columns, chart. The user sees it in the Canvas",
   work_notes: "the team's shared notes: long text that doesn't belong in a chat message (findings, a draft, a report). Actions: append, write, read",
   work_export: "turn a work table or notes into a real file for the user, complete, without retyping: Excel, CSV, Word, PDF or Markdown",

@@ -53,3 +53,32 @@ export function loopRefusal(done: Done[], c: Pick<ToolCall, "name" | "input">, r
   }
   return null;
 }
+
+/** Tools that make a whole file in one call. */
+const MAKERS: ReadonlySet<string> = new Set(["create_presentation", "create_spreadsheet", "create_image", "create_document"]);
+/** How many times one file may be made in one turn: once, and once more to correct it. */
+export const MAX_REMAKES = 2;
+
+/**
+ * A file made a third time in the same turn, with nothing new from the user in between, is refused. Measured
+ * on the real model (2026-11-20): a five-slide deck was made four times in a row, each a full rewrite, and
+ * the request cost 17 credits instead of 4; every result had said "Created". The calls differ a little each
+ * time, so the same-call guard above never sees them.
+ */
+export function remadeRefusal(steps: Msg[], c: Pick<ToolCall, "name" | "input">): string | null {
+  if (!MAKERS.has(c.name) || c.input.append === true) return null;
+  const file = String(c.input.filename ?? "").trim().toLowerCase();
+  if (!file) return null;
+  let made = 0;
+  steps.forEach((m, i) => {
+    if (m.role !== "assistant") return;
+    const next = steps[i + 1];
+    for (const x of m.toolCalls) {
+      if (x.name !== c.name || x.input.append === true || String(x.input.filename ?? "").trim().toLowerCase() !== file) continue;
+      const r = next?.role === "tool" ? next.results.find((y) => y.id === x.id) : undefined;
+      if (r && !r.isError) made++;
+    }
+  });
+  if (made < MAX_REMAKES) return null;
+  return `Not run: you already made "${String(c.input.filename)}" ${made} times in this turn, and the user has it. It is done: tell them the result now. Make it again only if they ask for a change.`;
+}

@@ -42,7 +42,7 @@ import { healInterrupted } from "./delegations-core";
 import { DONE_CHECK_SYSTEM, doneCheckInput, parseVerdict, sameMissing, sameReply, type Verdict } from "./done-check-core";
 import { replyLanguage } from "./text-locale";
 import { PROPOSE_SPECIALIST_SPEC, SPECIALIST_TOOLS, runSpecialistTool, specialistItem, specialistValid } from "./specialists";
-import { callKey, callsSoFar, loopRefusal } from "./loop-guard-core";
+import { callKey, callsSoFar, loopRefusal, remadeRefusal } from "./loop-guard-core";
 import { CONTINUE_CUT, joinCut, MAX_CONTINUE } from "./continue-core";
 import { endsOnPromise, promiseMissing } from "./promise-core";
 import { takeSteers } from "./steer";
@@ -1338,7 +1338,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...rowSpecsFor(chat, mcp.specs.length > 0), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...ATTACH_SPECS, ...rowSpecsFor(mcp.specs.length > 0), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), HISTORY_SPEC, ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1600,7 +1600,7 @@ async function* runBot(
         if (!isDesktopName(c.name) && c.name !== "propose_plan" && c.name !== "ask_user") {
           const key = callKey(c);
           const twin = batchKeys.get(key);
-          const refused = twin ? `Not run: it is the same call as the one just before it in this step (made once, not twice).` : loopRefusal(doneCalls, c);
+          const refused = twin ? `Not run: it is the same call as the one just before it in this step (made once, not twice).` : (loopRefusal(doneCalls, c) ?? remadeRefusal(entry.steps.slice(0, -1), c));
           batchKeys.set(key, c.id);
           if (refused) {
             results.push({ id: c.id, name: c.name, content: refused, isError: true });

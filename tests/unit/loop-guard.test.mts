@@ -45,3 +45,18 @@ test("a call with no result yet doesn't count", () => {
   const c = call("x", "read_url", { url: "u" });
   assert.deepEqual(callsSoFar([{ role: "assistant", text: "", toolCalls: [c] }]), []);
 });
+
+test("a file made again and again in one turn: the second time is allowed (a correction), the third is not", async () => {
+  const { remadeRefusal } = await import("../../lib/loop-guard-core.ts");
+  const make = (id: string, extra: Record<string, unknown> = {}) => ({ id, name: "create_presentation", input: { filename: "Deck.pptx", title: `v${id}`, ...extra } });
+  const turn = (n: number) => Array.from({ length: n }, (_, i) => [{ role: "assistant" as const, text: "", toolCalls: [make(String(i))] }, { role: "tool" as const, results: [{ id: String(i), name: "create_presentation", content: "Created" }] }]).flat();
+  assert.equal(remadeRefusal(turn(0), make("a")), null);
+  assert.equal(remadeRefusal(turn(1), make("a")), null);
+  assert.match(remadeRefusal(turn(2), make("a"))!, /already made "Deck\.pptx" 2 times in this turn/);
+  // Another file, or adding to a document (append), is not a remake.
+  assert.equal(remadeRefusal(turn(2), { id: "x", name: "create_presentation", input: { filename: "Other.pptx" } }), null);
+  assert.equal(remadeRefusal(turn(2), { id: "x", name: "create_document", input: { filename: "Deck.pptx", append: true } }), null);
+  // A try that failed doesn't count.
+  const failed = [{ role: "assistant" as const, text: "", toolCalls: [make("0")] }, { role: "tool" as const, results: [{ id: "0", name: "create_presentation", content: "bad", isError: true }] }, ...turn(1)];
+  assert.equal(remadeRefusal(failed, make("a")), null);
+});

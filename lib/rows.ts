@@ -76,14 +76,13 @@ export const ROW_SPECS: ToolSpec[] = [
 export const ROW_TOOLS: ReadonlySet<string> = new Set(ROW_SPECS.map((s) => s.name));
 
 /**
- * The row tools a bot gets. With a connector: both, always (a work table can be made at any moment, and a tool
- * list that changed in the middle of a conversation rewrote its whole prompt cache: tests/e2e/cost-scenario.cjs).
- * Without one there is nothing to run per row: read_rows only, once the user has attached a table.
+ * The row tools a bot gets: read_rows always, for_each_row with a connector (without one there is nothing to
+ * run per row). Always, whether or not a table is there yet: the tool list is the first thing in a request,
+ * and a list that changes (a file attached, a work table made) rewrites the whole prompt cache, the shared
+ * rules included (measured: a first message with a file read nothing from the cache; tests/e2e/cost-scenario.cjs).
  */
-export function rowSpecsFor(chat: Chat, hasConnector: boolean): ToolSpec[] {
-  if (hasConnector) return ROW_SPECS;
-  const attached = chat.entries.some((e) => e.kind === "user" && e.attachments?.some((a) => a.kind === "xlsx" || a.kind === "csv"));
-  return attached ? ROW_SPECS.filter((t) => t.name === READ_ROWS) : [];
+export function rowSpecsFor(hasConnector: boolean): ToolSpec[] {
+  return hasConnector ? ROW_SPECS : ROW_SPECS.filter((t) => t.name === READ_ROWS);
 }
 
 type Source = { name: string; table: Table };
