@@ -132,7 +132,8 @@ async function runScenario(sc, k) {
   fs.mkdirSync(path.join(data, "accounts", uid), { recursive: true });
   fs.writeFileSync(path.join(data, "accounts", uid, "cloud-sync.json"), JSON.stringify({ enabled: false, asked: true }));
   fs.writeFileSync(path.join(out, "zapier-state.json"), JSON.stringify(sc.zapier));
-  const [PORT, PROXY, ZAP] = [4710 + k * 3, 4711 + k * 3, 4712 + k * 3];
+  const base = Number(process.env.EVAL_PORT) || 4710;
+  const [PORT, PROXY, ZAP] = [base + k * 3, base + 1 + k * 3, base + 2 + k * 3];
   const BASE = `http://127.0.0.1:${PORT}`;
   const env = { ...process.env, LAB_OUT: out, PROXY_PORT: String(PROXY), ZAP_PORT: String(ZAP) };
   const log = fs.openSync(path.join(out, "server.log"), "w");
