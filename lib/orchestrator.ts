@@ -58,7 +58,7 @@ import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { deferTools, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
 import { firstNeedingComputer, needsComputerText, NOT_RUN_IN_CLOUD } from "./cloud-runner-core";
-import { SKILL_SPECS, approvalItem, needsApproval, runTool, toolsFor } from "./tools";
+import { SKILL_SPECS, approvalItem, describeCall, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, isReminder, proposalOf, runRoutineTool } from "./routines-tools";
 import { DOC_SPECS, DOC_WRITE_TOOLS } from "./files";
@@ -73,6 +73,7 @@ import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfi
 import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
 import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
+import { FOR_EACH_ROW, READ_ROWS, ROW_SPECS, batchApprovalItem, batchAsks, chatHasTable, runForEachRow, runReadRows } from "./rows";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots, shotAfterId } from "./desktop-core";
 import { desktopState, DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
@@ -295,7 +296,7 @@ const filesMade = (chat: Chat) => {
  * (they run later with nobody watching), and changes to the team (new abilities, new bots).
  * Everything else a bot does runs without a card; the user can still press Stop at any time.
  */
-export const AUTO_STILL_ASKS = (name: string) => name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
+export const AUTO_STILL_ASKS = (name: string) => name === FOR_EACH_ROW || name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
 
 /** Told to the bot when some connector tools were left out to keep the request small. */
 function droppedToolsNote(dropped: string[]): string {
@@ -1290,7 +1291,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(chatHasTable(chat, workHome(chat)) ? ROW_SPECS.filter((t) => t.name !== FOR_EACH_ROW || mcp.specs.length > 0) : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1424,6 +1425,10 @@ async function* runBot(
       const asksNormally = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
+          : c.name === FOR_EACH_ROW
+            ? // One card for the whole batch, whenever it acts (sends, creates, changes): in Auto mode and for a
+              // trusted connector too. A batch that can't run (no such table, a wrong column) returns why instead.
+              tools.some((t) => t.name === c.name) && batchAsks(c, chat, workHome(chat), tools)
           : c.name === "open_in_user_browser"
             ? // Same rule as open_app: asks, unless the task already has the mouse-and-keyboard OK.
               tools.some((t) => t.name === c.name) && "url" in browserUrlFor(c, openable) && !(deskGranted && !askEvery)
@@ -1467,6 +1472,7 @@ async function* runBot(
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
+          if (c.name === FOR_EACH_ROW) return batchApprovalItem(c, chat, workHome(chat), tools, (x) => describeCall(x, sessionId, translatorFor(lastUserText(chat))), translatorFor(lastUserText(chat)));
           // Bringing a window up, opening an app or a page is the start of using the computer: one card, and
           // its OK is also the OK for the screen, mouse and keyboard for the rest of the task (no second card).
           const alsoDesk = (item: ApprovalItem): ApprovalItem =>
@@ -1619,6 +1625,31 @@ async function* runBot(
               const teamJob = chat.kind === "group" && members.length > 1 && leaderOf(chat, members)?.id === bot.id;
               results.push({ id: c.id, name: c.name, content: `Big job started: the limits are lifted and the work goes on until the goal is reached.\n\n${teamJob ? JOB_LEAD : JOB_SOLO}\n${jobLines(chat, p.job, true).join("\n")}` });
             }
+          } else if (c.name === READ_ROWS) {
+            results.push(runReadRows(c, chat, workHome(chat)));
+          } else if (c.name === FOR_EACH_ROW) {
+            // One action per row, run here: each goes through the same path as a single call (the connector's
+            // own checks and error words), with no model call in between. The status line follows the count.
+            const tr = translatorFor(lastUserText(chat));
+            let at = { done: 0, total: 0 };
+            let ended = false;
+            const batch = runForEachRow(c, {
+              chat,
+              workChat: workHome(chat),
+              tools,
+              signal,
+              onProgress: (done, total) => (at = { done, total }),
+              runOne: (one) => runTool(one, s, sessionId, usesAccounts, chat.workspace, { signal, botId: bot.id, userSaid: userSaid(chat), chatId: workHome(chat), channel: chat.pending?.channel }),
+            }).finally(() => (ended = true));
+            let shown = -1;
+            while (!ended) {
+              await Promise.race([batch.catch(() => null), new Promise((r) => setTimeout(r, 1000))]);
+              if (!ended && at.total && at.done !== shown) {
+                shown = at.done;
+                yield { type: "status", entryId: entry.id, text: tr("st.batch", { done: at.done, total: at.total }) };
+              }
+            }
+            results.push(await batch);
           } else if (ATTACH_TOOLS.has(c.name)) {
             results.push(await runAttachmentTool(c, chat));
           } else if (COMPUTER_TOOLS.has(c.name)) {

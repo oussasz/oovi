@@ -157,6 +157,13 @@ export function addRecordRows(chatId: string, wanted: string, records: Record<st
 
 export const WORK_TOOLS: ReadonlySet<string> = new Set(WORK_SPECS.map((s) => s.name));
 
+/** A work table of this chat by the name a bot gives it (the same forgiving match as work_table): lib/rows.ts. */
+export function findWorkTable(chatId: string, wanted: string): { name: string; columns: string[]; rows: string[][] } | null {
+  const store = loadWork(chatId);
+  const name = nameOf(store, wanted, "tables");
+  return name ? { name, columns: store.tables[name]!.columns, rows: store.tables[name]!.rows } : null;
+}
+
 /** For every bot's instructions: what the team already has. */
 export function workPrompt(_chatId: string, group: boolean, fromMain = false): string[] {
   return [
