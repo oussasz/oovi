@@ -71,6 +71,8 @@ function answer(body) {
   const all = JSON.stringify(msgs);
   const scene = (all.match(/(IMPORT|MAIL|TWO|OUTSIDE|KEY):(?![\s\S]*(?:IMPORT|MAIL|TWO|OUTSIDE|KEY):)/) || [])[1] || "";
   seen.system = sys;
+  // (The raw request, before asModel: the guidance about the browser comes with its first result.)
+  if (/\[guide:browser\]/.test(body.guides || "")) seen.conversation = body.guides;
   seen.tools = allTools(body).map((t) => t.name);
   const numberOf = (label) => Number((out.match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`)) || [])[1]);
   const pageUrl = { IMPORT: "/import", MAIL: "/mail", TWO: "/two", OUTSIDE: "/import", KEY: "/import" }[scene];
@@ -211,7 +213,7 @@ const check = (name, ok, detail = "") => {
   check("E) a key file is never attached, and no card is shown for it", r.cards.length === 0 && /KEY-RESULT: Blocked: .*id_rsa is in /.test(lastText(r)), lastText(r).slice(0, 200));
 
   // F: instructions.
-  check("F) bots with a browser have the tool and are told never to make the user pick the file", seen.tools.includes("upload_file") && /Never tell the user to choose the file themselves/.test(seen.system));
+  check("F) bots with a browser have the tool and are told never to make the user pick the file", seen.tools.includes("upload_file") && /Never tell the user to choose the file themselves/.test(seen.conversation || ""));
 
   const ok = results.filter((x) => x.ok).length;
   log(`${ok}/${results.length} checks passed`);

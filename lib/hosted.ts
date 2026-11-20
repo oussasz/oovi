@@ -23,6 +23,8 @@ export type HostedStatus = {
   /** inApp: pay through a single-use link from POST /api/v1/billing/link (no website sign-in). subscriber: a subscription to manage. Missing from older servers. */
   billing?: { inApp: boolean; subscriber: boolean };
   pilot: { open: boolean; eligible: boolean; public?: boolean; status: "pending" | "approved" | "rejected" | null; credits: number };
+  /** The server keeps the shared part of a request in its cache for one hour when the app marks it so. Missing: no. */
+  cache1h?: boolean;
   /** theOovi's model can control the desktop (Claude's computer toolset). Missing from older servers: treated as yes. */
   desktop?: boolean;
   /** When the server last confirmed these numbers (ms). */
@@ -67,6 +69,8 @@ export function noteHostedState(state: HostedState, message: string | null) {
 }
 
 /** Largest request theOovi accepts (in tokens); the app compacts history to stay well below it. */
+/** Whether the shared part of a request (tools, rules) may be marked for the one-hour cache. */
+export const hostedCache1h = () => g.__ooviHosted?.cache1h === true;
 export const hostedMaxInput = () => g.__ooviHosted?.maxInputTokens || DEFAULT_MAX_INPUT;
 /** How many theOovi calls may run at once from this app (several bots working at the same time share them). */
 export const hostedMaxConcurrent = () => Math.min(50, Math.max(1, Math.floor(Number(g.__ooviHosted?.maxConcurrent) || 3)));

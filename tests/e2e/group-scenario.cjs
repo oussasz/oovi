@@ -110,7 +110,9 @@ function answer(body) {
   }
   // A recurring request in Darija, to a bot that isn't the main bot (the routine screenshot).
   if (me === "Scout" && /مل يوم/.test(ask)) {
-    seen.routineRule = /propose_routine/.test(sys) && /كل يوم/.test(sys);
+    // The rule travels with the tool: its line in the tool list says when to reach for it, in the user's languages.
+    const routineLine = (body.tools || []).map((t) => t.description || "").find((d) => /propose_routine/.test(d)) || "";
+    seen.routineRule = /- propose_routine\([^)]*\): [^\n]*كل يوم[^\n]*chaque matin/.test(routineLine);
     if (results.length) return text("OK");
     if (!allTools(body).some((t) => t.name === "propose_routine")) return text("صباح الخير!"); // what happened before the fix
     return reply([{ type: "tool_use", id: `toolu_rt_${Date.now()}`, name: "propose_routine", input: { name: "Good morning", instruction: "Say good morning to the user in Darija.", frequency: "daily", time: "10:00" } }], "tool_use");

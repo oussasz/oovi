@@ -44,7 +44,8 @@ const dayKey = (d: string | Date) => (typeof d === "string" ? d.slice(0, 10) : `
 
 // ---------- money ----------
 
-export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number };
+/** cacheWrite: every token written to the cache; cacheWrite1h: the part of them written for one hour (twice the input price). */
+export type Usage = { input: number; output: number; cacheRead: number; cacheWrite: number; cacheWrite1h?: number };
 
 /** US dollars for one call, at the configured prices (long-context rates above the threshold). */
 export function costUsd(u: Usage, p: Prices): number {
@@ -52,7 +53,8 @@ export function costUsd(u: Usage, p: Prices): number {
   const long = p.longAbove > 0 && prompt > p.longAbove && p.input > 0;
   const k = long ? p.longInput / p.input : 1;
   const outRate = long ? p.longOutput : p.output;
-  return (u.input * p.input * k + u.cacheRead * p.cacheRead * k + u.cacheWrite * p.cacheWrite * k + u.output * outRate) / 1_000_000;
+  const hour = Math.min(u.cacheWrite, Math.max(0, u.cacheWrite1h ?? 0));
+  return (u.input * p.input * k + u.cacheRead * p.cacheRead * k + (u.cacheWrite - hour) * p.cacheWrite * k + hour * p.input * 2 * k + u.output * outRate) / 1_000_000;
 }
 
 export const usdToMc = (usd: number, cfg: AiConfig) => Math.max(0, Math.ceil(usd * cfg.creditsPerUsd * MC));

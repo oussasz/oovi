@@ -388,7 +388,7 @@ const SCENARIOS = [
         [`daily at 08:00 (${JSON.stringify(r?.schedule || null)})`, r?.schedule?.kind === "daily" && r.schedule.time === "08:00"],
       ];
     },
-    limits: { cards: 1, questions: 0, calls: 3, credits: 6 },
+    limits: { cards: 1, questions: 0, calls: 4, credits: 6 },
   },
 ];
 

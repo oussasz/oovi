@@ -17,10 +17,13 @@ module.exports = function allTools(body) {
  */
 module.exports.asModel = function asModel(body) {
   if (!body || !Array.isArray(body.messages)) return body;
+  // What was taken off the results: the guides the bot was given so far (a scenario can check what they say).
+  let guides = "";
   const strip = (s) => {
     if (typeof s !== "string" || !s.startsWith("[guide:")) return s;
     const end = s.indexOf("[/guide]");
     const rest = end < 0 ? "" : s.slice(end + 8).replace(/^\n/, "");
+    guides += `${end < 0 ? s : s.slice(0, end + 8)}\n`;
     return rest || s; // a guide alone (the answer to a request for it) stays
   };
   const messages = body.messages.map((m) =>
@@ -37,5 +40,5 @@ module.exports.asModel = function asModel(body) {
           ),
         },
   );
-  return { ...body, messages, tools: module.exports(body) };
+  return { ...body, messages, tools: module.exports(body), guides };
 };

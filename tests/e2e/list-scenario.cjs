@@ -196,6 +196,8 @@ function answer(body) {
   const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
+  // (The raw request: the guidance about the work files comes with the first work_table result.)
+  if (/\[guide:work files\]|\[guide:work_table\]/.test(body.guides || "")) seen.guides = `${seen.guides || ""}${body.guides}`;
   seen.tools[me] = allTools(body).map((t) => t.name);
   if (lastTool) seen.out[`${me}:${scene}:${lastTool}`] = out;
   if (!scene) return text("ok");
@@ -588,7 +590,7 @@ const check = (name, ok, detail = "") => {
 
   // G: instructions.
   check("G) bots with a browser have scroll, extract_list and scrape_list; bots without don't", ["scroll", "extract_list", "scrape_list", "find_places", "find_papers"].every((n) => seen.tools.Scout.includes(n)) && !seen.tools.Amel.includes("extract_list"));
-  check("G) every bot is told to keep a row found on a directory, with its source, marked to confirm", /a row needs a source, not a perfect one/.test(seen.systems["Amel:SHARE"] || "") && /never ask the user to copy from a page what a page shows/.test(seen.systems["Scout:LIST"] || ""));
+  check("G) every bot is told to keep a row found on a directory, with its source, marked to confirm", /a row needs a source, not a perfect one/.test(seen.guides || "") && /never ask the user to copy from a page what a page shows/.test(seen.guides || ""));
 
   const ok = results.filter((x) => x.ok).length;
   log(`${ok}/${results.length} checks passed`);

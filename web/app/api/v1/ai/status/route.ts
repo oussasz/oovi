@@ -1,6 +1,6 @@
 // What the app shows next to theOovi: credits, today's limit, plan, pilot and links.
 import { getAiConfig } from "@/lib/ai-config";
-import { supportsComputerToolset } from "@/lib/ai-tools";
+import { supportsComputerToolset, CACHE_1H } from "@/lib/ai-tools";
 import { apiError, clientIp, getRequestSession, json } from "@/lib/api";
 import { creditStatus, isBlocked } from "@/lib/credits";
 import { billingFor } from "@/lib/billing";
@@ -25,6 +25,8 @@ export async function GET(req: Request) {
       ...status,
       desktop: supportsComputerToolset(cfg.model) || (!!cfg.backupModel && supportsComputerToolset(cfg.backupModel)),
       billing: { inApp: true, subscriber: !!billing && billing.subscriptionIds.length > 0 },
+      // The app may mark the shared part of a request to be cached for one hour (lib/ai-tools.ts CACHE_1H).
+      cache1h: CACHE_1H(),
     });
   } catch (err) {
     console.error("credit status failed", err instanceof Error ? err.message : err);

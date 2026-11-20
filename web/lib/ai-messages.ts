@@ -372,6 +372,7 @@ export async function aiMessages(req: Request, caller: AiCaller | null) {
     output: Number(u.output_tokens ?? 0),
     cacheRead: Number(u.cache_read_input_tokens ?? 0),
     cacheWrite: Number(u.cache_creation_input_tokens ?? 0),
+    cacheWrite1h: Number((u.cache_creation as { ephemeral_1h_input_tokens?: unknown } | undefined)?.ephemeral_1h_input_tokens ?? 0),
   };
   const usd = costUsd(usage, cfg.prices);
   const usedMc = usdToMc(usd, cfg);

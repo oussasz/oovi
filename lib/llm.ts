@@ -11,7 +11,7 @@ import { recordSpend } from "./spend";
 import { wireJson } from "./wire-json";
 import { appVersion, cloudUrl, sessionToken } from "./account";
 import { attachmentParts, INLINE_MAX, INLINE_TOTAL, type MediaPart } from "./attachments";
-import { hostedMaxConcurrent, noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
+import { hostedCache1h, hostedMaxConcurrent, noteHosted, noteHostedState, type HostedLive, type HostedState } from "./hosted";
 import { createGate, type Gate } from "./gate";
 import { costOf, readableError, replacementFor } from "./models";
 import { HOSTED_NAME, PROVIDERS, providerName, type ProviderId } from "./providers-meta";
@@ -20,6 +20,17 @@ import { readShot, replaceBotModel } from "./store";
 import { DESKTOP_MARKER, DESKTOP_TOOLSET_NAME, DESKTOP_TOOLSET_TYPE, desktopName, isDesktopName, memberOf, supportsDesktopModel } from "./desktop-core";
 import type { Msg, ToolCall } from "./types";
 import { hostedCode, netCode, netKind, netReason } from "./platform-errors-core";
+
+/**
+ * Between the two parts of a bot's instructions: the rules shared by every bot of its kind, and what is its
+ * own. The instructions travel as one text through the app; this mark is where they are cut for the model.
+ */
+export const SYSTEM_SPLIT = "\n\u0000own\u0000\n";
+/** [shared rules, the bot's own part] ("" when the instructions have only one part). */
+export const splitSystem = (system: string): [string, string] => {
+  const i = system.indexOf(SYSTEM_SPLIT);
+  return i < 0 ? [system, ""] : [system.slice(0, i), system.slice(i + SYSTEM_SPLIT.length)];
+};
 
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
 type RawCompletion = {
@@ -484,14 +495,22 @@ function anthropicParts(r: Req, wire: Wire = "anthropic", desktop = false) {
   // so far. In a bot's tool loop each step re-sends the same prefix, which is
   // then billed at the cheap cached-input rate instead of full price.
   const CACHE = { type: "ephemeral" } as const;
+  // What every bot shares (the tools, the rules) is kept for an hour where the server allows it: it is the same
+  // for the next message after a pause, the next chat and the next bot. What follows keeps the five minutes.
+  const SHARED: { type: "ephemeral"; ttl?: "1h" } = wire === "oovi" && hostedCache1h() ? { type: "ephemeral", ttl: "1h" } : CACHE;
   const lastBlock = msgs.at(-1)?.content.at(-1);
   if (lastBlock) lastBlock.cache_control = CACHE;
   const tools = r.tools
     .filter((t) => t.name !== DESKTOP_MARKER || desktop)
     .map((t) => (t.name === DESKTOP_MARKER ? { type: DESKTOP_TOOLSET_TYPE } : { name: t.name, description: t.description, input_schema: t.parameters }) as Record<string, unknown>);
   const lastTool = tools.at(-1);
-  if (lastTool) lastTool.cache_control = CACHE;
-  return { messages: msgs, tools, system: [{ type: "text", text: r.system, cache_control: CACHE }] };
+  if (lastTool) lastTool.cache_control = SHARED;
+  // Two blocks, each a place where the cache can be read from: the rules every bot of the same kind shares,
+  // word for word, whatever the user, the bot or the chat; then what is this bot's own (who it is, its memory,
+  // its team, this chat's files). A new conversation, another bot or another user then reads the first block
+  // from the cache instead of paying to write it again (measured: an attached file used to rewrite all of it).
+  const [shared, own] = splitSystem(r.system);
+  return { messages: msgs, tools, system: [{ type: "text", text: shared, cache_control: SHARED }, ...(own ? [{ type: "text", text: own, cache_control: CACHE }] : [])] };
 }
 
 type AnthropicReply = {
@@ -598,7 +617,7 @@ async function openaiCompatible(r: Req, isOpenRouter: boolean): Promise<RawCompl
   /** OpenAI-style content parts: text, and images as data URLs (PDFs are always sent as text here). */
   const oaParts = (parts: MediaPart[]) =>
     parts.map((p) => (p.type === "image" ? { type: "image_url", image_url: { url: `data:${p.mediaType};base64,${p.data}` } } : { type: "text", text: p.type === "text" ? p.text : `[PDF ${p.name}]` }));
-  const msgs: Record<string, unknown>[] = [{ role: "system", content: r.system }];
+  const msgs: Record<string, unknown>[] = [{ role: "system", content: splitSystem(r.system).filter(Boolean).join("\n\n") }];
   for (const m of r.messages) {
     if (m.role === "user") {
       const files = plan.get(m) ?? [];

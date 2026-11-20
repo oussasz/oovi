@@ -33,12 +33,22 @@ const COMPUTER_MEMBERS = new Set([
   "wait",
 ]);
 
-/** Keeps a cache_control mark only when it's the plain ephemeral kind. */
+/**
+ * The one-hour prompt cache (OOVI_CACHE_1H=1 on the site; off by default). The app marks the part of a request
+ * that every bot shares (the tools and the rules) to be kept an hour instead of five minutes: a person who
+ * answers after ten minutes, or opens a new chat, then reads it from the cache instead of paying to write it
+ * again. A one-hour write costs twice the input price (lib/credits.ts bills it apart). Not yet tried against
+ * the provider when this was written (2026-11-20): switch it on for a day, watch /admin/ai, switch it off if
+ * calls fail.
+ */
+export const CACHE_1H = () => process.env.OOVI_CACHE_1H === "1";
+
+/** Keeps a cache_control mark only when it's the plain ephemeral kind (with the one-hour life when that is on). */
 export function cleanCache(b: Block): Block {
   const out = { ...b };
   if ("cache_control" in out) {
-    const cc = out.cache_control as { type?: unknown } | null;
-    if (cc && typeof cc === "object" && cc.type === "ephemeral") out.cache_control = { type: "ephemeral" };
+    const cc = out.cache_control as { type?: unknown; ttl?: unknown } | null;
+    if (cc && typeof cc === "object" && cc.type === "ephemeral") out.cache_control = cc.ttl === "1h" && CACHE_1H() ? { type: "ephemeral", ttl: "1h" } : { type: "ephemeral" };
     else delete out.cache_control;
   }
   return out;

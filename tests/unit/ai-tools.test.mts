@@ -56,3 +56,17 @@ test("models that may answer with the toolset", () => {
   for (const m of ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5", "claude-opus-5", "claude-sonnet-5", "claude-opus-4-8", "claude-fable-5-2"]) assert.ok(supportsComputerToolset(m), m);
   for (const m of ["claude-haiku-4-5", "claude-sonnet-4-6", "claude-opus-4-7", "", "gpt-5"]) assert.equal(supportsComputerToolset(m), false, m);
 });
+
+test("the one-hour cache mark passes only when the site has it switched on (it is billed at its own price)", async () => {
+  const { cleanCache, CACHE_1H } = await import("../../web/lib/ai-tools.ts");
+  const b = { type: "text", text: "rules", cache_control: { type: "ephemeral", ttl: "1h" } };
+  assert.equal(CACHE_1H(), false, "off unless OOVI_CACHE_1H=1");
+  assert.deepEqual(cleanCache(b), { type: "text", text: "rules", cache_control: { type: "ephemeral" } });
+  process.env.OOVI_CACHE_1H = "1";
+  try {
+    assert.deepEqual(cleanCache(b), b);
+    assert.deepEqual(cleanCache({ ...b, cache_control: { type: "ephemeral", ttl: "9h" } }), { type: "text", text: "rules", cache_control: { type: "ephemeral" } });
+  } finally {
+    delete process.env.OOVI_CACHE_1H;
+  }
+});
