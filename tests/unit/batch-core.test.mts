@@ -87,3 +87,9 @@ test("the summary tells the bot exactly what happened, with the rows that failed
   assert.match(s, /row 41/);
   assert.match(s, /same call again/);
 });
+
+test("the summary closes the matter: the user approved the batch on its card, so the report is the result, not a second debate", () => {
+  const s = batchSummary({ done: 923, already: 0, failed: [], unknown: [], notRun: 0 }, { total: 923, skippedEmpty: 77, skippedDuplicate: 0, source: "Leads.xlsx" });
+  assert.match(s, /approved this batch on its card/);
+  assert.match(s, /Don't go back over who was included/);
+});

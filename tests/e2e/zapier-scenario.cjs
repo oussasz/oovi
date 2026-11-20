@@ -204,7 +204,7 @@ const check = (name, ok, detail = "") => {
   await run(dm, { text: "find my latest invoice in gmail" });
   check("D) a Zapier action failing with no reason: the bot is told what usually causes it and what to do", /Zapier gave no reason\. Next step:/.test(seen.result || "") && /Your apps/.test(seen.result || ""), (seen.result || "").slice(0, 300));
   const helpText = JSON.stringify(seen.bodies.at(-1)?.tools || []);
-  check("D) the bot is not told to paste Zapier links", /don't paste Zapier links/.test(seen.result || ""));
+  check("D) the bot is not told to paste Zapier links", /Don't paste Zapier links/.test(seen.result || "") && /connect_app/.test(seen.result || ""));
   // G) Zapier stops answering (owner, 2026-11-19: "isn't enabled for Oovi" though it was connected): the bot is told
   // the real reason, never "not enabled", and not to call it again; its call gets the same reason back.
   seen.remembered = `mcp_${id.replace(/-/g, "_")}_execute_zapier_read_action`;

@@ -106,6 +106,6 @@ export function batchSummary(r: BatchResult, o: { total: number; skippedEmpty: n
   const skipped = [o.skippedEmpty ? `${o.skippedEmpty} rows skipped because a value the action needs is empty` : "", o.skippedDuplicate ? `${o.skippedDuplicate} repeats skipped` : ""].filter(Boolean);
   if (skipped.length) lines.push(`${skipped.join("; ")}.`);
   if (r.stopped || r.failed.length) lines.push("To go on later, make the same call again: rows already done are skipped, only the rest runs.");
-  lines.push("Tell the user these numbers as they are.");
+  lines.push("The user approved this batch on its card (with your note, if you wrote one). Report the result in a few lines, with these numbers as they are. Don't go back over who was included or how it was worded: that was their decision on the card.");
   return lines.join("\n");
 }

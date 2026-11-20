@@ -25,6 +25,9 @@ const ROWS = JSON.parse(fs.readFileSync(LEADS.replace(/\.xlsx$/, ".rows.json"), 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const lower = (a) => a.map((x) => String(x).toLowerCase());
 
+/** A scenario stops once it has spent this much (a harness that only talks would go on for a long time). */
+const MAX_CREDITS = Number(process.env.EVAL_MAX_CREDITS) || 60;
+
 const LAW = /قانون|18-05|\bloi\b|\blaw\b|legal|juridique|rgpd|gdpr|spam/i;
 
 /** What a user who just wants the job done answers to a question card. */
@@ -108,6 +111,8 @@ const SCENARIOS = [
     zapier: { enabled: false, connected: false },
     connectsAfterMs: 5000,
     steps: [{ say: "ابعث إيمايل لكريم على karim@menuiseriebenali.dz وقلو الاجتماع تاع غدوة تبدل للعشرة تاع الصباح" }],
+    // A build without the connect card leaves it to the user: they connect on Zapier's page and say so.
+    ifNotDone: { before: { connected: true, enabled: true }, say: "connecté" },
     expected: () => ["karim@menuiseriebenali.dz"],
     // Two cards: connect Gmail, then the email itself. No second message from the user.
     limits: { cards: 2, questions: 0, calls: 8, credits: 8 },
@@ -161,7 +166,12 @@ async function runScenario(sc, k) {
     const post = async (body) => { const r = await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); await r.text(); };
     const idle = async () => { for (let i = 0; i < 3600; i++) { const c = (await api("GET", `/api/chats/${chat}`)).j; if (c && !c.running) return c; await sleep(500); } throw new Error("the run didn't end in 30 minutes"); };
 
-    for (const step of sc.steps) {
+    const spent = () => { try { return fs.readFileSync(path.join(out, "calls.jsonl"), "utf8").trim().split("\n").reduce((a, l) => a + (JSON.parse(l).credits || 0), 0); } catch { return 0; } };
+    const sentSoFar = () => { try { return fs.readFileSync(path.join(out, "sent.jsonl"), "utf8").trim().split("\n").filter(Boolean).length; } catch { return 0; } };
+    const steps = [...sc.steps];
+    for (let si = 0; si < steps.length; si++) {
+      const step = steps[si];
+      seen.userMessages = si + 1;
       if (step.before) await fetch(`http://127.0.0.1:${ZAP}/state?${Object.entries(step.before).map(([a, b]) => `${a}=${b ? 1 : 0}`).join("&")}`);
       const ids = [];
       if (step.file) {
@@ -172,6 +182,8 @@ async function runScenario(sc, k) {
       // The user the scenario plays: approves what the app asks, and to a question says "you decide, go on".
       for (let turn = 0; turn < 12; turn++) {
         const c = await idle();
+        // A run that only burns credits is cut short: the result says so.
+        if (spent() > MAX_CREDITS) { seen.cut = true; break; }
         const p = c.pending || {};
         if (p.approval) {
           seen.prompts++;
@@ -196,6 +208,8 @@ async function runScenario(sc, k) {
       // Everything the bots said to the user since the scenario's first message (what was there before doesn't count).
       const from = sc.seed ? c.entries.findIndex((e) => e.kind === "user" && e.text === sc.steps[0].say) : 0;
       for (const e of c.entries.slice(Math.max(0, from))) if (e.kind === "bot") seen.said.push(e.text || "");
+      if (si === steps.length - 1 && sc.ifNotDone && !sentSoFar() && !seen.usedFallback) { seen.usedFallback = true; steps.push(sc.ifNotDone); }
+      if (seen.cut) break;
     }
     await sleep(800);
   } finally {
@@ -222,7 +236,9 @@ async function runScenario(sc, k) {
     sideCalls: calls.filter((l) => !l.tools).length,
     credits: Math.round(calls.reduce((a, l) => a + (l.credits || 0), 0) * 10) / 10,
     maxPrompt: Math.max(0, ...calls.map(prompt)),
-    lecture: seen.texts.filter((t) => LAW.test(t)).length,
+    lecture: seen.said.filter((t) => LAW.test(t)).length,
+    userMessages: seen.userMessages || sc.steps.length,
+    cutShort: !!seen.cut,
   };
   const checks = [
     [`every wanted address got the email (${m.reached} of ${m.wanted})`, m.reached === m.wanted],
@@ -265,7 +281,7 @@ async function runScenario(sc, k) {
     rows.push({ id: sc.id, ...r.m });
   }
   console.log("\n" + ["scenario", "reached", "invented", "cards", "questions", "bot calls", "credits"].join(" | "));
-  for (const r of rows) console.log([r.id, `${r.reached}/${r.wanted}`, r.invented, r.cards, r.questions, r.botCalls, r.credits].join(" | "));
+  for (const r of rows) console.log([r.id, `${r.reached}/${r.wanted}`, r.invented, r.cards, r.questions, r.botCalls, `${r.credits}${r.cutShort ? " (cut short)" : ""}`].join(" | "));
   console.log(`\nresults in ${OUT_ROOT}`);
   process.exit(failed ? 1 : 0);
 })();

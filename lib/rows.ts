@@ -11,7 +11,7 @@ import { mcpToolKind } from "./mcp";
 import { dataDir } from "./settings";
 import { cellsText, fromCsvText, fromSheetText, fromWorkTable, planBatch, selectRows, type BatchPlan, type Table } from "./table-core";
 import type { ApprovalItem, Chat, ToolCall, ToolResult } from "./types";
-import { findWorkTable, loadWork } from "./workfiles";
+import { findWorkTable } from "./workfiles";
 
 export const READ_ROWS = "read_rows";
 export const FOR_EACH_ROW = "for_each_row";
@@ -71,10 +71,15 @@ export const ROW_SPECS: ToolSpec[] = [
 
 export const ROW_TOOLS: ReadonlySet<string> = new Set(ROW_SPECS.map((s) => s.name));
 
-/** Whether this chat has a table to work on: an attached Excel or CSV file, or a work table. */
-export function chatHasTable(chat: Chat, workChat: string): boolean {
-  if (chat.entries.some((e) => e.kind === "user" && e.attachments?.some((a) => a.kind === "xlsx" || a.kind === "csv"))) return true;
-  return Object.keys(loadWork(workChat).tables).length > 0;
+/**
+ * The row tools a bot gets. With a connector: both, always (a work table can be made at any moment, and a tool
+ * list that changed in the middle of a conversation rewrote its whole prompt cache: tests/e2e/cost-scenario.cjs).
+ * Without one there is nothing to run per row: read_rows only, once the user has attached a table.
+ */
+export function rowSpecsFor(chat: Chat, hasConnector: boolean): ToolSpec[] {
+  if (hasConnector) return ROW_SPECS;
+  const attached = chat.entries.some((e) => e.kind === "user" && e.attachments?.some((a) => a.kind === "xlsx" || a.kind === "csv"));
+  return attached ? ROW_SPECS.filter((t) => t.name === READ_ROWS) : [];
 }
 
 type Source = { name: string; table: Table };

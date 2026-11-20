@@ -24,7 +24,7 @@ import { CORRECTION, lessonsPrompt, mergeLearned, rateLessons, reflect } from ".
 import { capabilitiesPrompt } from "./capabilities";
 import { catalogCached } from "./catalog-remote";
 import { HELP_SPEC, helpAnswer, helpTopicOf, ooviHelp } from "./help";
-import { listServers, mcpDestructive, mcpServerOf, mcpToolsFor, type McpDown } from "./mcp";
+import { listServers, mcpDestructive, mcpServerOf, mcpToolKind, mcpToolsFor, type McpDown } from "./mcp";
 import { findMentions, handoffMentions } from "./mentions";
 import { abilitiesOf, abilityLines, abilityWords, botDirectory } from "./abilities";
 import { USE_FOLDER_SPEC, folderTarget, runUseFolder, useFolderItem } from "./project-folder";
@@ -57,6 +57,7 @@ import { timeNote } from "./time-note-core";
 import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { START_RATIO, calibrate, effectiveBudget } from "./budget-core";
 import { resumesJob } from "./resume-core";
+import { unseenAddresses } from "./recipients-core";
 import { deferTools, isGuide, onDemand, paramsHint, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
 import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
 import { firstNeedingComputer, needsComputerText, NOT_RUN_IN_CLOUD } from "./cloud-runner-core";
@@ -76,8 +77,8 @@ import { CONNECT_APP, CONNECT_SPEC, connectItem, runConnectApp, zapierAmong } fr
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
-import { ATTACH_SPECS, ATTACH_TOOLS, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
-import { FOR_EACH_ROW, READ_ROWS, ROW_SPECS, batchApprovalItem, batchAsks, chatHasTable, runForEachRow, runReadRows } from "./rows";
+import { ATTACH_SPECS, ATTACH_TOOLS, attachmentSegments, attachmentsPrompt, chatHasAttachments, pdfAsDocument, runAttachmentTool } from "./attachments";
+import { FOR_EACH_ROW, READ_ROWS, batchApprovalItem, batchAsks, rowSpecsFor, runForEachRow, runReadRows } from "./rows";
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots, shotAfterId } from "./desktop-core";
 import { desktopState, DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
@@ -221,7 +222,7 @@ type Outcome = "done" | "waiting" | "error" | "stopped" | "refresh";
 const HOW_YOU_WORK = `How you work:
 - Do the task. When you have enough to act, act. Where something is open that you can reasonably decide (the wording, the tone, the language, which column holds what, which of two similar options), decide it and say what you chose in one line. Ask only when a wrong guess would make the result wrong and you cannot find the answer yourself.
 - oovi asks the user before anything leaves their computer or changes their accounts: it shows them a card with the exact content (for a batch: how many, and filled-in examples), and they approve or cancel there. That card is their review and their consent, and it is there precisely for what can't be undone. So you call the tool: you don't ask "shall I go ahead?" in the chat, you don't ask first because an action is final, you don't hold it back to protect them from it, and you don't tell them to do it themselves when you have a way to do it.
-- The user's words set the scope. "Everyone" means every row that has what the action needs, including the ones you would have left out. A concern worth raising (a legal point, a risk, a better way) goes in one short line beside the action, once: never in place of the action, and never again once they have answered.
+- The user's words set the scope, both ways. "Everyone" means every row that has what the action needs, including the ones you would have left out; and nothing goes out that they didn't ask for (no purchase, post, message, sign-up or sharing of their data on your own initiative). A concern worth raising (a legal point, a risk, a better way) goes in one short line beside the action, once: never in place of the action, and never again once they have answered.
 - Data stays where it is. A table or a long file is in the conversation as a digest; you work on its rows through tools, and never rebuild rows, names or addresses from memory. What the tools returned is the only source for what you report: the numbers as they are, and nothing claimed that no tool did.
 - Answer the latest message. Earlier topics are closed unless the user reopens them, and a summary of the earlier conversation is background, not a list of things to do. Messages show when they were sent: a short-lived thing is over once its time has passed.
 - A task that reaches you through the main assistant or a team leader "on the user's behalf" is the user's request, with the same authority. When the user's own message is quoted with it, that message is what to do.
@@ -391,6 +392,10 @@ function readSoFar(chat: Chat): Seen | null {
     }
   }
   if (chat.summary) texts.push(chat.summary.text);
+  // The user's own files are theirs to use, whether or not a bot read every line: a row copied from an attached
+  // workbook was "seen". (Only tool results counted before, so rows taken from the file shown in the conversation
+  // were dropped as unseen.)
+  for (const e of chat.entries) if (e.kind === "user") for (const a of e.attachments ?? []) for (const seg of attachmentSegments(chat.id, a.id)) texts.push(seg.text);
   const store = loadWork(workHome(chat));
   // Rows already in the tables were checked when they came in (or were put there by a collecting tool).
   // Notes are free text anyone can write, so they prove nothing.
@@ -1315,7 +1320,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(chatHasTable(chat, workHome(chat)) ? ROW_SPECS.filter((t) => t.name !== FOR_EACH_ROW || mcp.specs.length > 0) : []), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...rowSpecsFor(chat, mcp.specs.length > 0), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1453,7 +1458,19 @@ async function* runBot(
       const deskAsk = (c: ToolCall) => (deskOn ? desktopNeedsOk(memberOf(c.name), { granted: deskGranted, askEvery, first: c.id === firstDesk }) : null);
       // A routine proposal always asks (unless it's invalid: then it runs and returns the error to the bot).
       // Auto mode: only what can't be undone or changes the team asks (AUTO_STILL_ASKS).
-      const asks = (c: ToolCall) => (auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c)) && !isReminder(c);
+      // An address a connector action would write to that appears nowhere (the user's messages and files, what was
+      // read, their memory): the card always shows and says so, in Auto mode and for a trusted connector too.
+      let seenAddresses: ((a: string) => boolean) | null | undefined;
+      const unseenOf = (c: ToolCall): string[] => {
+        if (!c.name.startsWith("mcp_") || mcpToolKind(c.name) !== "act" || !tools.some((t) => t.name === c.name)) return [];
+        if (seenAddresses === undefined) {
+          const read = readSoFar(chat);
+          const own = `${memoryPrompt()}\n${currentUser()?.email ?? ""}\n${bot.instructions ?? ""}`.toLowerCase();
+          seenAddresses = read ? (a) => read("email", a) || own.includes(a) : null;
+        }
+        return unseenAddresses(c.input, seenAddresses);
+      };
+      const asks = (c: ToolCall) => unseenOf(c).length > 0 || ((auto && !AUTO_STILL_ASKS(c.name) ? false : asksNormally(c)) && !isReminder(c));
       // What one OK can cover beyond this once (the bots' browser on a site, one connector action); already
       // allowed for this chat, or the site always, means no card (lib/approval-scope-core.ts).
       const scopeFor = (c: ToolCall) => scopeOf(c.name, peekSession(sessionId)?.page.url(), { destructive: c.name.startsWith("mcp_") && mcpDestructive(c.name) });
@@ -1530,7 +1547,11 @@ async function* runBot(
             return expired.has(c.id) ? { ...item, detail: `${translatorFor(lastUserText(chat))("ok.expired")}${item.detail ? `\n${item.detail}` : ""}` } : item;
           }
           const scope = scopeFor(c);
-          const item = approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
+          const plain = approvalItem(c, sessionId, chat.workspace, translatorFor(lastUserText(chat)));
+          const unseen = unseenOf(c);
+          // No "allow for this chat" on a card that warns: this one is looked at.
+          if (unseen.length) return { ...plain, summary: `${translatorFor(lastUserText(chat))("ok.unseenAddress", { list: unseen.slice(0, 5).join(", ") })}\n${plain.summary}` };
+          const item = plain;
           // A connector action's button says what it is in plain words ("Send an email in Gmail"), not its tool name.
           return { ...item, ...(scope ? { scope: scope.kind === "tool" ? { ...scope, label: item.summary.split("\n")[0]!.slice(0, 60) } : scope } : {}) };
         };

@@ -83,7 +83,12 @@ export default function ApprovalCard({ approval, bot, group, busy = false, onDec
         <ul>
           {approval.items.map((it) => (
             <li key={it.call.id} dir="auto">
-              {it.summary}
+              {/* Each line takes its own direction: a French email inside an Arabic card reads left to right. */}
+              {it.summary.split("\n").map((line, k) => (
+                <span key={k} dir="auto" className="ap-line">
+                  {line || "\u00a0"}
+                </span>
+              ))}
               {it.desktop === "grant" && <span className="dc-grant-note">{t(it.askEvery ? "desk.grant.asks" : "desk.grant.noAsk")}</span>}
               {it.desktop && it.window && (
                 <span className="dc-window" title={t("desk.windowHint")}>

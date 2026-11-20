@@ -15,8 +15,15 @@ test("a new request does not: it is answered for itself", () => {
     "send an email to everyone in the list",
     "what's the weather in Algiers tomorrow?",
     "ok now write me a post about our new product for Facebook please",
-    "continue with the Facebook post and also check my calendar for tomorrow morning and tell me what I have",
     "شغل أغنية في يوتوب",
     "",
   ]) assert.equal(resumesJob(t), false, t);
+});
+
+test("a clear word to go on at the start of a longer message resumes too (the user adds what changed)", () => {
+  for (const t of ["retry, I fixed the wifi and the page loads now so it should work this time", "LONE2: retry with the directory at https://example.com/list page two", "كمل الخدمة، راني ربطت الحساب و كلش يخدم درك", "réessaie maintenant, j'ai reconnecté mon compte et tout fonctionne de nouveau"]) assert.equal(resumesJob(t), true, t);
+});
+
+test("a polite word in front of a new request is not a word to go on", () => {
+  for (const t of ["ok now write me a post about our new product for Facebook please", "yes and what is the weather in Oran tomorrow morning please tell me", "done with that, now translate this letter into French for my client"]) assert.equal(resumesJob(t), false, t);
 });
