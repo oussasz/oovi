@@ -1,3 +1,22 @@
+## Azure runner on the 0.15.0 image, updating itself (2026-11-20 23:17 UTC, owner: "ثبّت وحدّث", signed in to Azure himself)
+- Before (seen on the VM): container `oovi-runner:local` built 2026-11-19 19:31 (the 0.14.1 engine), healthy, up 28 h;
+  887 MB memory, 2 GB swap; `runner.env` holds only OOVI_WEB_URL, RUNNER_SECRET, RUNNER_ID=azure-se-1,
+  RUNNER_CONCURRENCY=1; the 6-hour update timer was failing (a local image can't be pulled).
+- Changed: `/opt/oovi-runner/.env` now has `RUNNER_IMAGE=ghcr.io/oussasz/oovi-runner:latest` (public, built by the
+  "Runner image" workflow on every push to `main` that touches the engine; this one is revision ba3b43c = 0.15.0).
+  The old image is still on the VM and `.env.before-0.15.0` beside it: to go back, copy that file over `.env` and
+  `docker compose up -d` in `/opt/oovi-runner`.
+- From now on the VM follows `main` by itself within 6 hours (`oovi-runner-update.service` ran clean after the
+  switch): a push to `main` that changes `lib/`, `app/` or `runner/` reaches the live server without anyone asking.
+- Measured live, computer off, same kind of message ("12 x 12?"): first sign in the chat after 9.3 s (was 35.6 s),
+  answer after 16.3 s (was about 45 s); 3.12 credits cold and 0.41 for the next message two minutes later (was 4.7
+  each time). Runner log: job picked up about 5 s after it was sent, its server ready 4 s later, done at 13 to 14 s.
+- Not tried live: Stop from the phone on a running cloud job (scripted scenario and website test only).
+- How it was reached: no Azure CLI was on the Linux machine; one was installed under
+  `/home/oussasz/dev online/oovi/lab/az-cli` (run it with `lab/az.sh`), the owner signed in with a device code, the
+  VM was driven with `az vm run-command invoke -g OOVI-RUNNER-RG -n oovi-runner-1 --command-id RunShellScript`, and
+  the session was signed out afterwards (`az logout`): the next time needs a new device code from the owner.
+
 ## 0.15.0 (released 2026-11-20 23:00 UTC, owner: "أصدر النسخة")
 Harness v2 and the cloud work below, from branch `harness-v2`; `main` = tag `v0.15.0` = ba3b43c. Before it: the
 Windows, Mac and Linux run passed on that commit (Actions run 44831153130), and on the 0.15.0 build the real model
@@ -9,9 +28,9 @@ say 0.15.0 and the Linux AppImage's checksum matches its update file; every down
 `/changelog` shows the four sections. Not checked: an installed app updating itself, and the installers opened on
 Windows or a Mac. The website was deployed from the same branch an hour earlier (0b80bfd; nothing in `web/` changed
 since). Left to the owner: the Microsoft Store package (`oovi-Store-0.15.0.appx`, docs/STORE-LISTING.md). The push
-to `main` also built ghcr.io/oussasz/oovi-runner:latest from 0.15.0; the Azure VM still runs its old local image.
+to `main` also built ghcr.io/oussasz/oovi-runner:latest from 0.15.0; the Azure VM was switched to it the same night (section above).
 
-## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`; website deployed, desktop app released as 0.15.0, runner image on the VM NOT updated)
+## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`; website deployed, desktop app released as 0.15.0, runner image on the VM updated)
 The owner: "the phone app says the computer must be on even for simple messages: what is the VPS for? Check it,
 audit it against best practice, make sure it syncs right."
 
