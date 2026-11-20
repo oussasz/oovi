@@ -13,6 +13,8 @@ import {
   backoffMs,
   bytesLabel,
   chatBlocker,
+  serverState,
+  lostOutgoing,
   chatPreview,
   chatTitle,
   computerState,
@@ -234,8 +236,30 @@ test("computer state, the needs-your-computer banner and sync use", () => {
   assert.equal(chatBlocker(runnerSaid, [], "offline", false), "needs_computer");
   const answeredLater = chat({ entries: [...runnerSaid.entries, { id: "u2", kind: "user", text: "ok", at: 3 }] });
   assert.equal(chatBlocker(answeredLater, [], "offline", false), null);
-  assert.equal(chatBlocker(chat(), [job("queued")], "offline", true), "queued_offline");
-  assert.equal(chatBlocker(chat(), [job("queued")], "online", true), null);
+  // Computer off: oovi's server takes the message, and the phone says so instead of "your computer is off".
+  assert.equal(chatBlocker(chat(), [job("queued")], "offline", true, "online"), "queued_server");
+  assert.equal(chatBlocker(chat(), [job("queued")], "none", true, "online"), "queued_server");
+  // Neither the computer nor the server answers: the message waits, and the phone says that.
+  assert.equal(chatBlocker(chat(), [job("queued")], "offline", true, "offline"), "queued_offline");
+  assert.equal(chatBlocker(chat(), [job("queued")], "online", true, "online"), null);
+  assert.equal(chatBlocker(chat(), [job("queued")], "offline", false, "online"), null);
+});
+
+test("a message whose job failed on the server is marked not sent, so one tap sends it again", () => {
+  const out = (entryId: string, jobId: string | undefined, state: "sending" | "sent" | "failed") => ({ entryId, chatId: "c", text: "hi", at: 1, state, ...(jobId ? { jobId } : {}) });
+  const jobs = [{ jobId: "j1", kind: "message" as const, status: "failed" as const }, { jobId: "j2", kind: "message" as const, status: "claimed" as const }];
+  assert.deepEqual(lostOutgoing([out("a", "j1", "sent"), out("b", "j2", "sent"), out("c", undefined, "sending")], jobs), ["a"]);
+  assert.deepEqual(lostOutgoing([out("a", "j1", "failed")], jobs), []);
+});
+
+test("the phone knows whether oovi's server is up", () => {
+  const st = (server?: { online: boolean; lastSeen: string | null }) => ({ enabled: true, bytes: 0, limit: 1, chats: 0, lastSync: null, devices: [], ...(server ? { server } : {}) });
+  assert.equal(serverState(st({ online: true, lastSeen: "2026-11-20T20:00:00Z" })), "online");
+  assert.equal(serverState(st({ online: false, lastSeen: "2026-11-20T08:00:00Z" })), "offline");
+  assert.equal(serverState(st({ online: false, lastSeen: null })), "offline");
+  // A website that doesn't say yet: the phone assumes the server is there (it is, on every account that syncs).
+  assert.equal(serverState(st()), "online");
+  assert.equal(serverState(null), "online");
 });
 
 test("long-poll backoff grows to 30 s", () => {

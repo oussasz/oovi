@@ -274,7 +274,7 @@ async function stopRunner() {
     // ---- the runner API on the real website: fairness (exclude) and release ----
     const rapi = (p2, body) => fetch(`${SITE}/api/v1/cloud/runner${p2}`, { method: "POST", headers: { "x-oovi-runner": RUNNER_SECRET, "content-type": "application/json" }, body: JSON.stringify(body) }).then(async (x) => ({ status: x.status, j: await x.json().catch(() => null) }));
     const probe = (await site("POST", "/api/v1/cloud/jobs", { chatId: dm, kind: "message", payload: { text: "PHONE-probe" } })).j.jobId;
-    await sleep(6000); // the runner waits 5 s before taking a job
+    await sleep(3000); // the runner waits 2 s before taking a job
     check("claim skips an account the runner says is busy (exclude)", (await rapi("/claim", { runnerId: "probe-runner", exclude: [USER] })).j?.job === null);
     const got = (await rapi("/claim", { runnerId: "probe-runner" })).j?.job;
     check("…and gives it without exclude (jobId, userId)", got?.jobId === probe && got?.userId === USER, JSON.stringify(got && { jobId: got.jobId, userId: got.userId }));

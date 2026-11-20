@@ -5,7 +5,7 @@ import { pool } from "@/lib/db";
 import { aiMessages } from "@/lib/ai-messages";
 import { isEnabled } from "@/lib/cloud";
 import { isUserId, logCode } from "@/lib/cloud-core";
-import { fail, runnerOnly } from "@/lib/cloud-route";
+import { fail, runnerFor, runnerOnly } from "@/lib/cloud-route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,6 +16,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ userId:
   if (denied) return denied;
   const { userId } = await params;
   if (!isUserId(userId)) return fail(400, "bad_request", "Invalid account id.");
+  // Only while a runner holds a job of this account (lib/cloud-route.ts runnerFor).
+  const closed = await runnerFor(userId);
+  if (closed) return closed;
   let user: { emailVerified: boolean } | null = null;
   try {
     if (!(await isEnabled(userId))) return fail(403, "sync_off", "Cloud sync is off for this account.");

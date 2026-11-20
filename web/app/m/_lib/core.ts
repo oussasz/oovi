@@ -392,16 +392,39 @@ export function computerState(status: CloudStatus | null | undefined): { state: 
 }
 
 /**
+ * The phone's messages whose job ended as failed on the server before the chat showed them. They used to stay
+ * "sent" for ever with no answer; marked not sent, one tap sends them again.
+ */
+export function lostOutgoing(mine: Outgoing[], jobs: JobInfo[]): string[] {
+  const failed = new Set(jobs.filter((j) => j.status === "failed").map((j) => j.jobId));
+  return mine.filter((o) => o.state === "sent" && !!o.jobId && failed.has(o.jobId)).map((o) => o.entryId);
+}
+
+export type ServerState = "online" | "offline";
+
+/** Whether oovi's cloud server is up. A website that doesn't say counts as up: it is, on every account that syncs. */
+export function serverState(status: CloudStatus | null | undefined): ServerState {
+  return status?.server && !status.server.online ? "offline" : "online";
+}
+
+/**
  * What the chat waits for, for the banner above the composer:
  * needs_computer (a step only the computer can do: a job said so, or the runner's reply has that error code),
- * waiting (the phone's message is queued and no computer or runner took it yet), or null.
+ * queued_server (the computer is off: oovi's cloud server is taking the phone's message),
+ * queued_offline (neither the computer nor the server answers: the message waits), or null.
  */
-export function chatBlocker(chat: Chat | undefined, jobs: JobInfo[], computer: ComputerState, hasOutgoing: boolean): "needs_computer" | "queued_offline" | null {
+export function chatBlocker(
+  chat: Chat | undefined,
+  jobs: JobInfo[],
+  computer: ComputerState,
+  hasOutgoing: boolean,
+  server: ServerState = "online",
+): "needs_computer" | "queued_server" | "queued_offline" | null {
   if (jobs.some((j) => j.status === "needs_computer")) return "needs_computer";
   const lastBot = [...(chat?.entries ?? [])].reverse().find((e): e is BotEntry => e.kind === "bot");
   const lastUser = [...(chat?.entries ?? [])].reverse().find((e): e is UserEntry => e.kind === "user");
   if (lastBot?.errorCode === "needs_computer" && (!lastUser || lastBot.at >= lastUser.at)) return "needs_computer";
-  if (hasOutgoing && computer !== "online" && jobs.some((j) => j.status === "queued")) return "queued_offline";
+  if (hasOutgoing && computer !== "online" && jobs.some((j) => j.status === "queued")) return server === "online" ? "queued_server" : "queued_offline";
   return null;
 }
 

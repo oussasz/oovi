@@ -64,6 +64,15 @@ export default async function AdminOverview({ searchParams }: { searchParams: Pr
           value={cloud ? fmtInt(cloud.syncing) : "–"}
           hint={cloud ? `Accounts syncing their chats · ${fmtInt(cloud.chats)} chats, ${fmtBytes(cloud.bytes)}` : "Can't be read right now"}
         />
+        <Kpi
+          label="Cloud server"
+          value={cloud ? (cloud.server.online ? "Up" : "Down") : "–"}
+          hint={
+            cloud
+              ? `${cloud.server.online ? "Answers phone messages and runs routines while computers are off" : cloud.server.lastSeen ? `Last seen ${new Date(cloud.server.lastSeen).toISOString().replace("T", " ").slice(0, 16)} UTC: phone messages wait` : "Never seen: phone messages wait for the computer"} · ${fmtInt(cloud.server.waiting)} waiting, ${fmtInt(cloud.server.failedDay)} failed in the last day`
+              : "Can't be read right now"
+          }
+        />
         <Kpi label="Downloads, last 7 days" value={fmtInt(o.downloads7.value)} change={o.downloads7} previousLabel="the 7 days before" hint={splitText(o.downloadsByTarget7)} />
         <Kpi label="Downloads, last 30 days" value={fmtInt(o.downloads30.value)} change={o.downloads30} previousLabel="the 30 days before" hint={splitText(o.downloadsByTarget30)} />
         <Kpi

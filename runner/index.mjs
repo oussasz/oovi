@@ -15,12 +15,25 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { busyAccounts, canStart, entryIdFor, errorCode, isId, logLine, mergeChat, nextDelay, outcomeOf, readConfig, resetForRetry, timeZoneOf } from "./core.mjs";
+import { busyAccounts, canStart, entryIdFor, errorCode, failRunning, isId, logLine, loopStuck, mergeChat, nextDelay, outcomeOf, readConfig, resetForRetry, routineReport, timeZoneOf } from "./core.mjs";
 import { startProxy } from "./proxy.mjs";
 import { webClient } from "./web.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const cfg = readConfig(process.env);
+/** The container's memory limit in bytes (cgroup v2, then v1), or null when there is none to read. */
+function memoryLimit() {
+  for (const f of ["/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory/memory.limit_in_bytes"]) {
+    try {
+      const n = Number(fs.readFileSync(f, "utf8").trim());
+      // No limit shows as "max" (v2) or a huge number (v1).
+      if (Number.isFinite(n) && n > 0 && n < 2 ** 50) return n;
+    } catch {
+      /* not this kind of machine */
+    }
+  }
+  return null;
+}
+const cfg = readConfig(process.env, memoryLimit());
 if (typeof cfg === "string") {
   console.error(logLine({ ev: "config_error", code: cfg }));
   console.error(cfg);
@@ -169,18 +182,34 @@ async function runJob(job, ctl) {
   let pushing = Promise.resolve();
   let pushedAt = 0;
   let pushTimer = null;
+  /** The chat was deleted on another device while the job ran. */
+  let chatGone = false;
+  /** Whether the last save of the chat reached the account (the final one decides how the job ends). */
+  let pushOk = true;
+  let routineNext; // a routine's next time, read before its run starts (undefined: not known)
+  let routineIdOf = null;
 
   const push = () => {
     pushing = pushing.then(async () => {
-      if (!srv || leaseLost) return;
+      if (!srv || leaseLost || chatGone) return;
       const r = await srv.ask({ type: "chat", chatId: job.chatId }, 30_000);
       if (!r.ok || !r.chat) return;
+      pushOk = false;
       let chat = r.work ? { ...r.chat, work: r.work } : r.chat;
       for (let i = 0; i < 3; i++) {
         const out = await web.putChat(job.userId, job.chatId, version, chat);
         if (!out.conflict) {
           version = out.version;
           pushedAt = Date.now();
+          pushOk = true;
+          return;
+        }
+        // Deleted on the phone or the computer while this job ran: the run stops and nothing is saved back
+        // (saving on top of the tombstone brought the deleted chat back).
+        if (out.conflict.deleted) {
+          chatGone = true;
+          pushOk = true;
+          ctl.stop("deleted");
           return;
         }
         version = out.conflict.version;
@@ -189,6 +218,14 @@ async function runJob(job, ctl) {
       log({ ev: "push_conflict", ...base });
     }).catch((e) => log({ ev: "push_failed", ...base, code: errorCode(e), http: e?.status }));
     return pushing;
+  };
+  /** The last save, tried again a few times: a reply that never reaches the account must not end as "done". */
+  const pushLast = async () => {
+    for (let i = 0; i < 4; i++) {
+      await push();
+      if (pushOk || leaseLost) return;
+      await sleep(1500 * (i + 1));
+    }
   };
   const pushSoon = () => {
     if (pushTimer) return;
@@ -208,9 +245,13 @@ async function runJob(job, ctl) {
     }
     hb = setInterval(async () => {
       try {
-        if (!(await web.heartbeat(job.id))) {
+        const beat = await web.heartbeat(job.id);
+        if (!beat.held) {
           leaseLost = true;
           ctl.stop("lease");
+        } else if (beat.stop) {
+          log({ ev: "job_stop_asked", ...base });
+          ctl.stop("user");
         }
       } catch (e) {
         log({ ev: "heartbeat_failed", ...base, http: e?.status });
@@ -241,6 +282,8 @@ async function runJob(job, ctl) {
     const routineId = job.kind === "routine" && typeof payload.routineId === "string" ? payload.routineId : null;
     const prep = await srv.ask({ type: "prepare", chatId: job.chatId, chat, work, ...(routineId ? { routineId } : {}) }, 120_000);
     if (!prep.ok) throw new Error(prep.error === "chat not found" ? "chat not found" : "setup failed");
+    routineIdOf = routineId;
+    if (routineId && (prep.routineNext === null || typeof prep.routineNext === "string")) routineNext = prep.routineNext;
     // The connectors this chat's bots use, with their sign-in, from the account's vault.
     const vault = [];
     const versions = new Map();
@@ -282,7 +325,9 @@ async function runJob(job, ctl) {
       clearTimeout(pushTimer);
       pushTimer = null;
     }
-    await push();
+    await pushLast();
+    if (chatGone) throw new Error("chat not found");
+    if (!pushOk && !leaseLost) throw new Error("save refused");
     // What the job changed in the setup goes back to the account; refreshed sign-ins go back to the vault.
     const fin = await srv.ask({ type: "finish" }, 60_000).catch(() => null);
     for (const s of Array.isArray(fin?.signIns) ? fin.signIns : []) {
@@ -297,6 +342,16 @@ async function runJob(job, ctl) {
     clearInterval(hb);
     if (pushTimer) clearTimeout(pushTimer);
     await pushing;
+    // A job that failed: what the account's copy still shows as "working" for this message is closed as an error.
+    if (result.error && !leaseLost && !chatGone && ctl.stopped !== "shutdown" && job.kind === "message") {
+      try {
+        const cur = await web.getChat(job.userId, job.chatId);
+        const fixed = cur.chat ? failRunning(cur.chat, entryIdFor(job)) : null;
+        if (fixed) await web.putChat(job.userId, job.chatId, cur.version, fixed);
+      } catch {
+        /* the job still ends as failed: the phone marks the message for sending again */
+      }
+    }
     if (srv) await srv.kill().catch(() => {});
     if (token) proxy.forget(token);
     if (dir) fs.rmSync(dir, { recursive: true, force: true });
@@ -308,7 +363,7 @@ async function runJob(job, ctl) {
         log({ ev: "job_released", ...base, ms });
       } else {
         let out = outcomeOf(result);
-        let routine = result?.routine ?? null;
+        let routine = routineReport(job, result?.routine ?? null, routineIdOf, routineNext, new Date().toISOString());
         // A routine that needs the computer isn't kept for it (the desktop runs its own routines and catches up):
         // the job ends here, and the cloud stops running it until the computer says when it runs next.
         if (job.kind === "routine" && out.status === "needs_computer") {
@@ -345,9 +400,13 @@ function launch(job) {
   });
 }
 
+/** When the claim loop last turned (it turns at least every 30 s). */
+let lastTurn = Date.now();
+
 async function loop() {
   let misses = 0;
   while (!stopping) {
+    lastTurn = Date.now();
     writeHealth();
     if (active.size >= cfg.concurrency) {
       await Promise.race([...active.values()].map((j) => j.done).concat(sleep(1000)));
@@ -367,7 +426,7 @@ async function loop() {
       break;
     }
     if (!job) {
-      await sleep(nextDelay(misses++, failed));
+      await sleep(nextDelay(misses++, failed, cfg.idleMs));
       continue;
     }
     misses = 0;
@@ -411,4 +470,12 @@ process.on("unhandledRejection", (e) => log({ ev: "unhandled", code: errorCode(e
 
 log({ ev: "start", n: cfg.concurrency });
 setInterval(writeHealth, 15_000).unref();
+// The health file above is written by a timer, so it stays fresh even if the claim loop is stuck. This is the
+// check on the loop itself: silent for 5 minutes, the runner ends and Docker starts a fresh one (its jobs'
+// leases run out and they are taken again).
+setInterval(() => {
+  if (stopping || !loopStuck(lastTurn, Date.now())) return;
+  log({ ev: "loop_stuck" });
+  process.exit(1);
+}, 60_000).unref();
 await loop();

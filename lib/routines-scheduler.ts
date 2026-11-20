@@ -289,6 +289,13 @@ export function runRoutineNow(id: string): FireResult {
  * with the same code as on the computer (reminders, results, Telegram). Resolves once the run is recorded, with how
  * it went and its next time (null: none, a "once" routine).
  */
+/** When a routine is due next from now (null: never again, e.g. "once"); undefined: no such routine. */
+export function routineNextTime(id: string): number | null | undefined {
+  const r = getRoutine(id);
+  if (!r) return undefined;
+  return r.schedule.kind === "once" || r.schedule.kind === "webhook" ? null : nextRun(r.schedule, r.timezone, Date.now());
+}
+
 export async function runRoutineInCloud(id: string): Promise<{ status: string; ranAt: number; next: number | null } | null> {
   const r = getRoutine(id);
   if (!r) return null;

@@ -63,6 +63,9 @@ test("waiting between claims grows when idle and stays bounded", () => {
   assert.equal(core.nextDelay(0, false), 2000);
   assert.ok(core.nextDelay(3, false) > core.nextDelay(1, false));
   assert.equal(core.nextDelay(50, true), 30_000);
+  // Idle is not failing: a phone message must not wait half a minute for the next look.
+  assert.equal(core.nextDelay(50, false), 5000);
+  assert.equal(core.nextDelay(50, false, 3000), 3000);
 });
 
 test("outcomes, time zones and error codes", () => {
@@ -83,4 +86,51 @@ test("logs never carry chat text, names or tokens", () => {
   assert.equal(line.token, undefined);
   assert.equal(line.code, "a b");
   assert.equal(line.status, "done");
+});
+
+test("a job that fails leaves no reply shown as still working", () => {
+  const chat = { id: "c", entries: [
+    { id: "u0", kind: "user", text: "old" },
+    { id: "b0", kind: "bot", status: "done", text: "old answer" },
+    { id: "u1", kind: "user", text: "new" },
+    { id: "b1", kind: "bot", status: "running", text: "" },
+  ] };
+  const fixed = core.failRunning(chat, "u1");
+  assert.equal(fixed.entries[3].status, "error");
+  assert.equal(fixed.entries[3].errorCode, "cloud_failed");
+  assert.equal(fixed.entries[1].status, "done");
+  // Nothing of this message in the chat, or nothing left running: no change to push.
+  assert.equal(core.failRunning(chat, "u9"), null);
+  assert.equal(core.failRunning({ id: "c", entries: [{ id: "u1", kind: "user" }, { id: "b1", kind: "bot", status: "done" }] }, "u1"), null);
+});
+
+test("a routine whose run failed on the server still gets its next time", () => {
+  const at = "2026-11-20T08:00:05.000Z";
+  // The run itself reported: that is what is sent.
+  const own = { routineId: "r1", ranAt: at, status: "ok", next: "2026-11-21T08:00:00.000Z" };
+  assert.deepEqual(core.routineReport({ kind: "routine" }, own, "r1", "2026-11-21T08:00:00.000Z", at), own);
+  // The run died (crash, timeout): the next time read before it started is sent, so tomorrow's run is not lost.
+  assert.deepEqual(core.routineReport({ kind: "routine" }, null, "r1", "2026-11-21T08:00:00.000Z", at), { routineId: "r1", ranAt: at, status: "failed", next: "2026-11-21T08:00:00.000Z" });
+  // The next time isn't known (the job died before its setup was read): nothing invented.
+  assert.equal(core.routineReport({ kind: "routine" }, null, "r1", undefined, at), null);
+  assert.equal(core.routineReport({ kind: "message" }, null, null, undefined, at), null);
+});
+
+test("a job's memory fits inside the server's own limit", () => {
+  const MB = 1024 * 1024;
+  // The real server: an 800 MB container, one job at a time. 768 MB for the job left nothing for the runner itself.
+  assert.equal(core.jobMemoryMb(undefined, 800 * MB, 1), 600);
+  assert.equal(core.jobMemoryMb(undefined, 1600 * MB, 2), 700);
+  // Plenty of room, or no limit known: the usual 768.
+  assert.equal(core.jobMemoryMb(undefined, 8192 * MB, 2), 768);
+  assert.equal(core.jobMemoryMb(undefined, null, 2), 768);
+  // Never under what a job needs to start; an explicit setting wins.
+  assert.equal(core.jobMemoryMb(undefined, 300 * MB, 1), 256);
+  assert.equal(core.jobMemoryMb("512", 800 * MB, 1), 512);
+});
+
+test("a runner whose loop stopped turning ends itself, so the server starts a fresh one", () => {
+  const now = 1_000_000_000;
+  assert.equal(core.loopStuck(now - 30_000, now), false);
+  assert.equal(core.loopStuck(now - 6 * 60_000, now), true);
 });

@@ -2,7 +2,7 @@
 // (/api/v1/cloud/runner/chats, /runner/vault): the account id always comes from the caller, never the body.
 import type { NextResponse } from "next/server";
 import { MAX_CHAT_TEXT, MAX_VAULT_ITEMS, MAX_VAULT_TEXT, checkChatPut, checkDone, checkVaultPut, isId } from "./cloud-core";
-import { finishJob, getChat, getVault, heartbeat, putChat, putVault, routineRan } from "./cloud";
+import { finishJob, getChat, getVault, heartbeat, putChat, putVault, routineRan, takeStops, touchRunner } from "./cloud";
 import { body, fail, notFound, ok, syncOff } from "./cloud-route";
 
 export async function chatGet(userId: string, chatId: string): Promise<NextResponse> {
@@ -54,9 +54,13 @@ export async function jobHeartbeat(req: Request, jobId: string, kind: "desktop" 
   const b = await body(req, 4096);
   const field = kind === "desktop" ? "deviceId" : "runnerId";
   if (b === "too_big" || b === "bad" || !isId(b[field])) return fail(400, "bad_request", `${field} is missing or invalid.`);
+  // A runner at work asks for no new job: its heartbeat is what says the server is up.
+  if (kind === "runner") await touchRunner(b[field] as string).catch(() => {});
   const lease = await heartbeat(jobId, `${kind}:${b[field] as string}`, userId);
   if (!lease) return fail(409, "conflict", "This job's lease was lost: another device took it, or it ended.");
-  return ok({ leaseUntil: lease });
+  // Stop pressed on the phone for the chat a runner is working on: told here.
+  const stop = kind === "runner" ? await takeStops(jobId, `${kind}:${b[field] as string}`) : false;
+  return ok({ leaseUntil: lease, ...(stop ? { stop: true } : {}) });
 }
 
 export async function jobDone(req: Request, jobId: string, kind: "desktop" | "runner", userId: string | null): Promise<NextResponse> {

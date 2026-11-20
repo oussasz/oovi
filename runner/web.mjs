@@ -43,8 +43,14 @@ export function webClient(cfg) {
       // The website names it jobId (web/lib/cloud-types.ts RunnerClaimedJob).
       return job ? { ...job, id: job.jobId ?? job.id } : null;
     },
-    /** false: the lease is gone (another runner or the desktop has the job now). */
-    heartbeat: async (jobId) => (await call("POST", `/jobs/${enc(jobId)}/heartbeat`, { runnerId: cfg.runnerId }, { ok: [404, 409, 410] })).status < 300,
+    /**
+     * held false: the lease is gone (another runner or the desktop has the job now). stop true: the user pressed
+     * Stop on the phone for this chat (the runner asks for no new job while it works, so the stop comes here).
+     */
+    heartbeat: async (jobId) => {
+      const r = await call("POST", `/jobs/${enc(jobId)}/heartbeat`, { runnerId: cfg.runnerId }, { ok: [404, 409, 410] });
+      return { held: r.status < 300, stop: r.status < 300 && r.body?.stop === true };
+    },
     done: (jobId, outcome) => call("POST", `/jobs/${enc(jobId)}/done`, { runnerId: cfg.runnerId, ...outcome }),
     /** Back to the queue (this runner is stopping). */
     release: (jobId) => call("POST", `/jobs/${enc(jobId)}/release`, { runnerId: cfg.runnerId }, { ok: [404, 409, 410] }),
@@ -56,7 +62,8 @@ export function webClient(cfg) {
     /** {version} or {conflict: {version, chat}}. */
     putChat: async (userId, chatId, baseVersion, chat) => {
       const r = await call("PUT", `/chats/${enc(userId)}/${enc(chatId)}`, { baseVersion, chat }, { ok: [409], timeoutMs: 60_000 });
-      return r.status === 409 ? { conflict: { version: Number(r.body?.version) || 0, chat: r.body?.chat ?? null } } : { version: Number(r.body?.version) || baseVersion + 1 };
+      // deleted: the chat was deleted on another device meanwhile (its version is a tombstone's).
+      return r.status === 409 ? { conflict: { version: Number(r.body?.version) || 0, chat: r.body?.chat ?? null, deleted: r.body?.deleted === true } } : { version: Number(r.body?.version) || baseVersion + 1 };
     },
     getVault: async (userId, connectorId) => {
       const r = await call("GET", `/vault/${enc(userId)}/${enc(connectorId)}`, undefined, { ok: [404] });

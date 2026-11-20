@@ -2,7 +2,7 @@
 // what the bot says then, and what a phone's job may ask the run to do.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { firstNeedingComputer, needsComputer, needsComputerText, pickLocale, runInputOf } from "../../lib/cloud-runner-core.ts";
+import { CLOUD_NOTE, cloudTools, firstNeedingComputer, HAND_SPEC, HAND_TO_COMPUTER, handOver, needsComputer, needsComputerText, pickLocale, runInputOf, TOO_LATE_FOR_COMPUTER } from "../../lib/cloud-runner-core.ts";
 
 test("chat, web, places, papers, work tables, routines, connectors and Telegram run in the cloud", () => {
   for (const name of ["web_search", "research", "read_url", "find_places", "find_papers", "work_table", "work_notes", "propose_routine", "list_routines", "send_telegram", "memory", "ask_user", "run_helpers", "mcp_gmail_send_email"]) assert.equal(needsComputer({ name }), false, name);
@@ -53,4 +53,34 @@ test("approval answers, plan answers and question answers are cleaned", () => {
   assert.deepEqual(runInputOf("decision", { answers: null }), { answers: null });
   assert.equal(runInputOf("decision", { decisions: {} }), "no decision");
   assert.equal(runInputOf("stop", {}), "unknown kind stop");
+});
+
+test("in the cloud a bot is offered only what runs there, plus one way to leave the request for the computer", () => {
+  const all = ["web_search", "read_url", "create_document", "read_document", "browser", "desktop", "find_places", "mcp_zapier_send_email", "memory", "read_attachment"].map((name) => ({ name }));
+  const kept = cloudTools(all).map((t) => t.name);
+  assert.deepEqual(kept, ["web_search", "read_url", "find_places", "mcp_zapier_send_email", "memory", HAND_TO_COMPUTER]);
+  assert.equal(HAND_SPEC.name, HAND_TO_COMPUTER);
+  // Calling it ends the step as "needs the computer", like any call that can't run in the cloud.
+  assert.equal(needsComputer({ name: HAND_TO_COMPUTER }), true);
+  assert.match(CLOUD_NOTE, /computer is off/);
+  assert.match(CLOUD_NOTE, new RegExp(HAND_TO_COMPUTER));
+});
+
+test("reading the rows of a work table runs in the cloud (a list built there is read there)", () => {
+  assert.equal(needsComputer({ name: "read_rows" }), false);
+  assert.equal(needsComputer({ name: "use_tool", input: { name: "read_rows" } }), false);
+  // One action per row keeps its ledger on the computer: a second run in the cloud would send everything again.
+  assert.equal(needsComputer({ name: "for_each_row" }), true);
+});
+
+test("a request is left for the computer whole, or not at all", () => {
+  // Nothing ran, or only lookups: the computer runs the same message again from the start.
+  assert.equal(handOver([]), "whole");
+  assert.equal(handOver(["use_tool", "web_search", "read_url", "update_plan", "recall_history", "read_rows"]), "whole");
+  // Something was sent, saved or set here: running the message again on the computer would do it twice.
+  assert.equal(handOver(["mcp_zapier_gmail_send_email"]), "late");
+  assert.equal(handOver(["web_search", "send_telegram"]), "late");
+  assert.equal(handOver(["work_table"]), "late");
+  assert.equal(handOver(["propose_routine"]), "late");
+  assert.match(TOO_LATE_FOR_COMPUTER, /twice/);
 });

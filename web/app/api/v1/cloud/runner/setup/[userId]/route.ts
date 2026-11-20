@@ -4,7 +4,7 @@
 import { MAX_SETUP_BYTES, readSetup, writeSetup } from "@/lib/account-setup";
 import { isEnabled } from "@/lib/cloud";
 import { isUserId } from "@/lib/cloud-core";
-import { fail, guarded, ok, runnerOnly, syncOff } from "@/lib/cloud-route";
+import { fail, guarded, ok, runnerFor, runnerOnly, syncOff } from "@/lib/cloud-route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -16,6 +16,9 @@ export async function GET(req: Request, { params }: Ctx) {
   if (denied) return denied;
   const { userId } = await params;
   if (!isUserId(userId)) return fail(400, "bad_request", "Invalid account id.");
+  // Only while a runner holds a job of this account (lib/cloud-route.ts runnerFor).
+  const closed = await runnerFor(userId);
+  if (closed) return closed;
   return guarded("runner.setup.get", async () => ((await isEnabled(userId)) ? ok(await readSetup(userId)) : syncOff()));
 }
 
@@ -24,6 +27,9 @@ export async function PUT(req: Request, { params }: Ctx) {
   if (denied) return denied;
   const { userId } = await params;
   if (!isUserId(userId)) return fail(400, "bad_request", "Invalid account id.");
+  // Only while a runner holds a job of this account (lib/cloud-route.ts runnerFor).
+  const closed = await runnerFor(userId);
+  if (closed) return closed;
   let b: { baseVersion?: unknown; items?: unknown };
   try {
     const text = await req.text();

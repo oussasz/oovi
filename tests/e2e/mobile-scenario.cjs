@@ -215,7 +215,8 @@ async function main() {
     await page.goto(`${BASE}/m/c/dm-lina`);
     await page.locator(".m-composer textarea").fill("Any news?");
     await page.getByRole("button", { name: "Send", exact: true }).click();
-    check("G queued while the computer is off: said plainly", await until(() => page.getByText("Your computer is off. Your message waits until it’s picked up.").isVisible(), 14_000));
+    check("G queued while the computer is off: oovi's cloud server takes it, said plainly", await until(() => page.getByText("Your computer is off: oovi’s cloud server is taking your message.").isVisible(), 14_000));
+    check("G …and nothing says the message waits for the computer", (await page.getByText(/waits until it’s picked up/).count()) === 0);
     check("G the waiting message has one tick (sent, not picked up)", (await page.locator(".m-bubble--out", { hasText: "Any news?" }).locator(".m-sr-only", { hasText: "Sent" }).count()) === 1);
     S.holdJobs = false;
 

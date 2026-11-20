@@ -6,7 +6,7 @@ const ID_RE = /^[\w-]{1,80}$/;
 export const isId = (v) => typeof v === "string" && ID_RE.test(v);
 
 /** Settings from the environment. A string is what is wrong (the runner refuses to start). */
-export function readConfig(env) {
+export function readConfig(env, limitBytes = null) {
   const web = String(env.OOVI_WEB_URL || "").trim().replace(/\/+$/, "");
   let u;
   try {
@@ -30,9 +30,11 @@ export function readConfig(env) {
     perAccount: int(env.RUNNER_PER_ACCOUNT, 1, 1, 4),
     jobTimeoutMs: int(env.RUNNER_JOB_TIMEOUT_MS, 15 * 60_000, 30_000, 2 * 3600_000),
     drainMs: int(env.RUNNER_DRAIN_MS, 20_000, 0, 120_000),
-    heartbeatMs: int(env.RUNNER_HEARTBEAT_MS, 30_000, 1000, 60_000),
+    // Also how fast a Stop from the phone reaches a running job (it comes back with the heartbeat's answer).
+    heartbeatMs: int(env.RUNNER_HEARTBEAT_MS, 5000, 1000, 60_000),
+    idleMs: int(env.RUNNER_IDLE_MS, 5000, 1000, 30_000),
     pushEveryMs: int(env.RUNNER_PUSH_MS, 2000, 200, 30_000),
-    memoryMb: int(env.RUNNER_JOB_MEMORY_MB, 768, 256, 8192),
+    memoryMb: jobMemoryMb(env.RUNNER_JOB_MEMORY_MB, limitBytes, int(env.RUNNER_CONCURRENCY, 2, 1, 16)),
     maxConcurrentAi: int(env.RUNNER_AI_CONCURRENT, 3, 1, 10),
     tmp: String(env.RUNNER_TMP || ""),
     stateDir: String(env.RUNNER_STATE_DIR || ""),
@@ -113,10 +115,32 @@ export function mergeChat(mine, theirs) {
   return { ...mine, entries };
 }
 
-/** How long to wait before claiming again: quick while there is work, slower when idle or failing (2 s to 30 s). */
-export function nextDelay(misses, failed) {
+/**
+ * Memory for one job's server (MB). RUNNER_JOB_MEMORY_MB wins; else 768, lowered so that all jobs plus the runner
+ * itself (200 MB) fit in the container's limit: on the 800 MB server a 768 MB job could take the whole runner down.
+ */
+export function jobMemoryMb(setting, limitBytes, concurrency) {
+  const n = Math.floor(Number(setting));
+  if (setting !== undefined && setting !== "" && Number.isFinite(n)) return Math.min(8192, Math.max(256, n));
+  if (!limitBytes || !Number.isFinite(limitBytes)) return 768;
+  const room = Math.floor((limitBytes / (1024 * 1024) - 200) / Math.max(1, concurrency));
+  return Math.min(768, Math.max(256, room));
+}
+
+/** The claim loop turns at least every 30 s; silent for this long, it is stuck. */
+export const LOOP_STUCK_MS = 5 * 60_000;
+export const loopStuck = (lastTurnAt, now) => now - lastTurnAt > LOOP_STUCK_MS;
+
+/** Idle, the runner looks for work at least this often: a phone message waits for the next look. */
+export const IDLE_MS = 5000;
+
+/**
+ * How long to wait before claiming again. Idle: 2 s growing to `idleMax` (a phone message used to wait up to
+ * 30 s for the next look). Failing (the website doesn't answer): 5 s growing to 30 s.
+ */
+export function nextDelay(misses, failed, idleMax = IDLE_MS) {
   const base = failed ? 5000 : 2000;
-  return Math.min(30_000, Math.round(base * 1.6 ** Math.min(Math.max(0, misses), 10)));
+  return Math.min(failed ? 30_000 : idleMax, Math.round(base * 1.6 ** Math.min(Math.max(0, misses), 10)));
 }
 
 /** Accounts that already have as many jobs running here as one account may: the website skips them. */
@@ -138,6 +162,35 @@ export function outcomeOf(r) {
   if (r.needsComputer) return { status: "needs_computer" };
   if (r.error) return { status: "failed", error: r.error };
   return { status: "done" };
+}
+
+/**
+ * A job that failed here (crash, timeout, a save refused): the replies to its message still marked "running" are
+ * closed as an error, so the phone doesn't show a bot at work for ever. null: nothing to change.
+ */
+export function failRunning(chat, entryId) {
+  if (!chat || !Array.isArray(chat.entries)) return null;
+  const at = chat.entries.findIndex((e) => e && e.id === entryId);
+  if (at < 0) return null;
+  let changed = false;
+  const entries = chat.entries.map((e, i) => {
+    if (i <= at || e?.kind !== "bot" || e.status !== "running") return e;
+    changed = true;
+    return { ...e, status: "error", errorCode: "cloud_failed", error: "oovi's cloud server couldn't finish this. Send it again." };
+  });
+  return changed ? { ...chat, entries, pending: undefined } : null;
+}
+
+/**
+ * What a routine job tells the website when it ends: the run's own report, or, when the run died without one,
+ * "failed" with the next time read before it started. Without it the routine left the cloud's list until the
+ * computer came back (a daily routine stopped for days after one bad run). null: nothing known to send.
+ */
+export function routineReport(job, own, routineId, next, nowIso) {
+  if (job?.kind !== "routine") return null;
+  if (own) return own;
+  if (!routineId || next === undefined) return null;
+  return { routineId, ranAt: nowIso, status: "failed", next };
 }
 
 /** A time zone the job's server can use (IANA name), else UTC. */
@@ -172,6 +225,7 @@ export function errorCode(e) {
   if (/start|spawn|ready/i.test(m)) return "server_start";
   if (/chat not found/i.test(m)) return "chat_not_found";
   if (/setup/i.test(m)) return "setup";
+  if (/save refused/i.test(m)) return "save_refused";
   if (/crash|exit/i.test(m)) return "server_crash";
   return "error";
 }

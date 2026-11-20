@@ -60,7 +60,7 @@ import { resumesJob } from "./resume-core";
 import { unseenAddresses } from "./recipients-core";
 import { deferTools, isGuide, onDemand, paramsHint, splitGuide, unwrapCalls, USE_TOOL, useToolResult, withFirstGuide, wrapHistory } from "./tool-defer";
 import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
-import { firstNeedingComputer, needsComputerText, NOT_RUN_IN_CLOUD } from "./cloud-runner-core";
+import { CLOUD_NOTE, cloudTools, firstNeedingComputer, handOver, needsComputerText, NOT_RUN_IN_CLOUD, TOO_LATE_FOR_COMPUTER } from "./cloud-runner-core";
 import { SKILL_SPECS, approvalItem, describeCall, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
 import { LIST_ROUTINES_SPEC, ROUTINE_SPECS, ROUTINE_TOOLS, describeProposal, isReminder, proposalOf, runRoutineTool } from "./routines-tools";
@@ -82,7 +82,7 @@ import { FOR_EACH_ROW, READ_ROWS, batchApprovalItem, batchAsks, rowSpecsFor, run
 import { PROVIDERS } from "./providers-meta";
 import { DESKTOP_MARKER, NOT_EXECUTED, desktopNeedsOk, isDesktopName, memberOf, pruneDesktopShots, shotAfterId } from "./desktop-core";
 import { desktopState, DESKTOP_PROMPT, DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, SEND_SHOT_SPEC, runSendScreenshot, WINDOW_SPEC, windowFor, windowItem, runManageWindow, appFor, browserUrlFor, openAppItem, openBrowserItem, runOpenApp, runOpenInBrowser, desktopApprovalItem, desktopGranted, desktopOffered, desktopStatus, desktopUnavailableLine, endDesktopRun, grantDesktop, grantsTask, runDesktopCall, validDesktopDecision } from "./desktop-control";
-import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, SlashUse } from "./types";
+import type { Approval, ApprovalItem, Attachment, Bot, BotEntry, Chat, ChatEvent, Msg, ToolCall, ToolResult, UserEntry, Effort, PlanItem, Routine, SlashUse } from "./types";
 import { ASK_SPEC, answersText, cleanAnswers, cleanQuestions } from "./ask-user";
 
 /**
@@ -1339,7 +1339,10 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...ATTACH_SPECS, ...rowSpecsFor(mcp.specs.length > 0), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), HISTORY_SPEC, ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const everyTool: ToolSpec[] = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...ATTACH_SPECS, ...rowSpecsFor(mcp.specs.length > 0), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), HISTORY_SPEC, ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  // On oovi's cloud server (the computer is off) the bot is offered only what runs there, and one way to leave
+  // the request for the computer: offered everything, it picked the computer's tools where the server's would do.
+  const allTools: ToolSpec[] = cloudRunner() ? cloudTools(everyTool) : everyTool;
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1361,7 +1364,7 @@ async function* runBot(
   }
   const buildSystem = () => {
     const suggestions: string[] = [];
-    const perMessage: string[] = [...connectorsNow];
+    const perMessage: string[] = [...connectorsNow, ...(cloudRunner() ? [CLOUD_NOTE] : [])];
     const out = buildSystemWith(suggestions, perMessage);
     turnNote = [...perMessage, ...(tools.some((t) => t.name === "work_table") ? workNow(workHome(chat)) : []), ...suggestions].join("\n");
     return out;
@@ -1399,6 +1402,25 @@ async function* runBot(
       // user's language (no model call) and the job goes back to the computer (lib/cloud-flag.ts).
       const offCloud = cloudRunner() ? firstNeedingComputer(last.toolCalls) : null;
       if (offCloud) {
+        // The computer runs a request left for it from the start. If something was already sent, saved or set
+        // here for this message (by this bot or a teammate), that would happen twice: the request stays here
+        // and the bot says what is done and what is left.
+        const sinceUser = chat.entries.length - 1 - [...chat.entries].reverse().findIndex((e) => e.kind === "user");
+        const stepsHere = [...chat.entries.slice(sinceUser + 1).flatMap((e) => (e.kind === "bot" && e.id !== entry.id ? e.steps : [])), ...entry.steps];
+        const results = stepsHere.flatMap((st) => (st.role === "tool" ? st.results : []));
+        if (handOver(results.map((r) => r.name)) === "late") {
+          // Told once already and it asks again: the turn ends with its own words.
+          if (results.some((r) => r.content === TOO_LATE_FOR_COMPUTER)) {
+            entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: TOO_LATE_FOR_COMPUTER, isError: true })) });
+            entry.text = last.text.trim() || needsComputerText(replyLocaleOf(lastUserText(chat)));
+            entry.status = "done";
+            yield { type: "entry", entry };
+            return "done";
+          }
+          entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: TOO_LATE_FOR_COMPUTER, isError: true })) });
+          yield { type: "entry", entry };
+          continue;
+        }
         entry.steps.push({ role: "tool", results: last.toolCalls.map((c) => ({ id: c.id, name: c.name, content: NOT_RUN_IN_CLOUD, isError: true })) });
         entry.text = needsComputerText(replyLocaleOf(lastUserText(chat)));
         entry.status = "done";
@@ -1743,7 +1765,9 @@ async function* runBot(
             if (decisions[c.id] === true && taskId) grantFolderNames(`${chat.id}|${taskId}`, c);
             results.push(await runComputerTool(c, chat, s));
           } else if (ROUTINE_TOOLS.has(c.name)) {
-            results.push(runRoutineTool(c, bot, { chatId: chat.id, fromTelegram: chat.pending?.channel === "telegram", lang: userLanguage(chat) ?? undefined }));
+            // Where it runs with the computer off: asked of the sync module on a computer; the cloud server doesn't say.
+            const whenOff = cloudRunner() ? undefined : await import("./cloud-sync").then((m) => (r: Routine) => m.routineWhenOff(r).where).catch(() => undefined);
+            results.push(runRoutineTool(c, bot, { chatId: chat.id, fromTelegram: chat.pending?.channel === "telegram", lang: userLanguage(chat) ?? undefined, ...(whenOff ? { whenOff } : {}) }));
           } else if (SPECIALIST_TOOLS.has(c.name)) {
             results.push(runSpecialistTool(c, chat, bot, members, bots, answered?.items.find((it) => it.call.id === c.id)));
           } else if (c.name === USE_FOLDER_SPEC.name) {

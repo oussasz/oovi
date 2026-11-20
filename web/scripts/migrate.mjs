@@ -377,6 +377,10 @@ await pool.query(`
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, device_id)
   );
+  CREATE TABLE IF NOT EXISTS cloud_runner (
+    runner_id TEXT PRIMARY KEY,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
   CREATE TABLE IF NOT EXISTS cloud_oauth_flow (
     state_hash   TEXT PRIMARY KEY,
     user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -404,6 +408,7 @@ await pool.query(`
     PRIMARY KEY (user_id, routine_id)
   );
   CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  ALTER TABLE cloud_job ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS cloud BOOLEAN NOT NULL DEFAULT true;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS why TEXT NULL;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS name JSONB NULL;

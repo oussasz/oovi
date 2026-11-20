@@ -101,6 +101,8 @@ export type CloudStatus = {
   chats: number;
   lastSync: string | null;
   devices: CloudDevice[];
+  /** oovi's cloud server: up = it takes messages while the computer is off. Missing on an older website. */
+  server?: { online: boolean; lastSeen: string | null };
 };
 export type ChatListItem = { chatId: string; version: number; updatedAt: string; deleted: boolean; bytes: number };
 export type JobKind = "message" | "decision" | "stop";

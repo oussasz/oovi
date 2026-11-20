@@ -17,8 +17,15 @@ export const MAX_OPEN_JOBS = 100;
 export const MAX_DEVICES = 50;
 export const LEASE_SECONDS = 120;
 export const ONLINE_SECONDS = 60;
-/** The runner takes a job only when it waited this long and no desktop of the account is online. */
-export const RUNNER_DELAY_SECONDS = 5;
+/**
+ * The runner takes a job only when it waited this long and no desktop of the account is online. Short: with no
+ * desktop online nothing else can take the job, so every second here is a second the phone waits for nothing.
+ */
+export const RUNNER_DELAY_SECONDS = 2;
+/** oovi's cloud server counts as up while a runner asked for work or kept a job alive this recently (it does every 5 to 30 s). */
+export const SERVER_ONLINE_SECONDS = 90;
+/** A job whose claimer died (its lease ran out) is given to the next one this many times in all, then ends as failed. */
+export const MAX_ATTEMPTS = 3;
 export const TOMBSTONE_DAYS = 30;
 export const LONG_POLL_MS = 25_000;
 export const MAX_ERROR_TEXT = 500;

@@ -131,6 +131,8 @@ function oldHistory(botId) {
 // (Nothing here may also be a word of the leads workbook: "Facebook" is in its notes column.)
 const OLD_TOPICS = /youtube|يوتوب|يوتيوب|instagram|انستغرام|إنستغرام|m3ak|أغنية|اغنية|chanson|song|طوكيو|tokyo|cooking|طبخ/i;
 
+/** oovi's own words when a step is left for the computer (lib/cloud-runner-core.ts needsComputerText). */
+const NEEDS_COMPUTER = /يحتاج إلى حاسوبك|needs your computer|Il faut ton ordinateur|lazemha l'ordinateur/;
 const SCENARIOS = [
   {
     id: "bulk-all",
@@ -192,6 +194,86 @@ const SCENARIOS = [
       [`a short answer (${c.last.length} characters)`, c.last.length < 400],
     ],
     limits: { cards: 0, questions: 0, calls: 1, credits: 5 },
+  },
+  // ---- The computer is off: the same engine on oovi's cloud server (OOVI_CLOUD_RUNNER=1), as a phone message runs.
+  // What can be done there must be done there; only what truly needs the computer is left for it, and whole.
+  {
+    id: "cloud-quick",
+    cloud: true,
+    title: "computer off, a plain question from the phone: answered on the server",
+    steps: [{ say: "شحال تجي 15% من 2400؟" }],
+    grade: async (c) => [
+      ["the answer is 360", /360/.test(c.last)],
+      [`not left for the computer (${c.offCloud.join(", ") || "no computer tool"})`, !NEEDS_COMPUTER.test(c.last) && !c.offCloud.length],
+    ],
+    limits: { cards: 0, questions: 0, calls: 1, credits: 5 },
+  },
+  {
+    id: "cloud-page",
+    cloud: true,
+    title: "computer off, \"what does this page say\": read on the server, not with the computer's browser",
+    steps: [{ say: "لخصلي في جملتين واش كاين في هذي الصفحة: https://www.iana.org/help/example-domains" }],
+    grade: async (c) => [
+      ["the summary is about example domains", /example|أمثلة|مثال|توثيق|documentation|IANA|RFC/i.test(c.last)],
+      [`not left for the computer (${c.offCloud.join(", ") || "no computer tool"})`, !NEEDS_COMPUTER.test(c.last) && !c.offCloud.length],
+    ],
+    limits: { cards: 0, questions: 0, calls: 4, credits: 8 },
+  },
+  {
+    id: "cloud-search",
+    cloud: true,
+    title: "computer off, a fact to look up: searched on the server",
+    steps: [{ say: "شكون ربح كأس العالم 2022 وشحال كانت نتيجة النهائي؟ ابحث وتأكد" }],
+    grade: async (c) => [
+      ["names Argentina", /argentin|الأرجنتين/i.test(c.last)],
+      [`not left for the computer (${c.offCloud.join(", ") || "no computer tool"})`, !NEEDS_COMPUTER.test(c.last) && !c.offCloud.length],
+    ],
+    limits: { cards: 0, questions: 0, calls: 5, credits: 10 },
+  },
+  {
+    id: "cloud-places",
+    cloud: true,
+    title: "computer off, a list of businesses with phone numbers: built on the server",
+    steps: [{ say: "لقالي 8 مطاعم في وهران مع أرقام الهاتف تاعهم" }],
+    grade: async (c) => [
+      [`several phone numbers in the answer (${(c.last.match(/\+?\d[\d ().-]{7,}\d/g) || []).length})`, (c.last.match(/\+?\d[\d ().-]{7,}\d/g) || []).length >= 4],
+      [`not left for the computer (${c.offCloud.join(", ") || "no computer tool"})`, !NEEDS_COMPUTER.test(c.last) && !c.offCloud.length],
+    ],
+    limits: { cards: 0, questions: 0, calls: 6, credits: 12 },
+  },
+  {
+    id: "cloud-routine",
+    cloud: true,
+    title: "computer off, \"every day at 8\": the routine is set from the phone",
+    steps: [{ say: "كل يوم على 8 صباحا ابعثلي نصيحة قصيرة للإنتاجية" }],
+    grade: async (c) => [
+      [`one routine was set (${c.routines.length})`, c.routines.length === 1],
+      [`not left for the computer (${c.offCloud.join(", ") || "no computer tool"})`, !NEEDS_COMPUTER.test(c.last) && !c.offCloud.length],
+    ],
+    limits: { cards: 1, questions: 0, calls: 4, credits: 8 },
+  },
+  {
+    id: "cloud-file",
+    cloud: true,
+    title: "computer off, \"make me a PDF\": left whole for the computer, said plainly, nothing half done",
+    steps: [{ say: "ديرلي ملف PDF فيه برنامج رياضة لأسبوع كامل" }],
+    grade: async (c) => [
+      ["says it needs the computer", /حاسوب|ordinateur|computer|pc/i.test(c.last)],
+      [`no file was made here (${c.files.length})`, c.files.length === 0],
+      [`nothing ran before it was left for the computer (${c.ran.join(", ") || "nothing"})`, c.ran.length === 0],
+    ],
+    limits: { cards: 0, questions: 0, calls: 2, credits: 6 },
+  },
+  {
+    id: "cloud-mixed",
+    cloud: true,
+    title: "computer off, a lookup then a file: the user is told the file needs the computer, in one go",
+    steps: [{ say: "ابحث على أكبر 5 مدن في الجزائر حسب عدد السكان وديرلي بيهم ملف Excel" }],
+    grade: async (c) => [
+      ["says the file needs the computer", /حاسوب|ordinateur|computer|pc/i.test(c.last)],
+      [`no file was made here (${c.files.length})`, c.files.length === 0],
+    ],
+    limits: { cards: 0, questions: 0, calls: 5, credits: 10 },
   },
   {
     id: "table-question",
@@ -413,7 +495,7 @@ async function runScenario(sc, k) {
   const kids = [
     spawn("node", [path.join(__dirname, "proxy.cjs")], { env, stdio: ["ignore", log, log] }),
     ...(sc.zapier ? [spawn("node", [path.join(__dirname, "zapier-standin.cjs")], { env, stdio: ["ignore", log, log] })] : []),
-    spawn("node", ["server.js"], { cwd: SERVER, env: { ...env, OOVI_DATA: data, OOVI_DOWNLOADS: path.join(out, "downloads"), OOVI_CLOUD_URL: `http://127.0.0.1:${PROXY}`, HOSTNAME: "127.0.0.1", PORT: String(PORT), OOVI_VERSION: "eval" }, stdio: ["ignore", log, log] }),
+    spawn("node", ["server.js"], { cwd: SERVER, env: { ...env, OOVI_DATA: data, OOVI_DOWNLOADS: path.join(out, "downloads"), OOVI_CLOUD_URL: `http://127.0.0.1:${PROXY}`, HOSTNAME: "127.0.0.1", PORT: String(PORT), OOVI_VERSION: "eval", ...(sc.cloud ? { OOVI_CLOUD_RUNNER: "1" } : {}) }, stdio: ["ignore", log, log] }),
   ];
   const api = async (method, p, body, headers) => {
     const r = await fetch(BASE + p, { method, headers: { ...(body && !Buffer.isBuffer(body) ? { "content-type": "application/json" } : {}), ...(headers || {}) }, body: body ? (Buffer.isBuffer(body) ? body : JSON.stringify(body)) : undefined });
@@ -538,6 +620,9 @@ async function runScenario(sc, k) {
     toolText: steps.filter((st) => st.role === "tool").flatMap((st) => st.results.map((r) => r.content)).join("\n"),
     said: seen.said,
     last: seen.texts.at(-1) || "",
+    // Cloud scenarios: the calls that were refused there because they need the computer, and the ones that ran.
+    offCloud: steps.filter((st) => st.role === "tool").flatMap((st) => st.results.filter((r) => /^Not run: this needs the user's computer/.test(String(r.content))).map((r) => r.name)),
+    ran: steps.filter((st) => st.role === "tool").flatMap((st) => st.results.filter((r) => !/^Not run: this needs the user's computer/.test(String(r.content)) && r.name !== "hand_to_computer").map((r) => r.name)),
     routines: (() => { try { return JSON.parse(fs.readFileSync(path.join(out, "data", "accounts", seen.uid, "routines.json"), "utf8")).routines || []; } catch { return []; } })(),
     work: (() => { try { return JSON.parse(fs.readFileSync(path.join(out, "data", "accounts", seen.uid, "work", `${seen.chat.id}.json`), "utf8")); } catch { return { tables: {}, notes: {} }; } })(),
     readXlsx, readOffice,

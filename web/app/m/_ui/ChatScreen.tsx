@@ -10,6 +10,8 @@ import {
   agoShort,
   backoffMs,
   chatBlocker,
+  lostOutgoing,
+  serverState,
   chatTitle,
   computerState,
   decisionsFor,
@@ -141,7 +143,8 @@ function Meta({ at, tick, lang, zone, t }: { at: number; tick?: "sending" | "sen
  * theOovi's account errors (web/lib/credits.ts answers in English) in the phone's language, by the reply's errorCode;
  * null for any other error (shown as "This reply stopped: …").
  */
-function hostedKey(code?: string): "chat.err.noCredits" | "chat.err.dailyLimit" | "chat.err.signedOut" | "chat.err.verify" | "chat.err.offline" | null {
+function hostedKey(code?: string): "chat.err.noCredits" | "chat.err.dailyLimit" | "chat.err.signedOut" | "chat.err.verify" | "chat.err.offline" | "chat.err.cloud" | null {
+  if (code === "cloud_failed") return "chat.err.cloud";
   if (code === "no_credits") return "chat.err.noCredits";
   if (code === "daily_limit") return "chat.err.dailyLimit";
   if (code === "signed_out") return "chat.err.signedOut";
@@ -301,6 +304,12 @@ export function ChatScreen({ chatId }: { chatId: string }) {
 
   // ---------- the phone's messages and jobs ----------
   const mine = useMemo(() => pendingOutgoing(chat, outbox.filter((o) => o.chatId === chatId)), [chat, outbox, chatId]);
+  // A message whose job failed on the server never gets an answer: it shows as not sent, to send again.
+  const markLost = m.markLost;
+  useEffect(() => {
+    const lost = lostOutgoing(mine, jobs);
+    if (lost.length) markLost(lost);
+  }, [mine, jobs, markLost]);
 
   // ---------- read marks and scrolling ----------
   const entries = view?.entries ?? [];
@@ -337,7 +346,7 @@ export function ChatScreen({ chatId }: { chatId: string }) {
   }, [answered, answerKey]);
 
   const computer = computerState(status);
-  const blocker = chatBlocker(view, jobs, computer.state, mine.some((o) => o.state === "sent"));
+  const blocker = chatBlocker(view, jobs, computer.state, mine.some((o) => o.state === "sent"), serverState(status));
   // "loading": the status is on its way (first start on this phone); the box shows, sending waits for the answer.
   const canSend = (sync === "on" || sync === "loading") && !localBot;
 
@@ -614,9 +623,9 @@ export function ChatScreen({ chatId }: { chatId: string }) {
         </p>
         <DesktopSuggestion variant="line" />
       </section>
-    ) : blocker === "queued_offline" ? (
+    ) : blocker === "queued_server" || blocker === "queued_offline" ? (
       <p className="m-queued" role="status">
-        <Icon name="laptop" size={16} /> {t("chat.queued")}
+        <Icon name="laptop" size={16} /> {t(blocker === "queued_server" ? "chat.queuedServer" : "chat.queued")}
       </p>
     ) : null;
 

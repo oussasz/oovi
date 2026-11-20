@@ -112,7 +112,8 @@ function approve(authUrl) {
 async function main() {
   // ---- database ----
   const mig = spawnSync(process.execPath, ["scripts/migrate.mjs"], { cwd: WEB, env: { ...process.env, DATABASE_URL: DB, DATABASE_URL_UNPOOLED: DB }, encoding: "utf8" });
-  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_oauth_flow, cloud_routine, cloud_sync, cloud_vault/.test(mig.stdout), mig.stderr.slice(0, 300));
+  check("migrate.mjs creates the cloud tables", mig.status === 0 && /cloud_chat, cloud_device, cloud_job, cloud_oauth_flow, cloud_routine, cloud_runner, cloud_sync, cloud_vault/.test(mig.stdout), (mig.stderr || mig.stdout).slice(-300));
+  await db.query("DELETE FROM cloud_runner"); // a throwaway database kept from an earlier run
   await db.query(`DELETE FROM "user" WHERE id LIKE 'cloudtest_%'`);
   const A = await addUser("cloudtest_a", "a@cloud.test");
   const B = await addUser("cloudtest_b", "b@cloud.test");
@@ -171,6 +172,7 @@ async function run(A, B, C) {
   let r = await req("GET", "/api/v1/cloud/status", { token: A, headers: dev("desktop:pcA") });
   check("status: off by default, 100 MB limit, no-store", r.status === 200 && r.body.enabled === false && r.body.limit === 100 * 1024 * 1024 && /no-store/.test(r.cache ?? ""), JSON.stringify(r.body));
   check("status lists the device that called (online)", r.body.devices?.some((d) => d.deviceId === "pcA" && d.kind === "desktop" && d.online));
+  check("status says oovi's cloud server is not up before any runner asked for work", r.body.server?.online === false && r.body.server.lastSeen === null, JSON.stringify(r.body.server));
   r = await req("PUT", "/api/v1/cloud/chats/c1", { token: A, body: { baseVersion: 0, chat: { id: "c1" } } });
   check("sync off: saving a chat is refused (sync_off)", r.status === 403 && r.body.code === "sync_off");
   check("a write from another website is refused", (await req("PUT", "/api/v1/cloud/status", { token: A, headers: { origin: "https://evil.example" }, body: { enabled: true } })).status === 403);
@@ -316,11 +318,26 @@ async function run(A, B, C) {
   await db.query("UPDATE cloud_device SET last_seen = now() - interval '5 minutes' WHERE user_id = 'cloudtest_a' AND kind = 'desktop'");
   const j5 = (await req("POST", "/api/v1/cloud/jobs", { token: A, body: { chatId: "c1", kind: "message", payload: {} } })).body.jobId;
   r = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1" } });
-  check("no desktop online, job older than 5 s: the runner takes it (with the account id)", r.body.job?.jobId === j4 && r.body.job.userId === "cloudtest_a" && r.body.job.payload.text === "for the runner");
+  check("no desktop online, job older than 2 s: the runner takes it (with the account id)", r.body.job?.jobId === j4 && r.body.job.userId === "cloudtest_a" && r.body.job.payload.text === "for the runner");
   r = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r2" } });
-  check("a job younger than 5 s waits", r.body.job === null || r.body.job.jobId !== j5);
+  check("a job younger than 2 s waits", r.body.job === null || r.body.job.jobId !== j5);
+  r = await req("GET", "/api/v1/cloud/status", { token: A });
+  check("status says oovi's cloud server is up once a runner asked for work", r.body.server?.online === true && !!r.body.server.lastSeen, JSON.stringify(r.body.server));
   r = await req("POST", `/api/v1/cloud/runner/jobs/${j4}/heartbeat`, { runner: RUNNER, body: { runnerId: "r1" } });
-  check("runner heartbeat", r.status === 200);
+  check("runner heartbeat", r.status === 200 && !r.body.stop);
+  // Stop from the phone while the runner works on that chat: it comes back with the heartbeat (the runner asks
+  // for no new job while it is busy), once, and the stop job is done.
+  const jStop = (await req("POST", "/api/v1/cloud/jobs", { token: A, body: { chatId: "c1", kind: "stop", payload: {} } })).body.jobId;
+  r = await req("POST", `/api/v1/cloud/runner/jobs/${j4}/heartbeat`, { runner: RUNNER, body: { runnerId: "r1" } });
+  check("a Stop sent from the phone reaches the runner with its heartbeat", r.status === 200 && r.body.stop === true, JSON.stringify(r.body));
+  check("...and that stop job is done", (await db.query("SELECT status FROM cloud_job WHERE id = $1", [jStop])).rows[0]?.status === "done");
+  r = await req("POST", `/api/v1/cloud/runner/jobs/${j4}/heartbeat`, { runner: RUNNER, body: { runnerId: "r1" } });
+  check("...and it is said once", r.status === 200 && !r.body.stop);
+  // The runner's key opens an account only while a runner holds a job of it.
+  check("runner: no chat of an account it runs no job for", (await req("GET", "/api/v1/cloud/runner/chats/cloudtest_b/c1", { runner: RUNNER })).status === 403);
+  check("runner: no sign-in of an account it runs no job for", (await req("GET", "/api/v1/cloud/runner/vault/cloudtest_b/mcp:gmail", { runner: RUNNER })).status === 403);
+  check("runner: no setup of an account it runs no job for", (await req("GET", "/api/v1/cloud/runner/setup/cloudtest_b", { runner: RUNNER })).status === 403);
+  check("runner: no Telegram message to an account it runs no job for", (await req("POST", "/api/v1/cloud/runner/telegram", { runner: RUNNER, body: { userId: "cloudtest_b", text: "hi" } })).status === 403);
   r = await req("GET", "/api/v1/cloud/runner/chats/cloudtest_a/c1", { runner: RUNNER });
   check("runner reads the job's chat", r.status === 200 && r.body.chat?.name === "A again");
   r = await req("PUT", "/api/v1/cloud/runner/chats/cloudtest_a/c1", { runner: RUNNER, body: { baseVersion: r.body.version, chat: { ...r.body.chat, name: "by runner" } } });
@@ -339,6 +356,27 @@ async function run(A, B, C) {
   r = await req("POST", "/api/v1/cloud/jobs/claim", { token: A, body: { deviceId: "pcA" } });
   check("the desktop picks it up when it opens (was needs_computer, payload kept)", r.body.job?.jobId === j4 && r.body.job.was === "needs_computer" && r.body.job.payload.text === "for the runner");
   await req("POST", `/api/v1/cloud/jobs/${j4}/done`, { token: A, body: { deviceId: "pcA", status: "done" } });
+  check("runner: once its job ended, the account's chats are closed to it again", (await req("GET", "/api/v1/cloud/runner/chats/cloudtest_a/c1", { runner: RUNNER })).status === 403);
+
+  // A job whose runner dies each time (the lease runs out) is tried three times, then given up: it used to be
+  // taken again for ever.
+  await db.query("UPDATE cloud_device SET last_seen = now() - interval '5 minutes' WHERE user_id = 'cloudtest_a' AND kind = 'desktop'");
+  const jLoop = (await req("POST", "/api/v1/cloud/jobs", { token: A, body: { chatId: "c1", kind: "message", payload: { text: "kills its runner" } } })).body.jobId;
+  await db.query("UPDATE cloud_job SET created_at = now() - interval '10 seconds' WHERE id = $1", [jLoop]);
+  let taken = 0;
+  for (let i = 0; i < 5; i++) {
+    r = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1" } });
+    if (r.body.job?.jobId !== jLoop) break;
+    taken++;
+    await db.query("UPDATE cloud_job SET lease_until = now() - interval '1 second' WHERE id = $1", [jLoop]);
+  }
+  const loop = (await db.query("SELECT status, error FROM cloud_job WHERE id = $1", [jLoop])).rows[0];
+  check("a job that keeps losing its runner is tried three times, then ends as failed", taken === 3 && loop?.status === "failed" && loop.error === "gave_up", `${taken} ${JSON.stringify(loop)}`);
+  // A job held for the AI checks below.
+  const jAi = (await req("POST", "/api/v1/cloud/jobs", { token: A, body: { chatId: "c1", kind: "message", payload: { text: "ai" } } })).body.jobId;
+  await db.query("UPDATE cloud_job SET created_at = now() - interval '10 seconds' WHERE id = $1", [jAi]);
+  r = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1" } });
+  check("(a job of account A is held by the runner for the AI checks)", r.body.job?.jobId === jAi, JSON.stringify(r.body).slice(0, 200));
 
   // ---- runner AI (theOovi, billed to the account) ----
   const ai = { max_tokens: 100, messages: [{ role: "user", content: "hi" }] };
@@ -349,9 +387,16 @@ async function run(A, B, C) {
   check("runner AI without the secret: 401", (await req("POST", "/api/v1/cloud/runner/ai/cloudtest_a", { token: A, body: ai })).status === 401);
   await req("PUT", "/api/v1/cloud/status", { token: C, body: { enabled: true } });
   r = await req("POST", "/api/v1/cloud/runner/ai/cloudtest_c", { runner: RUNNER, body: ai });
-  check("runner AI for an account without credits set up: refused", r.status === 403);
+  check("runner AI for an account it runs no job for: refused", r.status === 403);
+  const jC = (await req("POST", "/api/v1/cloud/jobs", { token: C, body: { chatId: "cc", kind: "message", payload: { text: "c" } } })).body.jobId;
+  await db.query("UPDATE cloud_job SET created_at = now() - interval '10 seconds' WHERE id = $1", [jC]);
+  r = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r2" } });
+  r = await req("POST", "/api/v1/cloud/runner/ai/cloudtest_c", { runner: RUNNER, body: ai });
+  check("runner AI for an account without credits set up: refused", r.status === 403, `${r.status} ${JSON.stringify(r.body).slice(0, 120)}`);
+  await req("POST", `/api/v1/cloud/runner/jobs/${jC}/done`, { runner: RUNNER, body: { runnerId: "r2", status: "failed", error: "no_credits" } });
   r = await req("POST", "/api/v1/cloud/runner/ai/cloudtest_b_off", { runner: RUNNER, body: ai });
-  check("runner AI for an account that doesn't sync: refused", r.status === 403 && r.body.code === "sync_off");
+  check("runner AI for an account that doesn't sync: refused", r.status === 403);
+  await req("POST", `/api/v1/cloud/runner/jobs/${jAi}/done`, { runner: RUNNER, body: { runnerId: "r1", status: "done" } });
   const signed = await req("POST", "/api/v1/ai/messages", { token: A, body: ai });
   check("the desktop's theOovi route still works after the move", signed.status === 200 && signed.body.content?.[0]?.text === "hello");
 
@@ -387,6 +432,7 @@ async function run(A, B, C) {
   check("Admin > a user: Cloud sync section, devices, no content", detail.includes("Cloud sync") && detail.includes("Computer") && !detail.includes(MARK) && !detail.includes("by runner"));
   const over = await (await fetch(`${BASE}/admin`, { headers: { authorization: `Bearer ${A}` } })).text();
   check("Admin > Overview: the sync count", over.includes("Cloud sync") && over.includes("Accounts syncing their chats"));
+  check("Admin > Overview: whether oovi's cloud server is up, and its queue", over.includes("Cloud server") && /waiting/.test(over) && /failed in the last day/.test(over));
   check("Admin pages: not for other accounts (404)", (await fetch(`${BASE}/admin/users`, { headers: { authorization: `Bearer ${B}` } })).status === 404);
 
   // ---- privacy page ----
@@ -417,7 +463,13 @@ async function run(A, B, C) {
   check("same session: finished at once, back to the phone's Connectors page", r.loc.endsWith("/m/connectors?connected=mcp%3Ademo"), r.loc);
   r = await req("GET", "/api/v1/cloud/vault/mcp:demo", { token: A });
   check("tokens stored in the connector's vault entry, its settings kept, no verifier", r.body?.data?.oauth?.tokens?.refresh_token === "refresh-1" && r.body.data.oauth.clientInfo?.client_id?.startsWith("cid-") && r.body.data.enabled === true && r.body.data.bots?.[0] === "b1" && !("verifier" in r.body.data.oauth) && r.body.version === 2);
+  // (The runner reads an account's sign-ins only while it holds a job of it.)
+  await db.query("UPDATE cloud_device SET last_seen = now() - interval '5 minutes' WHERE user_id = 'cloudtest_a' AND kind = 'desktop'");
+  const jV = (await req("POST", "/api/v1/cloud/jobs", { token: A, body: { chatId: "c1", kind: "message", payload: { text: "v" } } })).body.jobId;
+  await db.query("UPDATE cloud_job SET created_at = now() - interval '10 seconds' WHERE id = $1", [jV]);
+  await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1" } });
   check("the runner can read the sign-in", (await req("GET", "/api/v1/cloud/runner/vault/cloudtest_a/mcp:demo", { runner: RUNNER })).body?.data?.oauth?.tokens?.refresh_token === "refresh-1");
+  await req("POST", `/api/v1/cloud/runner/jobs/${jV}/done`, { runner: RUNNER, body: { runnerId: "r1", status: "done" } });
   check("a used state can't be replayed", (await cb({ code: ap.code, state: ap.state })).includes("error=expired"));
 
   // Back in ANOTHER browser (an iPhone home-screen app opens the sign-in in Safari: no session there).

@@ -1,7 +1,7 @@
 // Runner only: read and save a chat of the account whose job it runs (same versions and answers as /chats).
 import { isUserId } from "@/lib/cloud-core";
 import { chatGet, chatPut } from "@/lib/cloud-handlers";
-import { fail, guarded, runnerOnly } from "@/lib/cloud-route";
+import { fail, guarded, runnerFor, runnerOnly } from "@/lib/cloud-route";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -13,6 +13,9 @@ export async function GET(req: Request, { params }: Ctx) {
   if (denied) return denied;
   const { userId, chatId } = await params;
   if (!isUserId(userId)) return fail(400, "bad_request", "Invalid account id.");
+  // Only while a runner holds a job of this account (lib/cloud-route.ts runnerFor).
+  const closed = await runnerFor(userId);
+  if (closed) return closed;
   return guarded("runner.chats.get", () => chatGet(userId, chatId));
 }
 
@@ -21,5 +24,8 @@ export async function PUT(req: Request, { params }: Ctx) {
   if (denied) return denied;
   const { userId, chatId } = await params;
   if (!isUserId(userId)) return fail(400, "bad_request", "Invalid account id.");
+  // Only while a runner holds a job of this account (lib/cloud-route.ts runnerFor).
+  const closed = await runnerFor(userId);
+  if (closed) return closed;
   return guarded("runner.chats.put", () => chatPut(req, userId, chatId));
 }

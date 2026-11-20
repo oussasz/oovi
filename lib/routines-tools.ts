@@ -16,7 +16,7 @@ function todayIn(tz: string, plusDays = 0): string {
 }
 import { listBots } from "./store";
 import { telegramConnected } from "./telegram";
-import type { Bot, ToolCall, ToolResult } from "./types";
+import type { Bot, Routine, ToolCall, ToolResult } from "./types";
 
 const DAYS = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const;
 
@@ -125,7 +125,13 @@ const when = (ms: number | null | undefined, tz: string) => {
 };
 
 /** Where the request came from: the chat (results and reminders are posted back there) and whether it came from Telegram. */
-export type RoutineOrigin = { chatId?: string; fromTelegram?: boolean; lang?: string };
+export type RoutineOrigin = {
+  chatId?: string;
+  fromTelegram?: boolean;
+  lang?: string;
+  /** Where the routine runs while the computer is off (lib/cloud-sync.ts routineWhenOff); not known on the cloud server. */
+  whenOff?: (r: Routine) => "cloud" | "computer";
+};
 
 /** A plain reminder: propose_routine with `reminder` and frequency once (no card, no AI run). */
 export const isReminder = (call: ToolCall) => call.name === "propose_routine" && typeof call.input.reminder === "string" && call.input.reminder.trim() !== "" && (call.input.frequency ?? "once") === "once";
@@ -141,6 +147,13 @@ export function reminderOf(call: ToolCall, self: Bot, origin: RoutineOrigin = {}
   const tg = i.send_to_telegram === true || origin.fromTelegram === true;
   return { ...p, remind: true, notifyTelegram: tg, ...(tg ? { postTelegram: true } : {}), ...(origin.chatId ? { postTo: origin.chatId } : {}) };
 }
+
+/**
+ * Said with a new routine. It used to say "only while oovi is open on this computer" to everyone, also to accounts
+ * whose routines run on oovi's cloud server when the computer is off (and from the cloud server itself).
+ */
+export const whereLine = (off: "cloud" | "computer" | undefined): string =>
+  off === "cloud" ? " When the computer is off at its time, oovi's cloud server runs it." : off === "computer" ? " It runs while oovi is open on this computer." : "";
 
 export function runRoutineTool(call: ToolCall, self: Bot, origin: RoutineOrigin = {}): ToolResult {
   const ok = (content: string): ToolResult => ({ id: call.id, name: call.name, content });
@@ -188,7 +201,7 @@ export function runRoutineTool(call: ToolCall, self: Bot, origin: RoutineOrigin 
         : " Telegram isn't connected yet, so results stay in oovi until the user connects it: tell them so in one line with the link [Connect Telegram](oovi://settings/telegram)."
       : "";
     const back = r.postTo ? " The result is also posted in this chat." : "";
-    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule, r.timezone)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result.${back}${phone} They can change, pause or run it on the Routines page: [Open Routines](oovi://routines). Routines only run while oovi is open on this computer.`);
+    return ok(`Created the routine "${r.name}": ${describeSchedule(r.schedule, r.timezone)} (${r.timezone}). Next run: ${when(r.nextRunAt, r.timezone)}. Each run happens in its own chat, and the user gets a notification with the result.${back}${phone} They can change, pause or run it on the Routines page: [Open Routines](oovi://routines).${whereLine(origin.whenOff?.(r))}`);
   }
 
   return bad(`Unknown tool: ${call.name}`);

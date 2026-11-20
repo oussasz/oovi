@@ -531,6 +531,8 @@ function startStandin({ port, nextPort, lang = "en", longPollMs = 8000, replyDel
         chats: state.sync ? list.length : 0,
         lastSync: state.sync ? new Date(Date.now() - 120_000).toISOString() : null,
         devices: state.devices,
+        // oovi's cloud server (the runner): up unless a scenario says otherwise.
+        server: state.server ?? { online: true, lastSeen: new Date().toISOString() },
       });
     }
     if (p === "/api/v1/cloud/chats" && req.method === "GET") {

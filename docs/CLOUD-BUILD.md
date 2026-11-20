@@ -43,7 +43,9 @@ No part edits another part's folders except through the API below. Shared types 
 The admin console shows only counts and sizes (never `data` or `payload`).
 
 ## API (all under `/api/v1/cloud`, signed-in session as today, `getRequestSession`; JSON; `cache-control: no-store`)
-- `GET  /status` → `{enabled, bytes, limit, chats, lastSync, devices:[{deviceId, kind, lastSeen, online}]}`
+- `GET  /status` → `{enabled, bytes, limit, chats, lastSync, devices:[{deviceId, kind, lastSeen, online}], server:{online, lastSeen}}`
+  (`server`: oovi's cloud server, up while a runner asked for work or kept a job alive in the last 90 s; the phone
+  says "oovi's cloud server is taking your message" from it instead of "your computer is off")
   (online = seen in the last 60 s).
 - `PUT  /status {enabled:boolean}`. Turning off deletes all `cloud_chat`, `cloud_vault`, `cloud_job` rows of the
   account at once.
@@ -56,7 +58,7 @@ The admin console shows only counts and sizes (never `data` or `payload`).
 - `POST /jobs {chatId, kind, payload}` → `{jobId}`: the phone sends a message / an approval answer / Stop.
 - `POST /jobs/claim {deviceId, kind:'desktop'|'runner', chatIds?: string[]}` → `{job|null}`: atomic
   (`UPDATE … WHERE status='queued' … FOR UPDATE SKIP LOCKED`), lease 120 s. Desktop claims first when online
-  (see "Who runs a job"); runner claims only jobs older than 5 s with no online desktop, or chats marked cloud-only.
+  (see "Who runs a job"); runner claims only jobs older than 2 s with no online desktop, or chats marked cloud-only.
 - `POST /jobs/<id>/heartbeat` (extends the lease), `POST /jobs/<id>/done {status, error?}`.
 - `GET  /events?chatId=…&after=<version>` long-poll (25 s) or SSE: the phone waits for the chat's next version.
 - Runner-only (header `x-oovi-runner: <RUNNER_SECRET>`, never a user session): `POST /runner/claim` (any account),
@@ -117,7 +119,7 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
     phone sees a job become `needs_computer` or `failed` without a new chat version.
   - `GET /chats` answers `now` 5 s early on purpose: a save finishing during the read is listed again, never missed.
   - Runner claims: "chats marked cloud-only" is NOT built (no field marks them); the runner takes a job when it
-    waited 5 s and no desktop of the account was seen in the last 60 s. Part A/R: say if a flag is needed.
+    waited 2 s (RUNNER_DELAY_SECONDS) and no desktop of the account was seen in the last 60 s. Part A/R: say if a flag is needed.
   - `/runner/ai/<userId>` only for accounts that sync and already have theOovi credits; `POST /jobs` sets up the
     credits from the person's own address (welcome credits are limited per network, the runner's address isn't theirs).
   - Signed-in writes coming from another website (an Origin header that isn't the site) are refused (403).
@@ -162,8 +164,26 @@ health check). Moving = run it on the new machine, then stop the old one. Azure-
     (heartbeat, done and release carry `{runnerId}` in their body; see web/lib/cloud-types.ts).
     `payload` unsealed. `exclude`: accounts that already have a job on this runner (fairness; one job per account at
     a time by default). `timezone` (IANA, optional): the job's server runs in it ("today", routine times); else UTC.
-    `userName` (optional): what the bots call the user. Claim rule as above (older than 5 s and no online desktop,
+    `userName` (optional): what the bots call the user. Claim rule as above (older than 2 s and no online desktop,
     or a cloud-only chat); lease 120 s; marks `cloud_device` `runner:<runnerId>`.
+  - Since 2026-11-20 (branch harness-v2, not deployed until the owner says so):
+    - The account routes of the runner API (`/runner/chats`, `/vault`, `/setup`, `/ai`, `/telegram`) answer 403 unless a
+      runner holds a live job of that account (claimed, lease not ended). The secret alone no longer opens every
+      syncing account at any time (web/lib/cloud-route.ts `runnerFor`).
+    - `POST /runner/jobs/<id>/heartbeat` answers `{leaseUntil, stop?: true}`: `stop` when the phone sent Stop for the
+      job's chat (that stop job is done at once). The runner asks for no new job while it works, so a stop job used to
+      wait until the run ended. The runner heartbeats every 5 s (`RUNNER_HEARTBEAT_MS`), so Stop lands within that.
+    - `cloud_job.attempts` counts claims; a job whose lease ran out `MAX_ATTEMPTS` (3) times ends `failed` with error
+      `gave_up` instead of being taken again for ever.
+    - `cloud_runner (runner_id, last_seen)`: written at each claim and runner heartbeat; Admin > Overview shows
+      "Cloud server: Up/Down", jobs waiting and jobs failed in the last day.
+    - Idle, the runner looks for work every 5 s at most (`RUNNER_IDLE_MS`; it was up to 30 s).
+    - A job that fails closes what the chat still shows as "running" for its message (`errorCode: "cloud_failed"`),
+      a final save that the website refuses ends the job `failed` (`save_refused`), a chat deleted while its job
+      runs is never saved back, and a routine whose run died still reports its next time (`routineNext` from
+      `prepare`), so it stays in the cloud's list.
+    - On the server the bot is offered only tools that run there plus `hand_to_computer` (lib/cloud-runner-core.ts):
+      a request is left for the computer whole and first, never after something was already sent or saved here.
   - `POST /jobs/<id>/heartbeat` → 200, or 404/409/410 when this runner no longer holds the lease (it then stops the run
     and pushes nothing more). Sent every 30 s.
   - `POST /jobs/<id>/done {status: 'done'|'needs_computer'|'failed', error?}`: `error` is a short code

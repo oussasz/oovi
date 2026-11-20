@@ -5,7 +5,7 @@ import { getRequestSession, rateLimit } from "./api";
 import { isBlocked } from "./credits";
 import { logCode, parseDeviceHeader, runnerAuth, sameOrigin } from "./cloud-core";
 import { siteUrl } from "./site";
-import { touchDevice } from "./cloud";
+import { runnerHolds, touchDevice } from "./cloud";
 import { DEVICE_HEADER, RUNNER_HEADER, type CloudError } from "./cloud-types";
 
 const NO_STORE = { "cache-control": "no-store" };
@@ -53,6 +53,20 @@ export function runnerOnly(req: Request): NextResponse | null {
   if (r === "denied") return fail(401, "forbidden", "Not allowed.");
   if (!rateLimit("cloud:runner", 6000, 60_000)) return fail(429, "busy", "Too many requests.");
   return null;
+}
+
+/**
+ * The runner asking about one account: allowed only while a runner holds a job of that account. Before, the
+ * runner's key opened every syncing account at any time.
+ */
+export async function runnerFor(userId: string): Promise<NextResponse | null> {
+  try {
+    if (await runnerHolds(userId)) return null;
+  } catch (err) {
+    console.error("cloud runner.scope failed:", logCode(err));
+    return fail(503, "unavailable", "The cloud isn't available right now. Try again in a minute.");
+  }
+  return fail(403, "forbidden", "No job of this account is running.");
 }
 
 /** A JSON object body, at most maxBytes; "too_big" or "bad" otherwise. */

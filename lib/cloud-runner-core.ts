@@ -15,6 +15,9 @@ const CLOUD_OK = new Set([
   "find_papers",
   "work_table",
   "work_notes",
+  // A work table travels with the chat, so its rows are read here (a list built in the cloud is read in the cloud).
+  // for_each_row stays on the computer: its ledger of rows already done lives there.
+  "read_rows",
   "start_big_job",
   "list_routines",
   "propose_routine",
@@ -32,6 +35,48 @@ const CLOUD_OK = new Set([
   "propose_team",
   "propose_specialist",
 ]);
+
+/**
+ * The one way a bot in the cloud leaves a request for the computer. The bot used to be offered every tool of the
+ * app there: it picked the computer's browser where reading the page on the server would do, and the whole
+ * message ended as "this needs your computer". Now it sees only what runs in the cloud, plus this.
+ */
+export const HAND_TO_COMPUTER = "hand_to_computer";
+export const HAND_SPEC = {
+  name: HAND_TO_COMPUTER,
+  description:
+    "The user's computer is off and this request can't be done without it: their files, a document or file to make or read, the browser, the desktop. Call it first, before any other step: oovi keeps the whole request and runs it on the computer when it is on. Never for something your other tools can do here.",
+  parameters: {
+    type: "object" as const,
+    properties: { what: { type: "string", description: "What needs the computer, in a few words." } },
+    required: ["what"],
+  },
+};
+
+/** Goes with the user's message in the cloud: where the bot is, and the rule (whole, and first). */
+export const CLOUD_NOTE =
+  `The user's computer is off: this message runs on oovi's cloud server. What you can do here is in your tools; do it now. Their files, making or reading documents and files, the browser and the desktop are on the computer: if the request needs any of them, call ${HAND_TO_COMPUTER} first, before any other step (the whole request then runs there when the computer is on). Don't do one half here, and say nothing about the server or the computer unless something is left for it.`;
+
+/** What the bot is told when it asks for the computer after steps already ran here. */
+export const TOO_LATE_FOR_COMPUTER =
+  "Not passed to the computer: steps of this request already ran here, and running it again there would do them twice. Tell the user in a few lines what is done, and what is left to ask for when their computer is on.";
+
+/** Steps that can run again on the computer with no harm: they only look. */
+const ONLY_LOOKS = new Set(["use_tool", "update_plan", "web_search", "research", "read_url", "find_places", "find_papers", "recall_history", "oovi_help", "list_routines", "list_groups", "use_skill", "read_rows", HAND_TO_COMPUTER]);
+
+/**
+ * The computer runs a request left for it from the start. "whole": nothing ran here but lookups, so that is safe.
+ * "late": something was sent, saved or set here (a connector, Telegram, a table, a routine), and a second run
+ * would do it twice: the request stays here and the bot says what is left.
+ */
+export function handOver(ranHere: string[]): "whole" | "late" {
+  return ranHere.every((n) => ONLY_LOOKS.has(n)) ? "whole" : "late";
+}
+
+/** The tools a bot is offered in the cloud: the ones that run there, and the way to leave the request for the computer. */
+export function cloudTools<T extends { name: string }>(tools: T[]): (T | typeof HAND_SPEC)[] {
+  return [...tools.filter((t) => !needsComputer(t)), HAND_SPEC];
+}
 
 /** The on-demand tool guide (lib/tool-defer.ts): judged by the tool it is about. */
 const USE_TOOL = "use_tool";

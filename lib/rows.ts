@@ -5,6 +5,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { attachmentSegments, findAttachment } from "./attachments";
+import { cloudRunner } from "./cloud-flag";
+import { HAND_TO_COMPUTER } from "./cloud-runner-core";
 import { batchKey, batchSummary, runBatch, type Outcome } from "./batch-core";
 import type { ToolSpec } from "./llm";
 import { mcpToolKind } from "./mcp";
@@ -92,6 +94,8 @@ function sourceOf(chat: Chat, workChat: string, wanted: unknown, sheet: unknown)
   const name = String(wanted ?? "").trim();
   if (!name) return { error: "source is required: the attached file's name or the work table's name." };
   const att = findAttachment(chat, name);
+  // On oovi's cloud server the files the user attached are not there: they stay on the computer.
+  if (att && cloudRunner()) return { error: `"${att.name}" is on the user's computer, which is off. If the request needs it, call ${HAND_TO_COMPUTER}.` };
   if (att) {
     const segs = attachmentSegments(chat.id, att.id).filter((s) => s.text.trim());
     if (att.kind === "csv") return { name: att.name, table: fromCsvText(segs[0]?.text ?? "") };

@@ -20,6 +20,8 @@ import {
   MAX_VAULT_ITEMS,
   ONLINE_SECONDS,
   RUNNER_DELAY_SECONDS,
+  SERVER_ONLINE_SECONDS,
+  MAX_ATTEMPTS,
   TOMBSTONE_DAYS,
   quotaAfter,
   type DoneStatusCore,
@@ -78,6 +80,10 @@ export const CLOUD_DDL = `
     last_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
     PRIMARY KEY (user_id, device_id)
   );
+  CREATE TABLE IF NOT EXISTS cloud_runner (
+    runner_id TEXT PRIMARY KEY,
+    last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+  );
   CREATE TABLE IF NOT EXISTS cloud_oauth_flow (
     state_hash   TEXT PRIMARY KEY,
     user_id      TEXT NOT NULL REFERENCES "user"(id) ON DELETE CASCADE,
@@ -105,6 +111,7 @@ export const CLOUD_DDL = `
     PRIMARY KEY (user_id, routine_id)
   );
   CREATE INDEX IF NOT EXISTS cloud_routine_due_idx ON cloud_routine (due_at) WHERE due_at IS NOT NULL;
+  ALTER TABLE cloud_job ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS cloud BOOLEAN NOT NULL DEFAULT true;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS why TEXT NULL;
   ALTER TABLE cloud_routine ADD COLUMN IF NOT EXISTS name JSONB NULL;
@@ -162,13 +169,14 @@ const iso = (d: Date | string | null): string | null => (d ? new Date(d).toISOSt
 
 export async function getStatus(userId: string): Promise<CloudStatus> {
   await ensureCloudTables();
-  const [s, d] = await Promise.all([
+  const [s, d, srv] = await Promise.all([
     pool.query("SELECT enabled, bytes, chats, last_sync FROM cloud_sync WHERE user_id = $1", [userId]),
     pool.query(
       `SELECT device_id, kind, last_seen, last_seen > now() - make_interval(secs => $2) AS online
          FROM cloud_device WHERE user_id = $1 ORDER BY last_seen DESC LIMIT ${MAX_DEVICES}`,
       [userId, ONLINE_SECONDS],
     ),
+    serverSeen(),
   ]);
   const row = s.rows[0];
   const devices: CloudDevice[] = d.rows.map((r) => ({ deviceId: r.device_id, kind: r.kind as DeviceKind, lastSeen: iso(r.last_seen)!, online: !!r.online }));
@@ -179,7 +187,28 @@ export async function getStatus(userId: string): Promise<CloudStatus> {
     chats: Number(row?.chats ?? 0),
     lastSync: iso(row?.last_sync ?? null),
     devices,
+    server: srv,
   };
+}
+
+/** A runner is alive: it asked for work or kept a job going (recorded at most every 10 s). */
+export async function touchRunner(runnerId: string): Promise<void> {
+  await ensureCloudTables();
+  await pool.query(
+    `INSERT INTO cloud_runner (runner_id, last_seen) VALUES ($1, now())
+     ON CONFLICT (runner_id) DO UPDATE SET last_seen = now() WHERE cloud_runner.last_seen < now() - interval '10 seconds'`,
+    [runnerId],
+  );
+}
+
+/** Whether oovi's cloud server is up (any runner seen in the last SERVER_ONLINE_SECONDS), and when it was last seen. */
+export async function serverSeen(): Promise<{ online: boolean; lastSeen: string | null }> {
+  await ensureCloudTables();
+  const { rows } = await pool.query(
+    "SELECT max(last_seen) AS seen, coalesce(max(last_seen) > now() - make_interval(secs => $1), false) AS online FROM cloud_runner",
+    [SERVER_ONLINE_SECONDS],
+  );
+  return { online: !!rows[0]?.online, lastSeen: iso(rows[0]?.seen ?? null) };
 }
 
 /**
@@ -424,7 +453,7 @@ async function claim(by: string, where: string, params: unknown[]): Promise<JobR
       const cand = (
         await c.query(
           `SELECT j.id, j.user_id, j.chat_id, j.status FROM cloud_job j
-            WHERE (j.status IN ('queued', 'needs_computer') OR (j.status = 'claimed' AND j.lease_until < now()))
+            WHERE (j.status IN ('queued', 'needs_computer') OR (j.status = 'claimed' AND j.lease_until < now() AND j.attempts < ${MAX_ATTEMPTS}))
               AND ${where}
               AND NOT (j.id = ANY($${p + 1}::uuid[]))
               AND NOT EXISTS (SELECT 1 FROM cloud_job o WHERE o.user_id = j.user_id AND o.chat_id = j.chat_id AND o.id <> j.id
@@ -448,7 +477,7 @@ async function claim(by: string, where: string, params: unknown[]): Promise<JobR
         continue;
       }
       const { rows } = await c.query(
-        `UPDATE cloud_job SET status = 'claimed', claimed_by = $2, lease_until = now() + make_interval(secs => ${LEASE_SECONDS}), updated_at = now()
+        `UPDATE cloud_job SET status = 'claimed', claimed_by = $2, lease_until = now() + make_interval(secs => ${LEASE_SECONDS}), updated_at = now(), attempts = attempts + 1
           WHERE id = $1 RETURNING id, user_id, chat_id, kind, status, payload, created_at, lease_until`,
         [cand.id, by],
       );
@@ -470,6 +499,47 @@ function toClaimed(r: JobRow & { was: string }): ClaimedJob {
   };
 }
 
+/**
+ * Jobs whose claimer died MAX_ATTEMPTS times (the lease ran out each time) end as failed: such a job used to be
+ * taken again for ever, each time running its message from the start. The phone then offers to send it again.
+ */
+export async function giveUpDeadJobs(): Promise<number> {
+  const r = await pool.query(
+    `UPDATE cloud_job SET status = 'failed', error = 'gave_up', payload = '{}'::jsonb, lease_until = NULL, updated_at = now()
+      WHERE status = 'claimed' AND lease_until < now() AND attempts >= ${MAX_ATTEMPTS}`,
+  );
+  return r.rowCount ?? 0;
+}
+
+/**
+ * Whether a runner holds a job of this account right now (claimed, lease alive). The runner's key opens an
+ * account's chats, sign-ins, setup, AI and Telegram only then: a leaked key no longer reads every syncing account.
+ */
+export async function runnerHolds(userId: string): Promise<boolean> {
+  await ensureCloudTables();
+  const { rowCount } = await pool.query(
+    "SELECT 1 FROM cloud_job WHERE user_id = $1 AND status = 'claimed' AND claimed_by LIKE 'runner:%' AND lease_until > now() LIMIT 1",
+    [userId],
+  );
+  return !!rowCount;
+}
+
+/**
+ * A Stop the phone sent for the chat of a job this claimer holds: taken here (done), true when there was one.
+ * The runner asks for no new job while it works, so a stop job would wait in the queue until the run ended.
+ */
+export async function takeStops(jobId: string, by: string): Promise<boolean> {
+  await ensureCloudTables();
+  const r = await pool.query(
+    `UPDATE cloud_job s SET status = 'done', claimed_by = $2, lease_until = NULL, payload = '{}'::jsonb, updated_at = now()
+       FROM cloud_job j
+      WHERE j.id = $1 AND j.claimed_by = $2 AND j.status = 'claimed'
+        AND s.user_id = j.user_id AND s.chat_id = j.chat_id AND s.kind = 'stop' AND s.status = 'queued'`,
+    [jobId, by],
+  );
+  return !!r.rowCount;
+}
+
 /** The desktop app (open, signed in) claims its account's jobs, including those the runner left for the computer. */
 export async function claimForDesktop(userId: string, deviceId: string, chatIds: string[] | null): Promise<ClaimedJob | null | Off> {
   await ensureCloudTables();
@@ -486,8 +556,11 @@ export async function claimForDesktop(userId: string, deviceId: string, chatIds:
  */
 export async function claimForRunner(runnerId: string, exclude: string[] = []): Promise<RunnerClaimedJob | null> {
   await ensureCloudTables();
+  await touchRunner(runnerId).catch(() => {});
+  await giveUpDeadJobs().catch(() => {});
   await queueDueRoutines().catch((e) => console.error("[cloud] routines due:", (e as Error).message));
   if (Math.random() < 0.02) {
+    await pool.query("DELETE FROM cloud_runner WHERE last_seen < now() - interval '30 days'").catch(() => {});
     await pool.query("DELETE FROM cloud_job WHERE status IN ('done', 'failed') AND updated_at < now() - interval '1 day'").catch(() => {});
   }
   const r = await claim(
@@ -698,11 +771,21 @@ export async function cloudSummaries(userIds: string[]): Promise<Map<string, Clo
 }
 
 /** For Admin > Overview. */
-export async function cloudOverview(): Promise<{ syncing: number; chats: number; bytes: number } | null> {
+export async function cloudOverview(): Promise<{
+  syncing: number;
+  chats: number;
+  bytes: number;
+  /** oovi's cloud server (the runner): up, when last seen, jobs waiting for it now, jobs that failed in the last day. */
+  server: { online: boolean; lastSeen: string | null; waiting: number; failedDay: number };
+} | null> {
   try {
     await ensureCloudTables();
-    const { rows } = await pool.query("SELECT count(*) FILTER (WHERE enabled) AS n, COALESCE(sum(chats), 0) AS chats, COALESCE(sum(bytes), 0) AS bytes FROM cloud_sync");
-    return { syncing: Number(rows[0].n), chats: Number(rows[0].chats), bytes: Number(rows[0].bytes) };
+    const [{ rows }, srv, jobs] = await Promise.all([
+      pool.query("SELECT count(*) FILTER (WHERE enabled) AS n, COALESCE(sum(chats), 0) AS chats, COALESCE(sum(bytes), 0) AS bytes FROM cloud_sync"),
+      serverSeen(),
+      pool.query("SELECT count(*) FILTER (WHERE status = 'queued') AS waiting, count(*) FILTER (WHERE status = 'failed' AND updated_at > now() - interval '1 day') AS failed FROM cloud_job"),
+    ]);
+    return { syncing: Number(rows[0].n), chats: Number(rows[0].chats), bytes: Number(rows[0].bytes), server: { ...srv, waiting: Number(jobs.rows[0].waiting), failedDay: Number(jobs.rows[0].failed) } };
   } catch {
     return null;
   }

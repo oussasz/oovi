@@ -16,7 +16,7 @@ import { installVaultConnector, vaultSignIn, type VaultConnector } from "./mcp";
 import type { RunInput } from "./orchestrator";
 import { startRun, stopRun, subscribe } from "./runner";
 import { useRoutineChat } from "./routines";
-import { runRoutineInCloud } from "./routines-scheduler";
+import { routineNextTime, runRoutineInCloud } from "./routines-scheduler";
 import { pullSetup, syncSetup } from "./setup-sync";
 import { getChat, listBots, saveChat } from "./store";
 import type { Chat } from "./types";
@@ -48,7 +48,9 @@ async function handle(m: Msg): Promise<void> {
     const here = getChat(String(m.chatId));
     const bots = listBots().filter((b) => here?.memberIds.includes(b.id));
     const mcpIds = [...new Set(bots.flatMap((b) => b.tools.mcp ?? []))];
-    return reply(m, { ok: !!here, mcpIds, ...(here ? {} : { error: "chat not found" }) });
+    // A routine's next time, read before its run: if the run dies, the runner still tells the website when it is due again.
+    const next = typeof m.routineId === "string" ? routineNextTime(m.routineId) : undefined;
+    return reply(m, { ok: !!here, mcpIds, ...(next !== undefined ? { routineNext: next === null ? null : new Date(next).toISOString() } : {}), ...(here ? {} : { error: "chat not found" }) });
   }
   if (m.type === "connectors") {
     let connectors = 0;

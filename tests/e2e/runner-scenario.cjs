@@ -39,6 +39,8 @@ const jobs = []; // {id, userId, chatId, kind, payload, status, claims, released
 const aiCalls = []; // {uid, system, ask}
 const setupPuts = [];
 let nextJob = 1;
+/** Chats saved again after they were deleted (must stay empty). */
+const revived = [];
 const addJob = (userId, chatId, text) => {
   const j = { id: `job-${nextJob++}-0000`, userId, chatId, kind: "message", payload: { text }, status: "queued", claims: 0, released: 0, createdAt: new Date().toISOString(), timezone: "Africa/Algiers" };
   jobs.push(j);
@@ -60,7 +62,8 @@ async function theOovi(uid, body) {
   if (/NEEDPC/.test(ask)) return use("open_url", { url: "https://example.com" });
   if (/SLOW/.test(ask)) {
     await sleep(700);
-    if (n < 8) return use("oovi_help", { topic: "overview" });
+    // LONGRUN: a job that would work for a minute (only Stop ends it in time).
+    if (n < (/LONGRUN/.test(ask) ? 80 : 8)) return use("oovi_help", { topic: "overview" });
     return reply([{ type: "text", text: "SLOW-DONE" }], "end_turn");
   }
   await sleep(400);
@@ -108,8 +111,14 @@ const website = http.createServer(async (req, res) => {
     const j = jobs.find((x) => x.id === r[1]);
     if (!j || j.status !== "claimed") return send(res, 409, { error: "not yours" });
     if (body.runnerId !== "test-runner") return send(res, 400, { error: "runnerId is missing or invalid." });
-    if (r[2] === "heartbeat") j.lease = Date.now() + 120_000;
-    else if (r[2] === "release") {
+    if (r[2] === "heartbeat") {
+      j.lease = Date.now() + 120_000;
+      // As the website does: a Stop sent from the phone for this chat is answered here (the runner asks for no
+      // new job while it works), and that stop job is done.
+      const stops = jobs.filter((x) => x.kind === "stop" && x.status === "queued" && x.userId === j.userId && x.chatId === j.chatId);
+      for (const x of stops) x.status = "done";
+      return send(res, 200, { ok: true, leaseUntil: new Date(j.lease).toISOString(), stop: stops.length > 0 });
+    } else if (r[2] === "release") {
       j.status = "queued";
       j.released++;
     } else {
@@ -121,10 +130,12 @@ const website = http.createServer(async (req, res) => {
   if ((r = /^\/chats\/([\w-]+)\/([\w-]+)$/.exec(p))) {
     const key = `${r[1]}/${r[2]}`;
     const cur = chats.get(key);
-    if (req.method === "GET") return cur ? send(res, 200, { chatId: r[2], version: cur.version, chat: cur.chat }) : send(res, 404, { error: "no chat" });
+    // As the website: a deleted chat keeps its version (a tombstone) and answers with no content.
+    if (req.method === "GET") return cur ? send(res, 200, { chatId: r[2], version: cur.version, chat: cur.deleted ? null : cur.chat, ...(cur.deleted ? { deleted: true } : {}) }) : send(res, 404, { error: "no chat" });
     if (req.method === "PUT") {
-      if ((cur?.version ?? 0) !== body.baseVersion) return send(res, 409, { version: cur?.version ?? 0, chat: cur?.chat ?? null });
+      if ((cur?.version ?? 0) !== body.baseVersion) return send(res, 409, { version: cur?.version ?? 0, chat: cur?.deleted ? null : (cur?.chat ?? null), deleted: !!cur?.deleted });
       const version = (cur?.version ?? 0) + 1;
+      if (cur?.deleted) revived.push(key);
       chats.set(key, { version, chat: body.chat, pushes: (cur?.pushes ?? 0) + 1 });
       return send(res, 200, { version });
     }
@@ -236,11 +247,40 @@ const jobFolders = () => fs.readdirSync(TMP).filter((f) => f.startsWith("job-"))
   const entries = chats.get("ub/dm-bex1")?.chat?.entries ?? [];
   check(js.status === "done" && /SLOW-DONE/.test(lastBot("ub/dm-bex1")?.text || ""), `D: the released job is picked up again and finished (${js.status})`);
   check(entries.filter((e) => e.kind === "user" && /SLOW/.test(e.text)).length === 1, "D: its message is in the chat once");
+
+  // F: Stop from the phone while the job runs here. One job at a time, as on the real server: the runner asks
+  // for no new job while it works, so the stop has to reach it another way.
+  runner.kill("SIGTERM");
+  await new Promise((r) => runner.on("exit", r));
+  runner = startRunner({ RUNNER_CONCURRENCY: "1" });
+  const callsBefore = aiCalls.filter((c) => /SLOW/.test(c.ask)).length;
+  const jf = addJob("ua", "dm-ava1", "SLOW LONGRUN second long job");
+  await waitFor(() => aiCalls.filter((c) => /SLOW/.test(c.ask)).length >= callsBefore + 2, 60_000, "second slow job running");
+  const stopJob = { id: `job-${nextJob++}-0000`, userId: "ua", chatId: "dm-ava1", kind: "stop", payload: {}, status: "queued", claims: 0, released: 0 };
+  jobs.push(stopJob);
+  const tStop = Date.now();
+  await waitFor(() => jf.status !== "claimed" && jf.status !== "queued", 20_000, "the stopped job ending");
+  const fb = lastBot("ua/dm-ava1");
+  check(jf.status === "done" && Date.now() - tStop < 15_000, `F: Stop from the phone ends the job running on the server (${jf.status}, ${Date.now() - tStop} ms)`);
+  check(fb?.status === "stopped" && !/SLOW-DONE/.test(fb?.text || ""), `F: the reply shows as stopped, not finished (${fb?.status})`);
+  check(stopJob.status === "done", `F: the stop itself is done (${stopJob.status})`);
+
+  // G: the chat is deleted (on the phone or the computer) while its job runs here: the run stops, and the
+  // deleted chat is never saved back.
+  const jg = addJob("ub", "dm-bex1", "SLOW LONGRUN in a chat about to be deleted");
+  const before = aiCalls.filter((c) => /about to be deleted/.test(c.ask)).length;
+  await waitFor(() => aiCalls.filter((c) => /about to be deleted/.test(c.ask)).length >= before + 2, 60_000, "job in the chat to delete running");
+  const gone = chats.get("ub/dm-bex1");
+  chats.set("ub/dm-bex1", { version: gone.version + 1, chat: null, deleted: true, pushes: gone.pushes });
+  await waitFor(() => jg.status !== "claimed" && jg.status !== "queued", 30_000, "the job of the deleted chat ending");
+  await sleep(1500);
+  check(jg.status === "failed" && jg.error === "chat_not_found", `G: a job whose chat was deleted ends, as "chat not found" (${jg.status}, ${jg.error})`);
+  check(chats.get("ub/dm-bex1")?.deleted === true && revived.length === 0, `G: the deleted chat is not saved back (${revived.length} saves after the delete)`);
   runner.kill("SIGTERM");
   await new Promise((r) => runner.on("exit", r));
 
   // E: logs.
-  const leaked = ["weather", "Bonjour", "mairie", "ANSWER", "Oran", "SLOW", SECRET].filter((w) => out.includes(w));
+  const leaked = ["weather", "Bonjour", "mairie", "ANSWER", "Oran", "SLOW", "LONGRUN", "about to be", SECRET].filter((w) => out.includes(w));
   check(leaked.length === 0, `E: no chat text or secret in the runner's logs${leaked.length ? ` (found: ${leaked.join(", ")})` : ""}`);
   check(out.split("\n").filter(Boolean).every((l) => l.startsWith("{")), "E: every log line is a JSON event");
 

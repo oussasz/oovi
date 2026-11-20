@@ -28,6 +28,8 @@ export type CloudStatus = {
   chats: number;
   lastSync: string | null;
   devices: CloudDevice[];
+  /** oovi's cloud server (the runner): up = it takes the phone's messages while the computer is off. */
+  server: { online: boolean; lastSeen: string | null };
 };
 export type PutStatusRequest = { enabled: boolean };
 export type PutStatusResponse = CloudStatus;

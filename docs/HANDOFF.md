@@ -1,3 +1,61 @@
+## Cloud server (the Azure runner) and the phone: checked and fixed (2026-11-20, `harness-v2`, NOT DEPLOYED, NOT RELEASED)
+The owner: "the phone app says the computer must be on even for simple messages: what is the VPS for? Check it,
+audit it against best practice, make sure it syncs right."
+
+**Checked live (signed in as the owner, built-in browser):** the runner is up; a phone-style message ("7 x 8", computer
+off) was answered "56" by the cloud in about 15 s, job `done`, 4.69 credits; the morning routine ran in the cloud the
+same day with two connectors. The VM itself can't be inspected from the Linux machine (no Azure CLI, no SSH): what
+follows is from the code, the live API and tests.
+
+**Why the phone said "computer":** (verified in code) while a message waited, the phone showed "Your computer is off.
+Your message waits until it's picked up" (web/app/m/_lib/core.ts `chatBlocker`), with no idea the server existed, and
+an idle runner looked for work only every 30 s (plus a 5 s wait): 7 to 35 s under that banner. The empty chat said
+"While your computer is on, oovi on it does the work". Not reproduced: a refusal of a simple request by the released
+engine (0.14.1 in cloud mode: 7 of 7 computer-off scenarios right). Found on `harness-v2` before this fix: a list
+built on the server ended "this needs your computer" at `read_rows` (6 of 7).
+
+**Changed (all with tests; contract in docs/CLOUD-BUILD.md, "Since 2026-11-20"):**
+- Phone: `server: {online, lastSeen}` in `/status`; "oovi's cloud server is taking your message" (or, if neither
+  answers, that plainly); a message whose job failed shows "Not sent. Tap to try again" instead of hanging; a reply
+  the server couldn't finish shows as an error (`cloud_failed`), not as a bot at work for ever.
+- Speed: runner waits 2 s (was 5), idle look every 5 s at most (was up to 30).
+- Engine on the server: only tools that run there are offered, plus `hand_to_computer`; a request is left for the
+  computer whole and first, or not at all (`handOver`): no second email when the computer runs it again. `read_rows`
+  on a work table runs there. The routine confirmation no longer says "only while oovi is open on this computer".
+- Stop from the phone reaches a job running on the server (it never did: the runner asks for no new job while busy).
+- A final save the website refuses no longer ends as `done`; a chat deleted mid-job is not saved back; a routine whose
+  run died keeps its next time; a job that kills its runner is given up after 3 tries (`attempts`).
+- Security: the runner's key opens an account only while a runner holds a live job of it (`runnerFor`); page reads
+  check DNS answers and each redirect before asking (lib/net-guard-core.ts), on the server and on computers.
+- Operations: Admin > Overview "Cloud server: Up/Down, waiting, failed in the last day"; a job's memory fits the
+  container (600 MB on the 800 MB server, was 768); a runner whose claim loop is stuck exits so Docker restarts it.
+
+**Measured (real model, computer off, 7 scenarios, tests/evals/run.cjs `cloud-*`):** released 0.14.1: 7/7, 14.9
+credits. `harness-v2` before this fix: 6/7, 7.9. After: 7/7, 5.6 (cold first call 0.96 credits against 2.72).
+Scripted: unit 533, runner scenario A to G, website cloud test 150/150 on a real PostgreSQL, website + app + runner
+together (cloud-integration), cloud-sync 40/40, sync 15/15, phone scenario 185/185.
+
+**To test the cloud parts on this machine:** a throwaway PostgreSQL lives in `/home/oussasz/dev online/oovi/lab/pg`
+(`node start.mjs`, port 55432, user/password postgres); `TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:55432/oovi_test`.
+The phone scenario needs `NODE_PATH=/home/oussasz/dev online/oovi/lab/pw-shim/node_modules` (playwright-core + Brave).
+
+**Order to deploy (each needs the owner's yes):** 1) website (safe with the old runner: every change is backward
+compatible; tables migrate themselves); 2) runner image from `harness-v2` (built where Docker and the Azure CLI are:
+not this machine), better once through the "Runner image" workflow to ghcr.io with `RUNNER_IMAGE` switched on the
+VM, so the 6-hour update works from then on; 3) the desktop release.
+
+**Not done:**
+- A leaked runner key can still claim waiting jobs and so reach those accounts: per-job tokens and an allow-list of
+  the VM's address would close it.
+- A job re-run after a crash (lease ran out) starts its message over: connector writes done before the crash can
+  repeat (now at most 3 tries). Needs a synced ledger of outward actions per job.
+- Sign-in refresh written back only at job end (a crash loses a rotated token); vault sealing has one key with no key
+  id or rotation; rate limits are per server instance; "newer wins" for chat-level fields uses device clocks.
+- One server, one job at a time, first come first served: a long job of one account makes the others wait (up to the
+  15-minute limit). No alert is sent when the server is down (the admin card shows it).
+- Files don't travel: making or reading documents from the phone waits for the computer.
+- The update path of the VM (above) and anything on the VM itself: not reachable from here.
+
 ## Harness v2, second part: every kind of task, and the price of a cold start (2026-11-20, `harness-v2`, NOT RELEASED, not pushed)
 Owner: check that the fix is a root one, for every kind of task and not only email; cut the 3.4 credits every new
 conversation starts with; look at four competitors and take what they do better; everything on the real model.

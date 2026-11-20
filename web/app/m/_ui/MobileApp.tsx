@@ -54,6 +54,8 @@ type Ctx = {
   outbox: Outgoing[];
   send: (chatId: string, text: string, replyTo?: Outgoing["replyTo"], opts?: SendOptions) => Promise<boolean>;
   retry: (entryId: string) => Promise<boolean>;
+  /** Messages whose job failed on the server: shown as not sent (one tap sends them again). */
+  markLost: (entryIds: string[]) => void;
   /** The job's id, or null when it couldn't be sent (lastJobError says why, in words for people). */
   job: (chatId: string, job: JobPayload) => Promise<string | null>;
   lastJobError: () => string;
@@ -640,6 +642,11 @@ export function MobileApp({ children }: { children: ReactNode }) {
     [outbox, deliver],
   );
 
+  const markLost = useCallback(
+    (entryIds: string[]) => updateOutbox((list) => (list.some((x) => entryIds.includes(x.entryId) && x.state === "sent") ? list.map((x) => (entryIds.includes(x.entryId) && x.state === "sent" ? { ...x, state: "failed" } : x)) : list)),
+    [updateOutbox],
+  );
+
   const loadCreditsNow = useCallback(async () => {
     try {
       const c = await getCredits();
@@ -658,8 +665,8 @@ export function MobileApp({ children }: { children: ReactNode }) {
   const bot = useCallback((id: string) => setup?.bots.find((b) => b.id === id), [setup]);
 
   const value = useMemo<Ctx>(
-    () => ({ lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
-    [lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
+    () => ({ lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, markLost, job, lastJobError: () => t(jobError.current), credits, loadCredits: loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast }),
+    [lang, dir, t, prefs, setPrefs, online, me, updateMe, status, sync, setup, bot, chats, refreshing, refresh, loadChat, putChat, pins, togglePin, archived, toggleArchive, removeChat, editSetup, removeBot, addBot, addGroup, seen, markSeen, markUnread, outbox, send, retry, markLost, job, credits, loadCreditsNow, signedOut, connectors, refreshConnectors, putConnector, toast],
   );
 
   return (

@@ -10,7 +10,9 @@
 import { Readability } from "@mozilla/readability";
 import { parseHTML } from "linkedom";
 import type { Browser } from "playwright-core";
-import { blockPrivate, checkUrl, launchLocal } from "./browser";
+import dns from "node:dns/promises";
+import { blockPrivate, checkUrl, isPrivateHost, launchLocal } from "./browser";
+import { fetchGuarded } from "./net-guard-core";
 import { isYoutubeSearch, youtubeList, youtubeVideos } from "./youtube-core";
 import { contactDetails } from "./contacts";
 import type { ToolSpec } from "./llm";
@@ -193,16 +195,24 @@ export async function fetchPage(url: string, s: Settings, signal?: AbortSignal):
   const err = checkUrl(url, s.browser.allowPrivateNetwork);
   if (err) throw new Error(err);
   const timeout = AbortSignal.timeout(20_000);
-  const res = await fetch(url, {
-    headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5", "accept-language": "en,*;q=0.5" },
-    redirect: "follow",
-    signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
-  });
-  // A redirect must not lead into the user's private network either.
-  const finalErr = checkUrl(res.url, s.browser.allowPrivateNetwork);
-  if (finalErr) throw new Error(finalErr);
+  // Each address on the way (the first, and every redirect) is checked by its text and by what its name
+  // resolves to before it is asked (lib/net-guard-core.ts): a redirect, or a public name pointing inside, must
+  // not reach the private network (the user's own, or oovi's cloud server's).
+  const { res, url: final } = await fetchGuarded(
+    url,
+    {
+      headers: { "user-agent": UA, accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5", "accept-language": "en,*;q=0.5" },
+      signal: signal ? AbortSignal.any([signal, timeout]) : timeout,
+    },
+    {
+      allowPrivate: s.browser.allowPrivateNetwork,
+      lookup: async (host) => (await dns.lookup(host, { all: true })).map((a) => a.address),
+      isPrivate: isPrivateHost,
+      fetchFn: (u, init) => fetch(u, init),
+    },
+  );
   const type = res.headers.get("content-type") ?? "";
-  return { url: res.url, type, ok: res.ok, status: res.status, body: res.ok && !/pdf/.test(type) ? (await res.text()).slice(0, MAX_HTML) : "" };
+  return { url: final, type, ok: res.ok, status: res.status, body: res.ok && !/pdf/.test(type) ? (await res.text()).slice(0, MAX_HTML) : "" };
 }
 
 // ---------- reading in a hidden browser ----------
