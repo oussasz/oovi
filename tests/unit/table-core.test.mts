@@ -138,3 +138,38 @@ test("a batch says how many rows its filter leaves out, so the card can show it"
   assert.ok(!("error" in all));
   assert.equal(all.filteredOut, 0);
 });
+
+test("rows are counted and summed per group without reading them: the question 'which city has the most' is one call", async () => {
+  const { summarize } = await import("../../lib/table-core.ts");
+  const t = fromCsvText("City,Amount,Email\nAlger,100,a@x.dz\nOran,50,\nAlger,25,b@x.dz\nOran,10,c@x.dz\nSétif,7,d@x.dz\n");
+  const g = summarize(t, { groupBy: ["City"] });
+  assert.ok(!("error" in g));
+  assert.deepEqual(g.columns, ["City", "rows"]);
+  assert.deepEqual(g.rows, [["Alger", "2"], ["Oran", "2"], ["Sétif", "1"]]);
+  const s = summarize(t, { groupBy: ["city"], values: [{ op: "sum", column: "Amount" }, { op: "avg", column: "amount" }, { op: "max", column: "Amount" }] });
+  assert.ok(!("error" in s));
+  assert.deepEqual(s.columns, ["City", "rows", "sum of Amount", "avg of Amount", "max of Amount"]);
+  assert.deepEqual(s.rows[0], ["Alger", "2", "125", "62.5", "100"]);
+});
+
+test("a summary can be filtered first, and without a group it is one line for the whole table", async () => {
+  const { summarize } = await import("../../lib/table-core.ts");
+  const t = fromCsvText("City,Amount,Email\nAlger,100,a@x.dz\nOran,50,\nAlger,25,b@x.dz\nOran,10,c@x.dz\n");
+  const f = summarize(t, { groupBy: ["City"], filter: [{ column: "Email", op: "not_empty" }] });
+  assert.ok(!("error" in f));
+  assert.deepEqual(f.rows, [["Alger", "2"], ["Oran", "1"]]);
+  const all = summarize(t, { values: [{ op: "sum", column: "Amount" }] });
+  assert.ok(!("error" in all));
+  assert.deepEqual(all.rows, [["4", "185"]]);
+  const bad = summarize(t, { groupBy: ["Ville"] });
+  assert.ok("error" in bad && /City, Amount, Email/.test(bad.error));
+});
+
+test("groups come biggest first, and the number of groups is told when only the top ones are shown", async () => {
+  const { summarize } = await import("../../lib/table-core.ts");
+  const t = fromCsvText(`K\n${Array.from({ length: 30 }, (_, i) => Array.from({ length: i + 1 }, () => `g${i}`).join("\n")).join("\n")}\n`);
+  const g = summarize(t, { groupBy: ["K"], top: 3 });
+  assert.ok(!("error" in g));
+  assert.deepEqual(g.rows, [["g29", "30"], ["g28", "29"], ["g27", "28"]]);
+  assert.equal(g.groups, 30);
+});

@@ -5,6 +5,7 @@
 // it replies -> the leader gives the final answer. Also: an invalid proposal (an existing
 // role) never reaches the user, and a direct-chat proposal joins the group the Chief leads.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -35,7 +36,7 @@ const PROJECT = path.join(HOME_TEST, "project", "shop");
 const SAVE_DIR = path.join(HOME_TEST, "save");
 
 function answer(body) {
-  const tools = (body.tools || []).map((t) => t.name || t.type);
+  const tools = allTools(body).map((t) => t.name || t.type);
   const sys = systemOf(body);
   const msgs = body.messages || [];
   const last = msgs[msgs.length - 1] || {};

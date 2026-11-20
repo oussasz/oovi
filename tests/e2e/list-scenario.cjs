@@ -20,6 +20,7 @@
 //   K) a phone number or an email is saved only when it was read somewhere in the chat,
 //   L) forms: checkbox names, dropdown choices, a switched-off button, a dead address.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -194,7 +195,7 @@ function answer(body) {
   const scene = (all.match(/(LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):(?![\s\S]*(?:LIST|NEXT|SCROLL|TABLE|NOLIST|SHARE|DIRECT|SITE|PATTERN|APP|PLACES|PAPERS|TRUTH|FORM|HINT|PLAN|READ):)/) || [])[1] || "";
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[`${me}:${scene}`] = sys;
-  seen.tools[me] = (body.tools || []).map((t) => t.name);
+  seen.tools[me] = allTools(body).map((t) => t.name);
   if (lastTool) seen.out[`${me}:${scene}:${lastTool}`] = out;
   if (!scene) return text("ok");
   const done = () => text(`${scene}-RESULT: ${out.replace(/\s+/g, " ").slice(0, 500)}`);
@@ -226,7 +227,7 @@ function answer(body) {
   }
   if (scene === "PLAN") {
     seen.planSys = sys;
-    seen.planTools = (body.tools || []).map((t) => t.name);
+    seen.planTools = allTools(body).map((t) => t.name);
     const n = (all.split("PLAN:").pop().match(/"type":"tool_use"/g) || []).length;
     if (lastTool) seen.out[`plan${n}`] = out;
     if (/INTERACTIVE ELEMENTS/.test(out)) seen.planList = out;

@@ -3,6 +3,7 @@
 // 8 seconds with Cancel, and Cancel stops it (nothing sent); deleting always asks, even after "allow";
 // reading never asks. Scripted model, nothing leaves this machine. Run: node tests/e2e/approvals-scenario.cjs
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -36,7 +37,7 @@ async function answer(body) {
   seen.bodies.push(body);
   const msgs = body.messages || [];
   const cur = msgs.filter((m) => m.role === "user" && textOf(m).trim()).map(textOf).at(-1) || "";
-  const tools = (body.tools || []).map((t) => t.name);
+  const tools = allTools(body).map((t) => t.name);
   seen.tools = tools;
   const send = tools.find((t) => /send_email$/.test(t));
   const del = tools.find((t) => /delete_email$/.test(t));

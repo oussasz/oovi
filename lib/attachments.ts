@@ -40,7 +40,7 @@ const MAX_ROWS = 50_000;
 
 /** A table (Excel, CSV) longer than this is shown to the bots as a digest; its rows are read with read_rows. */
 export const TABLE_DIGEST_ABOVE = 6_000;
-const TABLE_NOTE = "This is a table. It stays on disk: what follows is a digest (size, columns, first rows), not the data. Look at chosen rows with read_rows (filter, columns). To do something for every row (send, create, update), use for_each_row when you have it: it takes the values from the file itself. Never rebuild rows or addresses from memory.";
+const TABLE_NOTE = "This is a table. It stays on disk: what follows is a digest (size, columns, first rows), not the data. read_rows works on it where it is: chosen rows (filter, columns), counts and sums per group (group_by, values), a part of it copied into a work table to deliver as a file (save_to_table). To do something for every row (send, create, update), use for_each_row when you have it. Never rebuild rows or addresses from memory.";
 
 const ID_RE = /^[a-z0-9]{12}$/;
 const CHAT_RE = /^[\w-]{1,80}$/;

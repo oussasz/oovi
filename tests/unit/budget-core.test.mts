@@ -39,3 +39,11 @@ test("older tool results are shortened to fit, but a tool's guide stays whole (c
   assert.ok((out[0] as (typeof msgs)[0]).results[1]!.content.length < 500);
   assert.equal((out[1] as (typeof msgs)[1]).results[0]!.content.length, 900, "the latest result is never cut here");
 });
+
+test("a result that starts with a guide keeps the guide and has only its own part shortened", () => {
+  const content = `[guide:work_table]\nrules\n[/guide]\n${"r".repeat(2000)}`;
+  const out = shortenOlderResults([{ role: "tool" as const, results: [{ id: "1", name: "work_table", content }] }, { role: "tool" as const, results: [{ id: "2", name: "x", content: "y" }] }], 400, 1);
+  const got = (out[0] as { results: { content: string }[] }).results[0]!.content;
+  assert.ok(got.startsWith("[guide:work_table]\nrules\n[/guide]\n"));
+  assert.ok(got.length < 700, String(got.length));
+});

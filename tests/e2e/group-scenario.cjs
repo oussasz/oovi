@@ -8,6 +8,7 @@
 //   C) a leader's "Great work @Scout!" in its final answer doesn't send Scout back to work,
 //   D) the prompts carry the short-message, @-mention and language rules.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -55,15 +56,15 @@ function answer(body) {
   })();
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[me] = sys;
-  seen.tools[me] = body.tools || [];
-  const mgSpec = (body.tools || []).find((t) => t.name === "message_group");
+  seen.tools[me] = allTools(body);
+  const mgSpec = allTools(body).find((t) => t.name === "message_group");
   if (mgSpec) seen.messageGroup = mgSpec;
   seen.turns[me] = (seen.turns[me] || 0) + 1;
 
   // A task for a group that is still busy: queued, sent when the group is free, its answer reported.
   if (me === "c" && /SLOWJOB:/.test(ask)) return { __wait: 8000, reply: text("SLOW-DONE: finished the long job.") };
   if (me === "c" && /QUEUED-TASK:/.test(ask)) return text("QUEUE-ANSWER: the weekly figures are 120 orders.");
-  if (me === "Oovi" && /QUEUE:/.test(ask) && (body.tools || []).some((t) => t.name === "message_group")) {
+  if (me === "Oovi" && /QUEUE:/.test(ask) && allTools(body).some((t) => t.name === "message_group")) {
     if (results.length) {
       seen.queueResult = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
       return text("QUEUED-SEEN");
@@ -73,7 +74,7 @@ function answer(body) {
   // The owner's "use my pc and check my gmail" case: the Chief gives the group a job that needs the user's OK.
   // The request must come back to the chat the user is in, and the user's own words must reach the group.
   if (/ASKME:/.test(all)) {
-    if (me === "Oovi" && (body.tools || []).some((t) => t.name === "message_group")) {
+    if (me === "Oovi" && allTools(body).some((t) => t.name === "message_group")) {
       if (results.length) {
         seen.askResult = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
         return text("ASK-RELAYED");
@@ -88,7 +89,7 @@ function answer(body) {
     }
   }
   // The Chief, in its direct chat: ask the group, then report what came back.
-  if (me === "Oovi" && /DASH:/.test(all) && (body.tools || []).some((t) => t.name === "message_group")) {
+  if (me === "Oovi" && /DASH:/.test(all) && allTools(body).some((t) => t.name === "message_group")) {
     if (results.length) {
       seen.chiefResult = results.map((r) => (typeof r.content === "string" ? r.content : JSON.stringify(r.content))).join("\n");
       return text(`CHIEF-SAW: ${seen.chiefResult.includes(LINK) ? "the link" : "no link"}`);
@@ -110,17 +111,17 @@ function answer(body) {
   if (me === "Scout" && /مل يوم/.test(ask)) {
     seen.routineRule = /propose_routine/.test(sys) && /كل يوم/.test(sys);
     if (results.length) return text("OK");
-    if (!(body.tools || []).some((t) => t.name === "propose_routine")) return text("صباح الخير!"); // what happened before the fix
+    if (!allTools(body).some((t) => t.name === "propose_routine")) return text("صباح الخير!"); // what happened before the fix
     return reply([{ type: "tool_use", id: `toolu_rt_${Date.now()}`, name: "propose_routine", input: { name: "Good morning", instruction: "Say good morning to the user in Darija.", frequency: "daily", time: "10:00" } }], "tool_use");
   }
   if (me === "Scout" && /SNEAKY:/.test(ask)) {
-    seen.scoutTools = (body.tools || []).map((t) => t.name);
+    seen.scoutTools = allTools(body).map((t) => t.name);
     if (results.length) return text(`SCOUT-GOT: ${JSON.stringify(results[0].content).slice(0, 120)}`);
     return reply([{ type: "tool_use", id: `toolu_sn_${Date.now()}`, name: "propose_team", input: { name: "Rogue", purpose: "x", members: ["Nova", "Quill"] } }], "tool_use");
   }
   if (me === "Scout") return text("PRICES: three cafés nearby, 150-300 DA.");
   if (me === "Quill" && /PERM:/.test(ask)) {
-    seen.quillTools = (body.tools || []).map((t) => t.name);
+    seen.quillTools = allTools(body).map((t) => t.name);
     if (results.length) return text(`QUILL-AFTER: ${JSON.stringify(results[0].content).slice(0, 160)}`);
     return reply([{ type: "tool_use", id: `toolu_ab_${Date.now()}`, name: "request_abilities", input: { abilities: ["accounts"], why: "To post your text on your Facebook page." } }], "tool_use");
   }

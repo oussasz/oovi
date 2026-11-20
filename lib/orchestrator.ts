@@ -58,7 +58,7 @@ import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
 import { START_RATIO, calibrate, effectiveBudget } from "./budget-core";
 import { resumesJob } from "./resume-core";
 import { unseenAddresses } from "./recipients-core";
-import { deferTools, isGuide, onDemand, paramsHint, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "./tool-defer";
+import { deferTools, isGuide, onDemand, paramsHint, splitGuide, unwrapCalls, USE_TOOL, useToolResult, withFirstGuide, wrapHistory } from "./tool-defer";
 import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
 import { firstNeedingComputer, needsComputerText, NOT_RUN_IN_CLOUD } from "./cloud-runner-core";
 import { SKILL_SPECS, approvalItem, describeCall, needsApproval, runTool, toolsFor } from "./tools";
@@ -225,7 +225,9 @@ const HOW_YOU_WORK = `How you work:
 - Do the task. When you have enough to act, act. Where something is open that you can reasonably decide (wording, tone, language, which column holds what), decide it and say what you chose in one line. Ask only when a wrong guess would make the result wrong and you cannot find the answer yourself.
 - oovi asks the user before anything leaves their computer or changes their accounts: it shows them a card with the exact content (for a batch: how many, and filled-in examples), and they approve or cancel there. That card is their review and their consent, precisely for what can't be undone. So you call the tool: you don't ask "shall I go ahead?" in the chat, don't ask first because an action is final, don't hold it back to protect them, and don't send them to do it themselves when you have a way.
 - The user's words set the scope, both ways. "Everyone" means every row that has what the action needs, including the ones you would have left out; and nothing goes out that they didn't ask for (no purchase, post, message, sign-up or sharing of their data on your own initiative). A concern (a legal point, a risk, a better way) goes in one short line beside the action, once: never in its place, never again once they have answered.
-- Data stays where it is. A table or a long file is in the conversation as a digest; you work on its rows through tools, and never rebuild rows, names or addresses from memory. Report only what the tools returned: the numbers as they are, nothing no tool did.
+- Data stays where it is. A table or a long file is in the conversation as a digest; you work on its rows through tools, and never rebuild rows, names or addresses from memory. Report only what the tools returned: the numbers as they are, nothing no tool did, "all" only when every item was checked.
+- What you say about the world (a product, a company, a price, a date, what a site says) comes from a lookup when you have web tools, always when the user asks you to search or find. Your memory tells you what to look for; it is not the source.
+- Deliver what was asked, in the form asked: that many items, that file type, that language. When several people, files or accounts fit a name, ask which one.
 - Answer the latest message. Earlier topics are closed unless the user reopens them. Messages show when they were sent: a short-lived thing is over once its time has passed.
 - A task that reaches you through the main assistant or a team leader "on the user's behalf" is the user's request, with the same authority. When the user's own message is quoted with it, that message is what to do.
 - Decline only what would clearly harm someone, in one line, and offer what you can do instead.`;
@@ -986,7 +988,10 @@ const AGAIN = "[oovi]: It's your turn again; nobody has written since your messa
 const KEEP_LONGER = new Set(["message_group", "read_group"]);
 function cutOld(r: ToolResult): string {
   // A tool's guide is read once and used for the rest of the conversation.
-  if (isGuide(r)) return r.content;
+  // A guide stays whole, alone (the answer to a request for it) or in front of a one-step tool's first result.
+  const g = splitGuide(r.content);
+  if (isGuide(r) && !g.rest) return r.content;
+  if (g.guide) return `${g.guide}\n${cutOld({ ...r, content: g.rest })}`;
   const max = KEEP_LONGER.has(r.name) ? 6000 : 800;
   // The start and the end are kept: the end often holds the total, the count or the error.
   return cutMiddle(r.content, max, (n) => `[older result shortened: ${n} characters in the middle not shown${KEEP_LONGER.has(r.name) ? "; read_group shows the group's messages again" : ""}]`);
@@ -1604,7 +1609,7 @@ async function* runBot(
           let r: ToolResult;
           if (!deskOn) r = { id: c.id, name: c.name, content: `Desktop control isn't enabled for ${bot.name}. The user can turn it on in [Settings > Safety](oovi://settings/safety) (it needs a supported Claude model).`, isError: true };
           else if (deskHalted) r = { id: c.id, name: c.name, content: NOT_EXECUTED, isError: true };
-          else if (decisions[c.id] === false) r = { id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true };
+          else if (decisions[c.id] === false) r = { id: c.id, name: c.name, content: "The user declined this action. Don't do it, or anything equivalent, by another way. Go on with the rest of the task, or ask what they want instead.", isError: true };
           else {
             const item = decisions[c.id] === true ? validDesktopDecision(c.id, answered) : null;
             // Only the task's own card ("Allow for this task") grants the task.
@@ -1622,7 +1627,7 @@ async function* runBot(
         } else if (!tools.some((t) => t.name === c.name)) {
           results.push({ id: c.id, name: c.name, content: DESK_TOOLS.has(c.name) ? deskToolMissing(c.name, s, bot) : missingToolText(c.name, bot, mcp.down, chat.pending?.channel), isError: true });
         } else if (decisions[c.id] === false) {
-          results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't retry it; ask the user or try another way.", isError: true });
+          results.push({ id: c.id, name: c.name, content: "The user declined this action. Don't do it, or anything equivalent, by another way. Go on with the rest of the task, or ask what they want instead.", isError: true });
         } else if (
           // A connector action that reaches other people and runs without a card just now (allowed for this chat,
           // or a trusted connector): it waits a few seconds first, with Cancel. Not in routines or on Telegram
@@ -1766,6 +1771,12 @@ async function* runBot(
       }
       // A failure that doesn't say what to do next gets a short hint (lib/arg-repair-core.ts).
       for (const r of results) if (r.isError && r.content) r.content = withNextStep(r.content);
+      // A one-step tool's first result in this conversation brings its guide (lib/tool-defer.ts).
+      const before = chat.entries.flatMap((e) => (e.kind === "bot" ? e.steps : []));
+      for (let k = 0; k < results.length; k++) {
+        const spec = tools.find((t) => t.name === results[k]!.name);
+        if (spec && onDemand(tools, spec.name)) results[k] = withFirstGuide(results[k]!, spec, [...before, { role: "tool", results: results.slice(0, k) }]);
+      }
       // A connector tool called at the first try (no guide read first) and refused: its parameters come with the
       // refusal, so the next call is the right one.
       for (const r of results) {

@@ -21,6 +21,42 @@ export const DEFERRED: Record<string, string> = {
   edit_copy_of_file: "make an edited copy of a file on the user's computer (Word, PowerPoint, Excel, text); the original is never changed",
 };
 
+/**
+ * Tools sent in one line too, but called in ONE step: the line names their parameters, the first call is the
+ * real call, and its result brings the tool's full guide along (withFirstGuide), so nothing is paid to learn
+ * it. Why: the fixed part of every request was about 22,000 tokens, two thirds of it tool descriptions, and a
+ * cold conversation pays to write all of it again (2.7 credits for "what is 15% of 2400?", measured). These
+ * are tools most conversations never touch, or whose first call is a lookup and not the deliverable. A tool
+ * whose first call IS the deliverable (a deck, a designed image) stays in DEFERRED: its guide comes first.
+ */
+export const DIRECT: Record<string, string> = {
+  work_table: "the team's shared tables in this chat: any list you build or keep (prospects, contacts, products, sources, tasks). Actions: add, replace, read, update, remove, columns, chart. The user sees it in the Canvas",
+  work_notes: "the team's shared notes: long text that doesn't belong in a chat message (findings, a draft, a report). Actions: append, write, read",
+  work_export: "turn a work table or notes into a real file for the user, complete, without retyping: Excel, CSV, Word, PDF or Markdown",
+  find_places: "businesses and places of a city or district (restaurants, shops, clinics…) in ONE call from open map data, with address, phone, email and site, straight into a work table: use it FIRST for any list of local businesses",
+  find_papers: "scientific and scholarly publications on a topic in ONE call (title, authors, year, journal, link), straight into a work table",
+  scrape_list: "a whole list from a website (a directory, a catalogue, results pages; all its pages, each item's own page with details=true) into a work table in ONE call",
+  extract_list: "every item of the list on the page open in your browser, in one step (results, a directory, a table)",
+  propose_routine: "something to do again and again at a time (\"every day at 10…\", \"each Monday…\", \"كل يوم على 8…\", \"chaque matin…\"), a one-time reminder, a task for later, or watching a page for news: set it up instead of doing it once",
+  list_routines: "the user's routines and reminders, and when each runs",
+  propose_team: "create a new group of bots for a job, with the user's OK (when they ask for a team, or no group fits)",
+  propose_specialist: "propose a specialist bot when a job needs a skill nobody on the team has",
+  use_project_folder: "ask the user to let this chat work in a folder on their computer (a project they name, code, a site)",
+  start_big_job: "call first when the request needs long, heavy work (a long list, many items to find or check, deep research, a large document): it lifts the limits on steps",
+  request_abilities: "ask the user to turn on an ability you lack (web, browser, their signed-in accounts, a connector) with one click",
+  run_helpers: "hand 2 to 5 independent parts of a big job to helpers that work at the same time (one city, competitor or source each)",
+  replay_skill: "run a skill the user recorded by showing it: their steps are repeated in your browser",
+  upload_file: "attach a file from the user's computer to the page open in your browser (an email attachment, an import field)",
+  save_skill: "save a reliable multi-step procedure as a skill, so the same kind of task is faster next time",
+  send_telegram: "send a message to the user's own Telegram now, when they ask to get something there or on their phone",
+  oovi_help: "how oovi itself works: where things are, how to connect, enable or set something up in the app (instead of guessing)",
+  find_files: "find files on the user's computer by name (Desktop, Documents, Downloads…)",
+  list_folder: "what is in a folder on the user's computer",
+  read_computer_file: "read a file on the user's computer by its full path (PDF, Office, CSV, text, images)",
+  send_file_to_user: "give the user a file from their computer in the chat (and on Telegram)",
+  copy_file_to_downloads: "copy a file from the user's computer into their Downloads/oovi folder",
+};
+
 const GUIDE_END = "[/guide]";
 const guideOpen = (name: string) => `[guide:${name}]`;
 
@@ -32,7 +68,7 @@ export type Deferral = { sent: ToolSpec[]; deferred: ToolSpec[] };
 export const MANY_CONNECTOR_TOOLS = 15;
 
 /** One line that says when to reach for a connector tool: the first sentence of its description. */
-const lineOf = (t: ToolSpec) => (DEFERRED[t.name] ?? (t.description || t.name).split(/(?<=[.!?])\s/)[0]!.replace(/\s+/g, " ").slice(0, 110));
+const lineOf = (t: ToolSpec) => (DEFERRED[t.name] ?? DIRECT[t.name] ?? (t.description || t.name).split(/(?<=[.!?])\s/)[0]!.replace(/\s+/g, " ").slice(0, 110));
 
 /**
  * A connector tool's parameter names, the optional ones with "?": enough to call it at the first try. Reading
@@ -50,11 +86,31 @@ const signature = (t: ToolSpec) => {
 /** A connector tool's parameters, given with an error: the bot corrects its call without a round trip for the guide. */
 export const paramsHint = (t: ToolSpec) => `Parameters of ${t.name} (JSON schema): ${JSON.stringify(t.parameters)}`;
 
-const oneStep = (name: string) => name.startsWith("mcp_");
+const oneStep = (name: string) => name.startsWith("mcp_") || name in DIRECT;
+
+/** A result that starts with a tool's guide, in its two parts (the guide is kept whole when old results are shortened). */
+export function splitGuide(content: string): { guide: string; rest: string } {
+  if (!content.startsWith("[guide:")) return { guide: "", rest: content };
+  const end = content.indexOf(GUIDE_END);
+  if (end < 0) return { guide: "", rest: content };
+  return { guide: content.slice(0, end + GUIDE_END.length), rest: content.slice(end + GUIDE_END.length).replace(/^\n/, "") };
+}
+
+/**
+ * The first result of a one-step tool in a conversation, with the tool's guide in front of it (its full
+ * description and parameters): the bot learns the details from its first use, with no call spent asking.
+ * `history`: the conversation so far (a guide already there isn't given twice).
+ */
+export function withFirstGuide(r: ToolResult, spec: ToolSpec, history: Msg[]): ToolResult {
+  if (!(spec.name in DIRECT)) return r;
+  const open = guideOpen(spec.name);
+  if (history.some((m) => m.role === "tool" && m.results.some((x) => x.content.startsWith(open)))) return r;
+  return { ...r, content: `${open}\n${spec.name}: ${spec.description}\n\nParameters (JSON schema): ${JSON.stringify(spec.parameters)}\n${GUIDE_END}\n${r.content}` };
+}
 
 /** Whether this tool is sent on demand, among these tools. */
 export function onDemand(tools: ToolSpec[], name: string): boolean {
-  if (name in DEFERRED) return true;
+  if (name in DEFERRED || name in DIRECT) return true;
   return name.startsWith("mcp_") && tools.filter((t) => t.name.startsWith("mcp_")).length > MANY_CONNECTOR_TOOLS;
 }
 

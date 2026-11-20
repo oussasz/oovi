@@ -9,9 +9,9 @@ import { batchKey, batchSummary, runBatch, type Outcome } from "./batch-core";
 import type { ToolSpec } from "./llm";
 import { mcpToolKind } from "./mcp";
 import { dataDir } from "./settings";
-import { cellsText, fromCsvText, fromSheetText, fromWorkTable, planBatch, selectRows, type BatchPlan, type Table } from "./table-core";
+import { cellsText, fromCsvText, fromSheetText, fromWorkTable, planBatch, selectRows, summarize, type BatchPlan, type Table } from "./table-core";
 import type { ApprovalItem, Chat, ToolCall, ToolResult } from "./types";
-import { findWorkTable } from "./workfiles";
+import { findWorkTable, putTable } from "./workfiles";
 
 export const READ_ROWS = "read_rows";
 export const FOR_EACH_ROW = "for_each_row";
@@ -34,7 +34,7 @@ export const ROW_SPECS: ToolSpec[] = [
   {
     name: READ_ROWS,
     description:
-      "Look inside a table without loading it: an attached Excel or CSV file, or a work table. Choose rows with `filter` and only the `columns` you need; the answer says how many rows match and shows up to `limit` of them. Use it to look, count or check. To do something for every row, use for_each_row: it works on the table itself, so you don't read the rows first.",
+      "Work on a table without loading it: an attached Excel or CSV file, or a work table. Look: choose rows with `filter` and only the `columns` you need; the answer says how many rows match and shows up to `limit` of them. Count and add up: `group_by` gives the number of rows per value of a column (biggest first), with `values` for sums, averages, minimum and maximum; one call answers \"which city has the most\", \"the total per month\". Take a part of it: `save_to_table` copies every matching row into a work table, exactly, and work_export then delivers it as Excel or CSV; never retype rows to make a file. To do something for every row, use for_each_row when you have it.",
     parameters: {
       type: "object",
       properties: {
@@ -44,6 +44,10 @@ export const ROW_SPECS: ToolSpec[] = [
         columns: { type: "array", items: { type: "string" }, description: "Only these columns (default: all)" },
         limit: { type: "integer", description: "How many rows to show (default 20, max 200)" },
         offset: { type: "integer", description: "Skip this many matching rows first (to page through)" },
+        group_by: { type: "array", items: { type: "string" }, description: "Count the matching rows per value of these columns instead of showing them, e.g. [\"City\"]" },
+        values: { type: "array", description: "With or without group_by: numbers to compute, e.g. [{\"op\":\"sum\",\"column\":\"Amount\"}]", items: { type: "object", properties: { op: { type: "string", enum: ["sum", "avg", "min", "max", "count"] }, column: { type: "string" } }, required: ["op", "column"] } },
+        top: { type: "integer", description: "With group_by: only the N biggest groups (default 50)" },
+        save_to_table: { type: "string", description: "Copy every matching row (the chosen columns) into a work table of this name, exactly as it is; then deliver it with work_export" },
       },
       required: ["source"],
     },
@@ -116,6 +120,23 @@ export function runReadRows(call: ToolCall, chat: Chat, workChat: string): ToolR
   const i = call.input;
   const src = sourceOf(chat, workChat, i.source, i.sheet);
   if ("error" in src) return fail(call, src.error);
+  // Counting and adding up per group: the numbers are computed here, the rows are not shown.
+  if (i.group_by !== undefined || i.values !== undefined) {
+    const top = Math.min(200, Math.max(1, Math.floor(Number(i.top) || 50)));
+    const sum = summarize(src.table, { groupBy: i.group_by, values: i.values, filter: i.filter, top });
+    if ("error" in sum) return fail(call, sum.error);
+    const more = sum.groups > sum.rows.length ? `\n[${sum.groups - sum.rows.length} smaller groups not shown: ask with a bigger top, or a filter.]` : "";
+    return { id: call.id, name: call.name, content: `"${src.name}": ${sum.matching} of ${src.table.rows.length} rows match${i.group_by !== undefined ? `, in ${sum.groups} groups (biggest first)` : ""}. Computed from the table:\n${sum.columns.join(" | ")}\n${sum.rows.map((r) => r.join(" | ")).join("\n")}${more}` };
+  }
+  // A part of the table as a table of its own: copied here, row for row, never retyped.
+  if (typeof i.save_to_table === "string" && i.save_to_table.trim()) {
+    const all = selectRows(src.table, { filter: i.filter, columns: i.columns });
+    if ("error" in all) return fail(call, all.error);
+    if (!all.rows.length) return fail(call, `No row of "${src.name}" passes the filter: nothing was copied.`);
+    const put = putTable(workChat, i.save_to_table, all.columns, all.rows.map((r) => r.cells));
+    if ("error" in put) return fail(call, put.error);
+    return { id: call.id, name: call.name, content: `Copied ${put.rows} rows (of ${src.table.rows.length}) from "${src.name}" into the work table "${put.name}", exactly as they are, with the columns: ${all.columns.join(", ")}. To give it to the user as a file: work_export with name "${put.name}".` };
+  }
   const limit = Math.min(200, Math.max(1, Math.floor(Number(i.limit) || 20)));
   const offset = Math.max(0, Math.floor(Number(i.offset) || 0));
   const sel = selectRows(src.table, { filter: i.filter, columns: i.columns, limit, offset });

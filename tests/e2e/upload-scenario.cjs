@@ -10,6 +10,7 @@
 //   E) keys and system files are never attached, even with the user's OK,
 //   F) every bot with a browser is told to attach files itself, never to ask the user to pick one.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -69,7 +70,7 @@ function answer(body) {
   const all = JSON.stringify(msgs);
   const scene = (all.match(/(IMPORT|MAIL|TWO|OUTSIDE|KEY):(?![\s\S]*(?:IMPORT|MAIL|TWO|OUTSIDE|KEY):)/) || [])[1] || "";
   seen.system = sys;
-  seen.tools = (body.tools || []).map((t) => t.name);
+  seen.tools = allTools(body).map((t) => t.name);
   const numberOf = (label) => Number((out.match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`)) || [])[1]);
   const pageUrl = { IMPORT: "/import", MAIL: "/mail", TWO: "/two", OUTSIDE: "/import", KEY: "/import" }[scene];
   if (!scene) return text("ok");

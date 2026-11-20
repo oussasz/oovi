@@ -4,6 +4,7 @@
 // B) a group takes longer than message_group's wait, Telegram fails twice, result still arrives;
 // C) oovi is killed mid-task and restarted: the user is told it didn't finish, nothing spins.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -31,7 +32,7 @@ let modelCalls = 0;
 
 async function answer(body) {
   modelCalls++;
-  const tools = (body.tools || []).map((t) => t.name || t.type);
+  const tools = allTools(body).map((t) => t.name || t.type);
   const msgs = body.messages || [];
   const last = msgs[msgs.length - 1] || {};
   const results = Array.isArray(last.content) ? last.content.filter((b) => b.type === "tool_result") : [];

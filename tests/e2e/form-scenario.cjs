@@ -3,6 +3,7 @@
 // built oovi server with a scripted model and a page served here. Needs Chrome/Edge/Chromium like upload.
 // Run: node tests/e2e/form-scenario.cjs
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -55,7 +56,7 @@ function answer(body) {
   const lastTool = results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;
   if (/LOGIN:/.test(JSON.stringify(msgs))) {
     seen.loginBodies = [...(seen.loginBodies || []), JSON.stringify(body)];
-    seen.loginTools = (body.tools || []).map((t) => t.name);
+    seen.loginTools = allTools(body).map((t) => t.name);
     if (!lastTool) return call("open_url", { url: `${SITE}/login` });
     if (lastTool === "open_url") return call("fill_login", {});
     if (lastTool === "fill_login") return call("click", { element: Number((out.match(/\[(\d+)\][^\n]*"Sign in"/) || [])[1]) });
@@ -64,7 +65,7 @@ function answer(body) {
   }
   const curUser = msgs.filter((m) => m.role === "user" && (typeof m.content === "string" || (Array.isArray(m.content) && m.content.some((b) => b.type === "text")))).at(-1);
   if (/REPLAY:/.test(JSON.stringify(curUser || ""))) {
-    seen.replayTools = (body.tools || []).map((t) => t.name);
+    seen.replayTools = allTools(body).map((t) => t.name);
     if (!lastTool) return call("replay_skill", { name: "Contact form", values: { Nom: "Sara" } });
     seen.replayOut = out;
     return text("REPLAY-DONE");
@@ -81,7 +82,7 @@ function answer(body) {
   }
   if (!/FORM:/.test(JSON.stringify(msgs))) return text("ok");
   seen.calls++;
-  seen.tools = (body.tools || []).map((t) => t.name);
+  seen.tools = allTools(body).map((t) => t.name);
   const num = (label) => Number((out.match(new RegExp(`\\[(\\d+)\\][^\\n]*${label}`)) || [])[1]);
   if (!lastTool) return call("open_url", { url: `${SITE}/contact` });
   if (lastTool === "open_url")

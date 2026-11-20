@@ -13,6 +13,7 @@
 // npm run build). Refuses any database that isn't on this machine.
 require("./server-guard.cjs"); // fail fast if the test server exits on its own (port taken, crash)
 const { spawn, spawnSync } = require("node:child_process");
+const allTools = require("./all-tools.cjs");
 const crypto = require("node:crypto");
 const fs = require("node:fs");
 const http = require("node:http");
@@ -83,7 +84,7 @@ const model = http.createServer((rq, rs) => {
     const body = JSON.parse(b || "{}");
     const msgs = body.messages || [];
     const ask = textOf([...msgs].reverse().find((m) => m.role === "user" && textOf(m).trim()) || {});
-    const tools = (body.tools || []).map((t) => t.name);
+    const tools = allTools(body).map((t) => t.name);
     calls.push({ ask, tools });
     const out = (content, stop) => {
       rs.writeHead(200, { "content-type": "application/json" });

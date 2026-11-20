@@ -8,6 +8,7 @@
 //   E) the logs never carry chat text
 // Run: node tests/e2e/runner-scenario.cjs
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -53,7 +54,7 @@ async function theOovi(uid, body) {
   const users = msgs.filter((m) => m.role === "user" && textOf(m).trim());
   const ask = textOf(users.at(-1) || {});
   aiCalls.push({ uid, system: sysText(body.system), ask });
-  if (!(body.tools || []).length) return reply([{ type: "text", text: "ok" }], "end_turn");
+  if (!allTools(body).length) return reply([{ type: "text", text: "ok" }], "end_turn");
   const n = msgs.reduce((k, m) => k + (Array.isArray(m.content) ? m.content.filter((b) => b.type === "tool_use").length : 0), 0);
   const use = (name, input) => reply([{ type: "tool_use", id: `toolu_${name}_${n}_${Date.now()}`, name, input }], "tool_use");
   if (/NEEDPC/.test(ask)) return use("open_url", { url: "https://example.com" });

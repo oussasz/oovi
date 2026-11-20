@@ -2,6 +2,7 @@
 // names: which apps are ready, the link to connect one app, "use all my Zapier apps", and what a bot is told
 // when a Zapier action fails with no reason. Run: node tests/e2e/zapier-scenario.cjs (SHOT=dir for screenshots)
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -34,7 +35,7 @@ const lastTool = (msgs) => {
 async function answer(body) {
   seen.bodies.push(body);
   const msgs = body.messages || [];
-  const tools = (body.tools || []).map((t) => t.name);
+  const tools = allTools(body).map((t) => t.name);
   const read = tools.find((t) => /execute_zapier_read_action$/.test(t));
   // Zapier down (check G): the model still reaches for the tool it remembers.
   if (seen.down && !seen.downUser) seen.downUser = JSON.stringify(msgs.at(-1) || {});

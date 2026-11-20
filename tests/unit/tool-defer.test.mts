@@ -4,11 +4,12 @@ import assert from "node:assert/strict";
 import { DEFERRED, deferTools, guideSeen, guideText, isGuide, unwrapCalls, USE_TOOL, useToolResult, wrapHistory } from "../../lib/tool-defer.ts";
 
 const spec = (name: string, size = 50) => ({ name, description: `${name} does things. ${"x".repeat(size)}`, parameters: { type: "object", properties: { filename: { type: "string" } }, required: ["filename"] } });
-const tools = [spec("read_url"), spec("create_image", 3000), spec("work_table"), spec("create_presentation", 2500), spec("edit_copy_of_file", 2500)];
+// (memory stands for any everyday tool that is always sent in full.)
+const tools = [spec("read_url"), spec("create_image", 3000), spec("memory"), spec("create_presentation", 2500), spec("edit_copy_of_file", 2500)];
 
 test("on-demand tools are folded into use_tool; everyday tools are untouched and keep their order", () => {
   const d = deferTools(tools);
-  assert.deepEqual(d.sent.map((t) => t.name), ["read_url", "work_table", USE_TOOL]);
+  assert.deepEqual(d.sent.map((t) => t.name), ["read_url", "memory", USE_TOOL]);
   assert.deepEqual(d.deferred.map((t) => t.name), ["create_image", "create_presentation", "edit_copy_of_file"]);
   const use = d.sent.at(-1)!;
   for (const n of ["create_image", "create_presentation", "edit_copy_of_file"]) assert.ok(use.description.includes(`- ${n}: ${DEFERRED[n]}`));
@@ -104,4 +105,38 @@ test("a connector tool that takes nothing runs when it is named: there is no inp
   const many = Array.from({ length: 16 }, (_, i) => ({ name: `mcp_q_tool_${i}`, description: `Does thing ${i}.`, parameters: { type: "object", properties: {} } }));
   const d = deferTools(many as never);
   assert.deepEqual(unwrapCalls([{ id: "a", name: "use_tool", input: { name: "mcp_q_tool_2" } }], d, []), [{ id: "a", name: "mcp_q_tool_2", input: {} }]);
+});
+
+test("everyday-but-long tools are listed in one line with their parameters and called in one step", async () => {
+  const { deferTools, unwrapCalls, DIRECT } = await import("../../lib/tool-defer.ts");
+  const mk = (name: string, props: Record<string, unknown>, required: string[] = []) => ({ name, description: `${name} does things. ${"x".repeat(900)}`, parameters: { type: "object", properties: props, required } });
+  const list = [mk("read_url", { url: {} }, ["url"]), mk("work_table", { action: {}, table: {}, rows: {} }, ["action", "table"]), mk("find_places", { area: {}, categories: {} }, ["area"]), mk("create_image", { filename: {} }, ["filename"]), mk("create_presentation", { filename: {} }, ["filename"])];
+  assert.ok("work_table" in DIRECT && "find_places" in DIRECT);
+  const d = deferTools(list as never);
+  assert.deepEqual(d.sent.map((t) => t.name), ["read_url", "use_tool"]);
+  const use = d.sent.at(-1)!;
+  assert.match(use.description, /- work_table\(action, table, rows\?\): /);
+  assert.match(use.description, /- find_places\(area, categories\?\): /);
+  // A tool whose first call IS the deliverable still gets its guide first.
+  assert.match(use.description, /- create_image: /);
+  const call = { id: "a", name: "use_tool", input: { name: "work_table", input: { action: "read", table: "T" } } };
+  assert.deepEqual(unwrapCalls([call], d, []), [{ id: "a", name: "work_table", input: { action: "read", table: "T" } }]);
+  const img = { id: "b", name: "use_tool", input: { name: "create_image", input: { filename: "a.png" } } };
+  assert.deepEqual(unwrapCalls([img], d, []), [img]);
+});
+
+test("the first result of a one-step tool carries its guide, once: no round trip to learn it, and it survives shortening", async () => {
+  const { withFirstGuide, splitGuide } = await import("../../lib/tool-defer.ts");
+  const spec = { name: "work_table", description: "The team's tables. Long rules here.", parameters: { type: "object", properties: { action: {} } } };
+  const first = withFirstGuide({ id: "1", name: "work_table", content: "3 added." }, spec as never, []);
+  assert.match(first.content, /^\[guide:work_table\]/);
+  assert.match(first.content, /Long rules here/);
+  assert.match(first.content, /\[\/guide\]\n3 added\.$/);
+  const history = [{ role: "tool" as const, results: [first] }];
+  const second = withFirstGuide({ id: "2", name: "work_table", content: "2 added." }, spec as never, history);
+  assert.equal(second.content, "2 added.");
+  const parts = splitGuide(first.content);
+  assert.match(parts.guide, /\[\/guide\]$/);
+  assert.equal(parts.rest, "3 added.");
+  assert.deepEqual(splitGuide("plain"), { guide: "", rest: "plain" });
 });

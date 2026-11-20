@@ -8,6 +8,7 @@
 //   3. the answer after /yes reaches Telegram,
 //   4. the bot is told to write the user's name exactly as given.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -55,7 +56,7 @@ async function answerAsync(body) {
     return reply([{ type: "tool_use", id: `toolu_doc_${Date.now()}`, name: "create_document", input: { filename: "rapport.md", content: "# Rapport\nTout va bien." } }], "tool_use");
   }
   if (/TGSEND/.test(u)) {
-    seen.tgTools = (body.tools || []).map((t) => t.name);
+    seen.tgTools = allTools(body).map((t) => t.name);
     if (hasResult) return reply([{ type: "text", text: "TGSEND-DONE" }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_tg_${Date.now()}`, name: "send_telegram", input: { text: "TG-HELLO from your bot" } }], "tool_use");
   }
@@ -64,7 +65,7 @@ async function answerAsync(body) {
     return reply([{ type: "tool_use", id: `toolu_rep_${Date.now()}`, name: "work_table", input: { action: "replace", table: "Clients", rows: [["Nouveau C", "0555 77 88 99"]] } }], "tool_use");
   }
   if (/REMIND-TG/.test(u)) {
-    seen.remindTools = (body.tools || []).map((t) => t.name);
+    seen.remindTools = allTools(body).map((t) => t.name);
     if (hasResult) return reply([{ type: "text", text: "REMIND-SET" }], "end_turn");
     return reply([{ type: "tool_use", id: `toolu_rem_${Date.now()}`, name: "propose_routine", input: { reminder: "طفي الفرن REMIND-OVEN", frequency: "once", in_minutes: 1 } }], "tool_use");
   }

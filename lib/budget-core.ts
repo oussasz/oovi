@@ -29,7 +29,13 @@ export function calibrate(prev: number, estimated: number, actual: number): numb
 /** The budget in counted tokens that keeps the real size under `budget`. */
 export const effectiveBudget = (budget: number, ratio: number) => Math.floor(budget / Math.max(MIN_RATIO, ratio));
 
-const isGuide = (content: string) => content.startsWith("[guide:");
+const GUIDE_END = "[/guide]";
+/** A result that starts with a tool's guide: the guide, and what follows it (lib/tool-defer.ts splitGuide). */
+const guideOf = (content: string): [string, string] => {
+  if (!content.startsWith("[guide:")) return ["", content];
+  const end = content.indexOf(GUIDE_END);
+  return end < 0 ? ["", content] : [content.slice(0, end + GUIDE_END.length), content.slice(end + GUIDE_END.length)];
+};
 
 /**
  * Tool results before `keepIndex` cut to `max` characters, to make a request fit. A tool's guide stays whole:
@@ -39,7 +45,13 @@ const isGuide = (content: string) => content.startsWith("[guide:");
 export function shortenOlderResults(messages: Msg[], max: number, keepIndex: number, note = "older result shortened; use recall_history or run the tool again for details"): Msg[] {
   return messages.map((m, i): Msg =>
     m.role === "tool" && i !== keepIndex
-      ? { role: "tool", results: m.results.map((r) => (isGuide(r.content) || r.content.length <= max ? r : { ...r, content: `${r.content.slice(0, max)}\n[${note}]` })) }
+      ? {
+          role: "tool",
+          results: m.results.map((r) => {
+            const [guide, rest] = guideOf(r.content);
+            return rest.length <= max ? r : { ...r, content: `${guide}${rest.slice(0, max)}\n[${note}]` };
+          }),
+        }
       : m,
   );
 }

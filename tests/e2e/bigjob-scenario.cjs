@@ -11,6 +11,7 @@
 //   F) a job where rounds add nothing ends by itself with a final answer (no endless loop),
 //   G) a bot working alone (no team) gets the same mode.
 const http = require("node:http");
+const allTools = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -65,7 +66,7 @@ function answer(body) {
   }
   const me = (sys.match(/You are (\w+)/) || [])[1] || "?";
   seen.systems[me] = sys;
-  seen.tools[me] = (body.tools || []).map((t) => t.name);
+  seen.tools[me] = allTools(body).map((t) => t.name);
   const lastTool = (() => {
     const prev = msgs[msgs.length - 2];
     return results.length && prev && Array.isArray(prev.content) ? (prev.content.find((b) => b.type === "tool_use") || {}).name : null;

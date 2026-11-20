@@ -211,6 +211,60 @@ export function selectRows(t: Table, o: { filter?: unknown; columns?: unknown; l
   return { columns: cols.map((i) => t.columns[i]!), rows: picked.map((r) => ({ n: r.n, cells: cols.map((i) => r.cells[i] ?? "") })), matching: pass.length };
 }
 
+export type Summary = { columns: string[]; rows: string[][]; /** How many groups there are in all (rows may hold only the top ones). */ groups: number; matching: number };
+
+const SUMS: ReadonlySet<string> = new Set(["sum", "avg", "min", "max", "count"]);
+const tidy = (x: number) => String(Math.round(x * 100) / 100);
+
+/**
+ * Counting and adding up per group, done here: "which city has the most rows", "the total per month". The
+ * numbers come from the data, not from a model reading five hundred rows (measured: that question took five
+ * model calls and 7.4 credits by filters alone). Groups come biggest first.
+ */
+export function summarize(t: Table, o: { groupBy?: unknown; values?: unknown; filter?: unknown; top?: number } = {}): Summary | { error: string } {
+  const sel = selectRows(t, { filter: o.filter });
+  if ("error" in sel) return sel;
+  const byN = new Map(t.rows.map((r) => [r.n, r]));
+  const groupCols: number[] = [];
+  for (const g of Array.isArray(o.groupBy) ? o.groupBy : o.groupBy ? [o.groupBy] : []) {
+    const i = columnOf(t, String(g));
+    if (i < 0) return { error: noColumn(t, String(g)) };
+    groupCols.push(i);
+  }
+  const vals: { op: string; col: number }[] = [];
+  for (const v of Array.isArray(o.values) ? o.values : o.values ? [o.values] : []) {
+    const { op, column } = (v ?? {}) as { op?: unknown; column?: unknown };
+    const name = String(op ?? "").toLowerCase();
+    if (!SUMS.has(name)) return { error: `Unknown value op "${String(op)}". Use one of: sum, avg, min, max, count.` };
+    const i = columnOf(t, String(column ?? ""));
+    if (i < 0) return { error: noColumn(t, String(column ?? "")) };
+    vals.push({ op: name, col: i });
+  }
+  const groups = new Map<string, { key: string[]; n: number; nums: number[][] }>();
+  for (const s of sel.rows) {
+    const row = byN.get(s.n)!;
+    const key = groupCols.map((i) => row.cells[i] ?? "");
+    const id = key.map(fold).join("\u0001");
+    const g = groups.get(id) ?? { key, n: 0, nums: vals.map(() => []) };
+    g.n++;
+    vals.forEach((v, k) => {
+      const x = num(row.cells[v.col] ?? "");
+      if (x !== null) g.nums[k]!.push(x);
+    });
+    groups.set(id, g);
+  }
+  const all = [...groups.values()].sort((a, b) => b.n - a.n);
+  const shown = o.top && o.top > 0 ? all.slice(0, Math.floor(o.top)) : all;
+  const cell = (op: string, xs: number[]) =>
+    op === "count" ? String(xs.length) : !xs.length ? "" : op === "sum" ? tidy(xs.reduce((a, b) => a + b, 0)) : op === "avg" ? tidy(xs.reduce((a, b) => a + b, 0) / xs.length) : op === "min" ? tidy(Math.min(...xs)) : tidy(Math.max(...xs));
+  return {
+    columns: [...groupCols.map((i) => t.columns[i]!), "rows", ...vals.map((v) => `${v.op} of ${t.columns[v.col]}`)],
+    rows: shown.map((g) => [...g.key, String(g.n), ...vals.map((v, k) => cell(v.op, g.nums[k]!))]),
+    groups: all.length,
+    matching: sel.matching,
+  };
+}
+
 /** Rows as compact text for a bot: "row | Col | Col", one row per line. */
 export function cellsText(columns: string[], rows: TableRow[], maxCell = 300): string {
   const clean = (s: string) => s.replace(/\s*\n\s*/g, " ").replace(/\|/g, "/").slice(0, maxCell);

@@ -29,7 +29,7 @@ const slug = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").rep
     const hasSite = rnd() < 0.3;
     if (email) emails.push(email);
     const st = pick(status);
-    rowsOut.push({ row: i + 1, email, status: st, company: name });
+    rowsOut.push({ row: i + 1, email, status: st, company: name, city, sector: kind });
     ws.addRow([i, name, kind, `${f} ${l}`, city, `0${pick([5,6,7])}${String(Math.floor(rnd() * 1e8)).padStart(8, "0")}`, email, hasSite ? `https://www.${dom}` : "", st, hasSite ? "Site ancien, pas adapté au mobile" : "Pas de site web, seulement une page Facebook"]);
   }
   await wb.xlsx.writeFile(process.argv[2]);

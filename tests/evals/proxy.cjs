@@ -9,7 +9,8 @@ const OUT = process.env.LAB_OUT;
 const PORT = Number(process.env.PROXY_PORT) || 4701;
 fs.mkdirSync(path.join(OUT, "calls"), { recursive: true });
 let n = 0;
-const ALLOW = [/^\/api\/v1\/ai\/messages$/, /^\/api\/v1\/ai\/status$/];
+// Model calls and their status; and the places lookup (public map data read for find_places: nothing of the account).
+const ALLOW = [/^\/api\/v1\/ai\/messages$/, /^\/api\/v1\/ai\/status$/, /^\/api\/v1\/places$/];
 http.createServer((req, res) => {
   const chunks = [];
   req.on("data", (c) => chunks.push(c));

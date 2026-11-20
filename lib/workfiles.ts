@@ -10,7 +10,7 @@ import type { ToolSpec } from "./llm";
 import { dataDir, type BrowserConfig } from "./settings";
 import type { ToolCall, ToolResult, Workspace } from "./types";
 import { rowsForTable, type ListRow } from "./page-list-core";
-import { dropUnseen, droppedNote, type Seen } from "./workfiles-core";
+import { MAX_CELL, MAX_COLUMNS, MAX_FILES, MAX_ROWS, dropUnseen, droppedNote, type Seen } from "./workfiles-core";
 import { makeChart, MAX_CHARTS, snapshotsFor, type Snapshot } from "./canvas-core";
 import { addRows, cleanFileName, emptyStore, exportView, filledCounts, readRows, removeRows, setColumns, storeLines, tableLine, tableMarkdown, updateRow, writeNote, type WorkStore } from "./workfiles-core";
 
@@ -153,6 +153,25 @@ export function addRecordRows(chatId: string, wanted: string, records: Record<st
   saveWork(chatId, store);
   const parts = [`${r.added} added`, r.merged ? `${r.merged} already there and completed` : "", r.skipped ? `${r.skipped} skipped (already there with nothing new)` : ""].filter(Boolean);
   return { text: `${parts.join(", ")}. Now: ${tableLine(name, store.tables[name]!)}.` };
+}
+
+/**
+ * Rows copied as they are into a work table (replacing a table of that name): a part of the user's workbook,
+ * chosen by filters, becomes a table the bots can deliver as a file. Nothing is merged or dropped (addRows
+ * joins rows that share a name or a phone number, which is right for a list being collected and wrong for
+ * a copy), and nothing passes through a model.
+ */
+export function putTable(chatId: string, wanted: string, columns: string[], rows: string[][]): { name: string; rows: number } | { error: string } {
+  if (!ID_RE.test(chatId)) return { error: "This chat has no work files." };
+  const store = loadWork(chatId);
+  const name = nameOf(store, wanted, "tables") ?? cleanFileName(wanted);
+  if (!name) return { error: "Give the table a name." };
+  if (!store.tables[name] && Object.keys(store.tables).length + Object.keys(store.notes).length >= MAX_FILES) return { error: `This chat already has ${MAX_FILES} work files.` };
+  if (columns.length > MAX_COLUMNS) return { error: `A work table holds at most ${MAX_COLUMNS} columns; choose the columns you need.` };
+  if (rows.length > MAX_ROWS) return { error: `A work table holds at most ${MAX_ROWS} rows; narrow the filter.` };
+  store.tables[name] = { columns: [...columns], rows: rows.map((r) => columns.map((_, i) => String(r[i] ?? "").slice(0, MAX_CELL))), updatedAt: Date.now() };
+  saveWork(chatId, store);
+  return { name, rows: rows.length };
 }
 
 export const WORK_TOOLS: ReadonlySet<string> = new Set(WORK_SPECS.map((s) => s.name));
