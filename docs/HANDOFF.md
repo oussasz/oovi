@@ -1,3 +1,66 @@
+## Harness v2, second part: every kind of task, and the price of a cold start (2026-11-20, `harness-v2`, NOT RELEASED, not pushed)
+Owner: check that the fix is a root one, for every kind of task and not only email; cut the 3.4 credits every new
+conversation starts with; look at four competitors and take what they do better; everything on the real model.
+- **Evals for work that needs no connector** (`tests/evals/run.cjs`, 12 new scenarios, 17 in all): a plain question,
+  counting per group in a 1,001-line workbook, a part of it delivered as Excel, a chart, an edited workbook, a
+  summary of a Word report, an offer as a Word file, a budget as Excel, a five-slide deck, research with sources, a
+  list from public data, a routine. Each is graded on the deliverable itself (the file is opened and its numbers,
+  rows, slides and words checked). First run on part one's build: 10 of 12 right; research answered from memory
+  without searching, counting per group took 5 calls and 7.4 credits, a part of a workbook was retyped row by row
+  (4 credits), a list of 10 came back as 30.
+- **Fixed from that**: `read_rows` counts and sums per group (`group_by`, `values`; `lib/table-core.ts summarize`) and
+  copies a part of a table into a work table exactly (`save_to_table`, `putTable`), so a file made from a workbook
+  never passes through the model. The contract says to look things up when asked to search, to deliver what was
+  asked in the form asked, to ask which one when a name fits several, and "all" only when every item was checked.
+  A declined card: "don't do it, or anything equivalent, by another way".
+- **The fixed part of every request, from about 61,000 characters to about 28,000** (22,000 tokens to about 11,000 for a
+  bot with no connector):
+  - 27 long tools go in one line each inside `use_tool` and are called in ONE step (`DIRECT` in `lib/tool-defer.ts`): the
+    line names their parameters, and the first result brings the tool's full guide in front of it
+    (`withFirstGuide`), so nothing is paid to learn it. A tool whose first call is the deliverable (a deck, a
+    designed image, a workbook with charts) still gets its guide first (`DEFERRED`).
+  - Guidance about the browser, the work files, routines and images left the instructions and comes with the
+    first result of those tools (`guideExtra` in `lib/orchestrator.ts`). A guide in front of a result is never cut
+    when old results are shortened.
+  - The instructions are two blocks (`SYSTEM_SPLIT` in `lib/llm.ts`): the rules, word for word the same for every bot
+    with the same abilities whoever the user is, then the bot's own part (who it is, the user's name, memory, team,
+    this chat's files and mode). With the tool list the same in every conversation (attachment and row tools are
+    always offered), another chat, another bot or another user reads the first block from the cache: a first
+    message with a file went from 14,300 tokens written to 9,900 read and 2,900 written.
+  - `tests/e2e/cost-scenario.cjs`: 170,000 weighted tokens to 138,000; the limit is now 145,000, and the fixed part must
+    stay under 40,000 characters.
+- **One-hour cache, prepared and OFF** (`OOVI_CACHE_1H=1` on the website; `web/lib/ai-tools.ts`, `web/lib/credits.ts`
+  bills one-hour writes at twice the input price; the app marks the tools and the shared rules for an hour when the
+  status says `cache1h`). NOT tried against the provider: the gateway strips the mark until the site is deployed with
+  the switch on. Try it on a quiet day and watch /admin/ai.
+- **A file is not made a third time in one turn** (`remadeRefusal`, `lib/loop-guard-core.ts`): a deck was made four
+  times in a row, 17 credits. A file a bot made is the user's and in the chat: not sent again, changed under the
+  same name (both came back as regressions when the old paragraphs moved, caught by the evals).
+- **The scripted scenarios** read a request as the real model does after `use_tool` (`tests/e2e/all-tools.cjs asModel`).
+- **Competitors read in code** (dusk bot, Rakazo, OpenMausBot, OpenBot; the last one's server is NOT in its repo,
+  so what `COMPETITORS-2026-11.md` says about its tool search, approvals and evals is unverified). Taken: counting
+  and adding up in the table tool, a stable shared prefix with the volatile parts after it, guidance chosen by use
+  instead of sent always, the decline wording, the ambiguous-name rule, "all only if checked". None of them hides
+  tools for free (dusk measured no saving, Rakazo pays a round trip): oovi's one-step list does. Not taken yet:
+  local SQL on files (DuckDB) and charts from a query, dated memory with expiry and per-message recall, observed
+  evidence and `doneWhen` in the done-check, prompt probes, parallel read-only calls, a cold-cache trim of old turns.
+Measured on the real model (`../lab/gen-1` = part one's build, `../lab/gen-7` = this one; one run each):
+| | part one's build | now |
+|---|---|---|
+| the 12 tasks without a connector | 10 of 12 right, 35.9 credits | 12 of 12 deliverables right (the deck took one call more than its limit), 19.4 credits |
+| the 5 connector scenarios | all right, 20.3 credits | all right, 10.2 credits |
+| "what is 15% of 2400?", nothing cached | 2.72 credits (22,000 tokens written) | 1.46 credits (11,700 tokens written) |
+| the same, when oovi was used in the last 5 minutes (any chat) | 2.72 | 0.15 (11,570 of 11,755 tokens read from the cache) |
+| a first message with a 1,001-line workbook | 3.28 | 0.49 |
+| counting per group in that workbook | 5 calls, 7.4 credits | 3 calls, 1.5 credits |
+| a part of it as an Excel file | 4 calls, 7.0 credits, rows retyped by the model | 4 calls, 2.0 credits, rows copied by oovi |
+| the 34-step research job of `cost-scenario.cjs` (scripted) | 170,092 weighted tokens | 138,847 |
+519 unit tests, the 17 scripted scenarios and `tsc` pass on the last build.
+Not done: the one-hour cache is untested (needs a site deploy); memory is still inside the bot's own block (a memory
+write rewrites it and the conversation after it); the done-check can still send a finished job back (a deck with
+6 slides for 5 asked: right, but 12 credits); research sometimes adds a well-known link it did not read; the
+evals run each scenario once or twice (a direction, not statistics); no real-Zapier check; nothing pushed.
+
 ## Harness v2: act first, data stays data (2026-11-20, branch `harness-v2`, NOT RELEASED, not pushed)
 Owner's report (a Windows user, 0.14.1): "send an email to everyone in the list" with a 1,001-line workbook cost about
 540 credits over 9 replies and sent nothing: questions, a plan, a lecture on the law, a refusal, three invented
