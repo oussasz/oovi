@@ -1860,6 +1860,8 @@ const fr: Dict = {
   "st.sending": "Envoie {what}",
   "st.copying": "Copie {what}",
   "st.thinking": "Réfléchit…",
+  "connect.card": "Connecter {app} : la page de connexion s'ouvre dans votre navigateur. oovi continue tout seul dès que c'est connecté.",
+  "st.connectWait": "En attente de la connexion de {app}…",
   "batch.head": "{n} fois : {what}",
   "batch.from": "Une pour chaque ligne de « {source} ». Vous approuvez une seule fois pour toutes.",
   "batch.skipEmpty": "{n} lignes sont laissées de côté : la valeur nécessaire est vide.",

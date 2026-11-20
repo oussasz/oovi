@@ -72,6 +72,7 @@ import { runSendTelegram, SEND_TELEGRAM_SPEC } from "./telegram-send";
 import { quoteOf, replyNote } from "./chat-basics-core";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workNow, workPrompt } from "./workfiles";
 import { zapierNow } from "./zapier";
+import { CONNECT_APP, CONNECT_SPEC, connectItem, runConnectApp, zapierAmong } from "./connect";
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
@@ -309,7 +310,7 @@ const filesMade = (chat: Chat) => {
  * (they run later with nobody watching), and changes to the team (new abilities, new bots).
  * Everything else a bot does runs without a card; the user can still press Stop at any time.
  */
-export const AUTO_STILL_ASKS = (name: string) => name === FOR_EACH_ROW || name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
+export const AUTO_STILL_ASKS = (name: string) => name === FOR_EACH_ROW || name === CONNECT_APP || name === "delete_file" || name === "run_command" || name === "propose_routine" || ADMIN_TOOLS.has(name) || SPECIALIST_TOOLS.has(name);
 
 /** Told to the bot when some connector tools were left out to keep the request small. */
 function droppedToolsNote(dropped: string[]): string {
@@ -1314,7 +1315,7 @@ async function* runBot(
   if (s.desktopControl.enabled && usesHosted(s)) await hostedStatus().catch(() => null);
   // Changing the team always goes through a card: any bot may ask for an ability it lacks; the Chief can also build teams.
   const adminSpecs = chat.routine ? [] : [REQUEST_ABILITIES_SPEC, ...(isMain ? [PROPOSE_TEAM_SPEC] : [])];
-  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(chatHasTable(chat, workHome(chat)) ? ROW_SPECS.filter((t) => t.name !== FOR_EACH_ROW || mcp.specs.length > 0) : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
+  const allTools = [...toolsFor(bot.tools), ...(isMain ? TEAM_SPECS : []), ...routineSpecs, ...specialistSpecs, ...adminSpecs, ...(chat.routine ? [] : [USE_FOLDER_SPEC]), ...(chat.workspace ? FILE_SPECS : []), ...DOC_SPECS, ...WORK_SPECS, ...(toolsFor(bot.tools).some((t) => t.name === "research" || t.name === "web_search") ? [HELPERS_SPEC] : []), ...(!chat.routine && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [START_JOB_SPEC] : []), ...(hasVm(settings) ? VM_SPECS : []), ...(chatHasAttachments(chat) ? ATTACH_SPECS : []), ...(chatHasTable(chat, workHome(chat)) ? ROW_SPECS.filter((t) => t.name !== FOR_EACH_ROW || mcp.specs.length > 0) : []), ...(mcp.specs.length && zapierAmong(mcpIds) && !cloudRunner() ? [CONNECT_SPEC] : []), ...(computerFilesOn(settings) ? COMPUTER_SPECS : []), ...SKILL_SPECS, HELP_SPEC, ...(chat.routine || (isMain && chat.pending?.channel === "telegram") ? [] : [SEND_TELEGRAM_SPEC]), ...(chat.pending?.deep ? [PLAN_SPEC] : []), ...(!chat.routine && chat.pending?.channel !== "telegram" && !lastUser(chat)?.via && (chat.kind === "direct" || leads || !leaderOf(chat, members)) ? [ASK_SPEC] : []), ...(chat.summary || chat.entries.length > 12 ? [HISTORY_SPEC] : []), ...mcp.specs, ...(desktopOffered(s) ? [DESKTOP_SPEC, OPEN_APP_SPEC, OPEN_BROWSER_SPEC, WINDOW_SPEC, SEND_SHOT_SPEC] : [])];
   // Plan mode: only tools that look, plus propose_plan. Nothing can change before the user approves.
   // A bot that can act on the user's computer or accounts proposes one plan, approved once (ACT_PLAN).
   const acts = !chat.routine && !chat.pending?.planApproved && (desktopOffered(s) || bot.tools.accounts);
@@ -1459,6 +1460,9 @@ async function* runBot(
       const asksNormally = (c: ToolCall) =>
         isDesktopName(c.name)
           ? deskAsk(c) !== null
+          : c.name === CONNECT_APP
+            ? // One card: it says what is about to open, and its OK opens the page.
+              tools.some((t) => t.name === c.name)
           : c.name === FOR_EACH_ROW
             ? // One card for the whole batch, whenever it acts (sends, creates, changes): in Auto mode and for a
               // trusted connector too. A batch that can't run (no such table, a wrong column) returns why instead.
@@ -1506,6 +1510,7 @@ async function* runBot(
       if (ask.length) {
         const itemOf = (c: ToolCall): ApprovalItem => {
           if (c.name === "propose_routine") return { call: c, ...describeProposal(c, bot) };
+          if (c.name === CONNECT_APP) return connectItem(c, translatorFor(lastUserText(chat)));
           if (c.name === FOR_EACH_ROW) return batchApprovalItem(c, chat, workHome(chat), tools, (x) => describeCall(x, sessionId, translatorFor(lastUserText(chat))), translatorFor(lastUserText(chat)));
           // Bringing a window up, opening an app or a page is the start of using the computer: one card, and
           // its OK is also the OK for the screen, mouse and keyboard for the rest of the task (no second card).
@@ -1659,6 +1664,10 @@ async function* runBot(
               const teamJob = chat.kind === "group" && members.length > 1 && leaderOf(chat, members)?.id === bot.id;
               results.push({ id: c.id, name: c.name, content: `Big job started: the limits are lifted and the work goes on until the goal is reached.\n\n${teamJob ? JOB_LEAD : JOB_SOLO}\n${jobLines(chat, p.job, true).join("\n")}` });
             }
+          } else if (c.name === CONNECT_APP) {
+            // The page opens in the user's browser and oovi waits for the service to say the account is there.
+            yield { type: "status", entryId: entry.id, text: translatorFor(lastUserText(chat))("st.connectWait", { app: String(c.input.app ?? "") }) };
+            results.push(await runConnectApp(c, { serverIds: mcpIds, signal, wait: !chat.routine && chat.pending?.channel !== "telegram" }));
           } else if (c.name === READ_ROWS) {
             results.push(runReadRows(c, chat, workHome(chat)));
           } else if (c.name === FOR_EACH_ROW) {

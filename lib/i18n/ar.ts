@@ -1875,6 +1875,8 @@ const ar: Dict = {
   "st.sending": "يرسل {what}",
   "st.copying": "ينسخ {what}",
   "st.thinking": "يفكّر…",
+  "connect.card": "ربط {app}: تُفتح صفحة الربط في متصفحك. يكمل oovi وحده فور إتمام الربط.",
+  "st.connectWait": "في انتظار ربط {app}…",
   "batch.head": "{n} مرة: {what}",
   "batch.from": "واحدة لكل سطر من «{source}». توافق مرة واحدة على الكل.",
   "batch.skipEmpty": "{n} سطر مستثنى: القيمة المطلوبة فارغة.",

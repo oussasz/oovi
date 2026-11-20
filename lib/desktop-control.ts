@@ -159,6 +159,13 @@ export function openBrowserItem(call: ToolCall, botName: string, check: (url: st
 }
 
 /** Runs after the user said yes (or already allowed this task): the address is checked again and opened. */
+/** Opens a page in the user's own default browser, when this oovi can (the desktop app). False: it couldn't. */
+export async function openUserBrowser(url: string): Promise<boolean> {
+  const b = bridge();
+  if (!b?.openInBrowser) return false;
+  return !(await b.openInBrowser(url).catch((e: Error) => e.message || "failed"));
+}
+
 export async function runOpenInBrowser(call: ToolCall, check: (url: string) => string | null): Promise<ToolResult> {
   const m = browserUrlFor(call, check);
   if ("error" in m) return { id: call.id, name: call.name, content: m.error, isError: true };

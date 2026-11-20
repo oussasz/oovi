@@ -1879,6 +1879,8 @@ const en = {
   "st.sending": "Sending {what}",
   "st.copying": "Copying {what}",
   "st.thinking": "Thinking…",
+  "connect.card": "Connect {app}: the connection page opens in your browser. oovi goes on by itself as soon as it is connected.",
+  "st.connectWait": "Waiting for {app} to be connected…",
   "batch.head": "{n} times: {what}",
   "batch.from": "One for each row of “{source}”. You approve once for all of them.",
   "batch.skipEmpty": "{n} rows are left out: the value needed is empty.",

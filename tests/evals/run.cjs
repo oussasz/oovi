@@ -55,14 +55,13 @@ const SCENARIOS = [
   },
   {
     id: "single-connect",
-    title: "one email while Gmail isn't connected yet, then the user connects it",
+    title: "one email while Gmail isn't connected yet: a card to connect it, then the email goes by itself",
     zapier: { enabled: false, connected: false },
-    steps: [
-      { say: "ابعث إيمايل لكريم على karim@menuiseriebenali.dz وقلو الاجتماع تاع غدوة تبدل للعشرة تاع الصباح" },
-      { before: { connected: true }, say: "connecté" },
-    ],
+    connectsAfterMs: 5000,
+    steps: [{ say: "ابعث إيمايل لكريم على karim@menuiseriebenali.dz وقلو الاجتماع تاع غدوة تبدل للعشرة تاع الصباح" }],
     expected: () => ["karim@menuiseriebenali.dz"],
-    limits: { cards: 1, questions: 0, calls: 9, credits: 8 },
+    // Two cards: connect Gmail, then the email itself. No second message from the user.
+    limits: { cards: 2, questions: 0, calls: 8, credits: 8 },
   },
 ];
 
@@ -93,7 +92,8 @@ async function runScenario(sc, k) {
     const t = await r.text();
     try { return { status: r.status, j: JSON.parse(t) }; } catch { return { status: r.status, j: null, t }; }
   };
-  const seen = { cards: [], questions: 0, plans: 0, texts: [] };
+  // prompts: each time the app stopped to ask for an OK (one card can hold several actions of the same step).
+  const seen = { cards: [], prompts: 0, questions: 0, plans: 0, texts: [] };
   try {
     for (let i = 0; i < 80; i++) { try { if ((await fetch(`${BASE}/api/bots`)).ok) break; } catch {} await sleep(500); }
     await api("POST", "/api/settings", { active: "oovi" });
@@ -119,7 +119,10 @@ async function runScenario(sc, k) {
         const c = await idle();
         const p = c.pending || {};
         if (p.approval) {
+          seen.prompts++;
           for (const it of p.approval.items) seen.cards.push({ tool: it.call.name, summary: String(it.summary).slice(0, 400) });
+          // The card to connect an app: the user connects it on the page that opens (here, a few seconds later).
+          if (sc.connectsAfterMs && p.approval.items.some((it) => it.call.name === "connect_app")) setTimeout(() => void fetch(`http://127.0.0.1:${ZAP}/state?connected=1&enabled=1`).catch(() => {}), sc.connectsAfterMs);
           await post({ decisions: Object.fromEntries(p.approval.items.map((it) => [it.call.id, true])) });
         } else if (p.planReview) {
           seen.plans++;
@@ -152,7 +155,8 @@ async function runScenario(sc, k) {
     wanted: want.size,
     invented: [...got].filter((x) => !want.has(x)).length,
     twice: sent.length - got.size,
-    cards: seen.cards.length,
+    cards: seen.prompts,
+    actionsOnCards: seen.cards.length,
     questions: seen.questions,
     plans: seen.plans,
     botCalls: calls.filter((l) => l.tools > 0).length,
