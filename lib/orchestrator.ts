@@ -610,7 +610,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   // Two parts (lib/llm.ts SYSTEM_SPLIT). `lines`: the rules, the same words for every bot with these abilities,
   // whoever the user is; they come first and are read from the cache across bots, chats and users. `mine`: what
   // is this bot's own (who it is, the user's name, its memory, its team, this chat's files and mode).
-  const lines: string[] = ["You are one of the bots of oovi, a desktop app where a person's own team of AI bots works for them. These are the rules of the work; who you are, who you work for and what you remember come after them."];
+  const lines: string[] = ["These are the rules of the work for every bot of oovi, a desktop app where a person's own team of AI bots works for them. Who you are, who you work for and what you remember come after them."];
   const mine = [`You are ${bot.name}${bot.role ? `, the team's ${bot.role}` : ""}. Today is ${localDate()}.`];
   if (bot.about) mine.push(`How the user describes your role (keep its spirit and tone in how you work and talk): ${bot.about}`);
   if (bot.instructions) mine.push("", bot.instructions);
