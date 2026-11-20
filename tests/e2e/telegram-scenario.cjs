@@ -9,6 +9,7 @@
 //   4. the bot is told to write the user's name exactly as given.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -112,18 +113,18 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Oussama", image: null } });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
       if (url === "/api/v1/ai/transcribe" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         seen.transcribed = { mime: b.mime, bytes: Buffer.from(b.audio, "base64").length };
         return send(200, { text: "VOICE-NOTE شحال الساعة دركا؟", seconds: 3, credits: 0.1 });
       }
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       // Out of credits, as the website answers (web/lib/credits.ts: English text + code). Asked last: the history keeps the word.
       if (url === "/api/v1/ai/messages" && req.method === "POST" && /NOCREDIT/.test(raw)) return send(402, { error: "You've used all your credits. Subscribe for more, or add your own API key.", code: "no_credits" });
       if (url === "/api/v1/ai/messages" && req.method === "POST") seen.model = (seen.model || 0) + 1;
-      if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(JSON.parse(raw)).then((r) => send(200, r));
+      if (url === "/api/v1/ai/messages" && req.method === "POST") return void answerAsync(asModel(JSON.parse(raw))).then((r) => send(200, r));
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       return send(204);
     });
@@ -157,7 +158,7 @@ http
       const method = req.url.split("/").pop().split("?")[0];
       let body = {};
       try {
-        body = raw ? JSON.parse(raw) : {};
+        body = raw ? asModel(JSON.parse(raw)) : {};
       } catch {
         body = {}; // multipart (sendDocument)
       }

@@ -5,6 +5,7 @@
 // when the service is gone, and turns the relay off when Telegram is disconnected.
 // Run: node tests/e2e/telegram-relay-scenario.cjs (after npm run build).
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -43,14 +44,14 @@ http
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Tester", image: null } });
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         const rules = require("./model-rules.cjs");
-        const body = JSON.parse(raw);
+        const body = asModel(JSON.parse(raw));
         if (rules.isDoneCheck(body)) return send(200, rules.doneReply(body));
         answered++;
         return send(200, { id: "msg", type: "message", role: "assistant", model: "theOovi", content: [{ type: "text", text: `Answer number ${answered}` }], stop_reason: "end_turn", usage: { input_tokens: 50, output_tokens: 5 }, oovi: live() });
       }
       if (url === "/api/v1/telegram/relay" && req.method === "POST") {
         if (!relay.on) return send(404, { error: "no" });
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         if (relay.disconnectedAt && (b.connectedAt || 0) <= relay.disconnectedAt) return send(410, { error: "disconnected elsewhere" });
         relay.registrations.push(b);
         relay.conn = { token: b.token, config: b.config, connectedAt: b.connectedAt };
@@ -103,7 +104,7 @@ http
       };
       const method = req.url.split("/").pop().split("?")[0];
       tgCalls.push(method);
-      const body = raw ? JSON.parse(raw) : {};
+      const body = raw ? asModel(JSON.parse(raw)) : {};
       if (method === "getMe") return send({ ok: true, result: { id: 1, is_bot: true, username: "relay_test_bot", first_name: "oovi" } });
       if (method === "getUpdates") {
         const fresh = direct.filter((u) => u.update_id >= (body.offset || 0));

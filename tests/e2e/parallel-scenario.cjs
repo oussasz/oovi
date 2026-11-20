@@ -9,6 +9,7 @@
 //   F) Stop stops everyone, and nothing is left "working" or waiting,
 //   G) a plain group (no leader) stays a conversation: one reply after the other.
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -96,9 +97,9 @@ http
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
       if (url === "/api/v1/catalog") return send(200, { items: [] });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         // Like the real server: a call beyond the account's limit is refused as "busy".
         if (seen.inflight >= LIMIT) {
@@ -110,7 +111,7 @@ http
         const start = Date.now();
         let a;
         try {
-          a = answer(JSON.parse(raw));
+          a = answer(asModel(JSON.parse(raw)));
         } catch (e) {
           seen.inflight--;
           return send(400, { error: String(e) });

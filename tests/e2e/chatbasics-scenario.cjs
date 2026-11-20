@@ -3,6 +3,7 @@
 // (any case, accents, Arabic vowel marks), a chat downloads as Markdown, and pinning works while bots work.
 // Scripted model, nothing leaves this machine. Run: node tests/e2e/chatbasics-scenario.cjs
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -48,7 +49,7 @@ http
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       // The website's shared pages (web/app/api/v1/pages), as a stand-in.
       if (url === "/api/v1/pages" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         if (b.id && !seen.pages[b.id]) return send(404, { error: "That shared page isn't there any more." });
         const id = b.id || `p${String((seen.made = (seen.made || 0) + 1)).padStart(21, "0")}`;
         seen.pages[id] = b;
@@ -60,7 +61,7 @@ http
       }
       const rules = require("./model-rules.cjs");
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         const refused = rules.refusal(b);
         if (refused) {
           seen.refused = refused;

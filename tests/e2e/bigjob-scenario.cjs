@@ -12,6 +12,7 @@
 //   G) a bot working alone (no team) gets the same mode.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -208,19 +209,19 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          return send(200, answer(JSON.parse(raw)));
+          return send(200, answer(asModel(JSON.parse(raw))));
         } catch (e) {
           return send(400, { error: String(e) });
         }
       }
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       if (url === "/api/v1/feedback" && req.method === "POST") {
-        seen.toolNotes.push(JSON.parse(raw));
+        seen.toolNotes.push(asModel(JSON.parse(raw)));
         return send(204);
       }
       return send(204);

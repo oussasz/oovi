@@ -10,6 +10,7 @@
 // deletes the account's copy and keeps this computer's.
 // Run: node tests/e2e/cloud-sync-scenario.cjs (after npm run build).
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -92,7 +93,7 @@ const site = http.createServer(async (req, res) => {
     return send(200, { version: setupStore.version });
   }
   if (p === "/api/v1/ai/messages" && req.method === "POST") {
-    const b = JSON.parse(raw);
+    const b = asModel(JSON.parse(raw));
     const refused = rules.refusal(b);
     if (refused) return send(400, { error: refused });
     if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
@@ -106,7 +107,7 @@ const site = http.createServer(async (req, res) => {
   if (req.headers.authorization !== `Bearer ${TOKEN}`) return send(401, { error: "signed out" });
   const dev = req.headers["x-oovi-device"];
   if (dev) cloud.deviceHeaders.add(dev);
-  const b = raw ? JSON.parse(raw) : {};
+  const b = raw ? asModel(JSON.parse(raw)) : {};
   const r = p.slice("/api/v1/cloud".length);
   let m;
   if (r === "/status" && req.method === "GET") {
@@ -468,7 +469,7 @@ const texts = (chat) => (chat?.entries || []).map((e) => e.text || "");
             server.close();
           });
           await server.connect(transport);
-          await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+          await transport.handleRequest(req, res, raw ? asModel(JSON.parse(raw)) : undefined);
         });
       });
       srv.listen(3391, "127.0.0.1", () => resolve(srv));

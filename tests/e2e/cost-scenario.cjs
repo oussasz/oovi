@@ -263,7 +263,7 @@ const check = (name, ok, detail = "") => {
   check("the work is done (all 18 cafés saved, final answer given)", /^COST-DONE: 4/.test(last), last.slice(0, 80));
   if (!BASELINE) {
     check("A) web page text in a request stays bounded (≤ 40,000 characters)", Math.max(...pages) <= 40_000, `${Math.max(...pages)} chars`);
-    check("G) the whole job costs no more than 170,000 weighted tokens (it was 211,000 before tools on demand and early page shortening)", b.cost <= 170_000, `${Math.round(b.cost).toLocaleString("en-US")}`);
+    check("G) the whole job costs no more than 145,000 weighted tokens (211,000 at first; 170,000 with the first tools on demand; 141,000 once the long everyday tools went on demand too)", b.cost <= 145_000, `${Math.round(b.cost).toLocaleString("en-US")}`);
     {
       const sysOf = (r) => JSON.stringify([r.body.system, r.body.tools]);
       const p1 = requests.find((r) => r.phase === 1), p2 = requests.find((r) => r.phase === 2);
@@ -280,11 +280,16 @@ const check = (name, ok, detail = "") => {
     const all = [...requests, ...third];
     check(
       "D) tools on demand: rarely used tools are one line inside use_tool, in every request",
-      all.every((r) => names(r).includes("use_tool") && !names(r).includes("create_presentation") && !names(r).includes("create_image")) && names(all[0]).includes("work_table") && names(all[0]).includes("read_url"),
+      all.every((r) => names(r).includes("use_tool") && !names(r).includes("create_presentation") && !names(r).includes("create_image") && !names(r).includes("work_table") && !names(r).includes("find_papers")) && names(all[0]).includes("read_url") && names(all[0]).includes("research"),
       `${names(all[0]).length} tools sent`,
     );
+    // A one-step tool (work_table): its line names its parameters, and its first result brought its guide, once.
+    const useTool = (all[0].body.tools || []).find((t) => t.name === "use_tool");
+    const guides = resultsOf(requests.at(-1)).filter((t) => t.startsWith("[guide:work_table]")).length;
+    check("D2) a one-step tool is listed with its parameters, and its guide came with its first result, once", /- work_table\(action, table/.test(useTool?.description || "") && guides === 1, `${guides} guides in the conversation`);
+    check("D3) the fixed part of a request (instructions and tools) stays under 40,000 characters", JSON.stringify([all[0].body.system, all[0].body.tools]).length < 40_000, `${JSON.stringify([all[0].body.system, all[0].body.tools]).length} characters`);
     check("E) the first call returns the tool's guide, the second makes the file", third.length === 3 && resultsOf(third[1]).some((t) => t.startsWith("[guide:create_presentation]")) && !!file && /^COST3-DONE/.test(c3.entries.filter((e) => e.kind === "bot").at(-1)?.text ?? ""), file ? file.file.name : "no .pptx made");
-    check("F) the conversation shows that call the same way on every request (through use_tool), so the cache holds", uses(third[2]).filter((u) => u.name === "use_tool").length === 2 && !uses(third[2]).some((u) => u.name === "create_presentation"));
+    check("F) the conversation shows that call the same way on every request (through use_tool), so the cache holds", uses(third[2]).filter((u) => u.name === "use_tool" && u.input?.name === "create_presentation").length === 2 && !uses(third[2]).some((u) => u.name === "create_presentation" || u.name === "work_table"));
   }
   {
     const sys = (r) => (typeof r.body.system === "string" ? r.body.system : r.body.system.map((x) => x.text).join(""));

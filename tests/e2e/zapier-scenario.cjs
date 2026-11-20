@@ -3,6 +3,7 @@
 // when a Zapier action fails with no reason. Run: node tests/e2e/zapier-scenario.cjs (SHOT=dir for screenshots)
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -81,7 +82,7 @@ async function answer(body) {
           server.close();
         });
         await server.connect(transport);
-        await transport.handleRequest(req, res, raw ? JSON.parse(raw) : undefined);
+        await transport.handleRequest(req, res, raw ? asModel(JSON.parse(raw)) : undefined);
       });
     })
     .listen(MCP_PORT, "127.0.0.1");
@@ -102,7 +103,7 @@ http
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       const rules = require("./model-rules.cjs");
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         const refused = rules.refusal(b);
         if (refused) {
           seen.refused = refused;

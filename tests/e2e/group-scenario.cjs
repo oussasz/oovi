@@ -9,6 +9,7 @@
 //   D) the prompts carry the short-message, @-mention and language rules.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -145,12 +146,12 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          const out = answer(JSON.parse(raw));
+          const out = answer(asModel(JSON.parse(raw)));
           // A slow model answer, so a group stays busy for a while.
           if (out && out.__wait) return void setTimeout(() => send(200, out.reply), out.__wait);
           return send(200, out);

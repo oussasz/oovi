@@ -6,6 +6,7 @@
 // role) never reaches the user, and a direct-chat proposal joins the group the Chief leads.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -143,23 +144,23 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       // Sign-up with email confirmation (the account service asks for the 6-digit code first).
-      if (url === "/api/v1/auth/sign-up" && req.method === "POST") return send(201, { verify: true, email: JSON.parse(raw).email });
+      if (url === "/api/v1/auth/sign-up" && req.method === "POST") return send(201, { verify: true, email: asModel(JSON.parse(raw)).email });
       if (url === "/api/v1/auth/resend-code" && req.method === "POST") {
         seen.resent = (seen.resent || 0) + 1;
         return send(204);
       }
       if (url === "/api/v1/auth/verify-email" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         if (b.code !== "123456") return send(400, { error: "That code isn't right. Check the latest email from oovi." });
         return send(200, { token: "verified-token", user: { id: "new1", email: b.email, name: "Nadia", image: null } });
       }
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null } });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          return send(200, answer(JSON.parse(raw)));
+          return send(200, answer(asModel(JSON.parse(raw))));
         } catch (e) {
           return send(400, { error: String(e) });
         }

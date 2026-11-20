@@ -9,3 +9,33 @@ module.exports = function allTools(body) {
   const line = (n) => (new RegExp(`^- ${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(\\([^)]*\\))?: (.*)$`, "m").exec(use.description || "") || [])[2] || "";
   return [...tools, ...names.filter((n) => !tools.some((t) => t.name === n)).map((n) => ({ name: n, description: line(n), onDemand: true }))];
 };
+
+/**
+ * A request as a stand-in model reads it: calls made through use_tool appear under the tool's own name, and
+ * the guide a one-step tool brings with its first result is taken off the result. The scenarios' stand-ins
+ * decide by "which tool did I call last" and "what did it answer", like the real model does after use_tool.
+ */
+module.exports.asModel = function asModel(body) {
+  if (!body || !Array.isArray(body.messages)) return body;
+  const strip = (s) => {
+    if (typeof s !== "string" || !s.startsWith("[guide:")) return s;
+    const end = s.indexOf("[/guide]");
+    const rest = end < 0 ? "" : s.slice(end + 8).replace(/^\n/, "");
+    return rest || s; // a guide alone (the answer to a request for it) stays
+  };
+  const messages = body.messages.map((m) =>
+    !Array.isArray(m.content)
+      ? m
+      : {
+          ...m,
+          content: m.content.map((b) =>
+            b.type === "tool_use" && b.name === "use_tool" && b.input && typeof b.input.name === "string" && b.input.input !== undefined
+              ? { ...b, name: b.input.name, input: b.input.input }
+              : b.type === "tool_result"
+                ? { ...b, content: typeof b.content === "string" ? strip(b.content) : Array.isArray(b.content) ? b.content.map((c) => (c.type === "text" ? { ...c, text: strip(c.text) } : c)) : b.content }
+                : b,
+          ),
+        },
+  );
+  return { ...body, messages, tools: module.exports(body) };
+};

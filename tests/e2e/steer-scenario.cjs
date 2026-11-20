@@ -3,6 +3,7 @@
 // Stop starts the next run ("stop, then correct"). Scripted model, nothing leaves this machine.
 // Run: node tests/e2e/steer-scenario.cjs
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -61,7 +62,7 @@ http
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       const rules = require("./model-rules.cjs");
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         const refused = rules.refusal(b);
         if (refused) {
           seen.refused = refused;

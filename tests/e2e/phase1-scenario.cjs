@@ -5,6 +5,7 @@
 // C) oovi is killed mid-task and restarted: the user is told it didn't finish, nothing spins.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -64,12 +65,12 @@ http
       const url = req.url.split("?")[0];
       if (url === "/api/v1/ai/status") return send(200, status);
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Phase Tester", image: null } });
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          return send(200, await answer(JSON.parse(raw)));
+          return send(200, await answer(asModel(JSON.parse(raw))));
         } catch (e) {
           return send(400, { error: String(e) });
         }
@@ -102,7 +103,7 @@ http
         res.end(JSON.stringify(obj));
       };
       const method = req.url.split("/").pop().split("?")[0];
-      const body = raw ? JSON.parse(raw) : {};
+      const body = raw ? asModel(JSON.parse(raw)) : {};
       if (method === "getMe") return send(200, { ok: true, result: { id: 1, is_bot: true, username: "test_oovi_bot", first_name: "oovi" } });
       if (method === "getUpdates") {
         // Like Telegram: asking with offset N confirms (forgets) every update before N.

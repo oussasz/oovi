@@ -21,6 +21,7 @@
 //   L) forms: checkbox names, dropdown choices, a switched-off button, a dead address.
 const http = require("node:http");
 const allTools = require("./all-tools.cjs");
+const { asModel } = allTools;
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -321,17 +322,17 @@ http
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       // The oovi server's find_places: answers only the "server answer" question (else as an older server would: 404).
       if (url === "/api/v1/places" && req.method === "POST") {
-        const q = JSON.parse(raw);
+        const q = asModel(JSON.parse(raw));
         seen.placesServer = q;
         if (!(q.words || []).includes("server answer")) return send(404, { error: "not found" });
         return send(200, { release: "server-test", skipped: 0, matching: 1, open: 9, top: [], hits: [{ names: { primary: "Café du serveur" }, basic_category: "cafe", phones: ["+213550999999"], addresses: [{ freeform: "1 rue du Serveur", locality: "Testville" }], confidence: 0.9 }] });
       }
-      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(JSON.parse(raw)) : null;
+      const refused = url === "/api/v1/ai/messages" && req.method === "POST" ? require("./model-rules.cjs").refusal(asModel(JSON.parse(raw))) : null;
       if (refused) return send(400, { error: refused });
-      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(JSON.parse(raw))) return send(200, require("./model-rules.cjs").doneReply(JSON.parse(raw)));
+      if (url === "/api/v1/ai/messages" && req.method === "POST" && require("./model-rules.cjs").isDoneCheck(asModel(JSON.parse(raw)))) return send(200, require("./model-rules.cjs").doneReply(asModel(JSON.parse(raw))));
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
         try {
-          return send(200, answer(JSON.parse(raw)));
+          return send(200, answer(asModel(JSON.parse(raw))));
         } catch (e) {
           return send(400, { error: String(e) });
         }

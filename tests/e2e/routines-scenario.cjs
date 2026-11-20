@@ -3,6 +3,7 @@
 // skips the run without any model call; a changed page runs with what changed.
 // Slow by nature (the scheduler looks every 30 s): about 2 minutes. Run: node tests/e2e/routines-scenario.cjs
 const http = require("node:http");
+const { asModel } = require("./all-tools.cjs");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -53,7 +54,7 @@ http
       if (url === "/api/v1/me") return send(200, { user: { id: "p1test", email: "tester@example.test", name: "Marys", image: null } });
       if (url === "/api/v1/catalog") return send(200, { items: [] });
       if (url === "/api/v1/routine-hooks" && req.method === "PUT") {
-        hooks.registered.push(JSON.parse(raw));
+        hooks.registered.push(asModel(JSON.parse(raw)));
         return send(204);
       }
       if (url === "/api/v1/routine-hooks/events") {
@@ -66,7 +67,7 @@ http
       }
       const rules = require("./model-rules.cjs");
       if (url === "/api/v1/ai/messages" && req.method === "POST") {
-        const b = JSON.parse(raw);
+        const b = asModel(JSON.parse(raw));
         if (rules.refusal(b)) return send(400, { error: rules.refusal(b) });
         if (rules.isDoneCheck(b)) return send(200, rules.doneReply(b));
         const last = textOf((b.messages || []).filter((m) => m.role === "user").at(-1) || {});
