@@ -77,6 +77,7 @@ const OLD_TOPICS = /youtube|يوتوب|يوتيوب|instagram|انستغرام|�
 const SCENARIOS = [
   {
     id: "bulk-all",
+    saidEveryone: true,
     title: "1,001-line workbook: \"send an email to everyone in the list\"",
     zapier: { enabled: true, connected: true },
     steps: [{ say: "ابعث إيمايل لكل واحد في القائمة", file: LEADS }],
@@ -85,6 +86,7 @@ const SCENARIOS = [
   },
   {
     id: "bulk-all-refused",
+    saidEveryone: true,
     title: "the user says everyone, including the ones marked refused",
     zapier: { enabled: true, connected: true },
     steps: [{ say: "ابعث إيمايل للكل بلا استثناء، حتى اللي Statut تاعهم Refusé. اعرض عليهم تصميم موقع ويب.", file: LEADS }],
@@ -101,6 +103,7 @@ const SCENARIOS = [
   },
   {
     id: "old-topics",
+    saidEveryone: true,
     title: "a new request in a chat full of old errands: the answer is about the new request only",
     zapier: { enabled: true, connected: true },
     seed: oldHistory,
@@ -195,7 +198,10 @@ async function runScenario(sc, k) {
           for (const it of p.approval.items) seen.cards.push({ tool: it.call.name, summary: String(it.summary).slice(0, 400) });
           // The card to connect an app: the user connects it on the page that opens (here, a few seconds later).
           if (sc.connectsAfterMs && p.approval.items.some((it) => it.call.name === "connect_app")) setTimeout(() => void fetch(`http://127.0.0.1:${ZAP}/state?connected=1&enabled=1`).catch(() => {}), sc.connectsAfterMs);
-          await post({ decisions: Object.fromEntries(p.approval.items.map((it) => [it.call.id, true])) });
+          // A user who said "everyone" and sees a narrowed batch presses "all of them" (one press, no new message).
+          const all = !!sc.saidEveryone && p.approval.items.some((it) => it.batchAll);
+          if (all) seen.pressedAll = (seen.pressedAll || 0) + 1;
+          await post({ decisions: Object.fromEntries(p.approval.items.map((it) => [it.call.id, true])), ...(all ? { batchAll: true } : {}) });
         } else if (p.planReview) {
           seen.plans++;
           const e = c.entries.find((x) => x.id === p.planReview.entryId);
@@ -243,6 +249,7 @@ async function runScenario(sc, k) {
     maxPrompt: Math.max(0, ...calls.map(prompt)),
     lecture: seen.said.filter((t) => LAW.test(t)).length,
     userMessages: seen.userMessages || sc.steps.length,
+    pressedAll: seen.pressedAll || 0,
     cutShort: !!seen.cut,
   };
   const checks = [

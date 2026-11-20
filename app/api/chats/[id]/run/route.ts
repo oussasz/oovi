@@ -46,7 +46,7 @@ export async function POST(req: Request, { params }: Ctx) {
   } else if (body?.decisions && typeof body.decisions === "object") {
     const decisions: Record<string, boolean> = {};
     for (const [k, v] of Object.entries(body.decisions as Record<string, unknown>)) if (typeof v === "boolean") decisions[k] = v;
-    input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true, allowChat: body.allowChat === true, allowSite: body.allowSite === true };
+    input = { decisions, alwaysEdit: body.alwaysEdit === true, alwaysFolders: body.alwaysFolders === true, allowChat: body.allowChat === true, allowSite: body.allowSite === true, batchAll: (body as { batchAll?: unknown }).batchAll === true };
   } else {
     return Response.json({ error: "Send {text}, {decisions}, {planDecision} or {answers}." }, { status: 400 });
   }

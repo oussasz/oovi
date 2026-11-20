@@ -220,7 +220,13 @@ export function batchApprovalItem(call: ToolCall, chat: Chat, workChat: string, 
     already ? tr("batch.already", { n: already }) : "",
     ...shown.flatMap((it, k) => ["", tr("batch.example", { i: k + 1, n: it.n }), ...said[k]!.split("\n").slice(1)]),
   ].filter((l, k, a) => l !== "" || (k > 0 && a[k - 1] !== ""));
-  return { call, summary: lines.join("\n"), detail: `${p.tool}\n${JSON.stringify(call.input.input, null, 1).slice(0, 3000)}` };
+  // The bot narrowed the batch: the card also offers every row, so the user settles it with one press.
+  let all = 0;
+  if (p.plan.filteredOut) {
+    const wide = planFor({ ...call, input: { ...call.input, filter: undefined } }, chat, workChat, tools);
+    if (!("error" in wide)) all = wide.plan.items.filter((it) => !done.has(batchKey(p.tool, it.input))).length;
+  }
+  return { call, summary: lines.join("\n"), detail: `${p.tool}\n${JSON.stringify(call.input.input, null, 1).slice(0, 3000)}`, ...(all > todo.length ? { batchAll: all } : {}) };
 }
 
 export async function runForEachRow(

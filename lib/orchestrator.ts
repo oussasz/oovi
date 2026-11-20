@@ -96,6 +96,8 @@ export type RunInput = {
   decisions?: Record<string, boolean>;
   alwaysEdit?: boolean;
   alwaysFolders?: boolean;
+  /** With decisions: the user pressed "all of them" on a batch card (the bot's filter is dropped). */
+  batchAll?: boolean;
   via?: string;
   /** With `via`: the user's own message that led to this task, passed on unchanged. */
   userWords?: string;
@@ -1695,6 +1697,9 @@ async function* runBot(
             // One action per row, run here: each goes through the same path as a single call (the connector's
             // own checks and error words), with no model call in between. The status line follows the count.
             const tr = translatorFor(lastUserText(chat));
+            // "All of them" on the card: the user's choice replaces the bot's filter, in the saved call too.
+            const widened = decisions[c.id] === true && !!answered?.batchAll && answered.items.some((it) => it.call.id === c.id && it.batchAll) && c.input.filter !== undefined;
+            if (widened) delete c.input.filter;
             let at = { done: 0, total: 0 };
             let ended = false;
             const batch = runForEachRow(c, {
@@ -1713,7 +1718,8 @@ async function* runBot(
                 yield { type: "status", entryId: entry.id, text: tr("st.batch", { done: at.done, total: at.total }) };
               }
             }
-            results.push(await batch);
+            const res = await batch;
+            results.push(widened ? { ...res, content: `The user chose "all of them" on the card: the filter you had put was dropped, and every row with what the action needs was included.\n${res.content}` } : res);
           } else if (ATTACH_TOOLS.has(c.name)) {
             results.push(await runAttachmentTool(c, chat));
           } else if (COMPUTER_TOOLS.has(c.name)) {
@@ -2103,6 +2109,7 @@ async function* runChat(chatId: string, input: RunInput, signal: AbortSignal): A
     }
   } else if (input.decisions && chat.pending?.approval) {
     const answered = chat.pending.approval;
+    if (input.batchAll) answered.batchAll = true;
     const e = chat.entries.find((x) => x.id === answered.entryId);
     // Asked on Telegram, answered here: the user still waits on Telegram, so the reply goes there too.
     if (!input.channel && chat.pending.channel === "telegram" && chat.pending.telegramChatId !== undefined && e) {

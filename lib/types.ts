@@ -59,6 +59,8 @@ export type ApprovalItem = {
   folder?: string;
   /** Desktop control: "grant" = the first action of a task (allows the mouse and keyboard for the task); "action" = one more action ("Ask before every action"). */
   desktop?: "grant" | "action";
+  /** A batch whose filter leaves rows out: how many rows it would cover without the filter (the card offers "all of them"). */
+  batchAll?: number;
   /** What an OK for this action can cover beyond this once (lib/approval-scope-core.ts): a site or a connector action. */
   scope?: { key: string; kind: "site" | "tool"; label: string };
   /** Desktop control: the window the action will reach (its title comes from that window: untrusted). Checked again when it runs. */
@@ -187,7 +189,7 @@ export type AskItem = { question: string; options: string[] };
 export type Entry = UserEntry | BotEntry;
 
 /** at: when it was asked (desktop actions approved more than 20 minutes later are asked again). */
-export type Approval = { entryId: string; botId: string; items: ApprovalItem[]; at?: number };
+export type Approval = { entryId: string; botId: string; items: ApprovalItem[]; at?: number; /** The user answered a batch card with "all of them": the bot's filter is dropped (lib/rows.ts). */ batchAll?: boolean };
 
 export type Pending = {
   queue: string[];

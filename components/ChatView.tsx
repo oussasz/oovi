@@ -1444,10 +1444,10 @@ export default function ChatView({ id }: { id: string }) {
   }
 
   /** always: "edits" also allows file edits in this chat's project folder from now on; "folders" lets bots read and send from these files' folders without asking. */
-  function decide(ok: boolean, always?: "edits" | "folders" | "chat" | "site") {
+  function decide(ok: boolean, always?: "edits" | "folders" | "chat" | "site" | "all") {
     if (!approval) return;
     setError(null);
-    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site" }) });
+    void stream({ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ decisions: Object.fromEntries(approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site", batchAll: always === "all" }) });
   }
 
   /**
@@ -1852,7 +1852,7 @@ export default function ChatView({ id }: { id: string }) {
                     bot={bots.find((b) => b.id === ask.approval.botId)}
                     group={ask.groupName}
                     busy={groupBusy === ask.groupId}
-                    onDecide={(ok, always) => void answerGroup(ask.groupId, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site" })}
+                    onDecide={(ok, always) => void answerGroup(ask.groupId, { decisions: Object.fromEntries(ask.approval.items.map((i) => [i.call.id, ok])), alwaysEdit: always === "edits", alwaysFolders: always === "folders", allowChat: always === "chat" || always === "site", allowSite: always === "site", batchAll: always === "all" })}
                   />
                 ) : (
                   <div key={`${ask.groupId}:plan:${ask.steps.join("|")}`} className="approval group-plan" role="alert">

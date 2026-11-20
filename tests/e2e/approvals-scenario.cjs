@@ -45,7 +45,8 @@ async function answer(body) {
   const tool = (name, input) => reply([{ type: "tool_use", id: `toolu_${Math.random().toString(36).slice(2)}`, name, input }], "tool_use");
   if (/SEND-(\w+)/.test(cur)) {
     const tag = /SEND-(\w+)/.exec(cur)[1];
-    if (!lt || lt === "use_tool") return tool(send, { to: "karim@example.test", subject: tag });
+    // "SEND-ghost": an address that is in nothing the user wrote or the bot read.
+    if (!lt || lt === "use_tool") return tool(send, { to: tag === "ghost" ? "ghost@nowhere.test" : "karim@example.test", subject: tag });
     return reply([{ type: "text", text: `DONE-${tag}` }], "end_turn");
   }
   if (/DELETE-(\w+)/.test(cur)) {
@@ -174,7 +175,7 @@ const check = (name, ok, detail = "") => {
   check("connector added for the Chief", add.status === 201, JSON.stringify(add.j));
   await sleep(1500);
 
-  let c = await run(dm, { text: "SEND-one" });
+  let c = await run(dm, { text: "SEND-one to karim@example.test" });
   let card = c.pending?.approval;
   check("A) sending asks first, and offers to allow it for this chat", !!card && card.items[0].scope?.kind === "tool" && card.items[0].scope.key === "tool:mcp_mail_test_send_email", JSON.stringify(card?.items?.[0]?.scope));
   check("A) the card says it in plain words, the tool's name and raw data only under Details", card.items[0].summary === "Send an email in Mail test\nTo: karim@example.test\nSubject: one" && /mcp_mail_test_send_email/.test(card.items[0].detail || "") && !/mcp_|\{/.test(card.items[0].summary), JSON.stringify(card.items[0]));
@@ -194,13 +195,13 @@ const check = (name, ok, detail = "") => {
   check("A) approved: sent at once, no wait (the card was the check)", seen.sent.includes("one") && /DONE-one/.test(c.entries.at(-1).text || ""));
 
   const t0 = Date.now();
-  c = await run(dm, { text: "SEND-two" });
+  c = await run(dm, { text: "SEND-two to karim@example.test" });
   check("B) the next send in this chat has no card", !c.pending?.approval);
   check("B) but it waited about 8 seconds before going (time to cancel)", seen.sent.includes("two") && Date.now() - t0 >= 7500, `${Date.now() - t0} ms`);
 
   // C: cancel during the wait: nothing is sent.
   // Read the run's live events like the chat screen does, and press Cancel when the wait shows.
-  const res = await fetch(`${BASE}/api/chats/${dm}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "SEND-three" }) });
+  const res = await fetch(`${BASE}/api/chats/${dm}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: "SEND-three to karim@example.test" }) });
   const reader = res.body.getReader();
   let r3 = "";
   let cancel = null;
@@ -225,7 +226,7 @@ const check = (name, ok, detail = "") => {
   // (In a copy of the chat made before "allow": sending still asks there.)
   const firstUser = (await api("GET", `/api/chats/${dm}`)).j.entries.find((e) => e.kind === "user");
   const fork = (await api("POST", `/api/chats/${dm}/fork`, { entryId: firstUser.id })).j.id;
-  c = await run(fork, { text: "SEND-ar أرسل البريد إلى كريم من فضلك" });
+  c = await run(fork, { text: "SEND-ar أرسل البريد إلى كريم karim@example.test من فضلك" });
   const arCard = c.pending?.approval;
   check("A) in Arabic when the user writes Arabic", !!arCard && /^إرسال بريد إلكتروني في Mail test\nإلى: karim@example\.test/.test(arCard.items[0].summary), arCard?.items?.[0]?.summary);
   if (process.env.SHOT && arCard) {
@@ -238,6 +239,12 @@ const check = (name, ok, detail = "") => {
     await b.close();
   }
   if (arCard) await run(fork, { decisions: Object.fromEntries(arCard.items.map((i) => [i.call.id, false])) });
+
+  // An address that appears nowhere: the card shows even though sending is allowed for this chat, and says so.
+  c = await run(dm, { text: "SEND-ghost" });
+  const ghost = c.pending?.approval?.items?.[0];
+  check("A) an address that is in nothing the user wrote or the bots read always shows its card, with a warning and no 'allow for this chat'", !!ghost && /ghost@nowhere\.test is not in your messages/.test(ghost.summary) && !ghost.scope, JSON.stringify(ghost || null).slice(0, 200));
+  if (c.pending?.approval) c = await run(dm, { decisions: Object.fromEntries(c.pending.approval.items.map((i) => [i.call.id, false])) });
 
   c = await run(dm, { text: "DELETE-m1" });
   card = c.pending?.approval;

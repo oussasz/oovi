@@ -21,7 +21,7 @@ type Props = {
    * from these folders without asking; "chat" allows this kind of action for the rest of the chat; "site" allows
    * clicks and typing on this site from now on.
    */
-  onDecide: (ok: boolean, always?: "edits" | "folders" | "chat" | "site") => void;
+  onDecide: (ok: boolean, always?: "edits" | "folders" | "chat" | "site" | "all") => void;
 };
 
 export default function ApprovalCard({ approval, bot, group, busy = false, onDecide }: Props) {
@@ -113,6 +113,12 @@ export default function ApprovalCard({ approval, bot, group, busy = false, onDec
           <button className="btn primary" disabled={busy} onClick={() => onDecide(true)}>
             <Icon name="check" size={16} /> {grant ? t("desk.allowTask") : approval.items.some((i) => i.always || i.folder) ? t("chat.allowOnce") : t("chat.allow")}
           </button>
+          {/* A batch the bot narrowed: one press sends it to every row instead. */}
+          {approval.items.length === 1 && approval.items[0]!.batchAll && (
+            <button className="btn" disabled={busy} onClick={() => onDecide(true, "all")}>
+              {t("batch.allBtn", { n: approval.items[0]!.batchAll })}
+            </button>
+          )}
           {folders.length > 0 && (
             <button className="btn" disabled={busy} onClick={() => onDecide(true, "folders")} title={folders.join(" · ")}>
               {folders.length > 1 ? t("files.alwaysFolders") : t("files.alwaysFolder")}
