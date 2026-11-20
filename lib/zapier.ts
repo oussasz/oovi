@@ -1,5 +1,5 @@
 // oovi's Zapier page (components/ZapierApps.tsx): the user's apps in Zapier, without asking a bot.
-import { callServerTool, serverTools } from "./mcp";
+import { callServerTool, getServer, mcpPrefix, serverTools } from "./mcp";
 import { appArgs, appsIn, firstLink, POPULAR, zapierMode, type Schema } from "./zapier-core";
 
 export type ZapierStatus = { mode: "agentic" | "classic" | "none"; ready: string[]; summary: string; manageUrl: string | null };
@@ -68,4 +68,32 @@ export async function zapierRemove(serverId: string, app: string): Promise<{ ok:
   if (typeof args === "string") return { ok: false, text: args };
   const r = await callServerTool(serverId, off.name, args);
   return { ok: !r.isError, text: cleanText(r.text) };
+}
+
+/**
+ * What a bot is told about its Zapier when a message arrives: which apps and actions are on, and whether an
+ * account is connected, as Zapier says it right now. Without it the bot found this out by itself, one model
+ * call per question (search the app, read the action list, read a guide), and after the user wrote
+ * "connected" it could only guess: it sent the connect link a second time. Asked fresh at every message
+ * (the user connects an app on Zapier's page, outside oovi), and given up after a few seconds.
+ */
+export async function zapierNow(serverIds: string[], timeoutMs = 5000): Promise<string[]> {
+  const out: string[] = [];
+  for (const id of serverIds) {
+    const s = getServer(id);
+    if (!s || !s.enabled || !/zapier/i.test(`${s.name} ${s.url ?? ""}`)) continue;
+    try {
+      const st = await Promise.race([zapierStatus(id), new Promise<null>((r) => setTimeout(() => r(null), timeoutMs))]);
+      if (!st || st.mode !== "agentic") continue;
+      const p = mcpPrefix(id);
+      out.push(
+        st.summary
+          ? `${s.name}, as it is right now (oovi just asked it; no need to inspect or list again before acting):\n${st.summary.slice(0, 1800)}\nTo run one of these actions use ${p}execute_zapier_write_action (or ${p}execute_zapier_read_action for a read) with the selected_api, the action key and its params, as listed above.`
+          : `${s.name}, as it is right now (oovi just asked it): no app's actions are turned on yet. Find the app with ${p}discover_zapier_actions, then turn it on with ${p}enable_zapier_action.`,
+      );
+    } catch {
+      /* Zapier didn't answer: the bot finds out by itself, as before */
+    }
+  }
+  return out;
 }

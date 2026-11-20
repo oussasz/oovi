@@ -51,7 +51,7 @@ export const ROW_SPECS: ToolSpec[] = [
   {
     name: FOR_EACH_ROW,
     description:
-      "Do the same thing once for each row of a table (an attached Excel or CSV file, or a work table): send each person an email or a message, create one record per row, and so on. Give the tool to run and its input ONCE, writing {Column name} wherever a value comes from the row. oovi fills it in for every row from the file itself, leaves out rows where that value is empty and repeats of `unique_by`, and runs them all. The user gets one card with the number of rows and three filled-in examples, and approves once for the whole batch. A row already done is never done again, so making the same call again finishes a batch that stopped. This is the way to act on a list: never one call per row, and never copy rows or addresses into your own calls.",
+      "Do the same thing once for each row of a table (an attached Excel or CSV file, or a work table): send each person an email or a message, create one record per row, and so on. Give the tool to run and its input ONCE, writing {Column name} wherever a value comes from the row. oovi fills it in for every row from the file itself, leaves out rows where that value is empty and repeats of `unique_by`, and runs them all. The user gets one card with the number of rows and three filled-in examples, and approves once for the whole batch. A row already done is never done again, so making the same call again finishes a batch that stopped. This is the way to act on a list: never one call per row, and never copy rows or addresses into your own calls. Every row gets the same text, so write it to be true for all of them; what differs comes from a column, or from a second call with another filter and another text. A doubt about who is included or about the wording doesn't need a question first: put it in `note`, the user reads it on the card and can cancel.",
     parameters: {
       type: "object",
       properties: {
@@ -62,6 +62,7 @@ export const ROW_SPECS: ToolSpec[] = [
         tool: { type: "string", description: "The tool to run for each row, by its exact name (a connector tool, e.g. the one that sends an email or creates a record)" },
         input: { type: "object", description: "That tool's input for ONE row, exactly as you would call it once, with {Column name} placeholders, e.g. {\"to\":\"{Email}\",\"subject\":\"Hello {Company}\"}" },
         limit: { type: "integer", description: "Only the first N rows (for a trial run)" },
+        note: { type: "string", description: "One short line shown to the user on the card, in their language: what they should know before approving (a choice you made, a doubt). E.g. 'Includes the 40 rows marked Refused: tell me if you want them left out.'" },
       },
       required: ["source", "tool", "input"],
     },
@@ -189,9 +190,11 @@ export function batchApprovalItem(call: ToolCall, chat: Chat, workChat: string, 
   const shown = (todo.length ? todo : p.plan.items).slice(0, 3);
   const said = shown.map((it) => describe({ id: call.id, name: p.tool, input: it.input as Record<string, unknown> }));
   const head = (said[0] ?? p.tool).split("\n")[0]!;
+  const note = typeof call.input.note === "string" ? call.input.note.replace(/\s+/g, " ").trim().slice(0, 300) : "";
   const lines = [
     tr("batch.head", { n: todo.length, what: head }),
     tr("batch.from", { source: p.src.name }),
+    note,
     p.plan.skipped.empty ? tr("batch.skipEmpty", { n: p.plan.skipped.empty }) : "",
     p.plan.skipped.duplicate ? tr("batch.skipDup", { n: p.plan.skipped.duplicate }) : "",
     already ? tr("batch.already", { n: already }) : "",

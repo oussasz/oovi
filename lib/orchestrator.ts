@@ -71,6 +71,7 @@ import { HELPERS_SPEC, runHelpers } from "./helpers";
 import { runSendTelegram, SEND_TELEGRAM_SPEC } from "./telegram-send";
 import { quoteOf, replyNote } from "./chat-basics-core";
 import { WORK_SPECS, WORK_TOOLS, addListRows, addRecordRows, loadWork, runWorkTool, workNow, workPrompt } from "./workfiles";
+import { zapierNow } from "./zapier";
 import { cleanFileName, countComplete, progressMark, seenIn, storeLines, unconfirmed, type Seen } from "./workfiles-core";
 import { uploadSource } from "./computer";
 import { COMPUTER_SPECS, COMPUTER_TOOLS, allowFolder, computerFilesOn, computerFilesPrompt, folderNamesGranted, grantFolderNames, runComputerTool } from "./computer";
@@ -218,7 +219,7 @@ type Outcome = "done" | "waiting" | "error" | "stopped" | "refresh";
  */
 const HOW_YOU_WORK = `How you work:
 - Do the task. When you have enough to act, act. Where something is open that you can reasonably decide (the wording, the tone, the language, which column holds what, which of two similar options), decide it and say what you chose in one line. Ask only when a wrong guess would make the result wrong and you cannot find the answer yourself.
-- oovi asks the user before anything leaves their computer or changes their accounts: it shows them a card with the exact content (for a batch: how many, and filled-in examples), and they approve or cancel there. That card is their review and their consent. So you call the tool: you don't ask "shall I go ahead?" in the chat, you don't hold an action back to protect them from it, and you don't tell them to do it themselves when you have a way to do it.
+- oovi asks the user before anything leaves their computer or changes their accounts: it shows them a card with the exact content (for a batch: how many, and filled-in examples), and they approve or cancel there. That card is their review and their consent, and it is there precisely for what can't be undone. So you call the tool: you don't ask "shall I go ahead?" in the chat, you don't ask first because an action is final, you don't hold it back to protect them from it, and you don't tell them to do it themselves when you have a way to do it.
 - The user's words set the scope. "Everyone" means every row that has what the action needs, including the ones you would have left out. A concern worth raising (a legal point, a risk, a better way) goes in one short line beside the action, once: never in place of the action, and never again once they have answered.
 - Data stays where it is. A table or a long file is in the conversation as a digest; you work on its rows through tools, and never rebuild rows, names or addresses from memory. What the tools returned is the only source for what you report: the numbers as they are, and nothing claimed that no tool did.
 - Answer the latest message. Earlier topics are closed unless the user reopens them, and a summary of the earlier conversation is background, not a list of things to do. Messages show when they were sent: a short-lived thing is over once its time has passed.
@@ -1269,6 +1270,9 @@ export function statusText(c: ToolCall, tr: Tr = translateFor): string {
   }
 }
 
+/** What the bot was told about its connectors at the user's latest message (one entry: the message being worked on). */
+const connectorNotes = ((globalThis as typeof globalThis & { __ooviConnectorNotes?: Map<string, string[]> }).__ooviConnectorNotes ??= new Map<string, string[]>());
+
 async function* runBot(
   chat: Chat,
   entry: BotEntry,
@@ -1321,15 +1325,26 @@ async function* runBot(
   // goes with the user's latest message, fixed for the whole turn: the instructions then stay the same, and
   // the prompt cache keeps them and the conversation instead of writing everything again at each message.
   let turnNote = "";
+  // The state of the bot's Zapier at this message (which apps are on, which account is connected).
+  // Asked once per user message: when the turn comes back (after a card, a question), the same words are
+  // used, so the conversation up to there stays in the prompt cache.
+  const nowKey = `${chat.id}|${lastUser(chat)?.id ?? ""}|${bot.id}`;
+  const connectorsNow = mcp.specs.length ? (connectorNotes.get(nowKey) ?? (await zapierNow(mcpIds))) : [];
+  if (mcp.specs.length) {
+    connectorNotes.clear();
+    connectorNotes.set(nowKey, connectorsNow);
+  }
   const buildSystem = () => {
     const suggestions: string[] = [];
-    const perMessage: string[] = [];
+    const perMessage: string[] = [...connectorsNow];
     const out = buildSystemWith(suggestions, perMessage);
     turnNote = [...perMessage, ...(tools.some((t) => t.name === "work_table") ? workNow(workHome(chat)) : []), ...suggestions].join("\n");
     return out;
   };
   const buildSystemWith = (suggestions: string[], perMessage: string[]) => systemPrompt(bot, chat, members, tools, { suggestions, perMessage, learn: chat.pending?.learn ?? 0, mcpErrors: mcp.errors, mcpDown: mcp.down, wrapUp: chat.pending?.wrapUpFor === bot.id, bots, files: [...computerFilesPrompt(settings, chat.pending?.channel === "telegram"), ...(deskMissing ? ["", deskMissing] : [])] , together: entry.batch ? chat.entries.filter((e): e is BotEntry => e.kind === "bot" && e.batch === entry.batch && e.id !== entry.id && e.status === "running").map((e) => members.find((m) => m.id === e.botId)?.name ?? "").filter(Boolean) : undefined });
   let system = buildSystem();
+  /** The tools and instructions as sent, fixed for the turn (see where it is set). */
+  let turnTools: { tools: ToolSpec[]; system: string } | null = null;
   let steps = 0;
   let jobStarted = false;
 
@@ -1724,6 +1739,7 @@ async function* runBot(
       entry.steps.push({ role: "tool", results });
       if (jobStarted) {
         system = buildSystem();
+        turnTools = null;
         jobStarted = false;
       }
       saveProgress(chat);
@@ -1788,10 +1804,15 @@ async function* runBot(
       // compacted, or only the matching ones sent, when they'd take more than their share.
       const request = lastUserText(chat) ?? "";
       const leanFor = (room: number) => {
+        // What counts is what is sent: on-demand tools go as one line each (lib/tool-defer.ts), so their full
+        // descriptions don't weigh here. Measuring them in full dropped connector tools that fitted.
+        if (estimateTokens(deferTools(tools).sent) <= room) return { tools, system };
         const l = leanTools(tools, request, room);
         return { tools: l.tools, system: l.dropped.length ? `${system}\n\n${droppedToolsNote(l.dropped)}` : system };
       };
-      let call = leanFor(Math.floor(budget * 0.45) - estimateTokens(system));
+      // Decided once for the turn. The budget moves from step to step (it follows the measured token ratio), and
+      // a tool list that changed with it rewrote the whole prompt cache: measured, 27,000 tokens written twice.
+      let call = (turnTools ??= leanFor(Math.floor(budget * 0.45) - estimateTokens(system)));
       // Rarely used tools go as one line each inside use_tool (lib/tool-defer.ts): the model's calls come
       // back as the real tools' calls, so everything after this point sees the real names.
       const ask = async (v: Msg[] = view) => {
@@ -1807,7 +1828,7 @@ async function* runBot(
         // theOovi said the request is still too big: shrink harder and try once more.
         if (!(e instanceof HostedError && e.code === "context_too_large")) throw e;
         budget = Math.floor(budget * 0.6);
-        call = leanFor(Math.floor(budget * 0.3) - estimateTokens(system));
+        call = turnTools = leanFor(Math.floor(budget * 0.3) - estimateTokens(system));
         try {
           out = await ask();
         } catch (e2) {

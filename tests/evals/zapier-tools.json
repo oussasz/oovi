@@ -1,0 +1,70 @@
+[
+ {
+  "name": "discover_zapier_actions",
+  "description": "Search 9,000+ apps to find actions you can enable. For authenticated services (Google Docs, Gmail, Sheets, Notion, Slack, Outlook, etc.), check here - generic web fetch tools cannot authenticate with these services. ALWAYS call this before saying 'I can't access X' or 'that app isn't available'. Cal"
+ },
+ {
+  "name": "enable_zapier_action",
+  "description": "Enable an app's actions on this MCP server. Use discover_zapier_actions first to get the exact selected_api ID, then pass it here. Always pass app_display_name from the app field returned by discover_zapier_actions so confirmations show a friendly name rather than the raw selected_api ID. Returns ac"
+ },
+ {
+  "name": "disable_zapier_action",
+  "description": "Remove an app's actions from this MCP server. Use inspect_zapier_actions to see which apps are enabled and their selected_api values. Always pass app_display_name (the human-readable app name from inspect_zapier_actions) so confirmations show a friendly name rather than the raw selected_api ID. Opti"
+ },
+ {
+  "name": "inspect_zapier_actions",
+  "description": "Call `inspect_zapier_actions` first when you create a workflow or automation, before configuring a trigger or action for Gmail, Google Sheets, Google Drive, Slack, or any other app the user has connected, and before any execute_zapier_read_action or execute_zapier_write_action call. Call `inspect_za"
+ },
+ {
+  "name": "execute_zapier_read_action",
+  "description": "Execute a search or read action to get data from a connected app. REQUIRED: You MUST call inspect_zapier_actions first to get the exact action key, tool_name, and parameter schema. NEVER guess action names — they are NOT intuitive and WILL fail. If the app isn't enabled, use discover_zapier_actions "
+ },
+ {
+  "name": "execute_zapier_write_action",
+  "description": "Execute a write or create action in a connected app. REQUIRED: You MUST call inspect_zapier_actions first to get the exact action key, tool_name, and parameter schema. NEVER guess action names — they are NOT intuitive and WILL fail. If the app isn't enabled, use discover_zapier_actions then enable_z"
+ },
+ {
+  "name": "list_zapier_connections",
+  "description": "List the Zapier connections (authenticated accounts) available for an app. Use the `selected_api` from discover_zapier_actions or the action-listing tool. Returns each connection's `id` field. Pass that value as the `connection_id` argument to execute_zapier_read_action / execute_zapier_write_action"
+ },
+ {
+  "name": "manage_zapier_connections",
+  "description": "Manage an app's Zapier connections. Returns a URL the user can open to connect a new account, and optionally sets the app's default connection. An app REQUIRES a default connection before any of its actions can run. If the user has no default connection for the app they want to use, share the return"
+ },
+ {
+  "name": "send_feedback",
+  "description": "Send feedback about your experience with Zapier MCP to the Zapier team."
+ },
+ {
+  "name": "auto_provision_mcp",
+  "description": "Automatically set up this MCP server based on the user's existing connected accounts. Finds apps the user has authenticated, enables their actions, and binds authentication — all in one call. Also returns the user's top Zap workflow titles so you can suggest relevant skills. Run this when the user h"
+ },
+ {
+  "name": "list_zapier_skills",
+  "description": "Lists the Zapier Skills available to the user: Zapier's built-in skills, skills shared in the user's account, and the user's own skills. Skills are reusable markdown instructions for tasks the user runs through their connected apps — useful when a request resembles a known workflow (e.g. 'onboard me"
+ },
+ {
+  "name": "get_zapier_skill",
+  "description": "Reads one file of a Zapier Skill by its skill:// URI, like an MCP resources/read request. Start with the skill's SKILL.md (e.g. skill://zapier/build-workflows/SKILL.md). That result lists the skill's other files. When SKILL.md mentions a relative path such as references/phase-5.md, read the URI of t"
+ },
+ {
+  "name": "create_zapier_skill",
+  "description": "Call this only after the user has confirmed the skill's name and steps. Saves a workflow as a reusable Zapier Skill — a good fit for multi-step workflows the user runs repeatedly or tool calls that always use the same parameters. For a high-quality skill: (1) action keys and parameter schemas should"
+ },
+ {
+  "name": "update_zapier_skill",
+  "description": "Update an existing Zapier Skill's description or content. Use when the user wants to refine a skill, fix an issue, or add new instructions. Identify the skill by its SKILL.md uri from list_zapier_skills."
+ },
+ {
+  "name": "delete_zapier_skill",
+  "description": "Permanently delete a Zapier Skill. Identify the skill by its SKILL.md uri from list_zapier_skills."
+ },
+ {
+  "name": "write_code_action",
+  "description": "Create or update a custom code action for an app. Before creating one, use inspect_zapier_actions to check enabled actions, then use discover_zapier_actions to search for an existing action to enable. Only use this when no Zapier action supports the required operation and the app's service API shoul"
+ },
+ {
+  "name": "get_configuration_url",
+  "description": "Returns the URL where users can configure this MCP server - adding, editing, or removing actions. Provide this URL to users who want to customize their available tools."
+ }
+]

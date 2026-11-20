@@ -505,7 +505,7 @@ const check = (name, ok, detail = "") => {
     if (!pc.running) break;
     await sleep(300);
   }
-  check("N) a bot that acts with the user's accounts is told to propose one plan first, and has the tool for it", (seen.planTools || []).includes("propose_plan") && /call propose_plan once with the whole task/.test(seen.planSys || ""));
+  check("N) a bot that acts with the user's accounts is told to propose one plan for several steps in their browser, and has the tool for it", (seen.planTools || []).includes("propose_plan") && /call propose_plan once with the steps in order/.test(seen.planSys || "") && /Anything else needs no plan/.test(seen.planSys || ""));
   check("N) the plan waits for the user's OK before anything is done", !!pc?.pending?.planReview && !seen.out.plan1, JSON.stringify(pc?.pending || {}).slice(0, 120));
   const cards = [];
   await api("POST", `/api/chats/${ach}/run`, { planDecision: { approve: true, items: ["Open the import page", "Choose the m3ak project", "Tick Projet prioritaire", "Click Ajouter"] } });
