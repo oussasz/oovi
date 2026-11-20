@@ -46,7 +46,16 @@ tested on the real model.
   old-topics (a seeded history with an old "Open items" summary and an unfinished job), single-connect.
   `EVAL_SERVER=<another build's .next/standalone>` runs them against another build (how 0.14.1 was measured).
   The scripted e2e scenarios stay for the plumbing; the ones that matched prompt wording were updated.
-MEASURED_BLOCK
+Measured on the real model with the same scripted user (2026-11-20; `../lab/evals-final3*` and `../lab/evals-0141*`):
+| scenario | 0.14.1 | harness-v2 |
+|---|---|---|
+| bulk-all (923 addresses) | 0 sent, 4 questions, a lecture, 13 calls, 61 credits (stopped there), one request of 109,136 tokens | 923/923 in 3 runs of 3, 0 invented, 0 twice, 0 questions, 1 card, 2-4 calls, 2.3-5.1 credits (4.0 on average), largest request 30,145 tokens |
+| bulk-all-refused | not run | 923/923 in 3 of 3, 1 card, 2 calls, 1.8-2.8 credits |
+| bulk-filter (151) | not run | 151/151, 1 card, 3 calls, 2.3 credits |
+| old-topics | 0 sent, 6 questions, 19.6 credits; no old topic in its words either | 923/923, 1 card, 2 calls, 5.3 credits, no old topic |
+| single-connect | sent after a link in the chat and "connecté": 3 cards, 13 calls, 8.7 credits | sent with no second message: 2 cards (connect, send), 5 calls, 5.0 credits |
+The first call of a cold conversation is still about 3.4 credits (27,000 tokens of instructions and tools written to
+the cache): most of what a run costs now. Unit tests 510/510, the 17 scripted scenarios pass, `tsc` clean.
 Not done: the prompt's fixed part is still about 27,000 tokens (3.4 credits each time the cache is cold: the next thing
 to cut, with evals for research/list/team jobs first); for_each_row runs connector tools only (not browser or desktop
 actions); a batch stops at a daily limit and is finished by asking again (no automatic next-day run); the connect card
