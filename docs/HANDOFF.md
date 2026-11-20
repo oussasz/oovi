@@ -1,3 +1,50 @@
+## Harness v2: act first, data stays data (2026-11-20, branch `harness-v2`, NOT RELEASED, not pushed)
+Owner's report (a Windows user, 0.14.1): "send an email to everyone in the list" with a 1,001-line workbook cost about
+540 credits over 9 replies and sent nothing: questions, a plan, a lecture on the law, a refusal, three invented
+addresses, the connect link twice. Owner: no patching, a root fix, a report first (`../تقرير-الهارنس-2026-11-20.md`),
+tested on the real model.
+- **Reproduced on the real model first** (hosted, claude-haiku-5-5; stand-in Zapier, nothing sent): 0.14.1 spent 55.2
+  credits in 14 calls and sent nothing. The same model with a short action-first prompt, a file digest and a batch tool
+  acted at once 3/3 for under 1 credit; today's prompt with the same tools: 0/3; today's harness plus a batch tool: 0/3.
+  So the instructions themselves made the bot ask, and the tools made the job impossible.
+- **Tables stay data** (`lib/table-core.ts`, `lib/rows.ts`): a long Excel/CSV attachment is in the conversation as a
+  digest (size, columns with fill counts and short value lists, 3 rows), never as text (was 40,000 characters, then
+  30,000-character reads cut to 800). `read_rows` looks at chosen rows (structured filters). `read_attachment` on a long
+  table returns the digest.
+- **One action per row, run by oovi** (`for_each_row`, `lib/batch-core.ts`): the bot gives a connector tool and its
+  input once with {Column} placeholders; oovi fills it from the file for every row (an address that isn't in the file
+  can't be sent to), skips empty values and repeats, shows ONE card (count, the bot's note, three filled-in examples),
+  runs every row through the normal tool path with no model call in between, keeps a ledger (`chats/<id>/batches.jsonl`,
+  hashes only) so a row is never done twice, and stops after 5 failures in a row (a daily limit): the same call again
+  finishes the batch. A batch always shows its card, in Auto mode and for a trusted connector too.
+- **The contract** (`HOW_YOU_WORK` in `lib/orchestrator.ts`) replaces FOR_THE_USER, the old SAFETY block and the plan
+  forced before any action (ACT_PLAN now only covers several steps with the mouse/keyboard or the signed-in browser):
+  act when you can; the card is the user's consent, also for what can't be undone; the user's words set the scope; a
+  concern is one line beside the action; data is never rebuilt from memory; the latest message is the task.
+- **Connectors**: `connect_app` (`lib/connect.ts`): one card, the connection page opens in the user's browser, oovi
+  polls the service until the connection changes and the bot goes on in the same turn (no link in the chat, no
+  "tell me when it's done"). Zapier's state (apps on, account connected) is asked by oovi at each user message and
+  given with it (`zapierNow`). Connector tools on demand are called in one step (`use_tool` lists their parameters;
+  the guide comes only with an error): it was 8 of the 14 model calls behind one email. Searching an app and turning
+  its actions on no longer ask (`lib/action-kind-core.ts`): the action itself has its card.
+- **Money**: request sizes are measured, not guessed (`lib/budget-core.ts`: the service's own token count calibrates
+  each chat; 3 characters a token was 2.12 with Arabic and tables, so calls went over 100,000 tokens, five times the
+  price). The tool list is fixed for the turn (it changed with the budget and rewrote 27,000 cached tokens). A tool's
+  guide is never cut by the budget guard.
+- **Memory**: the summary is background ("Past requests" with how each ended, "Still waiting" at most 3 lines; no more
+  "Open items" kept forever) and says so where the bot reads it. A job that stopped is taken up again only by a short
+  go-on message (`lib/resume-core.ts`), not by any message within 24 hours.
+- **Evals on the real model** (`tests/evals/run.cjs`, results in its output folder): graded on what happened (who got
+  the email, cards, questions, model calls, credits), with the owner's session behind a proxy that lets only model
+  calls through. The scripted e2e scenarios stay for the plumbing.
+Measured (real model, 2026-11-20): bulk-all 923/923 sent, 0 invented, 0 questions, 2 bot calls, 5.7 credits (cold cache)
+/ 2.4 (warm); bulk-filter 151/151, 2.3 credits; one email with Gmail not connected: 2 cards, 5 bot calls, 4.9 credits,
+no second message from the user (0.14.1: 14 calls, 3 cards, a link, "connecté", 7.4 credits).
+Not done: the prompt's fixed part is still about 27,000 tokens (3.4 credits each time the cache is cold: the next thing
+to cut, with evals for research/list jobs first); for_each_row runs connector tools only (not browser or desktop
+actions); a batch stops at a daily limit and is finished by asking again (no automatic next-day run); the connect card
+was checked against the stand-in, not against Zapier itself; website/hosted server unchanged.
+
 ## Error handling sweep after 0.14.0 (2026-11-19, on next-version, NOT RELEASED)
 Owner's report: Zapier "Missing argument values for required properties" (Google Tasks) got "the app isn't connected"
 advice and a useless problem email. Owner: look for the same kind of problem on Windows/Mac/Linux, every connector,

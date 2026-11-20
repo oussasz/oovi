@@ -16,6 +16,8 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 
 const ROOT = path.join(__dirname, "../..");
+/** The built server to test: this checkout's, or another build's (EVAL_SERVER=<its .next/standalone>) to compare. */
+const SERVER = process.env.EVAL_SERVER || path.join(ROOT, ".next/standalone");
 const REAL = process.env.OOVI_REAL_DATA || path.join(os.homedir(), process.platform === "win32" ? "AppData/Roaming/oovi/data" : process.platform === "darwin" ? "Library/Application Support/oovi/data" : ".config/oovi/data");
 const OUT_ROOT = process.env.EVAL_OUT || path.join(os.tmpdir(), "oovi-evals");
 const LEADS = path.join(__dirname, "fixtures", "Leads web design.xlsx");
@@ -27,6 +29,43 @@ const LAW = /قانون|18-05|\bloi\b|\blaw\b|legal|juridique|rgpd|gdpr|spam/i;
 
 /** What a user who just wants the job done answers to a question card. */
 const JUST_DO_IT = "قررها انت وكمل";
+
+/**
+ * A chat as a long-time user has it: old errands that are over (a song on YouTube, a Facebook post), a summary
+ * written by the earlier version of oovi with an "Open items" list, and a few recent messages. The first answer
+ * to a new request used to return to these.
+ */
+function oldHistory(botId) {
+  const t0 = Date.now() - 3 * 864e5;
+  const user = (id, text, k) => ({ id, kind: "user", text, at: t0 + k * 60_000 });
+  const bot = (id, text, k) => ({ id, kind: "bot", botId, at: t0 + k * 60_000 + 20_000, steps: [{ role: "assistant", text, toolCalls: [] }], text, status: "done", usage: { input: 0, output: 0 } });
+  const entries = [
+    user("u0001", "شغل أغنية في يوتوب", 1),
+    bot("b0001", "باش نشغل أغنية في يوتوب نحتاج نتحكم في المتصفح تاعك. أي أغنية تحب؟", 1),
+    user("u0002", "دير بوست فيسبوك على مشروع m3ak", 30),
+    bot("b0002", "واش تحب نكتب في البوست؟ أعطيني النقاط الأساسية وأنا نكتبو.", 30),
+    user("u0003", "خليها من بعد", 31),
+    bot("b0003", "ماشي، كي تحب.", 31),
+    user("u0004", "شحال الساعة في طوكيو درك؟", 2000),
+    bot("b0004", "الساعة في طوكيو درك تقريباً 9 تاع الليل.", 2000),
+    user("u0005", "شكرا", 2001),
+    bot("b0005", "العفو، أي وقت.", 2001),
+  ];
+  const summary = {
+    upTo: "b0003",
+    text: [
+      "## Goals", "- The user runs a project called m3ak and wants help with its social media.",
+      "## Done so far", "- Nothing was completed.",
+      "## Open items",
+      "- Play a song on YouTube: the user asked; the assistant asked which song; no answer yet.",
+      "- Facebook post about the m3ak project: waiting for the user's key points.",
+      "- No clear instruction was given for the YouTube channel.",
+    ].join("\n"),
+  };
+  return { entries, summary };
+}
+
+const OLD_TOPICS = /youtube|يوتوب|يوتيوب|facebook|فيسبوك|فايسبوك|m3ak|أغنية|اغنية|chanson|song|طوكيو|tokyo/i;
 
 const SCENARIOS = [
   {
@@ -52,6 +91,16 @@ const SCENARIOS = [
     steps: [{ say: "Envoie un email à tous ceux dont le statut est « Intéressé » dans la liste, pour leur proposer un rendez-vous cette semaine.", file: LEADS }],
     expected: () => ROWS.filter((r) => r.email && r.status === "Intéressé").map((r) => r.email),
     limits: { cards: 1, questions: 0, calls: 10, credits: 12 },
+  },
+  {
+    id: "old-topics",
+    title: "a new request in a chat full of old errands: the answer is about the new request only",
+    zapier: { enabled: true, connected: true },
+    seed: oldHistory,
+    steps: [{ say: "ابعث إيمايل لكل واحد في القائمة", file: LEADS }],
+    expected: () => ROWS.filter((r) => r.email).map((r) => r.email),
+    noOldTopics: true,
+    limits: { cards: 1, questions: 1, calls: 10, credits: 12 },
   },
   {
     id: "single-connect",
@@ -85,7 +134,7 @@ async function runScenario(sc, k) {
   const kids = [
     spawn("node", [path.join(__dirname, "proxy.cjs")], { env, stdio: ["ignore", log, log] }),
     spawn("node", [path.join(__dirname, "zapier-standin.cjs")], { env, stdio: ["ignore", log, log] }),
-    spawn("node", ["server.js"], { cwd: path.join(ROOT, ".next/standalone"), env: { ...env, OOVI_DATA: data, OOVI_DOWNLOADS: path.join(out, "downloads"), OOVI_CLOUD_URL: `http://127.0.0.1:${PROXY}`, HOSTNAME: "127.0.0.1", PORT: String(PORT), OOVI_VERSION: "eval" }, stdio: ["ignore", log, log] }),
+    spawn("node", ["server.js"], { cwd: SERVER, env: { ...env, OOVI_DATA: data, OOVI_DOWNLOADS: path.join(out, "downloads"), OOVI_CLOUD_URL: `http://127.0.0.1:${PROXY}`, HOSTNAME: "127.0.0.1", PORT: String(PORT), OOVI_VERSION: "eval" }, stdio: ["ignore", log, log] }),
   ];
   const api = async (method, p, body, headers) => {
     const r = await fetch(BASE + p, { method, headers: { ...(body && !Buffer.isBuffer(body) ? { "content-type": "application/json" } : {}), ...(headers || {}) }, body: body ? (Buffer.isBuffer(body) ? body : JSON.stringify(body)) : undefined });
@@ -93,7 +142,7 @@ async function runScenario(sc, k) {
     try { return { status: r.status, j: JSON.parse(t) }; } catch { return { status: r.status, j: null, t }; }
   };
   // prompts: each time the app stopped to ask for an OK (one card can hold several actions of the same step).
-  const seen = { cards: [], prompts: 0, questions: 0, plans: 0, texts: [] };
+  const seen = { cards: [], prompts: 0, questions: 0, plans: 0, texts: [], said: [] };
   try {
     for (let i = 0; i < 80; i++) { try { if ((await fetch(`${BASE}/api/bots`)).ok) break; } catch {} await sleep(500); }
     await api("POST", "/api/settings", { active: "oovi" });
@@ -103,6 +152,12 @@ async function runScenario(sc, k) {
     const bot = got.bot || got;
     await api("PUT", `/api/bots/${main.botId}`, { ...bot, tools: { ...bot.tools, mcp: [add.j.id] } });
     const chat = `dm-${main.botId}`;
+    if (sc.seed) {
+      // getChat reads the file each time: an earlier conversation is put there before the first message.
+      const now = (await api("GET", `/api/chats/${chat}`)).j;
+      const { entries, summary } = sc.seed(main.botId);
+      fs.writeFileSync(path.join(data, "accounts", uid, "chats", `${chat}.json`), JSON.stringify({ id: chat, kind: "direct", name: "", memberIds: [main.botId], leadId: main.botId, createdAt: now.createdAt, updatedAt: Date.now(), entries, summary }));
+    }
     const post = async (body) => { const r = await fetch(`${BASE}/api/chats/${chat}/run`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }); await r.text(); };
     const idle = async () => { for (let i = 0; i < 3600; i++) { const c = (await api("GET", `/api/chats/${chat}`)).j; if (c && !c.running) return c; await sleep(500); } throw new Error("the run didn't end in 30 minutes"); };
 
@@ -131,12 +186,16 @@ async function runScenario(sc, k) {
         } else if (p.questions) {
           const e = c.entries.find((x) => x.id === p.questions.entryId);
           seen.questions += e.questions.items.length;
+          seen.said.push(JSON.stringify(e.questions), e.text || "");
           await post({ answers: e.questions.items.map(() => JUST_DO_IT) });
         } else break;
       }
       const c = await idle();
       const last = [...c.entries].reverse().find((e) => e.kind === "bot");
       seen.texts.push(last?.text || last?.error || "");
+      // Everything the bots said to the user since the scenario's first message (what was there before doesn't count).
+      const from = sc.seed ? c.entries.findIndex((e) => e.kind === "user" && e.text === sc.steps[0].say) : 0;
+      for (const e of c.entries.slice(Math.max(0, from))) if (e.kind === "bot") seen.said.push(e.text || "");
     }
     await sleep(800);
   } finally {
@@ -175,6 +234,7 @@ async function runScenario(sc, k) {
     [`at most ${sc.limits.credits} credits (${m.credits})`, m.credits <= sc.limits.credits],
     [`no request over 100,000 tokens (largest ${m.maxPrompt})`, m.maxPrompt <= 100_000],
     [`no lecture in the answers (${m.lecture})`, m.lecture === 0],
+    ...(sc.noOldTopics ? [[`nothing about the old topics in what the bots said (${seen.said.filter((t) => OLD_TOPICS.test(t)).length})`, !seen.said.some((t) => OLD_TOPICS.test(t))]] : []),
   ];
   fs.writeFileSync(path.join(out, "result.json"), JSON.stringify({ id: sc.id, metrics: m, checks, cards: seen.cards, texts: seen.texts }, null, 1));
   return { m, checks, texts: seen.texts };
@@ -182,7 +242,7 @@ async function runScenario(sc, k) {
 
 (async () => {
   if (!fs.existsSync(path.join(REAL, "session.json"))) return console.error(`No oovi session in ${REAL}: sign in to the desktop app first (or set OOVI_REAL_DATA).`), process.exit(2);
-  if (!fs.existsSync(path.join(ROOT, ".next/standalone/server.js"))) return console.error("No built server: run `npm run build` first."), process.exit(2);
+  if (!fs.existsSync(path.join(SERVER, "server.js"))) return console.error("No built server: run `npm run build` first."), process.exit(2);
   const pick = process.argv.slice(2);
   const list = SCENARIOS.filter((s) => !pick.length || pick.includes(s.id));
   let failed = 0;
