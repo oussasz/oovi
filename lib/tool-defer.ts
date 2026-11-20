@@ -53,11 +53,11 @@ export const DIRECT: Record<string, string> = {
   save_skill: "save a reliable multi-step procedure as a skill, so the same kind of task is faster next time",
   send_telegram: "send a message to the user's own Telegram now, when they ask to get something there or on their phone",
   oovi_help: "how oovi itself works: where things are, how to connect, enable or set something up in the app (instead of guessing)",
-  find_files: "find files on the user's computer by name (Desktop, Documents, Downloads…)",
-  list_folder: "what is in a folder on the user's computer",
-  read_computer_file: "read a file on the user's computer by its full path (PDF, Office, CSV, text, images)",
-  send_file_to_user: "give the user a file from their computer in the chat (and on Telegram)",
-  copy_file_to_downloads: "copy a file from the user's computer into their Downloads/oovi folder",
+  find_files: "find the user's OWN files on their computer by name (Desktop, Documents, Downloads…); not for a file you made or edited: that one is already in the chat",
+  list_folder: "what is in a folder of the user's computer (their own files)",
+  read_computer_file: "read one of the user's own files on their computer by its full path (PDF, Office, CSV, text, images)",
+  send_file_to_user: "show in the chat a file that was ALREADY on the user's computer. A file you made or edited is shown in the chat by itself: never send it again",
+  copy_file_to_downloads: "copy one of the user's own files into their Downloads/oovi folder",
 };
 
 const GUIDE_END = "[/guide]";
