@@ -18,7 +18,7 @@ export const FOR_EACH_ROW = "for_each_row";
 
 const FILTER_SCHEMA = {
   type: "array",
-  description: 'Keep only the rows where every condition holds, e.g. [{"column":"City","op":"=","value":"Alger"},{"column":"Email","op":"not_empty"}]. Leave out for all rows.',
+  description: 'Keep only the rows where every condition holds, e.g. [{"column":"City","op":"=","value":"Alger"}]. Only for what the user asked to narrow: when they said everyone or all, leave it out (rows with an empty value the action needs are skipped anyway). A doubt of your own about some rows is not a filter: it goes in `note`.',
   items: {
     type: "object",
     properties: {
@@ -183,7 +183,21 @@ export function batchAsks(call: ToolCall, chat: Chat, workChat: string, tools: T
   return !("error" in p) && p.act;
 }
 
-type Tr = (key: "batch.head" | "batch.from" | "batch.skipEmpty" | "batch.skipDup" | "batch.already" | "batch.example", vars?: Record<string, string | number>) => string;
+type Tr = (key: "batch.head" | "batch.from" | "batch.filtered" | "batch.skipEmpty" | "batch.skipDup" | "batch.already" | "batch.example", vars?: Record<string, string | number>) => string;
+
+/** A filter as the card says it: "Statut ≠ Refusé, Email not empty". */
+function filterWords(raw: unknown): string {
+  const sign: Record<string, string> = { "=": "=", "!=": "≠", contains: "∋", not_contains: "∌", empty: "∅", not_empty: "≠ ∅", in: "∈", not_in: "∉" };
+  return (Array.isArray(raw) ? raw : raw ? [raw] : [])
+    .map((f) => {
+      const { column, op, value } = (f ?? {}) as { column?: unknown; op?: unknown; value?: unknown };
+      const o = String(op ?? "=");
+      const v = o === "empty" || o === "not_empty" ? "" : ` ${Array.isArray(value) ? value.join(" / ") : String(value ?? "")}`;
+      return `${String(column ?? "")} ${sign[o] ?? o}${v}`.trim();
+    })
+    .join(", ")
+    .slice(0, 200);
+}
 
 /** The one card for the whole batch: how many, from where, what is left out, and three rows filled in. */
 export function batchApprovalItem(call: ToolCall, chat: Chat, workChat: string, tools: ToolSpec[], describe: (c: ToolCall) => string, tr: Tr): ApprovalItem {
@@ -200,6 +214,7 @@ export function batchApprovalItem(call: ToolCall, chat: Chat, workChat: string, 
     tr("batch.head", { n: todo.length, what: head }),
     tr("batch.from", { source: p.src.name }),
     note,
+    p.plan.filteredOut ? tr("batch.filtered", { n: p.plan.filteredOut, filter: filterWords(call.input.filter) }) : "",
     p.plan.skipped.empty ? tr("batch.skipEmpty", { n: p.plan.skipped.empty }) : "",
     p.plan.skipped.duplicate ? tr("batch.skipDup", { n: p.plan.skipped.duplicate }) : "",
     already ? tr("batch.already", { n: already }) : "",

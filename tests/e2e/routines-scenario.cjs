@@ -215,7 +215,7 @@ const until = async (fn, ms = 75_000) => {
   const vb = bodies.slice(sentBefore).find((x) => /VPS-ASK/.test(JSON.stringify(x.messages)));
   const users = (vb?.messages || []).filter((m) => m.role === "user" && /REMIND-APP|VPS-ASK/.test(textOf(m)));
   check("G) every message of the user carries the time it was sent", users.length === 2 && users.every((m) => /\[oovi: sent \w{3}, \d\d\/\d\d\/\d{4}, \d\d:\d\d/.test(textOf(m))), users.map((m) => textOf(m).slice(0, 120)).join(" | "));
-  check("G) the bot is told that past reminders and earlier topics stay closed", /earlier topics \(a past reminder/.test(JSON.stringify(vb?.system ?? "")));
+  check("G) the bot is told that past reminders and earlier topics stay closed", /Earlier topics are closed unless the user reopens them/.test(JSON.stringify(vb?.system ?? "")) && /a short-lived thing is over once its time has passed/.test(JSON.stringify(vb?.system ?? "")));
 
   // F: a one-time task asked in the chat: its result is posted back in that chat, written to the user.
   await api("POST", `/api/chats/${dm}/run`, { text: "LATER-TASK in a minute tell me the news" });

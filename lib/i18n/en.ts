@@ -1879,6 +1879,7 @@ const en = {
   "st.sending": "Sending {what}",
   "st.copying": "Copying {what}",
   "st.thinking": "Thinking…",
+  "batch.filtered": "{n} rows are left out by the filter ({filter}).",
   "ok.unseenAddress": "⚠ Check this address: {list} is not in your messages, your files or anything read here.",
   "connect.card": "Connect {app}: the connection page opens in your browser. oovi goes on by itself as soon as it is connected.",
   "st.connectWait": "Waiting for {app} to be connected…",

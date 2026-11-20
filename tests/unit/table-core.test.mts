@@ -128,3 +128,13 @@ test("an attached workbook is shown to the bot as a digest per sheet; other file
   assert.match(segmentsDigest("csv", [{ label: "Table", text: "Nom;Email\nAli;ali@x.dz\n" }])!, /1 rows, 2 columns/);
   assert.equal(segmentsDigest("pdf", [{ label: "Page 1", text: "hello" }]), null);
 });
+
+test("a batch says how many rows its filter leaves out, so the card can show it", () => {
+  const t = fromSheetText(SHEET);
+  const p = planBatch(t, { input: { to: "{Email}" }, filter: [{ column: "Status", op: "!=", value: "Refused" }] });
+  assert.ok(!("error" in p));
+  assert.equal(p.filteredOut, 1);
+  const all = planBatch(t, { input: { to: "{Email}" } });
+  assert.ok(!("error" in all));
+  assert.equal(all.filteredOut, 0);
+});

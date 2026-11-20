@@ -246,6 +246,8 @@ export type BatchPlan = {
   emptyRows: number[];
   /** The columns the input takes its values from. */
   uses: string[];
+  /** Rows the filter leaves out (0 without a filter): shown on the card, so nothing is left out unseen. */
+  filteredOut: number;
 };
 
 /**
@@ -291,5 +293,5 @@ export function planBatch(t: Table, o: { input: unknown; filter?: unknown; uniqu
     if (o.limit !== undefined && items.length >= o.limit) break;
     items.push({ n: row.n, input: fill(o.input, (name) => row.cells[index.get(name)!] ?? "") });
   }
-  return { items, skipped: { empty: emptyRows.length, duplicate }, emptyRows, uses: [...index.keys()] };
+  return { items, skipped: { empty: emptyRows.length, duplicate }, emptyRows, uses: [...index.keys()], filteredOut: t.rows.length - sel.matching };
 }

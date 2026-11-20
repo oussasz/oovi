@@ -1875,6 +1875,7 @@ const ar: Dict = {
   "st.sending": "يرسل {what}",
   "st.copying": "ينسخ {what}",
   "st.thinking": "يفكّر…",
+  "batch.filtered": "{n} سطر مستثنى بالفلتر ({filter}).",
   "ok.unseenAddress": "⚠ تحقق من هذا العنوان: {list} غير موجود في رسائلك ولا في ملفاتك ولا في أي شيء قُرئ هنا.",
   "connect.card": "ربط {app}: تُفتح صفحة الربط في متصفحك. يكمل oovi وحده فور إتمام الربط.",
   "st.connectWait": "في انتظار ربط {app}…",

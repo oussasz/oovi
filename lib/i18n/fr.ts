@@ -1860,6 +1860,7 @@ const fr: Dict = {
   "st.sending": "Envoie {what}",
   "st.copying": "Copie {what}",
   "st.thinking": "Réfléchit…",
+  "batch.filtered": "{n} lignes sont exclues par le filtre ({filter}).",
   "ok.unseenAddress": "⚠ Vérifiez cette adresse : {list} n'apparaît ni dans vos messages, ni dans vos fichiers, ni dans ce qui a été lu ici.",
   "connect.card": "Connecter {app} : la page de connexion s'ouvre dans votre navigateur. oovi continue tout seul dès que c'est connecté.",
   "st.connectWait": "En attente de la connexion de {app}…",
