@@ -25,7 +25,8 @@ export type ToolSpec = { name: string; description: string; parameters: Record<s
 type RawCompletion = {
   text: string;
   toolCalls: ToolCall[];
-  usage: { input: number; output: number };
+  /** prompt: the whole request as the service counted it (new, cached and written to the cache), when it says so. */
+  usage: { input: number; output: number; prompt?: number };
   reasoning?: string;
   /** The answer stopped at the output limit: a tool call in it may be incomplete. */
   cutOff?: boolean;
@@ -510,7 +511,7 @@ function readAnthropic(j: AnthropicReply): RawCompletion {
     toolCalls: content
       .filter((b) => b.type === "tool_use")
       .map((b) => ({ id: b.id || randomId(), name: b.toolset_name === DESKTOP_TOOLSET_NAME ? desktopName(b.name ?? "") : (b.name ?? ""), input: b.input ?? {} })),
-    usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0 },
+    usage: { input: u.input_tokens ?? 0, output: u.output_tokens ?? 0, prompt: (u.input_tokens ?? 0) + (u.cache_read_input_tokens ?? 0) + (u.cache_creation_input_tokens ?? 0) },
     // Thinking blocks are kept for the UI only and never replayed: oovi trims old
     // history to save tokens, and replayed thinking requires an unedited history.
     reasoning: content.filter((b) => b.type === "thinking" && b.thinking).map((b) => b.thinking).join("\n\n") || undefined,

@@ -21,3 +21,16 @@ test("Zapier's read and write actions", () => {
   assert.equal(toolKind("mcp_zapier_execute_zapier_read_action"), "read");
   assert.equal(toolKind("execute_zapier_write_action"), "act");
 });
+
+test("looking for an app's actions is a read: no card for a search", () => {
+  assert.equal(toolKind("mcp_zapier_discover_zapier_actions"), "read");
+  assert.equal(toolKind("discover_tools"), "read");
+});
+
+test("getting an app ready (Zapier's enable and connection tools) sends nothing: every real action still has its own card", () => {
+  assert.equal(toolKind("mcp_zapier_enable_zapier_action"), "read");
+  assert.equal(toolKind("mcp_zapier_manage_zapier_connections"), "read");
+  assert.equal(toolKind("mcp_zapier_auto_provision_mcp"), "read");
+  assert.equal(toolKind("mcp_zapier_disable_zapier_action"), "act");
+  assert.equal(toolKind("mcp_zapier_delete_zapier_skill"), "act");
+});

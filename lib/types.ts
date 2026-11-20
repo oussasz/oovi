@@ -239,6 +239,8 @@ export type Pending = {
 };
 
 export type Chat = {
+  /** Real tokens for one counted token in this chat, measured from the service's answers (lib/budget-core.ts). */
+  tokenRatio?: number;
   id: string;
   kind: "group" | "direct";
   name: string;

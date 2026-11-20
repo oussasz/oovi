@@ -34,6 +34,24 @@ export const MANY_CONNECTOR_TOOLS = 15;
 /** One line that says when to reach for a connector tool: the first sentence of its description. */
 const lineOf = (t: ToolSpec) => (DEFERRED[t.name] ?? (t.description || t.name).split(/(?<=[.!?])\s/)[0]!.replace(/\s+/g, " ").slice(0, 110));
 
+/**
+ * A connector tool's parameter names, the optional ones with "?": enough to call it at the first try. Reading
+ * a guide first cost one more model call for every connector tool a bot touched (measured: 8 of the 14 calls
+ * behind one email were guide round trips).
+ */
+const signature = (t: ToolSpec) => {
+  const p = t.parameters as { properties?: Record<string, unknown>; required?: string[] } | undefined;
+  const names = Object.keys(p?.properties ?? {});
+  if (!names.length) return "()";
+  const req = new Set(p?.required ?? []);
+  return `(${[...names.filter((n) => req.has(n)), ...names.filter((n) => !req.has(n)).map((n) => `${n}?`)].slice(0, 10).join(", ")})`;
+};
+
+/** A connector tool's parameters, given with an error: the bot corrects its call without a round trip for the guide. */
+export const paramsHint = (t: ToolSpec) => `Parameters of ${t.name} (JSON schema): ${JSON.stringify(t.parameters)}`;
+
+const oneStep = (name: string) => name.startsWith("mcp_");
+
 /** Whether this tool is sent on demand, among these tools. */
 export function onDemand(tools: ToolSpec[], name: string): boolean {
   if (name in DEFERRED) return true;
@@ -48,8 +66,8 @@ export function deferTools(tools: ToolSpec[]): Deferral {
     name: USE_TOOL,
     description:
       "More tools, loaded when needed. They are yours like the others: when a task calls for one (or your instructions name one that is not in your tool list), use it through this tool. " +
-      "First call use_tool with only `name`: you get that tool's guide (what it does, its parameters). Then call use_tool with `name` and `input` filled as the guide says. The guide stays in the conversation: read it once, not before every use.\n" +
-      deferred.map((t) => `- ${t.name}: ${lineOf(t)}`).join("\n"),
+      "A tool listed with its parameters in brackets is called at once: use_tool with `name` and `input`. For the others, first call use_tool with only `name`: you get that tool's guide (what it does, its parameters); then call use_tool with `name` and `input` filled as the guide says. A guide stays in the conversation: read it once, not before every use.\n" +
+      deferred.map((t) => `- ${t.name}${oneStep(t.name) ? signature(t) : ""}: ${lineOf(t)}`).join("\n"),
     parameters: {
       type: "object",
       properties: {
@@ -100,7 +118,12 @@ export function unwrapCalls(calls: ToolCall[], d: Deferral, sent: Msg[]): ToolCa
     if (c.name !== USE_TOOL) return c;
     const target = String(c.input.name ?? "");
     const input = inputOf(c.input.input);
-    if (!d.deferred.some((t) => t.name === target) || !input || !Object.keys(input).length || !guideSeen(sent, target)) return c;
+    const spec = d.deferred.find((t) => t.name === target);
+    if (!spec) return c;
+    // A connector tool that takes no parameters has nothing to be told: naming it is calling it.
+    const takesNothing = oneStep(target) && !Object.keys((spec.parameters as { properties?: object } | undefined)?.properties ?? {}).length;
+    if (takesNothing) return { id: c.id, name: target, input: input ?? {} };
+    if (!input || !Object.keys(input).length || !(oneStep(target) || guideSeen(sent, target))) return c;
     return { id: c.id, name: target, input };
   });
 }

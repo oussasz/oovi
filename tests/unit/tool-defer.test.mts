@@ -80,6 +80,28 @@ test("many connector tools are sent on demand too; a few stay in full", async ()
   assert.ok(!d.sent.some((t) => t.name.startsWith("mcp_")));
   assert.ok(d.sent.some((t) => t.name === "read_url"));
   const use = d.sent.find((t) => t.name === "use_tool")!;
-  assert.match(use.description, /- mcp_x_tool_3: Does thing 3\./);
+  assert.match(use.description, /- mcp_x_tool_3\(\): Does thing 3\./);
   assert.ok(onDemand(many as never, "mcp_x_tool_0") && !onDemand(many as never, "read_url"));
+});
+
+test("a connector tool is used in one step: its line names its parameters, and a call with input is the real call", async () => {
+  const { deferTools, unwrapCalls, paramsHint } = await import("../../lib/tool-defer.ts");
+  const mk = (n: number) => Array.from({ length: n }, (_, i) => ({ name: `mcp_z_tool_${i}`, description: `Does thing ${i}. More words.`, parameters: { type: "object", properties: { selected_api: { type: "string" }, params: { type: "object" }, note: { type: "string" } }, required: ["selected_api", "params"] } }));
+  const many = [...mk(16), { name: "read_url", description: "r", parameters: {} }];
+  const d = deferTools(many as never);
+  const use = d.sent.find((t) => t.name === "use_tool")!;
+  assert.match(use.description, /- mcp_z_tool_3\(selected_api, params, note\?\): Does thing 3\./);
+  const call = { id: "a", name: "use_tool", input: { name: "mcp_z_tool_3", input: { selected_api: "Gmail", params: { to: "a@b.dz" } } } };
+  assert.deepEqual(unwrapCalls([call], d, []), [{ id: "a", name: "mcp_z_tool_3", input: { selected_api: "Gmail", params: { to: "a@b.dz" } } }]);
+  // With no input it is still a request for the guide.
+  const ask = { id: "b", name: "use_tool", input: { name: "mcp_z_tool_3" } };
+  assert.deepEqual(unwrapCalls([ask], d, []), [ask]);
+  assert.match(paramsHint(many[0] as never), /"selected_api"/);
+});
+
+test("a connector tool that takes nothing runs when it is named: there is no input to wait for", async () => {
+  const { deferTools, unwrapCalls } = await import("../../lib/tool-defer.ts");
+  const many = Array.from({ length: 16 }, (_, i) => ({ name: `mcp_q_tool_${i}`, description: `Does thing ${i}.`, parameters: { type: "object", properties: {} } }));
+  const d = deferTools(many as never);
+  assert.deepEqual(unwrapCalls([{ id: "a", name: "use_tool", input: { name: "mcp_q_tool_2" } }], d, []), [{ id: "a", name: "mcp_q_tool_2", input: {} }]);
 });

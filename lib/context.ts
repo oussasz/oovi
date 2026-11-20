@@ -12,6 +12,7 @@
 // default); the budget leaves room for the reply and for estimation error.
 import { attachmentTokens } from "./attachments";
 import { DESKTOP_MARKER, DESKTOP_SHOT_TOKENS, DESKTOP_TOOLSET_TOKENS } from "./desktop-core";
+import { shortenOlderResults } from "./budget-core";
 import type { ToolSpec } from "./llm";
 import type { AttachRef, Bot, Chat, Msg } from "./types";
 
@@ -82,13 +83,8 @@ export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], bu
 
   for (const max of [400, 150]) {
     const total = msgs.length;
-    msgs = msgs.map((m, i): Msg =>
-      m.role === "tool" && i !== lastTool
-        ? { role: "tool", results: m.results.map((r) => ({ ...r, content: cut(r.content, max, "older result shortened; use recall_history or run the tool again for details") })) }
-        : m.role === "assistant" && i < total - 2
-          ? { ...m, toolCalls: m.toolCalls.map((c) => ({ ...c, input: shrinkInput(c.input, max * 2) })) }
-          : m,
-    );
+    // A tool's guide is never cut (lib/budget-core.ts): cut, the tool can't be used and the guide is asked for again.
+    msgs = shortenOlderResults(msgs, max, lastTool).map((m, i): Msg => (m.role === "assistant" && i < total - 2 ? { ...m, toolCalls: m.toolCalls.map((c) => ({ ...c, input: shrinkInput(c.input, max * 2) })) } : m));
     if (requestTokens(system, msgs, tools) <= budget) return msgs;
   }
 
