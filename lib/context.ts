@@ -10,6 +10,7 @@
 //
 // theOovi requests must stay under the limit set in the console (100K tokens by
 // default); the budget leaves room for the reply and for estimation error.
+import { foldNote } from "./budget-core";
 import { attachmentTokens } from "./attachments";
 import { DESKTOP_MARKER, DESKTOP_SHOT_TOKENS, DESKTOP_TOOLSET_TOKENS } from "./desktop-core";
 import { shortenOlderResults } from "./budget-core";
@@ -71,7 +72,11 @@ const SUMMARY_MARK = "[Summary of the earlier conversation]";
  * shorten older tool results, shorten long tool inputs (file contents…), then fold the
  * oldest messages into one note that points at recall_history.
  */
-export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], budget: number): Msg[] {
+/**
+ * pinned: kept in view when older messages are hidden (the bot's checklist): in long work the update_plan calls
+ * that set it were among the first hidden, and the bot lost track of its own steps.
+ */
+export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], budget: number, pinned = ""): Msg[] {
   if (requestTokens(system, messages, tools) <= budget) return messages;
   let msgs = messages;
   // Files in older messages go first (they're the biggest), then even the newest ones.
@@ -97,7 +102,7 @@ export function fitBudget(system: string, messages: Msg[], tools: ToolSpec[], bu
     while (from < msgs.length && msgs[from]!.role === "tool") from++;
     const note: Msg = {
       role: "user",
-      content: `[${from - head} earlier messages of this conversation are hidden to save space. They're saved: use recall_history to look anything up.]`,
+      content: foldNote(from - head, pinned),
     };
     const next: Msg[] = [...msgs.slice(0, head), note, ...msgs.slice(from)];
     if (requestTokens(system, next, tools) <= budget) return next;

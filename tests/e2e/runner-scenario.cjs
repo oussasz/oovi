@@ -39,6 +39,8 @@ const jobs = []; // {id, userId, chatId, kind, payload, status, claims, released
 const aiCalls = []; // {uid, system, ask}
 const setupPuts = [];
 let nextJob = 1;
+/** Messages sent to the user's Telegram through the website. */
+const tgSent = [];
 /** Chats saved again after they were deleted (must stay empty). */
 const revived = [];
 const addJob = (userId, chatId, text) => {
@@ -153,6 +155,12 @@ const website = http.createServer(async (req, res) => {
   }
   if ((r = /^\/vault\/([\w-]+)\/([\w-]+)$/.exec(p))) return send(res, 404, { error: "none" });
   if ((r = /^\/ai\/([\w-]+)$/.exec(p)) && req.method === "POST") return send(res, 200, await theOovi(r[1], body));
+  // A message to the account's own Telegram (the website sends it with the token it keeps), noted with the job's state.
+  if (p === "/telegram" && req.method === "POST") {
+    const held = jobs.find((x) => x.userId === body.userId && x.status === "claimed");
+    tgSent.push({ userId: body.userId, text: String(body.text || ""), whileHeld: !!held });
+    return send(res, 200, { sent: true });
+  }
   send(res, 404, { error: "unknown" });
 });
 
@@ -264,6 +272,28 @@ const jobFolders = () => fs.readdirSync(TMP).filter((f) => f.startsWith("job-"))
   check(jf.status === "done" && Date.now() - tStop < 15_000, `F: Stop from the phone ends the job running on the server (${jf.status}, ${Date.now() - tStop} ms)`);
   check(fb?.status === "stopped" && !/SLOW-DONE/.test(fb?.text || ""), `F: the reply shows as stopped, not finished (${fb?.status})`);
   check(stopJob.status === "done", `F: the stop itself is done (${stopJob.status})`);
+
+  // H: a Telegram message while the computer is off (handed to the cloud by the website): answered here, and the
+  // answer is sent to Telegram before the job ends (while the job is held, as the website requires).
+  runner.kill("SIGTERM");
+  await new Promise((r) => runner.on("exit", r));
+  runner = startRunner();
+  const jt = addJob("ua", "dm-ava1", "TGQ what time do you open");
+  jt.payload = { ...jt.payload, entryId: "tg42", channel: "telegram", telegramChatId: 5550001 };
+  await waitFor(() => jt.status !== "claimed" && jt.status !== "queued", 60_000, "the Telegram job");
+  const sentT = tgSent.filter((x) => x.userId === "ua");
+  check(jt.status === "done", `H: the Telegram job is done (${jt.status})`);
+  check(sentT.length === 1 && /ANSWER from Ava/.test(sentT[0].text), `H: the answer went to Telegram once (${sentT.length}: ${sentT.map((x) => x.text.slice(0, 40)).join(" | ")})`);
+  check(sentT.length === 1 && sentT[0].whileHeld, "H: it was sent while the job was still held");
+  const tgEntry = (chats.get("ua/dm-ava1")?.chat?.entries ?? []).find((e) => e.id === "tg42");
+  check(!!tgEntry && tgEntry.kind === "user", "H: the message is in the chat under its Telegram id");
+  // /yes with nothing waiting: answered as on the computer, no run.
+  const callsBeforeYes = aiCalls.length;
+  const jy = addJob("ua", "dm-ava1", "/yes");
+  jy.payload = { ...jy.payload, entryId: "tg43", channel: "telegram", telegramChatId: 5550001 };
+  await waitFor(() => jy.status !== "claimed" && jy.status !== "queued", 60_000, "the /yes job");
+  check(jy.status === "done" && aiCalls.length === callsBeforeYes, `H: a /yes with nothing waiting runs nothing (${jy.status}, ${aiCalls.length - callsBeforeYes} model calls)`);
+  check(tgSent.filter((x) => x.userId === "ua").length === 2, "H: …and the user is told on Telegram");
 
   // G: the chat is deleted (on the phone or the computer) while its job runs here: the run stops, and the
   // deleted chat is never saved back.

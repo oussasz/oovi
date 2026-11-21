@@ -55,11 +55,12 @@ import { getRoutine } from "./routines";
 import { localTimeZone } from "./routines-schedule";
 import { timeNote } from "./time-note-core";
 import { cutMiddle, repairArgs, withNextStep } from "./arg-repair-core";
-import { START_RATIO, calibrate, effectiveBudget } from "./budget-core";
+import { START_RATIO, calibrate, checklistText, effectiveBudget } from "./budget-core";
 import { resumesJob } from "./resume-core";
 import { unseenAddresses } from "./recipients-core";
 import { deferTools, isGuide, onDemand, paramsHint, splitGuide, unwrapCalls, USE_TOOL, useToolResult, withFirstGuide, wrapHistory } from "./tool-defer";
 import { cloudRunner, noteNeedsComputer, replyLocaleOf } from "./cloud-flag";
+import { skillForPrompt } from "./skill-sections-core";
 import { CLOUD_NOTE, cloudTools, firstNeedingComputer, handOver, needsComputerText, NOT_RUN_IN_CLOUD, TOO_LATE_FOR_COMPUTER } from "./cloud-runner-core";
 import { SKILL_SPECS, approvalItem, describeCall, needsApproval, runTool, toolsFor } from "./tools";
 import { TEAM_SPECS, TEAM_TOOLS, mainBot, runTeamTool } from "./team";
@@ -536,7 +537,7 @@ function slashLines(s: SlashUse, tools: ToolSpec[]): string[] {
     const k = s.id ? getSkill(s.id) : undefined;
     if (!k) return [];
     markUsed(k.slug);
-    return [`The user asked for the "${k.name}" skill (${s.cmd}). Follow it for this request:`, `### Skill: ${k.name}`, k.body.slice(0, 4000)];
+    return [`The user asked for the "${k.name}" skill (${s.cmd}). Follow it for this request:`, `### Skill: ${k.name}`, skillForPrompt(k.name, k.body)];
   }
   const link = `oovi://marketplace/connector/${s.id ?? ""}`;
   if (!s.installed) return [`The user asked to use ${s.name} (${s.cmd}), but it isn't installed. Say so in one line with the link [Connect ${s.name}](${link}), then help as far as you can without it.`];
@@ -755,7 +756,7 @@ function systemPrompt(bot: Bot, chat: Chat, members: Bot[], tools: ToolSpec[], e
   if (rel.length) {
     extra.perMessage.push("These skills match this request. Follow them:");
     for (const s of rel) {
-      extra.perMessage.push(`### Skill: ${s.name}`, s.body.slice(0, 4000));
+      extra.perMessage.push(`### Skill: ${s.name}`, skillForPrompt(s.name, s.body));
       markUsed(s.slug);
     }
   }
@@ -833,7 +834,7 @@ async function compactIfLong(chat: Chat, settings: Settings, signal: AbortSignal
         "You keep the running memory of a conversation between a user and their team of AI assistants. Merge the previous summary with the new part into ONE updated summary.",
         "It is background for later, not a list of things to do. Keep what stays true and could matter again: who the user is and what they prefer, their projects, decisions and their reasons, facts, names, numbers, dates, prices, links, file names and where files were saved.",
         "Each past request gets ONE line under 'Past requests': what was asked and how it ended (done, failed and why, or dropped). A request the user didn't come back to is over: write it as dropped, never as something still to do. One-off errands (play a song, open a page, a reminder that has passed) need no more than that line, and can go once they are old.",
-        "Only under 'Still waiting' (at most three lines, often none): something the user asked for in their latest messages of this part that they have not received yet.",
+        "Only under 'Still waiting' (at most three lines, often none): something the user asked for in their latest messages of this part that they have not received yet. If a bot's last checklist (update_plan) has steps not done for that request, list those steps there by name.",
         "Drop greetings and repetition. Don't invent anything. Short headed sections with bullets: About the user, Decisions, Facts & numbers, Files & links, Past requests, Still waiting.",
         "Stay under 700 words.",
       ].join(" "),
@@ -1900,7 +1901,7 @@ async function* runBot(
       // back as the real tools' calls, so everything after this point sees the real names.
       const ask = async (v: Msg[] = view) => {
         const d = deferTools(call.tools);
-        const sent = wrapHistory(fitBudget(call.system, v, d.sent, budget), d);
+        const sent = wrapHistory(fitBudget(call.system, v, d.sent, budget, checklistText(entry.plan)), d);
         const o = await complete(s, call.system, sent, d.sent, signal, { effort, ...(routine ? { thinking: false } : {}) });
         if (o.usage.prompt) chat.tokenRatio = calibrate(chat.tokenRatio ?? START_RATIO, requestTokens(call.system, sent, d.sent), o.usage.prompt);
         return { ...o, toolCalls: unwrapCalls(o.toolCalls, d, sent) };

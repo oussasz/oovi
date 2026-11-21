@@ -171,6 +171,7 @@ const waitSent = async (pred, ms, what) => {
     for (let i = 0; i < 50 && !relay.registrations.some((r) => r.chats.includes(CHAT)); i++) await sleep(200);
     check("the paired chat is registered (the service knows whom to tell 'open oovi')", relay.registrations.some((r) => r.chats.includes(CHAT)));
     check("the notice language is sent", relay.registrations.every((r) => /^[a-z]{2}$/.test(r.language)));
+    check("the main bot's chat is sent, so oovi's cloud server can answer Telegram while the computer is off", relay.registrations.some((r) => /^dm-[\w-]+$/.test(String(r.config?.mainChat ?? ""))), JSON.stringify(relay.registrations.at(-1)?.config ?? null));
 
     userSays("hello");
     await waitSent((t) => /Answer number/.test(t), 30_000, "answer");

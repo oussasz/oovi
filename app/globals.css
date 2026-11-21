@@ -685,6 +685,13 @@ a.tag { text-decoration: none; }
 .mk-feature small { font-weight: 800; color: var(--muted); }
 .mk-feature h3 { margin: 4px 0 6px; font-size: 22px; }
 .mk-feature p { margin: 0 0 12px; color: var(--muted); max-width: 520px; }
+.mk-feature { flex-wrap: wrap; }
+.mk-feature > .mk-hub { flex-basis: 100%; }
+.mk-hub { margin: 12px 0 4px; padding: 14px 16px; border-radius: 14px; background: var(--panel); border: 1px solid var(--border); }
+.mk-hub h4 { margin: 0 0 6px; font-size: 15px; }
+.mk-hub .note { margin: 0 0 10px; }
+.mk-hub-steps { margin: 0 0 10px; padding-inline-start: 20px; color: var(--muted); }
+.mk-hub-steps li { margin: 2px 0; }
 .mk-section-head { display: flex; align-items: center; margin: 18px 0 10px; }
 .mk-section-head h3 { margin: 0; font-size: 16px; }
 .mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }

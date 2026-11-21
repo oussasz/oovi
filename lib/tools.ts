@@ -1,4 +1,7 @@
 import { cleanSteps, replay } from "./replay";
+import { skillForTool } from "./skill-sections-core";
+import { embeddedParts } from "./page-extra";
+import { mergeEmbedded } from "./page-extra-core";
 import { completeZapierRun } from "./zapier-core";
 import { classifyToolError, nextStepFor, WRITE_TOOL, zapierNextStep } from "./tool-error-core";
 import { isReminder } from "./routines-tools";
@@ -190,7 +193,14 @@ export const SKILL_SPECS: ToolSpec[] = [
   {
     name: "use_skill",
     description: "Load a saved skill (a step-by-step procedure) by name, then follow it.",
-    parameters: { type: "object", properties: { name: { type: "string" } }, required: ["name"] },
+    parameters: {
+      type: "object",
+      properties: {
+        name: { type: "string" },
+        section: { type: "string", description: "A long skill lists its sections: the number or title of the one to load." },
+      },
+      required: ["name"],
+    },
   },
   {
     name: "save_skill",
@@ -369,6 +379,12 @@ export function siteGuide(url: string, title: string): string {
 async function snapshotResult(call: ToolCall, sess: Session, offset: number, withElements: boolean): Promise<ToolResult> {
   const page = sess.page;
   const s = (await page.evaluate(SNAPSHOT_JS)) as Snap;
+  // What the page shows in embedded frames and web components (a booking widget, a form from another site).
+  if (offset === 0 || !sess.embedded || sess.embedded.url !== page.url()) {
+    const parts = await embeddedParts(page, false).catch(() => []);
+    sess.embedded = { url: page.url(), text: mergeEmbedded(s.text, parts) };
+  }
+  s.text = sess.embedded.text;
   sess.elements = new Map(s.els.map((e) => [e.n, { kind: e.kind, label: e.label }]));
 
   const chunk = s.text.slice(offset, offset + TEXT_CHUNK);
@@ -492,7 +508,7 @@ export async function runTool(call: ToolCall, settings: Settings, sessionId: str
       const skill = getSkill(String(input.name ?? ""));
       if (!skill) return fail(call, `No skill called "${String(input.name ?? "")}". Saved skills: ${listSkills().map((s) => s.name).join(", ") || "none yet"}.`);
       markUsed(skill.slug);
-      return { id: call.id, name: call.name, content: `SKILL: ${skill.name}\n${skill.description}${skill.replay ? `\n(Recorded by the user: run it with replay_skill "${skill.name}".)` : ""}\n\n${skill.body}` };
+      return { id: call.id, name: call.name, content: `SKILL: ${skill.name}\n${skill.description}${skill.replay ? `\n(Recorded by the user: run it with replay_skill "${skill.name}".)` : ""}\n\n${skillForTool(skill.name, skill.body, typeof input.section === "string" ? input.section : undefined)}` };
     }
     if (call.name === "save_skill") {
       const skill = saveSkill({ name: String(input.name ?? ""), description: String(input.description ?? ""), body: String(input.instructions ?? ""), source: "learned" });

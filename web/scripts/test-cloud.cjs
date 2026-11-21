@@ -67,6 +67,23 @@ const mock = http.createServer((rq, rs) => {
   });
 });
 
+// A stand-in Telegram Bot API: records what the site asks of it.
+const tgCalls = [];
+const tgMock = http.createServer((rq, rs) => {
+  let body = "";
+  rq.on("data", (c) => (body += c));
+  rq.on("end", () => {
+    const method = rq.url.split("/").pop();
+    let b = {};
+    try {
+      b = JSON.parse(body || "{}");
+    } catch {}
+    tgCalls.push({ method, body: b });
+    rs.writeHead(200, { "content-type": "application/json" });
+    rs.end(JSON.stringify({ ok: true, result: method === "getMe" ? { id: 1, username: "test_bot" } : true }));
+  });
+});
+
 // A stand-in MCP service with OAuth (discovery, dynamic registration, PKCE), like Notion's or Linear's.
 const codes = new Map(); // code -> {challenge, clientId, redirect}
 const oauthMock = http.createServer((rq, rs) => {
@@ -123,6 +140,7 @@ async function main() {
   // ---- the site ----
   await new Promise((r) => mock.listen(0, "127.0.0.1", r));
   await new Promise((r) => oauthMock.listen(0, "127.0.0.1", r));
+  await new Promise((r) => tgMock.listen(0, "127.0.0.1", r));
   OAUTH = `http://127.0.0.1:${oauthMock.address().port}`;
   const env = {
     ...process.env,
@@ -135,6 +153,7 @@ async function main() {
     OOVI_AI_UPSTREAM: `http://127.0.0.1:${mock.address().port}`,
     OOVI_CLOUD_POLL_MS: "3000",
     OOVI_CLOUD_OAUTH_TEST_HOSTS: new URL(OAUTH).host,
+    OOVI_TELEGRAM_API: `http://127.0.0.1:${tgMock.address().port}`,
     NODE_ENV: "production",
   };
   const server = spawn(process.execPath, [require.resolve("next/dist/bin/next", { paths: [WEB] }), "start", "-p", String(PORT), "-H", "127.0.0.1"], { cwd: WEB, env });
@@ -153,6 +172,7 @@ async function main() {
     server.kill();
     mock.close();
     oauthMock.close();
+    tgMock.close();
   }
   check("the server's logs never contain chat or sign-in text", !logs.includes(MARK), logs.includes(MARK) ? "marker found in logs" : "");
   const leaks = await db.query("SELECT (SELECT count(*) FROM cloud_chat WHERE data::text LIKE $1) + (SELECT count(*) FROM cloud_vault WHERE data::text LIKE $1) AS n", [`%${MARK}%`]);
@@ -399,6 +419,41 @@ async function run(A, B, C) {
   await req("POST", `/api/v1/cloud/runner/jobs/${jAi}/done`, { runner: RUNNER, body: { runnerId: "r1", status: "done" } });
   const signed = await req("POST", "/api/v1/ai/messages", { token: A, body: ai });
   check("the desktop's theOovi route still works after the move", signed.status === 200 && signed.body.content?.[0]?.text === "hello");
+
+  // ---- Telegram while the computer is off: oovi's cloud server answers it ----
+  const TG_TOKEN = `123456789:${"A".repeat(35)}`;
+  await req("PUT", "/api/v1/cloud/chats/dm-main1", { token: A, body: { baseVersion: 0, chat: { id: "dm-main1", kind: "direct", name: "", memberIds: ["main1"], entries: [] } } });
+  r = await req("POST", "/api/v1/telegram/relay", { token: A, body: { token: TG_TOKEN, chats: [777], language: "ar", config: { chatId: 777, mainChat: "dm-main1" }, connectedAt: Date.now() } });
+  check("Telegram: the relay is registered", r.status === 200, JSON.stringify(r.body));
+  const hook = (await db.query("SELECT hook_id, secret FROM telegram_relays WHERE user_id = 'cloudtest_a'")).rows[0];
+  const tgHook = (update) => fetch(`${BASE}/api/v1/telegram/hook/${hook.hook_id}`, { method: "POST", headers: { "content-type": "application/json", "x-telegram-bot-api-secret-token": hook.secret }, body: JSON.stringify(update) });
+  // The computer is off (no desktop seen, the relay never polled), and the cloud server is up.
+  await db.query("UPDATE cloud_device SET last_seen = now() - interval '5 minutes' WHERE user_id = 'cloudtest_a' AND kind = 'desktop'");
+  await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1", exclude: ["cloudtest_a"] } });
+  const jobsOf = async () => (await db.query("SELECT id, status FROM cloud_job WHERE user_id = 'cloudtest_a' AND chat_id = 'dm-main1' ORDER BY created_at")).rows;
+  const tgBefore = tgCalls.length;
+  check("Telegram: the webhook answers", (await tgHook({ update_id: 900, message: { chat: { id: 777 }, text: "مرحبا من تيليغرام" } })).status === 200);
+  let tj = await jobsOf();
+  check("Telegram, computer off: the message becomes a job for oovi's cloud server in the main bot's chat", tj.length === 1 && tj[0].status === "queued", JSON.stringify(tj));
+  check("…it no longer waits for the computer (nothing left in the inbox)", Number((await db.query("SELECT count(*) AS n FROM telegram_inbox WHERE user_id = 'cloudtest_a'")).rows[0].n) === 0);
+  const newTg = tgCalls.slice(tgBefore).map((c) => c.method);
+  check("…the user sees 'typing', not 'open oovi on your computer'", newTg.includes("sendChatAction") && !newTg.includes("sendMessage"), newTg.join(","));
+  await db.query("UPDATE cloud_job SET created_at = now() - interval '10 seconds' WHERE user_id = 'cloudtest_a' AND chat_id = 'dm-main1'");
+  const claimedTg = await req("POST", "/api/v1/cloud/runner/claim", { runner: RUNNER, body: { runnerId: "r1" } });
+  const p = claimedTg.body.job?.payload ?? {};
+  check("…the runner gets it with where the answer goes", claimedTg.body.job?.chatId === "dm-main1" && p.channel === "telegram" && p.telegramChatId === 777 && p.entryId === "tg900", JSON.stringify(p));
+  if (claimedTg.body.job) await req("POST", `/api/v1/cloud/runner/jobs/${claimedTg.body.job.jobId}/done`, { runner: RUNNER, body: { runnerId: "r1", status: "done" } });
+  await tgHook({ update_id: 900, message: { chat: { id: 777 }, text: "مرحبا من تيليغرام" } });
+  check("Telegram sends the same update again: no second job", (await jobsOf()).length === 1);
+  // A message from a group chat linked to oovi stays with the computer.
+  await tgHook({ update_id: 901, message: { chat: { id: 888 }, text: "from a group" } });
+  check("a linked group chat's message is not handed to the cloud", (await jobsOf()).length === 1);
+  // The computer comes back: the next message waits for it, as before.
+  await req("GET", "/api/v1/cloud/status", { token: A, headers: dev("desktop:pcA") });
+  await tgHook({ update_id: 902, message: { chat: { id: 777 }, text: "computer is on now" } });
+  check("computer on: the message waits for the computer, not the cloud", (await jobsOf()).length === 1 && Number((await db.query("SELECT count(*) AS n FROM telegram_inbox WHERE user_id = 'cloudtest_a'")).rows[0].n) >= 1);
+  await db.query("DELETE FROM telegram_inbox WHERE user_id = 'cloudtest_a'");
+  await db.query("UPDATE cloud_device SET last_seen = now() - interval '5 minutes' WHERE user_id = 'cloudtest_a' AND kind = 'desktop'");
 
   // ---- events (long-poll) ----
   let t = Date.now();

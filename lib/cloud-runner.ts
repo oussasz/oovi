@@ -11,6 +11,7 @@
 // Never logs chat content.
 
 import { onNeedsComputer } from "./cloud-flag";
+import { entrySigs, sendToMainChat, telegramReplyFor, telegramRunInput } from "./telegram";
 import { runInputOf } from "./cloud-runner-core";
 import { installVaultConnector, vaultSignIn, type VaultConnector } from "./mcp";
 import type { RunInput } from "./orchestrator";
@@ -91,15 +92,30 @@ async function handle(m: Msg): Promise<void> {
   if (m.type === "run") {
     const chatId = String(m.chatId);
     if (!getChat(chatId)) return reply(m, { ok: false, error: "chat not found" });
-    const input = runInputOf(String(m.kind), m.payload);
-    if (typeof input === "string") return reply(m, { ok: false, error: input });
+    const parsed = runInputOf(String(m.kind), m.payload);
+    if (typeof parsed === "string") return reply(m, { ok: false, error: parsed });
+    let input = parsed as RunInput;
+    // A Telegram message while the computer is off (web/lib/telegram-cloud-core.ts): /yes and /no answer what waits,
+    // and the reply goes back to Telegram before the job ends (the website sends it while this job is held).
+    const telegram = input.channel === "telegram";
+    let before = new Map<string, string>();
+    if (telegram) {
+      const t = telegramRunInput(getChat(chatId), input);
+      if ("say" in t) {
+        await sendToMainChat(t.say).catch(() => false);
+        setTimeout(() => send({ type: "ended", chatId, needsComputer: null }), 0);
+        return reply(m, { ok: true });
+      }
+      input = t.input;
+      before = entrySigs(getChat(chatId));
+    }
     let needs: string | null = null;
     const off = onNeedsComputer((id, tool) => {
       if (id !== chatId) return;
       needs = tool;
       stopRun(chatId); // teammates working at the same time stop too: the rest is done on the computer
     });
-    if (!startRun(chatId, input as RunInput)) {
+    if (!startRun(chatId, input)) {
       off();
       return reply(m, { ok: false, error: "already running" });
     }
@@ -110,7 +126,15 @@ async function handle(m: Msg): Promise<void> {
         unsub?.();
         off();
         // The run's last save happens before "done": the chat on disk is final here.
-        setTimeout(() => send({ type: "ended", chatId, needsComputer: needs }), 0);
+        setTimeout(() => {
+          void (async () => {
+            if (telegram) {
+              const text = telegramReplyFor(chatId, before);
+              if (text) await sendToMainChat(text).catch(() => false);
+            }
+            send({ type: "ended", chatId, needsComputer: needs });
+          })();
+        }, 0);
       }
     });
     return reply(m, { ok: true });

@@ -738,7 +738,21 @@ async function runJob(job: Job): Promise<void> {
       await withChat(id, () => pushLocked(id)).catch(() => {});
       return void (await done("done"));
     }
-    const input = ji.input as RunInput;
+    let input = ji.input as RunInput;
+    // A Telegram message the cloud handed over (this computer was just starting, or it needed the computer):
+    // /yes and /no answer what waits, and the reply goes back to Telegram as when the computer gets it itself.
+    const telegram = input.channel === "telegram";
+    let tgBefore = new Map<string, string>();
+    if (telegram) {
+      const { entrySigs, sendToMainChat, telegramRunInput } = await import("./telegram");
+      const t = telegramRunInput(chatHere(id), input);
+      if ("say" in t) {
+        await sendToMainChat(t.say);
+        return void (await done("done"));
+      }
+      input = t.input;
+      tgBefore = entrySigs(chatHere(id));
+    }
     if (job.kind === "message") {
       // The message gets the job's id; if the chat already holds it (the cloud runner answered "This needs your
       // computer", or let the job go), it and its answers go first: the message is run, and shows, once.
@@ -758,6 +772,11 @@ async function runJob(job: Job): Promise<void> {
     // The run saves the chat as it goes; each save is pushed (schedulePush), so the phone sees it live.
     while (!(await whenIdle(id, 60_000))) {
       /* still working: the heartbeat keeps the job */
+    }
+    if (telegram) {
+      const { sendToMainChat, telegramReplyFor } = await import("./telegram");
+      const text = telegramReplyFor(id, tgBefore);
+      if (text) await sendToMainChat(text);
     }
     await withChat(id, () => pushLocked(id)).catch(() => {});
     await done("done");

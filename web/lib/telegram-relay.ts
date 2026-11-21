@@ -13,6 +13,8 @@ import crypto from "node:crypto";
 import { pool } from "./db";
 import { sealSecret, unsealSecret, type Sealed } from "./ai-config";
 import { siteUrl } from "./site";
+import { ONLINE_SECONDS } from "./cloud-core";
+import { telegramToCloud } from "./telegram-cloud-core";
 
 const TG = process.env.OOVI_TELEGRAM_API || "https://api.telegram.org";
 /** The app collects every ~20 s; quiet for longer than this, it is considered closed. */
@@ -45,6 +47,7 @@ export const RELAY_DDL = `
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS telegram_inbox_user_idx ON telegram_inbox (user_id, id);
+  ALTER TABLE telegram_relays ADD COLUMN IF NOT EXISTS handed_update BIGINT NOT NULL DEFAULT 0;
 `;
 
 const g = globalThis as typeof globalThis & { __ooviRelayTables?: boolean };
@@ -178,24 +181,67 @@ export function noticeFor(text: string, language: string): string {
   return NOTICE[language.slice(0, 2)] ?? NOTICE.en!;
 }
 
-type TgUpdate = { update_id?: number; message?: { chat?: { id?: number }; text?: string; caption?: string } };
+type TgUpdate = { update_id?: number; message?: { chat?: { id?: number }; text?: string; caption?: string; voice?: unknown; audio?: unknown } };
+
+/**
+ * Computer off: the message goes to oovi's cloud server, which answers it in the main bot's chat and sends the reply
+ * back to Telegram (web/lib/telegram-cloud-core.ts). True when it did; the inbox row is then removed in the same
+ * transaction, so the computer, back later, never answers it a second time.
+ */
+async function handToCloud(userId: string, inboxId: number, relay: Record<string, unknown>, update: TgUpdate, offline: boolean): Promise<boolean> {
+  let config: { chatId?: unknown; mainChat?: unknown } = {};
+  try {
+    config = relay.config ? JSON.parse(unsealSecret(relay.config as Sealed)) : {};
+  } catch {
+    return false;
+  }
+  const { createJob, isEnabled, serverSeen } = await import("./cloud");
+  const [syncOn, server, desk] = await Promise.all([
+    isEnabled(userId).catch(() => false),
+    serverSeen().catch(() => ({ online: false })),
+    pool.query(`SELECT 1 FROM cloud_device WHERE user_id = $1 AND kind = 'desktop' AND last_seen > now() - make_interval(secs => ${ONLINE_SECONDS}) LIMIT 1`, [userId]).catch(() => ({ rowCount: 1 })),
+  ]);
+  const m = update.message;
+  const d = telegramToCloud({
+    relayOffline: offline,
+    desktopOnline: !!desk.rowCount,
+    serverUp: server.online,
+    syncOn,
+    tgChatId: m?.chat?.id,
+    pairedChatId: typeof config.chatId === "number" ? config.chatId : undefined,
+    mainChat: typeof config.mainChat === "string" ? config.mainChat : "",
+    text: m?.text ?? m?.caption ?? "",
+    voice: !!(m?.voice || m?.audio),
+    updateId: Number(update.update_id),
+    lastHanded: Number(relay.handed_update ?? 0),
+  });
+  if (!d.cloud) return false;
+  const job = await createJob(userId, d.chatId, "message", d.payload);
+  if (!("jobId" in job)) return false;
+  await pool.query("DELETE FROM telegram_inbox WHERE user_id = $1 AND id = $2", [userId, inboxId]);
+  await pool.query("UPDATE telegram_relays SET handed_update = GREATEST(handed_update, $2) WHERE user_id = $1", [userId, Number(update.update_id)]);
+  void tg(unsealSecret(relay.token as Sealed), "sendChatAction", { chat_id: d.payload.telegramChatId, action: "typing" }).catch(() => {});
+  return true;
+}
 
 /** A message from Telegram. False when the hook or its secret is wrong (nothing is stored). */
 export async function receive(hookId: string, secret: string | null, update: TgUpdate): Promise<boolean> {
   await ensureTables();
-  const { rows } = await pool.query("SELECT user_id, secret, token, chats, language, notices, last_poll_at FROM telegram_relays WHERE hook_id = $1", [hookId]);
+  const { rows } = await pool.query("SELECT user_id, secret, token, chats, language, notices, last_poll_at, config, handed_update FROM telegram_relays WHERE hook_id = $1", [hookId]);
   const relay = rows[0];
   if (relay && !relay.token) return true; // disconnected: nothing is kept
   const a = Buffer.from(String(secret ?? ""));
   const b = Buffer.from(String(relay?.secret ?? "-"));
   if (!relay || a.length !== b.length || !crypto.timingSafeEqual(a, b)) return false;
   const userId = String(relay.user_id);
-  await pool.query("INSERT INTO telegram_inbox (user_id, data) VALUES ($1, $2)", [userId, sealSecret(JSON.stringify(update))]);
+  const ins = await pool.query("INSERT INTO telegram_inbox (user_id, data) VALUES ($1, $2) RETURNING id", [userId, sealSecret(JSON.stringify(update))]);
   // Nothing waits here for more than a day (Telegram itself keeps messages 24 hours).
   await pool.query("DELETE FROM telegram_inbox WHERE created_at < now() - interval '24 hours'");
 
   const chatId = update.message?.chat?.id;
   const offline = !relay.last_poll_at || Date.now() - new Date(relay.last_poll_at as string).getTime() > OFFLINE_AFTER_MS;
+  // Computer off: oovi's cloud server answers, as it answers the phone. Anything it can't take keeps the old way.
+  if (offline && (await handToCloud(userId, Number(ins.rows[0].id), relay, update, offline).catch((e) => (console.error("[telegram] to the cloud:", (e as Error).message), false)))) return true;
   const allowed = typeof chatId === "number" && (relay.chats as string[]).map(Number).includes(chatId);
   if (offline && allowed) {
     const notices = (relay.notices ?? {}) as Record<string, number>;

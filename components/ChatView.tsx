@@ -1,5 +1,6 @@
 "use client";
 
+import { pruneQueued } from "@/lib/chat-queue-core";
 import MicButton from "./MicButton";
 import { INTERRUPTED } from "@/lib/delegations-core";
 import Link from "next/link";
@@ -915,6 +916,10 @@ export default function ChatView({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null);
   // Messages sent while the bots work: shown here until the working bot reads them (lib/steer.ts).
   const [queued, setQueued] = useState<{ id: string; text: string }[]>([]);
+  // The saved chat decides: a queued message it already holds is sent (lib/chat-queue-core.ts).
+  useEffect(() => {
+    if (chat?.entries) setQueued((q) => pruneQueued(q, chat.entries));
+  }, [chat?.entries]);
   const router = useRouter();
   // Replying to one message: it is quoted above the new one, for the user and the bots.
   const [replyTo, setReplyTo] = useState<{ id: string; who: string; text: string } | null>(null);

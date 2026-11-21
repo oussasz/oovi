@@ -209,6 +209,8 @@ export function jobInput(kind: unknown, payload: unknown): JobInput | null {
         plan: p.plan === true,
         ...(str(p.entryId, 40) ? { entryId: str(p.entryId, 40) } : {}),
         ...(str(p.replyTo, 40) ? { replyTo: str(p.replyTo, 40) } : {}),
+        // A Telegram message handed to the cloud that this computer picks up: its answer goes back to Telegram.
+        ...(p.channel === "telegram" && typeof p.telegramChatId === "number" && Number.isSafeInteger(p.telegramChatId) ? { channel: "telegram" as const, telegramChatId: p.telegramChatId } : {}),
       },
     };
   }

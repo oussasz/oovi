@@ -55,3 +55,18 @@ export function shortenOlderResults(messages: Msg[], max: number, keepIndex: num
       : m,
   );
 }
+
+/** The bot's checklist (update_plan) as one block, for when the messages that set it are hidden. "" when there is none. */
+export function checklistText(plan: { text: string; status: "pending" | "doing" | "done" }[] | undefined): string {
+  if (!plan?.length) return "";
+  const tag = { done: "done", doing: "doing", pending: "to do" } as const;
+  return `Your checklist for this request, as it stands (keep it current with update_plan):\n${plan.map((p, i) => `${i + 1}. [${tag[p.status] ?? "to do"}] ${p.text}`).join("\n")}`;
+}
+
+/**
+ * What stands in for the hidden older messages of a long conversation. pinned (the bot's checklist) stays in view:
+ * in long work the update_plan calls that set it were among the first hidden, and the bot lost track of its steps.
+ */
+export function foldNote(hidden: number, pinned = ""): string {
+  return `[${hidden} earlier messages of this conversation are hidden to save space. They're saved: use recall_history to look anything up.]${pinned ? `\n\n${pinned}` : ""}`;
+}

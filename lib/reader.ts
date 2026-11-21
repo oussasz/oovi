@@ -13,6 +13,8 @@ import type { Browser } from "playwright-core";
 import dns from "node:dns/promises";
 import { blockPrivate, checkUrl, isPrivateHost, launchLocal } from "./browser";
 import { fetchGuarded } from "./net-guard-core";
+import { embeddedParts, scrollOnce } from "./page-extra";
+import { mergeEmbedded } from "./page-extra-core";
 import { isYoutubeSearch, youtubeList, youtubeVideos } from "./youtube-core";
 import { contactDetails } from "./contacts";
 import type { ToolSpec } from "./llm";
@@ -270,9 +272,13 @@ export async function readInBrowser(url: string, s: Settings, signal?: AbortSign
         const finalUrl = page.url();
         const bad = checkUrl(finalUrl, s.browser.allowPrivateNetwork);
         if (bad) throw new Error(bad);
+        // Content that loads on scroll, then what the page shows in embedded frames and web components.
+        await scrollOnce(page);
         const html = await page.content();
         const found = listInfo(html);
-        const a = { ...withContacts(extract(html, finalUrl), html), ...(found ? { list: found } : {}) };
+        const base = withContacts(extract(html, finalUrl), html);
+        const parts = await embeddedParts(page, s.browser.allowPrivateNetwork).catch(() => []);
+        const a = { ...base, text: mergeEmbedded(base.text, parts), ...(found ? { list: found } : {}) };
         if (a.text.length < 40) throw new Error(`the page showed no text${res && !res.ok() ? ` (it answered ${res.status()})` : ""}`);
         return a;
       } finally {

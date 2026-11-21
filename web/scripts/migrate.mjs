@@ -318,6 +318,7 @@ await pool.query(`
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
   );
   CREATE INDEX IF NOT EXISTS telegram_inbox_user_idx ON telegram_inbox (user_id, id);
+  ALTER TABLE telegram_relays ADD COLUMN IF NOT EXISTS handed_update BIGINT NOT NULL DEFAULT 0;
   -- The user's setup for their other computers (keep in sync with lib/account-setup.ts SETUP_DDL).
   CREATE TABLE IF NOT EXISTS account_setup (
     user_id    TEXT PRIMARY KEY REFERENCES "user"(id) ON DELETE CASCADE,

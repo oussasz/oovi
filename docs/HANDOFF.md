@@ -1,3 +1,49 @@
+## 0.15.1 work: from the 20-repository study, Telegram with the computer off, and fixes (2026-11-21, `harness-v2`)
+Owner: "do the 3 harness fixes and the Marketplace update; remove the 'From Anthropic' skills, keep the Skills library;
+Telegram must work without my computer like the phone; queued messages stay 'queued' after being sent (a Windows
+user); check other UX problems; under Zapier the Marketplace must show links to connect the apps, and the same for
+every tool that works that way; then build a small update."
+
+- **Skills reach bots whole** (lib/skill-sections-core.ts): every skill put in a bot's instructions was cut at 4,000
+  characters with no sign more existed (284 of 326 library skills; median 11,464). Now: the opening and whole sections
+  that fit, then the list of the rest; `use_skill {name, section}` loads one (a section over 8,000 characters comes in
+  parts); a skill under 12,000 comes back whole. Idea from garrytan/gstack (sections + index), no code taken.
+- **Checklist kept in long work** (lib/budget-core.ts checklistText/foldNote): when older messages are hidden to fit,
+  the note that replaces them carries the bot's current update_plan checklist; the summary keeps unfinished steps
+  under "Still waiting". Idea from OthmanAdi/planning-with-files.
+- **Page reading** (lib/page-extra-core.ts, lib/page-extra.ts): the hidden browser (read_url fallback) and the visible
+  browser now add text from embedded frames (up to 6, never private addresses, ads/trackers skipped) and web
+  components (shadow DOM), and scroll once before reading. Checked on a real page in a Chromium browser: a menu in a
+  frame, hours in a web component and text loaded on scroll were all missing before and read after. Idea from
+  eze-is/web-access; its open localhost /eval proxy was deliberately not copied.
+- **Marketplace**: "From Anthropic" section and its download removed (components/Marketplace.tsx); oovi's own skills
+  and the Skills library stay. Library rebuilt (scripts/import-skills.mjs, now with `only`, PATCHES and SKIP_IDS):
+  marketingskills to 5b2b400 (7 skills' text changed), + "Stress-test a plan" and "Questionnaire for someone else"
+  (mattpocock/skills, edited to fit oovi), + "Obsidian markdown" and "JSON canvas" (obsidianmd/obsidian-skills), − 6
+  K-Dense skills that need Python (324 skills). K-Dense source renamed to scientific-agent-skills.
+- **Apps under Zapier, Pipedream, Make** (lib/app-hubs-core.ts, components/AppHub.tsx): the featured Zapier block shows
+  the per-app connect buttons once Zapier is connected; each hub's detail view says the two steps and links to where
+  apps are added (Zapier: in oovi; Pipedream: pipedream.com/accounts; Make: help.make.com/connect-an-application); a
+  "Soon" app (Gmail, Drive, Outlook…) gets "Connect <app> in Zapier" directly when Zapier is connected.
+- **Telegram with the computer off** (web/lib/telegram-cloud-core.ts, web/lib/telegram-relay.ts handToCloud,
+  lib/cloud-runner.ts, lib/telegram.ts telegramRunInput/telegramReplyFor/replyFor, lib/cloud-sync.ts): when the relay
+  sees the computer off, no desktop for 60 s, the cloud server up, Sync on, the paired chat, text (not voice), and an
+  update not handed before, the message becomes a cloud job in the main bot's chat (the desktop now sends `mainChat`
+  in the relay config) and leaves the inbox in the same step; the user sees "typing". The runner understands /yes,
+  /no and plan answers as the computer does, and sends the reply through the website before the job ends. A job the
+  computer picks up (starting, or "needs computer") also replies on Telegram. Needs: website deploy, runner image
+  (main → updates itself within 6 h), and the new desktop app (older apps send no mainChat: Telegram keeps the old
+  "open oovi" notice for them). Not handed: voice notes, linked group chats, photos without caption.
+- **Queued message stays "queued"** (lib/chat-queue-core.ts pruneQueued, components/ChatView.tsx): cause found by
+  reading the path: a message typed while the bot was on its last step starts the next run with no window listening,
+  so the event that cleared the label was lost. The saved chat now decides.
+- **UX**: connectors no longer show "Checking…" for ever after a restart (each one on is started once when the
+  Marketplace opens; switched-off ones say so); Trello's "Get it" links fixed; wording now says the cloud server runs
+  routines and answers the phone/Telegram (routines banner, Sync question, Telegram screen and test message, now in
+  the owner's language); "MCP" replaced by "connectors" in the bot editor and safety setting; community connectors
+  that need a program say so. Not done from that review: Marketplace descriptions and server error texts are still
+  English for Arabic and French users; the token count under each message.
+
 ## Azure runner on the 0.15.0 image, updating itself (2026-11-20 23:17 UTC, owner: "ثبّت وحدّث", signed in to Azure himself)
 - Before (seen on the VM): container `oovi-runner:local` built 2026-11-19 19:31 (the 0.14.1 engine), healthy, up 28 h;
   887 MB memory, 2 GB swap; `runner.env` holds only OOVI_WEB_URL, RUNNER_SECRET, RUNNER_ID=azure-se-1,

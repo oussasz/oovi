@@ -155,3 +155,10 @@ test("this computer's permissions never travel: not sent, and never taken from a
   assert.equal(bare.workspace, undefined);
   assert.equal(bare.allow, undefined);
 });
+
+test("a Telegram message the computer picks up from the cloud keeps where its answer goes", () => {
+  const j = jobInput("message", { text: "hi", entryId: "tg5", channel: "telegram", telegramChatId: 777 }) as { kind: string; input: Record<string, unknown> };
+  assert.equal(j.input.channel, "telegram");
+  assert.equal(j.input.telegramChatId, 777);
+  assert.equal((jobInput("message", { text: "hi", channel: "telegram" }) as { input: Record<string, unknown> }).input.channel, undefined);
+});

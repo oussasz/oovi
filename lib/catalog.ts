@@ -175,8 +175,8 @@ export const CONNECTORS: CatalogConnector[] = [
     args: ["-y", "@delorenj/mcp-server-trello@1.8.1"],
     needsNode: true,
     fields: [
-      { key: "key", label: "Trello API key", secret: true, help: "https://trello.com/power-ups/admin (create a Power-Up, then open its API key page)", to: "env", name: "TRELLO_API_KEY" },
-      { key: "token", label: "Trello token", secret: true, help: "On the same API key page, click the Token link and allow access", to: "env", name: "TRELLO_TOKEN" },
+      { key: "key", label: "Trello API key", secret: true, help: "https://trello.com/power-ups/admin", placeholder: "Create a Power-Up, then open its API key page", to: "env", name: "TRELLO_API_KEY" },
+      { key: "token", label: "Trello token", secret: true, placeholder: "On the same API key page, click Token and allow access", to: "env", name: "TRELLO_TOKEN" },
       { key: "board", label: "Board ID (optional: the board to start with)", optional: true, to: "env", name: "TRELLO_BOARD_ID" },
     ],
     docs: "https://github.com/delorenj/mcp-server-trello",

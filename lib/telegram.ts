@@ -15,6 +15,7 @@
 
 import { MAX_VOICE_BYTES, transcribeAudio, voiceText } from "./voice";
 import { translateFor, translatorFor, type Tr } from "./i18n-server";
+import type { RunInput } from "./orchestrator";
 import { hostedErrorText } from "./hosted-words";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -184,7 +185,7 @@ export async function sendTest(): Promise<void> {
   const tok = token(s);
   if (!tok || !s.chatId) throw new Error("Pair your Telegram first.");
   const bot = mainBot();
-  await tg(tok, "sendMessage", { chat_id: s.chatId, text: `Hi! This is ${bot?.name ?? "oovi"}. Send me a message here any time oovi is open on your computer.` });
+  await tg(tok, "sendMessage", { chat_id: s.chatId, text: ownerTr()("tg.testMessage", { bot: bot?.name ?? "oovi" }) });
 }
 
 /** Is a Telegram chat paired (so oovi can send the user messages)? */
@@ -441,7 +442,7 @@ function waitDone(chatId: string): Promise<void> {
 }
 
 /** Where a Telegram message goes: the main bot's chat, or an oovi group linked to this Telegram chat. */
-type Target = { tgChatId: number; ooviChatId: string; name: string; group: boolean; tgGroup: boolean; ownerName?: string };
+export type Target = { tgChatId: number; ooviChatId: string; name: string; group: boolean; tgGroup: boolean; ownerName?: string };
 
 /** Run the main bot (or a linked group) on a message (or approval) and send back what it said. */
 async function relay(tok: string, target: Target, input: { text?: string; decisions?: Record<string, boolean>; alwaysEdit?: boolean; alwaysFolders?: boolean; planDecision?: { approve: boolean; items: string[] } }) {
@@ -457,8 +458,7 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   }
   // What each message looked like before this run: a bot that was waiting for an OK continues its OWN message
   // after /yes, so "new" isn't enough; a message that changed counts too (otherwise: "didn't reply").
-  const sig = (e: { kind: string; text?: string; status?: string; steps?: unknown[] }) => `${e.kind === "bot" ? e.status : ""}|${e.text?.length ?? 0}|${e.steps?.length ?? 0}`;
-  const before = new Map((getChat(id)?.entries ?? []).map((e) => [e.id, sig(e)]));
+  const before = entrySigs(getChat(id));
   // A new message cancels a request that was waiting for the user's OK: say so, instead of dropping it silently.
   const waitingCard = input.text ? getChat(id)?.pending?.approval : undefined;
   if (waitingCard?.items.length) await say(tok, chatId, tr("tg.dropped", { what: waitingCard.items.map((x) => x.summary).join("; ").slice(0, 300) }));
@@ -478,6 +478,22 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
   if (!allowedChat(read(), chatId)) return;
   const chat = getChat(id);
   if (!chat) return;
+  const text = replyFor(chat, before, target, tr);
+  if (text) return deliver(chatId, text);
+}
+
+
+/** What each message looked like before a run: the reply is what changed or came after (see relay). */
+export const entrySigs = (chat: Chat | null | undefined): Map<string, string> => new Map((chat?.entries ?? []).map((e) => [e.id, sig(e)]));
+const sig = (e: { kind: string; text?: string; status?: string; steps?: unknown[] }) => `${e.kind === "bot" ? e.status : ""}|${e.text?.length ?? 0}|${e.steps?.length ?? 0}`;
+
+/**
+ * The Telegram reply for what a run did in this chat: the answer, a request for the user's OK (/yes, /no), a plan to
+ * approve, or the problem. null: nothing to say (stopped). Used by the computer (relay) and by oovi's cloud server
+ * when it answers Telegram while the computer is off (lib/cloud-runner.ts).
+ */
+export function replyFor(chat: Chat, before: Map<string, string>, target: Target, tr: Tr): string | null {
+  const { name } = target;
   const bots = target.group ? listBots() : [];
   const who = (botId: string) => (target.group ? (bots.find((b) => b.id === botId)?.name ?? "A bot") : name);
   const fresh = chat.entries.filter((e): e is BotEntry => e.kind === "bot" && (before.get(e.id) !== sig(e) || e.id === chat.pending?.approval?.entryId));
@@ -493,7 +509,7 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
         : "";
     const onlyOwner = target.tgGroup ? `\n${tr("tg.onlyOwner", { name: target.ownerName ?? tr("tg.owner") })}` : "";
     const head = target.group ? tr("tg.needsOkIn", { bot: who(a.botId), group: name }) : tr("tg.needsOk", { bot: who(a.botId) });
-    return deliver(chatId, `${head}\n${items}\n\n${tr("tg.okHow")}${always}${onlyOwner}`);
+    return (`${head}\n${items}\n\n${tr("tg.okHow")}${always}${onlyOwner}`);
   }
   if (chat.pending?.planReview) {
     const review = chat.pending.planReview;
@@ -501,25 +517,25 @@ async function relay(tok: string, target: Target, input: { text?: string; decisi
     const steps = (e?.plan ?? []).map((p, i) => `${i + 1}. ${p.text}`).join("\n");
     const onlyOwner = target.tgGroup ? `\n${tr("tg.onlyOwner", { name: target.ownerName ?? tr("tg.owner") })}` : "";
     const head = target.group ? tr("tg.planIn", { bot: who(review.botId), group: name }) : tr("tg.plan", { bot: who(review.botId) });
-    return deliver(chatId, `${head}${e?.text ? `\n${e.text}` : ""}\n${steps}\n\n${tr("tg.planHow")}${onlyOwner}`);
+    return (`${head}${e?.text ? `\n${e.text}` : ""}\n${steps}\n\n${tr("tg.planHow")}${onlyOwner}`);
   }
   // Stopped with /stop (or in the app): "Stopped" was already said; nothing more to add.
-  if (!last?.text && fresh.some((e) => e.status === "stopped")) return;
+  if (!last?.text && fresh.some((e) => e.status === "stopped")) return null;
   // "/no" to a proposed plan: the entry keeps the plan's goal as its text; say it's cancelled instead.
-  if (last?.planReview === "cancelled") return deliver(chatId, tr("tg.planCancelled"));
+  if (last?.planReview === "cancelled") return (tr("tg.planCancelled"));
   if (!target.group) {
-    if (last?.status === "error") return deliver(chatId, problemText(tr, name, last));
-    if (last?.text) return deliver(chatId, plainText(last.text));
-    return deliver(chatId, tr("tg.noReply", { name }));
+    if (last?.status === "error") return (problemText(tr, name, last));
+    if (last?.text) return (plainText(last.text));
+    return (tr("tg.noReply", { name }));
   }
   // The final message in full, and what the others said in short: a link or a figure is often there.
   const others = fresh.filter((e) => e !== last && e.status === "done" && e.text.trim()).slice(-4);
   const also = others.length
     ? `\n\n${tr(last?.status === "error" ? "grp.before" : "grp.also")}\n${others.map((e) => `${who(e.botId)}: ${clipText(plainText(e.text), 500)}`).join("\n\n")}`
     : "";
-  if (last?.status === "error") return deliver(chatId, `${problemText(tr, who(last.botId), last)}${also}`);
-  if (last?.text) return deliver(chatId, `${who(last.botId)}:\n${plainText(last.text)}${also}`);
-  return deliver(chatId, tr("grp.noReply", { group: name }));
+  if (last?.status === "error") return (`${problemText(tr, who(last.botId), last)}${also}`);
+  if (last?.text) return (`${who(last.botId)}:\n${plainText(last.text)}${also}`);
+  return (tr("grp.noReply", { group: name }));
 }
 
 /**
@@ -690,6 +706,31 @@ async function handleMain(tok: string, s: Stored, m: TgMessage) {
 }
 
 /**
+ * oovi's cloud server answering Telegram while the computer is off (lib/cloud-runner.ts): /yes, /no and answers to a
+ * plan are understood as on the computer; a /yes with nothing waiting gets the same answer as there.
+ */
+export function telegramRunInput(chat: Chat | null | undefined, input: RunInput): { input: RunInput } | { say: string } {
+  const text = String(input.text ?? "").trim();
+  const tgId = Number(input.telegramChatId);
+  const shown = shownHere(chat, tgId);
+  const base = { channel: "telegram" as const, telegramChatId: tgId };
+  const plan = planCommand(text, chat, shown);
+  if (plan) return { input: { ...base, planDecision: plan } };
+  const ac = approvalCommand(text, chat?.pending?.approval, shown);
+  if (ac.kind === "decide") return { input: { ...base, ...ac.input } };
+  if (ac.kind === "nothing-pending") return { say: translatorFor(lastUserText(chat ?? undefined))("tg.nothingPending") };
+  return { input };
+}
+
+/** The Telegram reply for a run of the main bot's chat (cloud server or a job the computer picked up). */
+export function telegramReplyFor(chatId: string, before: Map<string, string>): string | null {
+  const chat = getChat(chatId);
+  if (!chat) return null;
+  const bot = mainBot();
+  return replyFor(chat, before, { tgChatId: 0, ooviChatId: chatId, name: bot?.name ?? "oovi", group: false, tgGroup: false }, translatorFor(lastUserText(chat)));
+}
+
+/**
  * /yes or /no for a routine that's waiting for the user's OK (its notice was sent here). Only the commands,
  * never a bare word. The routine's scheduler reports the result once the run ends (no double message).
  */
@@ -848,7 +889,11 @@ function deviceId(): string {
 }
 
 /** What another computer needs to use the same bot (never the pairing code). */
-const connectionOf = (s: Stored) => ({ botUsername: s.botUsername, botName: s.botName, chatId: s.chatId, userName: s.userName, links: s.links ?? [] });
+const connectionOf = (s: Stored) => {
+  const main = mainBot();
+  // mainChat: where oovi's cloud server answers Telegram while this computer is off (web/lib/telegram-relay.ts).
+  return { botUsername: s.botUsername, botName: s.botName, chatId: s.chatId, userName: s.userName, links: s.links ?? [], ...(main ? { mainChat: dmId(main.id) } : {}) };
+};
 
 let adoptCheckedAt = 0;
 /**

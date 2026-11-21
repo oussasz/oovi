@@ -12,6 +12,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 
 const SOURCES = [
@@ -20,8 +21,40 @@ const SOURCES = [
   { dir: "coreyhaines31-marketingskills", repo: "coreyhaines31/marketingskills", license: "MIT" },
   { dir: "alirezarezvani-claude-skills", repo: "alirezarezvani/claude-skills", license: "MIT" },
   { dir: "wshobson-agents", repo: "wshobson/agents", license: "MIT" },
-  { dir: "K-Dense-AI-claude-scientific-skills", repo: "K-Dense-AI/claude-scientific-skills", license: "MIT" },
+  { dir: "K-Dense-AI-scientific-agent-skills", repo: "K-Dense-AI/scientific-agent-skills", license: "MIT" },
+  // Only the listed skills: the rest of these repositories is for coding agents or needs their programs.
+  { dir: "mattpocock-skills", repo: "mattpocock/skills", license: "MIT", only: ["skills/productivity/grilling", "skills/productivity/to-questionnaire"] },
+  { dir: "obsidianmd-obsidian-skills", repo: "obsidianmd/obsidian-skills", license: "MIT", only: ["plugins/obsidian/skills/obsidian-markdown", "plugins/obsidian/skills/json-canvas"] },
 ];
+
+/**
+ * Edits that make a skill work in oovi (its own words otherwise): a step that names a coding agent's tool, or
+ * writes a file where oovi's bots deliver a document. Each must still match, or the import says so.
+ */
+const PATCHES = {
+  "mattpocock/skills:skills/productivity/grilling": {
+    name: "Stress-test a plan",
+    replace: [
+      [
+        "When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent with a fresh context window to find it; don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report; ask the rest of the frontier now.",
+        "When a frontier question needs a fact (in the files the user gave you, on the web, in your notes), look it up yourself with your tools; don't ask the user for anything you could look up. Questions that depend on that fact wait for the next round; ask the rest now.",
+      ],
+    ],
+  },
+  "mattpocock/skills:skills/productivity/to-questionnaire": {
+    name: "Questionnaire for someone else",
+    replace: [
+      [
+        "Write it to `to-questionnaire-<slug>.md` in the current directory (slug from the topic) and report the path. Done when the file exists",
+        "Deliver it as a Word document named after the topic, ready to send. Done when the document exists",
+      ],
+      ["a Markdown document they hand to one person", "a document they hand to one person"],
+    ],
+  },
+};
+
+/** Imported before and then found to need Python code the bots can't run (installs, imports): left out. */
+const SKIP_IDS = new Set(["adaptyv", "deepspot-m", "molecular-dynamics", "molfeat", "primekg", "tiledbvcf"]);
 
 const root = process.argv[2];
 if (!root) throw new Error("Give the directory with the clones.");
@@ -106,6 +139,7 @@ for (const src of SOURCES) {
     const file = path.join(dir, "SKILL.md");
     if (!fs.existsSync(file)) continue;
     const rel = path.relative(base, dir).split(path.sep).join("/");
+    if (src.only && !src.only.includes(rel)) continue;
     // A skill folder with its own license: only Apache or MIT ones are kept.
     const own = ["LICENSE", "LICENSE.txt", "LICENSE.md"].map((f) => path.join(dir, f)).find((p) => fs.existsSync(p));
     if (own && !/Apache License|MIT License|Permission is hereby granted/i.test(fs.readFileSync(own, "utf8").slice(0, 2000))) {
@@ -122,6 +156,11 @@ for (const src of SOURCES) {
       continue;
     }
     let body = parsed.body.trim();
+    const patch = PATCHES[`${src.repo}:${rel}`];
+    for (const [from, to] of patch?.replace ?? []) {
+      if (!body.includes(from)) throw new Error(`${src.repo}:${rel}: a patch no longer matches; read the skill again and update PATCHES.`);
+      body = body.replace(from, to);
+    }
     if (/\bscripts\/[\w./-]+|\b[\w-]+\.py\b/.test(body) && fs.existsSync(path.join(dir, "scripts"))) {
       skipped.scripts++;
       continue;
@@ -147,12 +186,16 @@ for (const src of SOURCES) {
       continue;
     }
     // "cs-aeo" style names (a persona prefix): the prefix says nothing to a user.
-    const name = humanName(parsed.fm.name.replace(/^cs[-_]/i, "")).slice(0, 80);
+    const name = (patch?.name ?? humanName(parsed.fm.name.replace(/^cs[-_]/i, ""))).slice(0, 80);
     if (/ skills$/i.test(name)) {
       skipped.agentOnly = (skipped.agentOnly ?? 0) + 1;
       continue;
     }
     const key = slug(name);
+    if (SKIP_IDS.has(key)) {
+      skipped.code = (skipped.code ?? 0) + 1;
+      continue;
+    }
     if (seen.has(key)) {
       skipped.duplicate++;
       continue;
@@ -169,7 +212,7 @@ for (const src of SOURCES) {
   }
 }
 out.sort((a, b) => a.name.localeCompare(b.name));
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1"));
+const here = path.dirname(fileURLToPath(import.meta.url));
 fs.writeFileSync(path.join(here, "..", "lib", "skills-library.json"), JSON.stringify(out));
 fs.writeFileSync(
   path.join(here, "..", "THIRD_PARTY_SKILLS.md"),

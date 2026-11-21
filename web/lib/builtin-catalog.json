@@ -1037,7 +1037,8 @@
      "key": "key",
      "label": "Trello API key",
      "secret": true,
-     "help": "https://trello.com/power-ups/admin (create a Power-Up, then open its API key page)",
+     "help": "https://trello.com/power-ups/admin",
+     "placeholder": "Create a Power-Up, then open its API key page",
      "to": "env",
      "name": "TRELLO_API_KEY"
     },
@@ -1045,7 +1046,7 @@
      "key": "token",
      "label": "Trello token",
      "secret": true,
-     "help": "On the same API key page, click the Token link and allow access",
+     "placeholder": "On the same API key page, click Token and allow access",
      "to": "env",
      "name": "TRELLO_TOKEN"
     },

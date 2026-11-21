@@ -12,12 +12,16 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import { isPrivateHost } from "./net-guard-core";
+export { isPrivateHost };
 import { chromium, type Browser, type BrowserContext, type Page } from "playwright-core";
 import { chosenSaveFolder, dataDir, type BrowserConfig } from "./settings";
 import { pickLaunchError } from "./platform-errors-core";
 
 export type ElementInfo = { kind: string; label: string };
 export type Session = {
+  /** The page text with what its frames and web components show, read once per page (lib/page-extra.ts). */
+  embedded?: { url: string; text: string };
   browser?: Browser;
   context: BrowserContext;
   page: Page;
@@ -61,18 +65,6 @@ const accountsFile = () => path.join(dataDir(), "accounts.json");
 
 // ---------- network rules ----------
 
-export function isPrivateHost(host: string): boolean {
-  const h = host.toLowerCase().replace(/^\[|\]$/g, "");
-  if (h === "localhost" || /\.(localhost|local|internal|lan|home\.arpa)$/.test(h)) return true;
-  const v4 = h.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
-  if (v4) {
-    const a = Number(v4[1]);
-    const b = Number(v4[2]);
-    return a === 0 || a === 10 || a === 127 || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 100 && b >= 64 && b <= 127);
-  }
-  if (h.includes(":")) return h === "::1" || h === "::" || /^(fc|fd|fe8|fe9|fea|feb)/.test(h) || h.startsWith("::ffff:");
-  return false;
-}
 
 /** Returns an error message if the agent may not navigate to this URL, else null. */
 export function checkUrl(url: string, allowPrivate: boolean): string | null {

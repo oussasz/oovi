@@ -11,6 +11,8 @@ import { api, refreshSidebar, scrollIntoArea } from "@/lib/client";
 import { ANTHROPIC_LOGO, MCP_LOGO, OOVI_LOGO, githubOwnerLogo, logoFor } from "@/lib/logos";
 import "@/lib/desktop";
 import Face, { FaceStack } from "./Face";
+import AppHub from "./AppHub";
+import { hubOf, zapierAppFor } from "@/lib/app-hubs-core";
 import { useI18n } from "./I18n";
 import Icon from "./Icon";
 import ConnectorSetup, { ErrDetails } from "./ConnectorSetup";
@@ -42,7 +44,6 @@ type RegItem = {
   repo?: string;
   install: { transport: "stdio"; command: string; args: string[]; env: RegField[] } | { transport: "http"; url: string; headers: RegField[] };
 };
-type RemoteSkill = { id: string; name: string; description: string; url: string; by: string };
 type Installed = { plugins: { id: string; groupId: string }[]; skills: string[]; node: boolean; catalog?: { connectors: CatalogConnector[]; skills: CatalogSkill[]; plugins: CatalogPlugin[]; hidden?: string[] } };
 type SkillDraft = { slug?: string; name: string; description: string; body: string };
 type Custom = { name: string; transport: "stdio" | "http"; command: string; args: string; url: string; secrets: string };
@@ -86,7 +87,6 @@ export default function Marketplace() {
   const [skills, setSkills] = useState<Skill[]>([]);
   const [servers, setServers] = useState<Server[]>([]);
   const [inst, setInst] = useState<Installed>({ plugins: [], skills: [], node: true });
-  const [remote, setRemote] = useState<RemoteSkill[] | null>(null);
   // The skills library (hundreds of open-source skills), searched page by page on the app's server.
   type LibCard = { id: string; name: string; description: string; category: string; source: { repo: string; license: string; url: string } };
   const [lib, setLib] = useState<{ total: number; items: LibCard[]; installed: string[] } | null>(null);
@@ -170,6 +170,20 @@ export default function Marketplace() {
   const [loaded, setLoaded] = useState(false);
   const focusDone = useRef(false);
 
+  // After a restart a connector isn't started until a bot uses it, and every one showed "Checking…" for ever. Each
+  // one that is on (and signed in, if it needs it) is started once here, one after the other, so its state is real.
+  const started = useRef(new Set<string>());
+  useEffect(() => {
+    const todo = servers.filter((s) => s.enabled && s.status === "idle" && !(s.auth === "oauth" && !s.signedIn) && !started.current.has(s.id));
+    if (!todo.length) return;
+    for (const s of todo) started.current.add(s.id);
+    void (async () => {
+      for (const s of todo) await api(`/api/mcp/${s.id}`, { method: "POST" }).catch(() => null);
+      const fresh = await api<Server[]>("/api/mcp").catch(() => null);
+      if (fresh) setServers(fresh);
+    })();
+  }, [servers]);
+
   const load = useCallback(async () => {
     try {
       const [s, m, c, b] = await Promise.all([api<Skill[]>("/api/skills"), api<Server[]>("/api/mcp"), api<Installed>("/api/catalog"), api<{ id: string; name: string }[]>("/api/bots").catch(() => [])]);
@@ -186,13 +200,6 @@ export default function Marketplace() {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if ((tab === "skills" || q.trim()) && view === "discover" && !remote)
-      api<{ skills: RemoteSkill[] }>("/api/catalog?remote=anthropic")
-        .then((r) => setRemote(r.skills))
-        .catch(() => setRemote([]));
-  }, [tab, view, remote, q]);
 
   // Search the official MCP registry as you type (Discover: a search looks in every tab).
   useEffect(() => {
@@ -238,8 +245,10 @@ export default function Marketplace() {
    * Where a connector really stands: "ready" only once it is signed in and answered (never just because the
    * button was pressed); "checking" while the user signs in or oovi tests it; "signin" / "error" need a click.
    */
-  const connState = (s: Server | undefined): "none" | "checking" | "signin" | "error" | "ready" => {
+  const connState = (s: Server | undefined): "none" | "checking" | "signin" | "error" | "ready" | "off" => {
     if (!s) return "none";
+    // Switched off by the user: said so, never an endless "Checking…".
+    if (!s.enabled) return "off";
     const catId = allConnectors.find((c) => c.name.toLowerCase() === s.name.toLowerCase())?.id;
     if (waiting?.id === s.id || (!!catId && busy === `add-${catId}`) || busy === `signin-${s.id}`) return "checking";
     if (s.auth === "oauth" && !s.signedIn) return "signin";
@@ -494,6 +503,7 @@ export default function Marketplace() {
           <span className="mk-spin" aria-hidden /> {t("mk.checking")}
         </span>
       );
+    if (st === "off") return <span className="tag">{t("mk.switchedOff")}</span>;
     if (st === "signin")
       return (
         <button className={big ? "btn primary" : "btn sm primary"} disabled={!!busy} onClick={() => void signIn(s.id, s.name)}>
@@ -538,6 +548,7 @@ export default function Marketplace() {
             )}
           </div>
           <Logo src={logoFor("zapier")} size={84} />
+          {serverOf(zapier.name) && <AppHub hub="zapier" serverId={serverOf(zapier.name)!.id} />}
         </div>
       )}
       {!ql && (
@@ -585,7 +596,7 @@ export default function Marketplace() {
             <div className="mk-grid">
               {registry.slice(0, 30).map((r) => {
                 const c = regToConnector(r);
-                return card(r.name, <Logo src={githubOwnerLogo(r.repo)} />, c.name, c.description, c.by, serverOf(c.name) ? stateControl(serverOf(c.name)!) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t("mk.unchecked")}</span>);
+                return card(r.name, <Logo src={githubOwnerLogo(r.repo)} />, c.name, c.description, c.by, serverOf(c.name) ? stateControl(serverOf(c.name)!) : plus(() => startInstall(c), t("mk.addX", { name: c.name })), <span className="mk-hint">{t(c.transport === "stdio" && c.command !== "npx" ? "mk.uncheckedProgram" : "mk.unchecked")}</span>);
               })}
             </div>
           )}
@@ -712,7 +723,6 @@ export default function Marketplace() {
     });
   const libraryCats = ["", "work", "writing", "research", "coding", "life"];
   const foundSkills = allSkills.filter((s) => match(s.name, s.description));
-  const foundRemote = (remote ?? []).filter((s) => match(s.name, s.description));
   const skillLibrary = (
     <>
       <div className="mk-section-head">
@@ -777,11 +787,6 @@ export default function Marketplace() {
     </>
   );
 
-  const addRemoteSkill = (s: RemoteSkill) =>
-    void run(`rs-${s.id}`, async () => {
-      const k = await api<Skill>("/api/skills", { method: "POST", body: JSON.stringify({ url: s.url }) });
-      return t("lib.installedSkill", { name: k.name });
-    });
   const featuredSkill = allSkills[0] ?? SKILLS[0]!;
   const discoverSkills = (
     <>
@@ -815,38 +820,6 @@ export default function Marketplace() {
           ),
         )}
       </div>
-      {(!ql || foundRemote.length > 0) && (
-        <div className="mk-section-head">
-          <h3>{t("mk.anthropicSkills")}</h3>
-          {remote && <span className="mk-count">{foundRemote.length}</span>}
-        </div>
-      )}
-      {ql && !foundRemote.length ? null : !remote ? (
-        <p className="note">{t("common.loading")}</p>
-      ) : remote.length === 0 ? (
-        <p className="note">{t("mk.cantLoadRemote")}</p>
-      ) : (
-        <div className="mk-grid">
-          {remote
-            .filter((s) => match(s.name, s.description))
-            .map((s) =>
-              card(
-                s.id,
-                <Logo src={ANTHROPIC_LOGO} />,
-                <>
-                  {s.name} {verified(true)}
-                </>,
-                s.description,
-                s.by,
-                skillHave(s.name)
-                  ? done(t("mk.added"))
-                  : plus(() => addRemoteSkill(s), t("mk.addX", { name: s.name })),
-                undefined,
-                () => setDetail({ kind: "skill", id: s.id, name: s.name, description: s.description, by: s.by, logo: ANTHROPIC_LOGO, url: s.url, have: skillHave(s.name), add: () => addRemoteSkill(s) }),
-              ),
-            )}
-        </div>
-      )}
       {(!ql || !!lib?.items.length) && skillLibrary}
     </>
   );
@@ -1012,7 +985,7 @@ export default function Marketplace() {
     plugins: { discover: discoverPlugins, yours: yourPlugins },
   };
   // A search looks in the whole Marketplace: experts and teams, connectors, skills, each under its own heading.
-  const nothing = !foundPlugins.length && !shownConnectors.length && !foundSkills.length && !foundRemote.length && lib !== null && !lib.items.length && (ql.length < 2 || registry?.length === 0);
+  const nothing = !foundPlugins.length && !shownConnectors.length && !foundSkills.length && lib !== null && !lib.items.length && (ql.length < 2 || registry?.length === 0);
   // While a search shows every category, no single tab is "the" open one; picking a tab ends the search.
   const searchingAll = !!ql && view === "discover";
   const searchAll = (
@@ -1134,6 +1107,9 @@ export default function Marketplace() {
                     </div>
                   </div>
                   <p className="mk-detail-desc" dir="auto">{c.description}</p>
+                  {hubOf(c.id) && (
+                    <AppHub hub={c.id as "zapier" | "pipedream" | "make"} serverId={serverOf(c.name)?.id} busy={!!busy} onConnect={() => startInstall(c)} />
+                  )}
                   <dl className="cs-facts">
                     <dt>{t("mk.d.category")}</dt>
                     <dd>{t(`mk.cat.${c.category}` as "mk.cat.all")}</dd>
@@ -1369,6 +1345,26 @@ export default function Marketplace() {
             </div>
             <p>{soonItem.soon}</p>
             <div className="row-btns">
+              {(() => {
+                const z = serverOf((allConnectors.find((c) => c.id === "zapier") ?? CONNECTORS.find((c) => c.id === "zapier")!).name);
+                if (!z) return null;
+                const app = zapierAppFor(soonItem.id, soonItem.name);
+                return (
+                  <button
+                    className="btn primary"
+                    disabled={!!busy}
+                    onClick={() =>
+                      void run(`zap-${app}`, async () => {
+                        const r = await api<{ url: string }>(`/api/mcp/${z.id}/zapier`, { method: "POST", body: JSON.stringify({ op: "connect", app }) });
+                        window.open(r.url, "_blank", "noopener,noreferrer");
+                        return t("hub.opened", { app });
+                      })
+                    }
+                  >
+                    {t("hub.connectIn", { app, name: "Zapier" })}
+                  </button>
+                );
+              })()}
               {(["zapier", "pipedream"] as const).map((gid) => {
                 const g = allConnectors.find((c) => c.id === gid) ?? CONNECTORS.find((c) => c.id === gid)!;
                 return serverOf(g.name) ? (
@@ -1420,7 +1416,7 @@ export default function Marketplace() {
               <label key={f.key} className="field">
                 <span>
                   {f.label}{" "}
-                  {f.help && (
+                  {f.help && /^https:\/\/\S+$/.test(f.help) && (
                     <a href={f.help} target="_blank" rel="noreferrer noopener">
                       {t("mk.getIt")}
                     </a>

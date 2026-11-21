@@ -138,7 +138,9 @@ export function runInputOf(kind: string, payload: unknown): Record<string, unkno
     if (!text) return "empty message";
     if (text.length > 20_000) return "message too long";
     const effort = ["auto", "low", "medium", "high", "max"].includes(String(p.effort)) ? p.effort : undefined;
-    return { text, ...(effort ? { effort } : {}), deep: p.deep === true, plan: p.plan === true, ...(id(p.entryId) ? { entryId: id(p.entryId) } : {}), ...(id(p.replyTo) ? { replyTo: id(p.replyTo) } : {}) };
+    // A Telegram message handed to the cloud (web/lib/telegram-cloud-core.ts): its answer goes back to that chat.
+    const tg = p.channel === "telegram" && typeof p.telegramChatId === "number" && Number.isSafeInteger(p.telegramChatId) ? { channel: "telegram", telegramChatId: p.telegramChatId } : {};
+    return { text, ...tg, ...(effort ? { effort } : {}), deep: p.deep === true, plan: p.plan === true, ...(id(p.entryId) ? { entryId: id(p.entryId) } : {}), ...(id(p.replyTo) ? { replyTo: id(p.replyTo) } : {}) };
   }
   if (kind === "decision") {
     if (p.planDecision && typeof p.planDecision === "object") {

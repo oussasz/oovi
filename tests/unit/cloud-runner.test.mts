@@ -84,3 +84,12 @@ test("a request is left for the computer whole, or not at all", () => {
   assert.equal(handOver(["propose_routine"]), "late");
   assert.match(TOO_LATE_FOR_COMPUTER, /twice/);
 });
+
+test("a Telegram message handed to the cloud keeps where its answer goes", () => {
+  const r = runInputOf("message", { text: "hi", entryId: "tg123", channel: "telegram", telegramChatId: 5550001 }) as Record<string, unknown>;
+  assert.equal(r.channel, "telegram");
+  assert.equal(r.telegramChatId, 5550001);
+  // Only Telegram, and only with a real chat id: nothing else the phone could send sets a channel.
+  assert.equal((runInputOf("message", { text: "hi", channel: "slack" }) as Record<string, unknown>).channel, undefined);
+  assert.equal((runInputOf("message", { text: "hi", channel: "telegram", telegramChatId: "x" }) as Record<string, unknown>).channel, undefined);
+});
