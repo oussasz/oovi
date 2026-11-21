@@ -43,6 +43,11 @@ every tool that works that way; then build a small update."
   the owner's language); "MCP" replaced by "connectors" in the bot editor and safety setting; community connectors
   that need a program say so. Not done from that review: Marketplace descriptions and server error texts are still
   English for Arabic and French users; the token count under each message.
+- **Bot editor** (owner's screenshot): "Chat with <bot>" did nothing (the editor is a window above the app: it changed
+  the page behind it without closing; from that bot's own chat nothing visible happened). It now saves unsaved
+  changes, closes the window and opens the chat; same for the group editor's back button. "Saved." beside the button
+  went unseen and people kept pressing Save: the Save button itself turns green with a check, "Saved", until the next
+  change. Checked with clicks in the built app on a throwaway data folder.
 
 ## Azure runner on the 0.15.0 image, updating itself (2026-11-20 23:17 UTC, owner: "ثبّت وحدّث", signed in to Azure himself)
 - Before (seen on the VM): container `oovi-runner:local` built 2026-11-19 19:31 (the 0.14.1 engine), healthy, up 28 h;

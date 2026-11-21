@@ -133,6 +133,9 @@ textarea { resize: vertical; }
 .note { color: var(--muted); font-size: 13px; }
 .hint { display: block; color: var(--faint); font-size: 12.5px; font-weight: 500; }
 .msg-ok { color: var(--ok); font-weight: 700; font-size: 14px; }
+/* A Save button that has saved: green with a check until something changes. */
+.btn.primary.is-saved { background: var(--ok); border-color: var(--ok); color: #fff; }
+.btn.primary.is-saved svg { vertical-align: -3px; }
 .msg-err { color: var(--err); font-weight: 700; font-size: 14px; }
 .spacer { flex: 1; }
 

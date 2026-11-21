@@ -46,6 +46,8 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  /** Changes not saved yet: the Save button says so, and "Chat with" saves them first. */
+  const [dirty, setDirty] = useState(false);
   const [servers, setServers] = useState<{ id: string; name: string; enabled: boolean; tools: unknown[]; auth?: "oauth"; signedIn?: boolean }[]>([]);
   const [lists, setLists] = useState<Partial<Record<ProviderId, ModelInfo[]>>>({});
   const [isMain, setIsMain] = useState(false);
@@ -115,6 +117,7 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
   const set = (p: Partial<BotInput>) => {
     setD({ ...d, ...p });
     setSaved(false);
+    setDirty(true);
   };
   /** The user's own picture: cut to a 256×256 square in the browser, kept on this computer as the bot's face. */
   async function usePicture(file: File) {
@@ -134,7 +137,7 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
   // Any slime choice replaces a marketplace picture: the bot becomes the slime the user is making.
   const setFace = (p: Partial<FaceT>) => set({ face: { ...slimeOf(d.face), ...p } });
 
-  async function save() {
+  async function save(): Promise<boolean> {
     setSaving(true);
     setError(null);
     try {
@@ -145,12 +148,15 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
         setWasMain(true);
       }
       refreshSidebar();
+      setDirty(false);
       if (isNew) {
         onClose?.();
         router.push(`/c/dm-${bot.id}`);
       } else setSaved(true);
+      return true;
     } catch (e) {
       setError((e as Error).message);
+      return false;
     } finally {
       setSaving(false);
     }
@@ -496,15 +502,31 @@ export default function BotEditor({ id, onClose }: { id: string; onClose?: () =>
         </section>
 
         <div className="savebar">
-          <button className="btn primary" onClick={save} disabled={saving || !d.name}>
-            {isNew ? t("bot.create") : t("common.save")}
+          {/* The button itself says it is saved: the short note beside it went unseen and people kept pressing Save. */}
+          <button className={`btn primary${saved && !dirty ? " is-saved" : ""}`} onClick={() => void save()} disabled={saving || !d.name} aria-live="polite">
+            {isNew ? t("bot.create") : saved && !dirty ? (
+              <>
+                <Icon name="check" size={16} /> {t("common.savedShort")}
+              </>
+            ) : (
+              t("common.save")
+            )}
           </button>
           {!isNew && (
-            <Link className="btn" href={`/c/dm-${id}`}>
+            <button
+              type="button"
+              className="btn"
+              disabled={saving}
+              onClick={async () => {
+                // The editor is a window above the app: it closes, unsaved changes are saved first, then the chat opens.
+                if (dirty && !(await save())) return;
+                onClose?.();
+                router.push(`/c/dm-${id}`);
+              }}
+            >
               {t("bot.chatWith", { name: d.name })}
-            </Link>
+            </button>
           )}
-          {saved && <span className="msg-ok">{t("common.saved")}</span>}
           {error && <span className="msg-err">{error}</span>}
           <span className="spacer" />
           {!isNew && (

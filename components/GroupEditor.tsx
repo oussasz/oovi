@@ -144,9 +144,17 @@ export default function GroupEditor({ id, onClose }: { id: string; onClose?: () 
           {isNew ? t("group.create") : t("common.save")}
         </button>
         {!isNew && (
-          <Link className="btn" href={`/c/${id}`}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => {
+              // The editor is a window above the app: close it, then open the group's chat.
+              onClose?.();
+              router.push(`/c/${id}`);
+            }}
+          >
             {t("group.back")}
-          </Link>
+          </button>
         )}
         {error && <span className="msg-err">{error}</span>}
         <span className="spacer" />

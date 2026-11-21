@@ -12,6 +12,7 @@ const en = {
   // ---------- shared ----------
   "common.loading": "Loading…",
   "common.save": "Save",
+  "common.savedShort": "Saved",
   "common.saved": "Saved.",
   "common.cancel": "Cancel",
   "common.continue": "Continue",

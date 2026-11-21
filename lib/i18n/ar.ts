@@ -5,6 +5,7 @@ import type { Dict } from "./index";
 const ar: Dict = {
   "common.loading": "جارٍ التحميل…",
   "common.save": "حفظ",
+  "common.savedShort": "تم الحفظ",
   "common.saved": "تم الحفظ.",
   "common.cancel": "إلغاء",
   "common.continue": "متابعة",

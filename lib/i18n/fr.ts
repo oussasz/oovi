@@ -4,6 +4,7 @@ import type { Dict } from "./index";
 const fr: Dict = {
   "common.loading": "Chargement…",
   "common.save": "Enregistrer",
+  "common.savedShort": "Enregistré",
   "common.saved": "Enregistré.",
   "common.cancel": "Annuler",
   "common.continue": "Continuer",
