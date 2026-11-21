@@ -48,6 +48,8 @@ export function AnnEditor({ a, adminEmail, counts, people }: { a: (Announcement 
   const [audience, setAudience] = useState<"all" | "chosen">(a?.testEmail ? "chosen" : a ? "all" : "chosen");
   const [peopleText, setPeopleText] = useState(a?.testEmail ? peopleOf(a.testEmail).join("\n") : adminEmail);
   const [message, setMessage] = useState(a?.message ?? "");
+  // Chosen people by email: the HTML design (default) or a written message (an ordinary email).
+  const [mailKind, setMailKind] = useState<"html" | "message">(a?.message ? "message" : "html");
   const typed = parsePeople(peopleText);
   const chosen = a ? audienceLabel(a.testEmail) : "";
   const skipped = (people ?? []).filter((p) => p.state !== "ok");
@@ -94,7 +96,7 @@ export function AnnEditor({ a, adminEmail, counts, people }: { a: (Announcement 
             <input type="checkbox" name="bar" checked={ch.bar} onChange={(e) => touched(setCh)({ ...ch, bar: e.target.checked })} /> Bar at the top of the app (like the update bar; “Open” shows the window)
           </label>
           <label className="check">
-            <input type="checkbox" name="email" checked={ch.email} onChange={(e) => touched(setCh)({ ...ch, email: e.target.checked })} /> Email {audience === "chosen" ? "(an ordinary email with your message)" : "(with an unsubscribe link; people who unsubscribed are skipped)"}
+            <input type="checkbox" name="email" checked={ch.email} onChange={(e) => touched(setCh)({ ...ch, email: e.target.checked })} /> Email {audience === "chosen" && mailKind === "message" ? "(an ordinary email with your message)" : "(the HTML below, with an unsubscribe link; people who unsubscribed are skipped)"}
           </label>
           <span className="fine">The window and the bar need oovi 0.10.16 or newer; email reaches everyone.</span>
         </fieldset>
@@ -138,7 +140,18 @@ export function AnnEditor({ a, adminEmail, counts, people }: { a: (Announcement 
                   ))}
                 </ul>
               )}
+              <input type="hidden" name="mailKind" value={mailKind} />
               {ch.email && (
+                <div role="radiogroup" aria-label="What they get by email" style={{ marginTop: 10 }}>
+                  <label className="check">
+                    <input type="radio" name="mailKindPick" checked={mailKind === "html"} onChange={() => touched(setMailKind)("html")} /> The HTML design below (with an unsubscribe link)
+                  </label>
+                  <label className="check">
+                    <input type="radio" name="mailKindPick" checked={mailKind === "message"} onChange={() => touched(setMailKind)("message")} /> A written message (an ordinary email)
+                  </label>
+                </div>
+              )}
+              {ch.email && mailKind === "message" && (
                 <>
                   <label htmlFor="ann-message" style={{ marginTop: 10 }}>
                     Your message (the email they get)
@@ -149,7 +162,12 @@ export function AnnEditor({ a, adminEmail, counts, people }: { a: (Announcement 
                   </span>
                 </>
               )}
-              {!ch.email && <input type="hidden" name="message" value={message} />}
+              {ch.email && mailKind === "html" && (
+                <span className="fine" style={{ marginTop: 6 }}>
+                  They get the HTML below as the email, with the title as its subject and the unsubscribe footer. People who unsubscribed from oovi news are skipped.
+                </span>
+              )}
+              {!(ch.email && mailKind === "message") && <input type="hidden" name="message" value={message} />}
             </div>
           )}
           <label className="check">

@@ -6,7 +6,7 @@ import { rateLimit } from "@/lib/api";
 import { audit } from "@/lib/credits";
 import { isEmail, sendMail, smtpStatus } from "@/lib/mail";
 import { pool } from "@/lib/db";
-import { MAX_MESSAGE, MAX_PEOPLE, audienceLabel, paragraphs, parsePeople, peopleOf } from "@/lib/announcement-audience";
+import { MAX_MESSAGE, MAX_PEOPLE, audienceLabel, mailKindOf, paragraphs, parsePeople, peopleOf } from "@/lib/announcement-audience";
 import { personalMessage } from "@/lib/mail-templates";
 import { announcementEmail, deleteAnnouncement, emailCounts, emailRecipients, getAnnouncement, LIMITS, recordEvent, saveAnnouncement, setStatus, type AnnInput, type AnnStatus } from "@/lib/announcements";
 
@@ -21,6 +21,8 @@ function readInput(fd: FormData): AnnInput | string[] {
   const people = parsePeople(s("people", 40_000));
   const message = s("message", MAX_MESSAGE + 500).replace(/\r\n?/g, "\n").trim();
   const audience = s("audience", 10);
+  // Chosen people get the HTML design (news) or, if the owner chose it, a written message as an ordinary email.
+  const written = audience === "chosen" && s("mailKind", 10) === "message";
   const endsOn = s("endsOn", 20).trim();
   const v: AnnInput = {
     title,
@@ -30,7 +32,7 @@ function readInput(fd: FormData): AnnInput | string[] {
     window: fd.get("window") === "on",
     bar: fd.get("bar") === "on",
     testEmail: audience === "chosen" ? people.emails.join(",") : "",
-    message: audience === "chosen" ? message : "",
+    message: written ? message : "",
     startsAt: null,
     endsAt: /^\d{4}-\d{2}-\d{2}$/.test(endsOn) ? new Date(`${endsOn}T23:59:59Z`).toISOString() : null,
   };
@@ -45,8 +47,8 @@ function readInput(fd: FormData): AnnInput | string[] {
   if (audience === "chosen") {
     if (people.bad.length) errors.push(`These don't look like email addresses: ${people.bad.slice(0, 5).join(", ")}${people.bad.length > 5 ? "…" : ""}`);
     else if (!people.emails.length) errors.push("Write at least one email address (one per line).");
-    if (fd.get("email") === "on" && !message) errors.push("Write the message these people get by email.");
-    if (message.length > MAX_MESSAGE) errors.push(`Keep the message under ${MAX_MESSAGE} characters.`);
+    if (fd.get("email") === "on" && written && !message) errors.push("Write the message these people get by email, or choose to send them the HTML design.");
+    if (written && message.length > MAX_MESSAGE) errors.push(`Keep the message under ${MAX_MESSAGE} characters.`);
     if (people.emails.length > MAX_PEOPLE) errors.push(`That is ${people.emails.length} addresses. Keep the list under ${MAX_PEOPLE}, or choose Everyone.`);
   }
   return errors.length ? errors : v;
@@ -96,14 +98,13 @@ export async function sendAnnEmails(id: string): Promise<AnnState> {
   const mail = await smtpStatus().catch(() => null);
   if (mail && !mail.ready) return { errors: ["Email isn't set up yet: add the mail server in Admin > Email first."] };
   const people = await emailRecipients(a, PER_RUN);
-  if (a.testEmail && !a.message.trim()) return { errors: ["Write the message first (under “Who sees it”), then save."] };
-  if (!people.length) return { ok: a.testEmail ? "Nobody left to email: the people you chose have it already, or have no oovi account (see the list under “Who sees it”)." : "Everyone in the audience has it already (or unsubscribed)." };
+  if (!people.length) return { ok: a.testEmail ? "Nobody left to email: the people you chose have it already, have no oovi account, or unsubscribed from news (see the list under “Who sees it”)." : "Everyone in the audience has it already (or unsubscribed)." };
   let sent = 0;
   const failed: string[] = [];
   for (const p of people) {
     try {
-      // Chosen people get an ordinary email with the owner's words; everyone gets the news email (HTML, unsubscribe link).
-      await sendMail(a.testEmail ? personalMessage(p.email, a.title, paragraphs(a.message)) : announcementEmail(a, p));
+      // A written message to chosen people is an ordinary email; otherwise it is the news email (the HTML, unsubscribe link).
+      await sendMail(mailKindOf(a) === "message" ? personalMessage(p.email, a.title, paragraphs(a.message)) : announcementEmail(a, p));
       await recordEvent(a.id, p.id, "emailed").catch(() => {});
       sent++;
     } catch {
@@ -127,7 +128,7 @@ export async function sendAnnTest(id: string, to: string): Promise<AnnState> {
   if (!a) return { errors: ["Save the announcement first."] };
   const u = await pool.query('SELECT id FROM "user" WHERE lower(email) = lower($1)', [email]);
   try {
-    const m = a.testEmail ? personalMessage(email, a.title, paragraphs(a.message)) : announcementEmail(a, { id: String(u.rows[0]?.id ?? admin.id), email });
+    const m = mailKindOf(a) === "message" ? personalMessage(email, a.title, paragraphs(a.message)) : announcementEmail(a, { id: String(u.rows[0]?.id ?? admin.id), email });
     await sendMail({ ...m, subject: `[Test] ${m.subject}` });
   } catch (e) {
     return { errors: [(e as Error).message] };

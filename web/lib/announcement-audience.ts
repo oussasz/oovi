@@ -26,12 +26,23 @@ export function audienceLabel(stored: string): string {
   return p.length === 0 ? "Everyone" : p.length === 1 ? p[0]! : `${p.length} chosen people`;
 }
 
-/** For chosen people: "ok", no oovi account (nothing is sent), or an address that was never confirmed (sent, but it may be mistyped). */
-export type PersonState = "ok" | "no-account" | "not-confirmed";
+/**
+ * For chosen people: "ok", no oovi account (nothing is sent), an address that was never confirmed (sent, but it may be
+ * mistyped), or someone who unsubscribed from news (skipped when they get the HTML design, which is news).
+ */
+export type PersonState = "ok" | "no-account" | "not-confirmed" | "unsubscribed";
 export const STATE_WORDS: Record<Exclude<PersonState, "ok">, string> = {
   "no-account": "has no oovi account: they won’t get it",
   "not-confirmed": "never confirmed this address: it may be mistyped (the email is still sent)",
+  unsubscribed: "unsubscribed from oovi news: they won’t get the HTML email (a written message still reaches them)",
 };
+
+/**
+ * What the email is. "news": the owner's HTML design with the unsubscribe footer (everyone, or chosen people when no
+ * message is written). "message": chosen people with a written message get it as an ordinary email from oovi.
+ */
+export const mailKindOf = (a: { testEmail: string; message: string }): "news" | "message" =>
+  a.testEmail && a.message.trim() ? "message" : "news";
 
 /** The owner's plain text as paragraphs (blank line = new paragraph). */
 export const paragraphs = (text: string): string[] =>

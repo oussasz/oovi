@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import { FRAME_CSP, FRAME_SANDBOX, framedHtml } from "../../lib/announcement-frame.ts";
-import { audienceLabel, paragraphs, parsePeople, peopleOf } from "../../web/lib/announcement-audience.ts";
+import { audienceLabel, mailKindOf, paragraphs, parsePeople, peopleOf } from "../../web/lib/announcement-audience.ts";
 
 const root = new URL("../../", import.meta.url);
 const read = (p: string) => fs.readFileSync(new URL(p, root), "utf8").replace(/\r\n/g, "\n");
@@ -55,6 +55,19 @@ test("news to everyone skips people who unsubscribed; a message to chosen people
   const fn = read("web/lib/mail-templates.ts").split("export function personalMessage")[1]!.split("\nexport function")[0]!;
   assert.match(fn, /esc\(p\)/, "the owner's words are escaped: shown as text, never run");
   assert.doesNotMatch(fn, /unsub|List-Unsubscribe/i, "no news footer, no unsubscribe header");
-  assert.match(read("web/app/admin/announcements/actions.ts"), /a\.testEmail \? personalMessage\(p\.email, a\.title, paragraphs\(a\.message\)\) : announcementEmail\(a, p\)/);
+  assert.match(read("web/app/admin/announcements/actions.ts"), /mailKindOf\(a\) === "message" \? personalMessage\(p\.email, a\.title, paragraphs\(a\.message\)\) : announcementEmail\(a, p\)/);
   assert.deepEqual(paragraphs("a\n\n\n b \n\n"), ["a", "b"]);
+});
+
+test("chosen people get the HTML design unless a message is written; the HTML is news, so it skips who unsubscribed", () => {
+  assert.equal(mailKindOf({ testEmail: "", message: "" }), "news");
+  assert.equal(mailKindOf({ testEmail: "", message: "left over" }), "news", "everyone always gets the HTML");
+  assert.equal(mailKindOf({ testEmail: "a@x.co,b@x.co", message: "" }), "news");
+  assert.equal(mailKindOf({ testEmail: "a@x.co", message: "  \n " }), "news", "blank is no message");
+  assert.equal(mailKindOf({ testEmail: "a@x.co", message: "Hi Sara" }), "message");
+  const lib = read("web/lib/announcements.ts");
+  assert.equal(lib.match(/ANY\(string_to_array\(\$2, ','\)\) AND \(\$[34] <> '' OR u\.news_opt_out = false\)/g)?.length, 2, "the list and the count use the same rule");
+  const actions = read("web/app/admin/announcements/actions.ts");
+  assert.doesNotMatch(actions, /Write the message first/, "an empty message no longer blocks sending to chosen people");
+  assert.match(actions, /message: written \? message : ""/, "the HTML choice saves no message");
 });

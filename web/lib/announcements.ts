@@ -22,7 +22,7 @@ export type Announcement = {
   email: boolean;
   window: boolean;
   bar: boolean;
-  /** The plain-text message chosen people get by email: an ordinary email from oovi, not a news email. */
+  /** Chosen people only: a written message they get as an ordinary email instead of the HTML ("" = they get the HTML). */
   message: string;
   /** "" = everyone; otherwise the chosen people's addresses, lower-cased and joined by commas. */
   testEmail: string;
@@ -173,17 +173,18 @@ export async function recordEvent(id: string, userId: string, kind: (typeof EVEN
 
 /**
  * The people the email goes to now (at most `limit`), minus who got it already. Everyone: confirmed, not blocked, not
- * unsubscribed (it is news). Chosen people: every chosen address that has an account (a personal message, not news).
+ * unsubscribed (it is news). Chosen people: every chosen address that has an account; when they get the HTML design
+ * (no written message) it is news too, so people who unsubscribed are skipped.
  */
 export async function emailRecipients(a: Announcement, limit: number): Promise<{ id: string; email: string; name: string | null }[]> {
   await ensureAnnTables();
   const { rows } = await pool.query(
     `SELECT u.id, u.email, u.name FROM "user" u
       WHERE (($2 = '' AND u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked' AND u.news_opt_out = false)
-          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ','))))
+          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ',')) AND ($4 <> '' OR u.news_opt_out = false)))
         AND NOT EXISTS (SELECT 1 FROM announcement_events e WHERE e.announcement_id = $1 AND e.user_id = u.id AND e.kind = 'emailed')
       ORDER BY u."createdAt" LIMIT $3`,
-    [a.id, a.testEmail.toLowerCase(), limit],
+    [a.id, a.testEmail.toLowerCase(), limit, a.message.trim()],
   );
   return rows.map((r) => ({ id: String(r.id), email: String(r.email), name: r.name ? String(r.name) : null }));
 }
@@ -194,26 +195,29 @@ export async function emailCounts(a: Announcement): Promise<{ sent: number; left
   const left = await pool.query(
     `SELECT count(*) AS n FROM "user" u
       WHERE (($2 = '' AND u."emailVerified" = true AND COALESCE(u.oovi_status, 'active') <> 'blocked' AND u.news_opt_out = false)
-          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ','))))
+          OR ($2 <> '' AND lower(u.email) = ANY(string_to_array($2, ',')) AND ($3 <> '' OR u.news_opt_out = false)))
         AND NOT EXISTS (SELECT 1 FROM announcement_events e WHERE e.announcement_id = $1 AND e.user_id = u.id AND e.kind = 'emailed')`,
-    [a.id, a.testEmail.toLowerCase()],
+    [a.id, a.testEmail.toLowerCase(), a.message.trim()],
   );
   return { sent: Number(sent.rows[0]?.n ?? 0), left: Number(left.rows[0]?.n ?? 0) };
 }
 
-/** For chosen people: who has no account (nothing is sent) and whose address was never confirmed (it may be mistyped). */
-export async function audienceReport(a: Pick<Announcement, "testEmail">): Promise<{ email: string; state: PersonState }[]> {
+/**
+ * For chosen people: who has no account (nothing is sent), whose address was never confirmed (it may be mistyped) and,
+ * when they get the HTML design, who unsubscribed from news (skipped).
+ */
+export async function audienceReport(a: Pick<Announcement, "testEmail" | "message">): Promise<{ email: string; state: PersonState }[]> {
   const people = peopleOf(a.testEmail);
   if (!people.length) return [];
   await ensureAnnTables();
   const { rows } = await pool.query(
-    `SELECT lower(email) AS email, "emailVerified" AS ok FROM "user" WHERE lower(email) = ANY($1)`,
+    `SELECT lower(email) AS email, "emailVerified" AS ok, news_opt_out FROM "user" WHERE lower(email) = ANY($1)`,
     [people],
   );
   const by = new Map(rows.map((r) => [String(r.email), r]));
   return people.map((email) => {
     const u = by.get(email);
-    const state: PersonState = !u ? "no-account" : u.ok !== true ? "not-confirmed" : "ok";
+    const state: PersonState = !u ? "no-account" : !a.message.trim() && u.news_opt_out === true ? "unsubscribed" : u.ok !== true ? "not-confirmed" : "ok";
     return { email, state };
   });
 }
